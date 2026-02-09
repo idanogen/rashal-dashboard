@@ -101,6 +101,9 @@ export function OrdersTable({ orders, filters }: OrdersTableProps) {
                 <SortableHeader column="customerName">שם הלקוח</SortableHeader>
                 <TableHead className="text-xs font-semibold">טלפון</TableHead>
                 <SortableHeader column="city">עיר</SortableHeader>
+                <TableHead className="text-xs font-semibold">כתובת</TableHead>
+                <TableHead className="text-xs font-semibold">קופ״ח</TableHead>
+                <TableHead className="text-xs font-semibold">סוכן</TableHead>
                 <SortableHeader column="orderStatus">סטטוס הזמנה</SortableHeader>
                 <SortableHeader column="openedBy">נפתח ע״י</SortableHeader>
                 <SortableHeader column="created">תאריך</SortableHeader>
@@ -110,7 +113,7 @@ export function OrdersTable({ orders, filters }: OrdersTableProps) {
             <TableBody>
               {sorted.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
+                  <TableCell colSpan={11} className="h-32 text-center text-muted-foreground">
                     לא נמצאו הזמנות
                   </TableCell>
                 </TableRow>
@@ -138,6 +141,9 @@ export function OrdersTable({ orders, filters }: OrdersTableProps) {
                       )}
                     </TableCell>
                     <TableCell className="text-sm">{order.city || '—'}</TableCell>
+                    <TableCell className="text-sm truncate max-w-[150px]">{order.address || '—'}</TableCell>
+                    <TableCell className="text-sm truncate max-w-[120px]">{order.healthFund || '—'}</TableCell>
+                    <TableCell className="text-sm">{order.agent || '—'}</TableCell>
                     <TableCell onClick={(e) => e.stopPropagation()}>
                       <StatusDropdown
                         orderId={order.id}
@@ -206,6 +212,9 @@ export function OrdersTable({ orders, filters }: OrdersTableProps) {
                         <MapPin className="h-3 w-3" />
                         {order.city}
                       </span>
+                    )}
+                    {order.healthFund && (
+                      <span className="truncate">{order.healthFund}</span>
                     )}
                   </div>
                 </div>
