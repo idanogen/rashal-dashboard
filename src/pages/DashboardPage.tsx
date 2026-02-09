@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useOrders } from '@/hooks/useOrders';
 import { useOrderStats } from '@/hooks/useOrderStats';
+import { StaleOrdersAlert } from '@/components/dashboard/StaleOrdersAlert';
 import { StatsCards } from '@/components/dashboard/StatsCards';
 import { DailyOrdersChart } from '@/components/dashboard/DailyOrdersChart';
+import { HealthFundChart } from '@/components/dashboard/HealthFundChart';
 import { OrderFilters, type OrderFiltersState } from '@/components/orders/OrderFilters';
 import { OrdersTable } from '@/components/orders/OrdersTable';
 import { Loader2, AlertCircle } from 'lucide-react';
@@ -17,6 +19,12 @@ export function DashboardPage() {
     worker: '',
     city: '',
   });
+  const tableRef = useRef<HTMLDivElement>(null);
+
+  const handleShowStale = () => {
+    // Scroll to table area so user sees filtered results
+    tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   if (isLoading) {
     return (
@@ -44,14 +52,20 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      {/* Stale Orders Alert */}
+      <StaleOrdersAlert orders={orders ?? []} onShowStale={handleShowStale} />
+
       {/* Stats */}
       <StatsCards stats={stats} />
 
-      {/* Daily Chart */}
-      <DailyOrdersChart orders={orders ?? []} />
+      {/* Charts Grid */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <DailyOrdersChart orders={orders ?? []} />
+        <HealthFundChart orders={orders ?? []} />
+      </div>
 
       {/* Filters + Table */}
-      <div className="space-y-4">
+      <div ref={tableRef} className="space-y-4">
         <OrderFilters
           filters={filters}
           onChange={setFilters}
