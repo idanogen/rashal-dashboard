@@ -1,7 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { AppShell } from '@/components/layout/AppShell';
 import { DashboardPage } from '@/pages/DashboardPage';
+import { RoutePlannerPage } from '@/pages/RoutePlannerPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -15,9 +17,14 @@ const queryClient = new QueryClient({
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AppShell>
-        <DashboardPage />
-      </AppShell>
+      <BrowserRouter>
+        <AppShell>
+          <Routes>
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/routes" element={<RoutePlannerPage />} />
+          </Routes>
+        </AppShell>
+      </BrowserRouter>
       <Toaster
         position="bottom-left"
         toastOptions={{

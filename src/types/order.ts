@@ -16,7 +16,7 @@ export interface Order {
   phone?: string;
   customerStatus?: 'לקוח חדש' | 'לקוח קיים';
   status?: 'Todo' | 'In progress' | 'Done';
-  orderStatus?: 'ממתין לתאום' | 'איו במלאי' | 'סופק';
+  orderStatus?: 'ממתין לתאום' | 'תואמה אספקה ' | 'איו במלאי' | 'סופק';
   healthFund?: string;
   openedBy?: string;
   fax?: string;
