@@ -3,6 +3,7 @@ import { useOrders } from '@/hooks/useOrders';
 import { useOrderStats } from '@/hooks/useOrderStats';
 import { StaleOrdersAlert } from '@/components/dashboard/StaleOrdersAlert';
 import { RouteRecommendation } from '@/components/dashboard/RouteRecommendation';
+import { TomorrowCoordinationDialog } from '@/components/dashboard/TomorrowCoordinationDialog';
 import { StatsCards } from '@/components/dashboard/StatsCards';
 import { DailyOrdersChart } from '@/components/dashboard/DailyOrdersChart';
 import { HealthFundChart } from '@/components/dashboard/HealthFundChart';
@@ -58,6 +59,9 @@ export function DashboardPage() {
 
       {/* Route Recommendations */}
       <RouteRecommendation orders={orders ?? []} />
+
+      {/* Tomorrow Coordination Recommendations */}
+      <TomorrowCoordinationDialog orders={orders ?? []} />
 
       {/* Stats */}
       <StatsCards stats={stats} />
