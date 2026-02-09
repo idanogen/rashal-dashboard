@@ -1,4 +1,5 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useDeliverableOrders } from '@/hooks/useDeliverableOrders';
 import { RouteCityGroups } from '@/components/routes/RouteCityGroups';
 import { RouteSelectedPanel } from '@/components/routes/RouteSelectedPanel';
@@ -6,10 +7,29 @@ import { Loader2, AlertCircle, Truck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { Order } from '@/types/order';
 
+interface LocationState {
+  preSelectCity?: string;
+}
+
 export function RoutePlannerPage() {
+  const location = useLocation();
   const { deliverable, cityGroups, isLoading, error, totalOrders } =
     useDeliverableOrders();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const preSelectApplied = useRef(false);
+
+  // Pre-select orders from a city when navigating from dashboard recommendation
+  useEffect(() => {
+    if (preSelectApplied.current) return;
+    const state = location.state as LocationState | null;
+    if (!state?.preSelectCity || deliverable.length === 0) return;
+
+    const cityOrders = deliverable.filter((o) => o.city === state.preSelectCity);
+    if (cityOrders.length > 0) {
+      setSelectedIds(new Set(cityOrders.map((o) => o.id)));
+      preSelectApplied.current = true;
+    }
+  }, [location.state, deliverable]);
 
   const selectedOrders = useMemo(
     () => deliverable.filter((o) => selectedIds.has(o.id)),

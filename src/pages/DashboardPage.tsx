@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { useOrders } from '@/hooks/useOrders';
 import { useOrderStats } from '@/hooks/useOrderStats';
 import { StaleOrdersAlert } from '@/components/dashboard/StaleOrdersAlert';
+import { RouteRecommendation } from '@/components/dashboard/RouteRecommendation';
 import { StatsCards } from '@/components/dashboard/StatsCards';
 import { DailyOrdersChart } from '@/components/dashboard/DailyOrdersChart';
 import { HealthFundChart } from '@/components/dashboard/HealthFundChart';
@@ -54,6 +55,9 @@ export function DashboardPage() {
     <div className="space-y-6">
       {/* Stale Orders Alert */}
       <StaleOrdersAlert orders={orders ?? []} onShowStale={handleShowStale} />
+
+      {/* Route Recommendations */}
+      <RouteRecommendation orders={orders ?? []} />
 
       {/* Stats */}
       <StatsCards stats={stats} />
