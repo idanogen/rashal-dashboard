@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useOrders } from '@/hooks/useOrders';
 import { useOrderStats } from '@/hooks/useOrderStats';
 import { StatsCards } from '@/components/dashboard/StatsCards';
+import { DailyOrdersChart } from '@/components/dashboard/DailyOrdersChart';
 import { OrderFilters, type OrderFiltersState } from '@/components/orders/OrderFilters';
 import { OrdersTable } from '@/components/orders/OrdersTable';
 import { Loader2, AlertCircle } from 'lucide-react';
@@ -45,6 +46,9 @@ export function DashboardPage() {
     <div className="space-y-6">
       {/* Stats */}
       <StatsCards stats={stats} />
+
+      {/* Daily Chart */}
+      <DailyOrdersChart orders={orders ?? []} />
 
       {/* Filters + Table */}
       <div className="space-y-4">
