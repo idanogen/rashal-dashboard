@@ -22,6 +22,7 @@ export const REVERSE_FIELD_MAP: Record<string, string> = Object.fromEntries(
 
 export const ORDER_STATUS_OPTIONS = [
   { value: 'ממתין לתאום', label: 'ממתין לתאום', color: 'blue' },
+  { value: 'תואמה אספקה', label: 'תואמה אספקה', color: 'purple' },
   { value: 'איו במלאי', label: 'אין במלאי', color: 'amber' },
   { value: 'סופק', label: 'סופק', color: 'green' },
 ] as const;
