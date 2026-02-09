@@ -29,12 +29,15 @@ export function useUpdateOrder() {
       return { previous };
     },
 
-    onError: (_err, _variables, context) => {
+    onError: (err, variables, context) => {
       // Rollback on error
       if (context?.previous) {
         queryClient.setQueryData(['orders'], context.previous);
       }
-      toast.error('שגיאה בעדכון ההזמנה');
+      console.error('[updateOrder] Error:', err.message, { id: variables.id, fields: variables.fields });
+      toast.error('שגיאה בעדכון ההזמנה', {
+        description: err instanceof Error ? err.message : undefined,
+      });
     },
 
     onSuccess: () => {

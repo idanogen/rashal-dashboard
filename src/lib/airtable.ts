@@ -81,21 +81,26 @@ export async function updateOrder(
   recordId: string,
   fields: Partial<Omit<Order, 'id'>>
 ): Promise<Order> {
+  const body = {
+    records: [
+      {
+        id: recordId,
+        fields: mapFieldsToAirtable(fields),
+      },
+    ],
+  };
+
+  console.log('[airtable] PATCH', recordId, body.records[0].fields);
+
   const response = await fetch(BASE_URL, {
     method: 'PATCH',
     headers,
-    body: JSON.stringify({
-      records: [
-        {
-          id: recordId,
-          fields: mapFieldsToAirtable(fields),
-        },
-      ],
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
     const error = await response.text();
+    console.error('[airtable] Update failed:', response.status, error);
     throw new Error(`Airtable update error (${response.status}): ${error}`);
   }
 
