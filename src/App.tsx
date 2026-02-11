@@ -4,6 +4,7 @@ import { Toaster } from 'sonner';
 import { AppShell } from '@/components/layout/AppShell';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { RoutePlannerPage } from '@/pages/RoutePlannerPage';
+import { RouteNavigationPage } from '@/pages/RouteNavigationPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -22,6 +23,7 @@ function App() {
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/routes" element={<RoutePlannerPage />} />
+            <Route path="/route-navigation" element={<RouteNavigationPage />} />
           </Routes>
         </AppShell>
       </BrowserRouter>

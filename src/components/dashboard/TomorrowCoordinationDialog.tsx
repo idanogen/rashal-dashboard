@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -8,44 +8,126 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
-import {
-  Calendar,
-  MapPin,
-  Clock,
-  ChevronDown,
-  ChevronUp,
-  Phone,
-  Navigation,
-} from 'lucide-react';
+import { Calendar } from 'lucide-react';
 import type { Order } from '@/types/order';
-import { useTomorrowCoordinationRecommendations } from '@/hooks/useTomorrowCoordinationRecommendations';
-import { getDaysSinceCreated, getDaysColor } from '@/lib/utils';
+import { useRouteOptimizer, type OptimizedRoute } from '@/hooks/useRouteOptimizer';
 import { buildRouteUrl } from '@/lib/maps';
+import { exportRouteToCSV } from '@/lib/export';
+
+// Import step components
+import {
+  QuantityInputStep,
+  type RouteConfig,
+} from '@/components/tomorrow-coordination/QuantityInputStep';
+import { RouteProposalStep } from '@/components/tomorrow-coordination/RouteProposalStep';
+import { RouteAdjustmentStep } from '@/components/tomorrow-coordination/RouteAdjustmentStep';
+import { RouteExportStep } from '@/components/tomorrow-coordination/RouteExportStep';
 
 interface TomorrowCoordinationDialogProps {
   orders: Order[];
 }
 
+type Step = 'quantity' | 'proposal' | 'adjustment' | 'export';
+
 export function TomorrowCoordinationDialog({
   orders,
 }: TomorrowCoordinationDialogProps) {
+  // Dialog state
   const [open, setOpen] = useState(false);
-  const [expandedCity, setExpandedCity] = useState<string | null>(null);
-  const recommendations = useTomorrowCoordinationRecommendations(orders);
 
-  if (recommendations.length === 0) {
-    return null; // Don't show button if no recommendations
+  // Multi-step wizard state
+  const [step, setStep] = useState<Step>('quantity');
+  const [routeConfig, setRouteConfig] = useState<RouteConfig | null>(null);
+  const [optimizedRoute, setOptimizedRoute] = useState<OptimizedRoute | null>(null);
+  const [finalRoute, setFinalRoute] = useState<Order[]>([]);
+
+  // Run optimizer only when routeConfig is set
+  const currentOptimizedRoute = useRouteOptimizer(
+    orders,
+    routeConfig?.targetCount ?? 5,
+    routeConfig?.startingAddress
+  );
+
+  // Update optimizedRoute when config changes
+  useEffect(() => {
+    if (routeConfig && step === 'proposal') {
+      setOptimizedRoute(currentOptimizedRoute);
+      setFinalRoute(currentOptimizedRoute.orders);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeConfig, step]);
+
+  // Calculate available orders count
+  const availableCount = useMemo(() => {
+    return orders.filter(
+      (o) =>
+        o.orderStatus === 'ממתין לתאום' &&
+        o.address &&
+        o.city
+    ).length;
+  }, [orders]);
+
+  // Don't show button if no orders available
+  if (availableCount === 0) {
+    return null;
   }
 
-  const toggleCity = (city: string) => {
-    setExpandedCity(expandedCity === city ? null : city);
+  // Reset wizard when dialog closes
+  const handleOpenChange = (newOpen: boolean) => {
+    setOpen(newOpen);
+    if (!newOpen) {
+      // Reset to initial state when dialog closes
+      setTimeout(() => {
+        setStep('quantity');
+        setRouteConfig(null);
+        setOptimizedRoute(null);
+        setFinalRoute([]);
+      }, 200);
+    }
   };
 
-  const totalOrders = recommendations.reduce(
-    (sum, rec) => sum + rec.totalCount,
-    0
-  );
+  // Step 1: Quantity Input → Step 2: Proposal
+  const handleQuantitySubmit = (config: RouteConfig) => {
+    setRouteConfig(config);
+    setStep('proposal');
+  };
+
+  // Step 2: Proposal → Skip to Export
+  const handleProposalAccept = () => {
+    setStep('export');
+  };
+
+  // Step 2: Proposal → Step 3: Adjustment
+  const handleProposalEdit = () => {
+    setStep('adjustment');
+  };
+
+  // Step 2: Back to Step 1
+  const handleProposalBack = () => {
+    setStep('quantity');
+  };
+
+  // Step 3: Adjustment → Step 4: Export
+  const handleAdjustmentNext = (route: Order[]) => {
+    setFinalRoute(route);
+    setStep('export');
+  };
+
+  // Export CSV
+  const handleExportCSV = () => {
+    exportRouteToCSV(finalRoute);
+  };
+
+  // Open Google Maps
+  const handleOpenMaps = () => {
+    const url = buildRouteUrl(
+      finalRoute,
+      routeConfig?.startingAddress
+    );
+    if (url) {
+      window.open(url, '_blank');
+    }
+  };
 
   return (
     <>
@@ -60,130 +142,71 @@ export function TomorrowCoordinationDialog({
           <Calendar className="h-5 w-5" />
           המלצות לתיאום מחר
           <Badge variant="secondary" className="mr-2">
-            {totalOrders} הזמנות
+            {availableCount} הזמנות
           </Badge>
         </Button>
       </div>
 
       {/* Dialog */}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Calendar className="h-5 w-5" />
               המלצות לתיאום מחר
             </DialogTitle>
             <DialogDescription>
-              הזמנות בסטטוס "ממתין לתאום" מקובצות לפי ריכוז גיאוגרפי והזמנות ותיקות
+              {step === 'quantity' &&
+                'בחר כמה נקודות אתה רוצה לספק מחר והמערכת תצור עבורך מסלול אופטימלי'}
+              {step === 'proposal' &&
+                'סקור את המסלול המוצע ובחר אם לאשר או לערוך'}
+              {step === 'adjustment' &&
+                'ערוך את המסלול: שנה סדר, הוסף או הסר הזמנות'}
+              {step === 'export' &&
+                'המסלול שלך מוכן! ייצא לקובץ או פתח בניווט'}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3 mt-4">
-            {recommendations.map((rec) => (
-              <Card key={rec.city} className="overflow-hidden">
-                <CardContent className="p-0">
-                  {/* City Header - Clickable */}
-                  <button
-                    onClick={() => toggleCity(rec.city)}
-                    className="w-full flex items-center justify-between gap-3 p-4 hover:bg-muted/30 transition-colors text-right"
-                  >
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <MapPin className="h-5 w-5 shrink-0 text-primary" />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-base font-bold">
-                            {rec.city}
-                          </span>
-                          <Badge variant="secondary">
-                            {rec.totalCount} הזמנות
-                          </Badge>
-                          {rec.oldCount > 0 && (
-                            <Badge className="bg-red-50 text-red-700 border-red-200">
-                              <Clock className="ml-1 h-3 w-3" />
-                              {rec.oldCount} ותיקות
-                            </Badge>
-                          )}
-                        </div>
-                        {rec.oldestDays > 0 && (
-                          <p className="text-xs text-muted-foreground mt-1">
-                            ההזמנה הכי ותיקה: {rec.oldestDays} ימים
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    {expandedCity === rec.city ? (
-                      <ChevronUp className="h-5 w-5 shrink-0" />
-                    ) : (
-                      <ChevronDown className="h-5 w-5 shrink-0" />
-                    )}
-                  </button>
+          {/* Conditional Rendering based on step */}
+          <div className="mt-2">
+            {step === 'quantity' && (
+              <QuantityInputStep
+                maxAvailable={availableCount}
+                onSubmit={handleQuantitySubmit}
+              />
+            )}
 
-                  {/* Expanded Orders List */}
-                  {expandedCity === rec.city && (
-                    <div className="border-t bg-muted/10">
-                      <div className="divide-y">
-                        {rec.orders.map((order) => {
-                          const days = getDaysSinceCreated(order.created);
-                          const daysColor = getDaysColor(days);
+            {step === 'proposal' && optimizedRoute && (
+              <RouteProposalStep
+                route={optimizedRoute}
+                onAccept={handleProposalAccept}
+                onEdit={handleProposalEdit}
+                onBack={handleProposalBack}
+              />
+            )}
 
-                          return (
-                            <div
-                              key={order.id}
-                              className="p-3 hover:bg-muted/20 transition-colors"
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0 flex-1 space-y-1">
-                                  <p className="font-semibold text-sm">
-                                    {order.customerName}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {order.address}
-                                  </p>
-                                  {order.phone && (
-                                    <a
-                                      href={`tel:${order.phone}`}
-                                      className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                                    >
-                                      <Phone className="h-3 w-3" />
-                                      {order.phone}
-                                    </a>
-                                  )}
-                                </div>
-                                <div className="shrink-0 text-left">
-                                  <Badge variant="outline" className={daysColor}>
-                                    <Clock className="ml-1 h-3 w-3" />
-                                    {days !== null ? `${days} ימים` : 'לא ידוע'}
-                                  </Badge>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
+            {step === 'adjustment' && (
+              <RouteAdjustmentStep
+                initialRoute={finalRoute}
+                allOrders={orders}
+                onNext={handleAdjustmentNext}
+              />
+            )}
 
-                      {/* Google Maps Button */}
-                      <div className="p-3 border-t bg-background">
-                        <Button
-                          variant="default"
-                          size="sm"
-                          className="w-full gap-2"
-                          onClick={() => {
-                            const url = buildRouteUrl(rec.orders);
-                            if (url) window.open(url, '_blank');
-                          }}
-                        >
-                          <Navigation className="h-4 w-4" />
-                          פתח מסלול ב-Google Maps
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
+            {step === 'export' && (
+              <RouteExportStep
+                route={finalRoute}
+                totalDistance={optimizedRoute?.totalDistance}
+                onExportCSV={handleExportCSV}
+                onOpenMaps={handleOpenMaps}
+              />
+            )}
           </div>
         </DialogContent>
       </Dialog>
     </>
   );
 }
+
+// Note: This component now uses useRouteOptimizer instead of useTomorrowCoordinationRecommendations
+// The old hook can be kept for reference or removed if not needed elsewhere
