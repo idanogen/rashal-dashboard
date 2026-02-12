@@ -78,14 +78,20 @@ Config:
 
 ```env
 VITE_AIRTABLE_PAT=your_personal_access_token_here
-VITE_AIRTABLE_BASE_ID=appppG6raO3MzBku0
-VITE_AIRTABLE_TABLE_ID=tblkcWjxEwgqzyaiv
+VITE_AIRTABLE_BASE_ID=appe17N3EbbGYogGK
+VITE_AIRTABLE_TABLE_ID=tblRskogYbE0RoCz0
 ```
 
 **איך לקבל Airtable PAT:**
-1. היכנס ל-Airtable → Account → Developer Hub
-2. Create new token עם הרשאות: `data.records:read`, `data.records:write`
-3. העתק את ה-token ל-`.env`
+1. היכנס ל-Airtable → Account → Developer Hub → Personal Access Tokens
+2. Create new token עם הרשאות:
+   - `data.records:read`
+   - `data.records:write`
+   - `schema.bases:read`
+3. בחר את הבסיס הספציפי (appe17N3EbbGYogGK)
+4. העתק את ה-token ל-`.env` **וגם ל-Vercel Environment Variables**
+
+**חשוב:** ודא שה-PAT מחובר לבסיס הנכון ב-Airtable!
 
 ---
 
@@ -537,6 +543,8 @@ const [tempRoute, setTempRoute] = useState<Order[]>(routeOrders)
 - `updateOrder(recordId, fields)` - עדכון הזמנה בודדת
 - `updateMultipleOrders(records)` - batch update (עד 10)
 - `mapRecord(record)` - Airtable record → `Order` interface
+  - **חשוב:** משתמש ב-`record.createdTime` (שדה מובנה של Airtable) במקום שדה "Created" ידני
+  - זה מבטיח תאריכים מדויקים ואוטומטיים
 - `mapFieldsToAirtable(fields)` - English → Airtable Hebrew fields
 
 ### `constants.ts`
@@ -896,7 +904,22 @@ git push origin feature/my-feature
 
 ---
 
-## 🚀 עדכונים אחרונים (11/02/2026)
+## 🚀 עדכונים אחרונים
+
+### 12/02/2026 - מעבר לבסיס Airtable חדש ⭐
+- **עדכון חיבור:** מעבר מבסיס `appppG6raO3MzBku0` לבסיס חדש `appe17N3EbbGYogGK`
+- **תיקון תאריכים:** שימוש ב-`createdTime` המובנה של Airtable במקום שדה Created ידני
+  - מבטיח תאריכים מדויקים אוטומטיים
+  - פתרון לבעיית תאריכים שגויים (-293 ימים, -79 ימים)
+- **תיקון גרף יומי:** תיקון השוואת תאריכים ב-`DailyOrdersChart`
+  - הוספת extraction של חלק התאריך מ-ISO timestamp
+  - הגרף עכשיו מציג נכון את כמות ההזמנות ליום
+- **ניקוי קוד:**
+  - הסרת console.log זמניים מ-`utils.ts`
+  - הסרת מיפוי "Created" מיותר מ-`constants.ts`
+- **עדכון Vercel:** משתני סביבה חדשים + PAT עם הרשאות מלאות
+
+### 11/02/2026 - ניהול מסלולים מתקדם
 
 ### אופטימיזציית מסלולים ⭐⭐
 - Wizard רב-שלבי (4 שלבים) ל"המלצות לתיאום מחר"
@@ -925,5 +948,21 @@ git push origin feature/my-feature
 
 ---
 
-**עודכן לאחרונה:** 11 בפברואר 2026
+**עודכן לאחרונה:** 12 בפברואר 2026
 **מפתחים:** צוות Rashal + Claude Code
+
+---
+
+## 📌 Troubleshooting
+
+### בעיות חיבור ל-Airtable
+אם הדשבורד לא טוען נתונים:
+1. בדוק שה-PAT תקף ב-`.env` (ו-Vercel)
+2. ודא שה-PAT מחובר לבסיס `appe17N3EbbGYogGK`
+3. ודא הרשאות: `data.records:read`, `data.records:write`, `schema.bases:read`
+4. נסה ליצור PAT חדש אם יש בעיה
+
+### תאריכים לא נכונים
+אם התאריכים מוצגים באופן שגוי:
+- הקוד אמור להשתמש ב-`record.createdTime` אוטומטית
+- ודא שקובץ `airtable.ts` עדכני (commit eb865e2 ומעלה)
