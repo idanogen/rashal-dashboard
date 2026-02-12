@@ -25,9 +25,15 @@ interface AirtableResponse {
 
 // Map Airtable record to typed Order
 function mapRecord(record: AirtableRecord): Order {
-  const order: Record<string, unknown> = { id: record.id };
+  const order: Record<string, unknown> = {
+    id: record.id,
+    created: record.createdTime // שימוש ב-createdTime המובנה של Airtable
+  };
 
   for (const [hebrewName, englishName] of Object.entries(FIELD_MAP)) {
+    // דלג על 'created' כי כבר הוספנו אותו מ-createdTime
+    if (englishName === 'created') continue;
+
     const value = record.fields[hebrewName];
     if (value !== undefined && value !== null) {
       order[englishName] = value;

@@ -25,7 +25,9 @@ export function DailyOrdersChart({ orders }: DailyOrdersChartProps) {
     // Count orders per day
     for (const order of orders) {
       if (!order.created) continue;
-      const day = days.find((d) => d.date === order.created);
+      // Extract date part from ISO timestamp (e.g., "2026-02-12T14:30:00.000Z" -> "2026-02-12")
+      const orderDate = order.created.split('T')[0];
+      const day = days.find((d) => d.date === orderDate);
       if (day) day.count++;
     }
 

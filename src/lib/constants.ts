@@ -12,7 +12,7 @@ export const FIELD_MAP: Record<string, string> = {
   'עיר': 'city',
   'סוכן': 'agent',
   'מסמכים': 'documents',
-  'Created': 'created',
+  // הסרנו 'Created': 'created' - משתמשים ב-createdTime המובנה
 };
 
 // Reverse map: English property name -> Hebrew field name
