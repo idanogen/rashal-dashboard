@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { AppShell } from '@/components/layout/AppShell';
 import { DashboardPage } from '@/pages/DashboardPage';
-import { RoutePlannerPage } from '@/pages/RoutePlannerPage';
+import { DeliveriesPage } from '@/pages/DeliveriesPage';
 import { RouteNavigationPage } from '@/pages/RouteNavigationPage';
 
 const queryClient = new QueryClient({
@@ -22,7 +22,7 @@ function App() {
         <AppShell>
           <Routes>
             <Route path="/" element={<DashboardPage />} />
-            <Route path="/routes" element={<RoutePlannerPage />} />
+            <Route path="/routes" element={<DeliveriesPage />} />
             <Route path="/route-navigation" element={<RouteNavigationPage />} />
           </Routes>
         </AppShell>

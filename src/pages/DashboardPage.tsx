@@ -1,16 +1,17 @@
 import { useState, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { useOrders } from '@/hooks/useOrders';
 import { useOrderStats } from '@/hooks/useOrderStats';
 import { StaleOrdersAlert } from '@/components/dashboard/StaleOrdersAlert';
-import { RouteRecommendation } from '@/components/dashboard/RouteRecommendation';
-import { TomorrowCoordinationDialog } from '@/components/dashboard/TomorrowCoordinationDialog';
 import { StatsCards } from '@/components/dashboard/StatsCards';
 import { DailyOrdersChart } from '@/components/dashboard/DailyOrdersChart';
 import { HealthFundChart } from '@/components/dashboard/HealthFundChart';
 import { OrderFilters, type OrderFiltersState } from '@/components/orders/OrderFilters';
 import { OrdersTable } from '@/components/orders/OrdersTable';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { Loader2, AlertCircle, Truck, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 
 export function DashboardPage() {
   const { data: orders, isLoading, error, refetch } = useOrders();
@@ -24,7 +25,6 @@ export function DashboardPage() {
   const tableRef = useRef<HTMLDivElement>(null);
 
   const handleShowStale = () => {
-    // Scroll to table area so user sees filtered results
     tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
@@ -52,16 +52,41 @@ export function DashboardPage() {
     );
   }
 
+  const waitingCount = (orders ?? []).filter(
+    (o) => o.orderStatus === 'ממתין לתאום'
+  ).length;
+
   return (
     <div className="space-y-6">
       {/* Stale Orders Alert */}
       <StaleOrdersAlert orders={orders ?? []} onShowStale={handleShowStale} />
 
-      {/* Route Recommendations */}
-      <RouteRecommendation orders={orders ?? []} />
-
-      {/* Tomorrow Coordination Recommendations */}
-      <TomorrowCoordinationDialog orders={orders ?? []} />
+      {/* Delivery Summary Card */}
+      {waitingCount > 0 && (
+        <Card className="border-amber-200 bg-amber-50/50">
+          <CardContent className="flex items-center justify-between p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100">
+                <Truck className="h-5 w-5 text-amber-600" />
+              </div>
+              <div>
+                <p className="font-semibold">
+                  {waitingCount} הזמנות ממתינות לתיאום משלוח
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  עבור לדף משלוחים כדי לסנן לפי אזור ולבנות מסלול
+                </p>
+              </div>
+            </div>
+            <Link to="/routes">
+              <Button variant="default" className="gap-2">
+                למשלוחים
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stats */}
       <StatsCards stats={stats} />

@@ -74,7 +74,7 @@ export function AppHeader() {
                 )
               }
             >
-              מסלולי משלוח
+              משלוחים
             </NavLink>
           </nav>
         </div>
