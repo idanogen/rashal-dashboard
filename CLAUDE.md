@@ -50,14 +50,14 @@
 ├── /components
 │   ├── /layout                    # AppShell, AppHeader
 │   ├── /dashboard                 # StatsCards, Charts, Alerts
-│   ├── /deliveries ⭐             # ZoneFilter, DeliveryStatusBar, UnscheduledOrders, RouteBuilderDialog
+│   ├── /deliveries ⭐             # ZoneFilter, DeliveryStatusBar, UnscheduledOrders, RouteBuilderDialog, ApprovedRoutesList
 │   ├── /orders                    # OrdersTable, OrderFilters, OrderDetailDialog
 │   ├── /route-navigation          # MapView - מפה אינטראקטיבית עם Leaflet
 │   └── /ui                        # Shadcn components (Button, Dialog, Card...)
 ├── /hooks                         # React Query hooks + useZonedOrders
 ├── /lib                           # Airtable API, utilities, constants, Maps, Geocoding, Export
 ├── /pages                         # DashboardPage, DeliveriesPage, RouteNavigationPage
-├── /types                         # TypeScript interfaces (order.ts, zone.ts)
+├── /types                         # TypeScript interfaces (order.ts, zone.ts, route.ts)
 ├── /assets                        # תמונות, לוגו
 ├── App.tsx                        # React Router setup
 └── main.tsx                       # Entry point + Leaflet CSS
@@ -79,6 +79,7 @@ Config:
 VITE_AIRTABLE_PAT=your_personal_access_token_here
 VITE_AIRTABLE_BASE_ID=appe17N3EbbGYogGK
 VITE_AIRTABLE_TABLE_ID=tblRskogYbE0RoCz0
+VITE_AIRTABLE_ROUTES_TABLE_ID=tblI27BH5i7YlPq1P
 ```
 
 **איך לקבל Airtable PAT:**
@@ -113,13 +114,14 @@ npm run lint       # Linting
 
 ### `DeliveriesPage` (/routes) ⭐ חדש!
 - **מטרה:** ניהול משלוחים לפי אזורים גיאוגרפיים
-- **Layout:** סרגל סטטוס עליון + פילטר אזורים + רשימת הזמנות לא מתוזמנות
+- **Layout:** סרגל סטטוס עליון + **Tabs** (הזמנות ממתינות / מסלולים מאושרים)
 - **Components:**
   - `DeliveryStatusBar` - סטטוס כמויות לפי קטגוריה
   - `ZoneFilter` - סינון לפי אזור (צפון/מרכז/דרום) ואזור משנה (14 אזורים)
   - `UnscheduledOrders` - רשימת הזמנות עם checkbox לבחירה + כפתור "בנה מסלול"
-  - `RouteBuilderDialog` - דיאלוג fullscreen לבניית מסלול עם מפה
-- **Hook:** `useZonedOrders` - סינון הזמנות לפי אזורים נבחרים
+  - `RouteBuilderDialog` - דיאלוג fullscreen לבניית מסלול עם מפה + **בחירת נהג** + **כפתור אישור מסלול**
+  - `ApprovedRoutesList` - תצוגת מסלולים מאושרים עם פירוט עצירות + פעולות (התחל/השלם/בטל/החזר הזמנה)
+- **Hooks:** `useZonedOrders`, `useRoutes`, `useApproveRoute`, `useUpdateRoute`
 
 ### `RouteNavigationPage` (/route-navigation)
 - דף ניהול מסלול משלוחים במהלך הנסיעה
@@ -188,10 +190,51 @@ npm run lint       # Linting
 - גרירת עצירות → מעדכנת מפה + מרחק + מספרי מרקרים בזמן אמת
 - חישוב מרחק כולל office-to-first-stop
 
+### שיוך נהג + אישור מסלול ⭐
+- **נהגים:** רודי דויד, נהג חיצוני מועלם (`DRIVERS` ב-`route.ts`)
+- `Select` לבחירת נהג בפאנל השמאלי
+- כפתור **"אשר מסלול"** (ירוק) בפוטר
+- אישור → שמירה בטבלת מסלולים באיירטייבל + עדכון הזמנות ל"תואמה אספקה"
+- תאריך משלוח = מחר (אוטומטי)
+- שם מסלול = `מסלול DD/MM - {שם נהג}`
+
 ### ייצוא
 - Google Maps URL (buildRouteUrl, עד 11 עצירות)
 - CSV (exportRouteToCSV, תמיכה בעברית BOM)
 - התחל ניווט → RouteNavigationPage
+
+---
+
+## מערכת מסלולים מאושרים ⭐⭐
+
+### טבלת Airtable: מסלולים
+- **Table ID:** `tblI27BH5i7YlPq1P`
+- **שדות:** שם מסלול, נהג (single select), תאריך משלוח, סטטוס מסלול, הזמנות (JSON), פרטי עצירות (JSON), מספר עצירות, מרחק משוער, זמן משוער, הערות
+
+### `route.ts` - טיפוסים
+- `DriverName` = 'רודי דויד' | 'נהג חיצוני מועלם'
+- `RouteStatus` = 'מאושר' | 'בביצוע' | 'הושלם' | 'בוטל'
+- `RouteStop` interface (id, customerName, address, city, phone, sequence)
+- `ApprovedRoute` interface
+
+### `airtable-routes.ts` - API
+- `fetchAllRoutes()` — שליפה עם pagination + JSON.parse לשדות
+- `createRoute()` — יצירת מסלול חדש (POST)
+- `updateRoute()` — עדכון סטטוס/עצירות (PATCH)
+
+### `ApprovedRoutesList` - תצוגה
+- כרטיסים מתקפלים (Collapsible) עם פרטי מסלול
+- Badge סטטוס צבעוני (מאושר=כחול, בביצוע=כתום, הושלם=ירוק, בוטל=אדום)
+- כפתור **"החזר"** ליד כל עצירה — מחזיר הזמנה ל"ממתין לתאום" ומסיר מהמסלול
+- כפתורי פעולה: התחל מסלול, סמן כהושלם, בטל מסלול
+
+### זרימה
+1. בונים מסלול → בוחרים נהג → לוחצים "אשר מסלול"
+2. המסלול נשמר + הזמנות מתעדכנות ל"תואמה אספקה"
+3. בטאב "מסלולים מאושרים" → רואים את המסלול
+4. "התחל מסלול" → סטטוס "בביצוע" + ניווט ל-RouteNavigationPage
+5. "סמן כהושלם" → סטטוס "הושלם"
+6. "החזר" על עצירה → ההזמנה חוזרת לממתינות
 
 ---
 
@@ -229,6 +272,9 @@ npm run lint       # Linting
 | `useUpdateOrder()` | hooks/useUpdateOrder.ts | Mutation + optimistic update |
 | `useOrderStats(orders)` | hooks/useOrderStats.ts | סטטיסטיקה מחושבת |
 | `useZonedOrders(orders, zoneIds)` | hooks/useZonedOrders.ts | סינון לפי אזורים ⭐ |
+| `useRoutes()` | hooks/useRoutes.ts | כל המסלולים מ-Airtable |
+| `useApproveRoute()` | hooks/useApproveRoute.ts | Mutation: שמירת מסלול + עדכון הזמנות |
+| `useUpdateRoute()` | hooks/useUpdateRoute.ts | Mutation: עדכון סטטוס/עצירות מסלול |
 
 ---
 
@@ -236,7 +282,8 @@ npm run lint       # Linting
 
 | Module | קובץ | תיאור |
 |--------|-------|--------|
-| `airtable.ts` | lib/airtable.ts | fetchAllOrders, updateOrder, mapRecord (createdTime) |
+| `airtable.ts` | lib/airtable.ts | fetchAllOrders, updateOrder, updateMultipleOrders, mapRecord (createdTime) |
+| `airtable-routes.ts` | lib/airtable-routes.ts | fetchAllRoutes, createRoute, updateRoute (טבלת מסלולים) |
 | `constants.ts` | lib/constants.ts | FIELD_MAP, ORDER_STATUS_OPTIONS, WORKERS |
 | `geocoding.ts` | lib/geocoding.ts | ~100 ערים, fuzzy match, Haversine distance ⭐ |
 | `maps.ts` | lib/maps.ts | buildRouteUrl, MAX_GOOGLE_MAPS_STOPS=11 |
@@ -281,6 +328,15 @@ interface Zone {
 
 ## עדכונים אחרונים
 
+### 17/02/2026 - מערכת אישור מסלולים + שיוך נהגים ⭐⭐⭐
+- **טבלת מסלולים חדשה באיירטייבל** (tblI27BH5i7YlPq1P) — שמירת מסלולים עם JSON stops
+- **שיוך נהגים:** Select בחירת נהג (רודי דויד / נהג חיצוני מועלם) ב-RouteBuilderDialog
+- **כפתור "אשר מסלול"** — שומר באיירטייבל + מעדכן הזמנות ל"תואמה אספקה"
+- **טאב "מסלולים מאושרים"** ב-DeliveriesPage עם Shadcn Tabs
+- **ApprovedRoutesList** — כרטיסים מתקפלים עם פרטי מסלול + כפתורי פעולה
+- **כפתור "החזר"** ליד כל עצירה — מחזיר הזמנה ל"ממתין לתאום" ומעדכן מסלול
+- **6 קבצים חדשים:** route.ts, airtable-routes.ts, useRoutes.ts, useApproveRoute.ts, useUpdateRoute.ts, ApprovedRoutesList.tsx
+
 ### 17/02/2026 - מערכת משלוחים חדשה עם אזורים ⭐⭐
 
 **שינויים מבניים:**
@@ -313,5 +369,5 @@ interface Zone {
 
 ---
 
-**עודכן לאחרונה:** 17 בפברואר 2026
+**עודכן לאחרונה:** 17 בפברואר 2026 (מערכת מסלולים + נהגים)
 **מפתחים:** צוות Rashal + Claude Code
