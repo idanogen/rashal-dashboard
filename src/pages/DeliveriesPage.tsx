@@ -1,8 +1,11 @@
 import { useZonedOrders } from '@/hooks/useZonedOrders';
+import { useRoutes } from '@/hooks/useRoutes';
 import { DeliveryStatusBar } from '@/components/deliveries/DeliveryStatusBar';
 import { UnscheduledOrders } from '@/components/deliveries/UnscheduledOrders';
-import { Loader2, AlertCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { ApprovedRoutesList } from '@/components/deliveries/ApprovedRoutesList';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Badge } from '@/components/ui/badge';
+import { Loader2, AlertCircle, Package, Truck } from 'lucide-react';
 
 export function DeliveriesPage() {
   const {
@@ -14,6 +17,12 @@ export function DeliveriesPage() {
     isLoading,
     error,
   } = useZonedOrders();
+
+  const { data: routes = [], isLoading: routesLoading } = useRoutes();
+
+  const activeRoutesCount = routes.filter(
+    (r) => r.status === 'מאושר' || r.status === 'בביצוע'
+  ).length;
 
   if (isLoading) {
     return (
@@ -45,12 +54,39 @@ export function DeliveriesPage() {
         deliveredThisWeek={deliveredOrders.length}
       />
 
-      {/* Unscheduled Orders with Zone Filter */}
-      <UnscheduledOrders
-        orders={unscheduledOrders}
-        orderCountByZone={orderCountByZone}
-        orderZoneMap={orderZoneMap}
-      />
+      {/* Tabs */}
+      <Tabs defaultValue="unscheduled" dir="rtl">
+        <TabsList>
+          <TabsTrigger value="unscheduled" className="gap-1.5">
+            <Package className="h-4 w-4" />
+            הזמנות ממתינות
+            <Badge variant="secondary" className="mr-1 h-5 px-1.5 text-xs">
+              {unscheduledOrders.length}
+            </Badge>
+          </TabsTrigger>
+          <TabsTrigger value="approved" className="gap-1.5">
+            <Truck className="h-4 w-4" />
+            מסלולים מאושרים
+            {activeRoutesCount > 0 && (
+              <Badge variant="secondary" className="mr-1 h-5 px-1.5 text-xs">
+                {activeRoutesCount}
+              </Badge>
+            )}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="unscheduled">
+          <UnscheduledOrders
+            orders={unscheduledOrders}
+            orderCountByZone={orderCountByZone}
+            orderZoneMap={orderZoneMap}
+          />
+        </TabsContent>
+
+        <TabsContent value="approved">
+          <ApprovedRoutesList routes={routes} isLoading={routesLoading} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

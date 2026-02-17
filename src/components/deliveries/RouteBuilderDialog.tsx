@@ -32,7 +32,18 @@ import {
   GripVertical,
   Phone,
   AlertTriangle,
+  CheckCircle,
+  UserCircle,
 } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { DRIVERS, type DriverName } from '@/types/route';
+import { useApproveRoute } from '@/hooks/useApproveRoute';
 import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import {
@@ -264,6 +275,8 @@ export function RouteBuilderDialog({
   const [unmappedOrders, setUnmappedOrders] = useState<Order[]>([]);
   const [totalDistance, setTotalDistance] = useState(0);
   const [isOptimizing, setIsOptimizing] = useState(false);
+  const [selectedDriver, setSelectedDriver] = useState<DriverName | ''>('');
+  const approveRoute = useApproveRoute();
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -347,6 +360,27 @@ export function RouteBuilderDialog({
     onOpenChange(false);
   };
 
+  const handleApproveRoute = async () => {
+    if (!selectedDriver || stops.length === 0) return;
+
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const deliveryDate = tomorrow.toISOString().split('T')[0];
+
+    try {
+      await approveRoute.mutateAsync({
+        orders: stops,
+        driver: selectedDriver as DriverName,
+        deliveryDate,
+        totalDistance,
+        estimatedTime: estimatedDuration,
+      });
+      onOpenChange(false);
+    } catch {
+      // שגיאה מטופלת ב-hook
+    }
+  };
+
   // Geocoded stops for map — offset duplicates so markers don't overlap
   const geocodedStops = useMemo(() => {
     const mapped = stops.map(geocodeOrderByCity).filter((o) => o.coordinates);
@@ -422,6 +456,29 @@ export function RouteBuilderDialog({
                 <Zap className="h-4 w-4" />
                 {isOptimizing ? 'מאופטם...' : 'אופטימיזציית מסלול'}
               </Button>
+            </Card>
+
+            {/* Driver Selection */}
+            <Card className="space-y-3 p-4">
+              <h4 className="flex items-center gap-2 text-sm font-semibold">
+                <UserCircle className="h-4 w-4" />
+                שיוך נהג
+              </h4>
+              <Select
+                value={selectedDriver}
+                onValueChange={(v) => setSelectedDriver(v as DriverName)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="בחר נהג למסלול..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {DRIVERS.map((driver) => (
+                    <SelectItem key={driver} value={driver}>
+                      {driver}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </Card>
 
             {/* Metrics */}
@@ -632,6 +689,18 @@ export function RouteBuilderDialog({
           >
             <ExternalLink className="h-4 w-4" />
             פתח ב-Google Maps
+          </Button>
+          <Button
+            onClick={handleApproveRoute}
+            disabled={stops.length === 0 || !selectedDriver || approveRoute.isPending}
+            className="gap-2 bg-green-600 hover:bg-green-700 text-white"
+          >
+            {approveRoute.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <CheckCircle className="h-4 w-4" />
+            )}
+            {approveRoute.isPending ? 'מאשר מסלול...' : 'אשר מסלול'}
           </Button>
           <Button
             onClick={handleStartNavigation}
