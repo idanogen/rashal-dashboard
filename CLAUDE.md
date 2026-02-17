@@ -206,7 +206,7 @@ npm run lint       # Linting
 ### Deliveries (`/components/deliveries/`) ⭐
 - `ZoneFilter` - סינון לפי אזור-על ואזור משנה, toggles צבעוניים
 - `DeliveryStatusBar` - מונה סטטוסים (ממתין, תואם, אין במלאי, סופק)
-- `UnscheduledOrders` - רשימת הזמנות עם checkboxes + כפתור "בנה מסלול"
+- `UnscheduledOrders` - רשימת הזמנות עם checkboxes + כפתור "בנה מסלול" + תצוגת קיבוץ לפי אזור (collapsible, ממוין צפון→דרום)
 - `RouteBuilderDialog` - דיאלוג fullscreen עם מפה + drag & drop
 
 ### Orders (`/components/orders/`)
@@ -297,6 +297,9 @@ interface Zone {
 - Offset לנקודות כפולות באותה עיר
 - Fuzzy matching לשמות ערים בעברית
 - אזהרה על הזמנות ללא מיקום ידוע
+- תצוגת קיבוץ לפי אזור עם דקלים (collapsible sections)
+- מיון אזורים מצפון לדרום (חיפה → ירושלים → באר שבע → ללא אזור)
+- כפתור "פתח הכל" / "סגור הכל"
 
 ### 12/02/2026 - מעבר לבסיס Airtable חדש
 - מעבר מבסיס `appppG6raO3MzBku0` לבסיס חדש `appe17N3EbbGYogGK`
