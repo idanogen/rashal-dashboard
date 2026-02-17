@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import type { Order } from '@/types/order';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -10,10 +10,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Package, Phone, MapPin, Clock, Truck, X, Undo2, RotateCcw } from 'lucide-react';
+import { Package, Phone, MapPin, Clock, Truck, X, Undo2, RotateCcw, ChevronDown, ChevronLeft, ChevronsUpDown } from 'lucide-react';
 import { ZoneFilter } from './ZoneFilter';
 import { RouteBuilderDialog } from './RouteBuilderDialog';
-import { getZoneById } from '@/types/zone';
+import { getZoneById, ZONES } from '@/types/zone';
 import { getDaysSinceCreated, getDaysColor, cn } from '@/lib/utils';
 
 // ─── Order Card ────────────────────────────────────────────
@@ -115,6 +115,7 @@ export function UnscheduledOrders({
   const [viewMode, setViewMode] = useState<'all' | 'grouped'>('all');
   const [isRouteBuilderOpen, setIsRouteBuilderOpen] = useState(false);
   const [excludedOrderIds, setExcludedOrderIds] = useState<Set<string>>(new Set());
+  const [expandedZones, setExpandedZones] = useState<Set<string>>(new Set());
 
   const handleZoneToggle = (zoneId: string) => {
     setSelectedZones((prev) =>
@@ -145,6 +146,14 @@ export function UnscheduledOrders({
     setExcludedOrderIds(new Set());
   };
 
+  const handleToggleZone = (zoneId: string) => {
+    setExpandedZones((prev) => {
+      const next = new Set(prev);
+      next.has(zoneId) ? next.delete(zoneId) : next.add(zoneId);
+      return next;
+    });
+  };
+
   // סינון לפי אזורים נבחרים
   const filteredOrders =
     selectedZones.length > 0
@@ -161,14 +170,42 @@ export function UnscheduledOrders({
 
   const excludedCount = filteredOrders.length - activeOrders.length;
 
-  // קיבוץ לפי אזור (לתצוגה מקובצת)
-  const groupedByZone = new Map<string, Order[]>();
-  for (const order of filteredOrders) {
-    const zoneId = orderZoneMap.get(order.id) || 'unassigned';
-    const group = groupedByZone.get(zoneId) || [];
-    group.push(order);
-    groupedByZone.set(zoneId, group);
-  }
+  // קיבוץ לפי אזור (לתצוגה מקובצת) — ממוין מצפון לדרום
+  const groupedByZone = useMemo(() => {
+    const map = new Map<string, Order[]>();
+    for (const order of filteredOrders) {
+      const zoneId = orderZoneMap.get(order.id) || 'unassigned';
+      const group = map.get(zoneId) || [];
+      group.push(order);
+      map.set(zoneId, group);
+    }
+    // מיון לפי סדר ZONES (צפון → מרכז → דרום), "ללא אזור" בסוף
+    const sorted = new Map<string, Order[]>();
+    const zoneOrder = ZONES.map((z) => z.id);
+    Array.from(map.entries())
+      .sort(([a], [b]) => {
+        const idxA = a === 'unassigned' ? Infinity : zoneOrder.indexOf(a);
+        const idxB = b === 'unassigned' ? Infinity : zoneOrder.indexOf(b);
+        return (idxA === -1 ? Infinity : idxA) - (idxB === -1 ? Infinity : idxB);
+      })
+      .forEach(([k, v]) => sorted.set(k, v));
+    return sorted;
+  }, [filteredOrders, orderZoneMap]);
+
+  const handleToggleAllZones = () => {
+    const allZoneIds = Array.from(groupedByZone.keys());
+    const allExpanded = allZoneIds.every((id) => expandedZones.has(id));
+    if (allExpanded) {
+      setExpandedZones(new Set());
+    } else {
+      setExpandedZones(new Set(allZoneIds));
+    }
+  };
+
+  const allZonesExpanded = useMemo(() => {
+    const allZoneIds = Array.from(groupedByZone.keys());
+    return allZoneIds.length > 0 && allZoneIds.every((id) => expandedZones.has(id));
+  }, [groupedByZone, expandedZones]);
 
   if (orders.length === 0) {
     return (
@@ -258,34 +295,66 @@ export function UnscheduledOrders({
             ))}
           </div>
         ) : (
-          <div className="max-h-[600px] space-y-4 overflow-y-auto p-4">
+          <div className="max-h-[600px] space-y-2 overflow-y-auto p-4">
+            {/* כפתור פתח/סגור הכל */}
+            <div className="mb-3 flex justify-end">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleToggleAllZones}
+                className="h-7 gap-1 text-xs text-muted-foreground"
+              >
+                <ChevronsUpDown className="h-3.5 w-3.5" />
+                {allZonesExpanded ? 'סגור הכל' : 'פתח הכל'}
+              </Button>
+            </div>
             {Array.from(groupedByZone.entries()).map(
               ([zoneId, zoneOrders]) => {
                 const zone = getZoneById(zoneId);
                 const activeInZone = zoneOrders.filter(
                   (o) => !excludedOrderIds.has(o.id)
                 ).length;
+                const isExpanded = expandedZones.has(zoneId);
                 return (
-                  <div key={zoneId} className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <MapPin className="h-4 w-4" />
-                      <h4 className="font-semibold">
+                  <div key={zoneId} className="overflow-hidden rounded-lg border">
+                    {/* כותרת אזור clickable */}
+                    <button
+                      onClick={() => handleToggleZone(zoneId)}
+                      className={cn(
+                        'flex w-full items-center gap-2 px-4 py-3 text-right transition-colors hover:bg-muted/50',
+                        isExpanded && 'border-b bg-muted/30'
+                      )}
+                    >
+                      {isExpanded ? (
+                        <ChevronDown className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                      ) : (
+                        <ChevronLeft className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                      )}
+                      {zone?.color && (
+                        <span className={cn('h-3 w-3 flex-shrink-0 rounded-full', zone.color)} />
+                      )}
+                      <span className="font-semibold">
                         {zone?.name || 'ללא אזור'}
-                      </h4>
-                      <Badge variant="outline">{activeInZone}/{zoneOrders.length}</Badge>
-                    </div>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
-                      {zoneOrders.map((order) => (
-                        <div key={order.id} className="group">
-                          <OrderCard
-                            order={order}
-                            isExcluded={excludedOrderIds.has(order.id)}
-                            onExclude={handleExcludeOrder}
-                            onRestore={handleRestoreOrder}
-                          />
-                        </div>
-                      ))}
-                    </div>
+                      </span>
+                      <Badge variant="outline" className="text-xs">
+                        {activeInZone}/{zoneOrders.length}
+                      </Badge>
+                    </button>
+                    {/* תוכן - כרטיסיות */}
+                    {isExpanded && (
+                      <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+                        {zoneOrders.map((order) => (
+                          <div key={order.id} className="group">
+                            <OrderCard
+                              order={order}
+                              isExcluded={excludedOrderIds.has(order.id)}
+                              onExclude={handleExcludeOrder}
+                              onRestore={handleRestoreOrder}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               }
