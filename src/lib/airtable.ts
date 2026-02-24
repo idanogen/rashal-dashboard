@@ -94,6 +94,7 @@ export async function updateOrder(
         fields: mapFieldsToAirtable(fields),
       },
     ],
+    typecast: true,
   };
 
   console.log('[airtable] PATCH', recordId, body.records[0].fields);
@@ -132,6 +133,7 @@ export async function updateMultipleOrders(
           id: r.id,
           fields: mapFieldsToAirtable(r.fields),
         })),
+        typecast: true,
       }),
     });
 

@@ -125,6 +125,7 @@ export async function createRoute(
     headers,
     body: JSON.stringify({
       records: [{ fields: airtableFields }],
+      typecast: true,
     }),
   });
 
@@ -150,6 +151,7 @@ export async function updateRoute(
     headers,
     body: JSON.stringify({
       records: [{ id: recordId, fields: airtableFields }],
+      typecast: true,
     }),
   });
 
