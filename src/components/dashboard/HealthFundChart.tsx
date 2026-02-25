@@ -28,9 +28,28 @@ export function HealthFundChart({ orders }: HealthFundChartProps) {
       counts[fund] = (counts[fund] || 0) + 1;
     }
 
-    return Object.entries(counts)
+    const sorted = Object.entries(counts)
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
+
+    const total = sorted.reduce((sum, d) => sum + d.value, 0);
+    const threshold = total * 0.03; // פחות מ-3% → "אחר"
+    const main: typeof sorted = [];
+    let otherValue = 0;
+
+    for (const item of sorted) {
+      if (item.value >= threshold) {
+        main.push(item);
+      } else {
+        otherValue += item.value;
+      }
+    }
+
+    if (otherValue > 0) {
+      main.push({ name: 'אחר', value: otherValue });
+    }
+
+    return main;
   }, [orders]);
 
   if (data.length === 0) return null;
@@ -59,7 +78,7 @@ export function HealthFundChart({ orders }: HealthFundChartProps) {
                 ))}
               </Pie>
               <Tooltip
-                formatter={(value: unknown) => [`${value} הזמנות`, '']}
+                formatter={(value: unknown, name: string | undefined) => [`${value} הזמנות`, name ?? '']}
                 contentStyle={{
                   fontFamily: 'Assistant, sans-serif',
                   fontSize: 12,
