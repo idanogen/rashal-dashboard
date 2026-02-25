@@ -40,7 +40,9 @@ export function OrdersTable({ orders, filters }: OrdersTableProps) {
         if (!nameMatch && !phoneMatch) return false;
       }
       // Order status
-      if (filters.orderStatus && o.orderStatus !== filters.orderStatus) return false;
+      if (filters.orderStatus === 'not-delivered') {
+        if (o.orderStatus === 'סופק') return false;
+      } else if (filters.orderStatus && o.orderStatus !== filters.orderStatus) return false;
       // Worker
       if (filters.worker && o.openedBy !== filters.worker) return false;
       // City

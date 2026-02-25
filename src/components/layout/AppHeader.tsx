@@ -27,7 +27,10 @@ export function AppHeader() {
 
   async function handleRefresh() {
     setIsRefreshing(true);
-    await queryClient.invalidateQueries({ queryKey: ['orders'] });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['orders'] }),
+      queryClient.invalidateQueries({ queryKey: ['serviceCalls'] }),
+    ]);
     setLastUpdated(new Date());
     setTimeAgo('עכשיו');
     setTimeout(() => setIsRefreshing(false), 600);
@@ -75,6 +78,19 @@ export function AppHeader() {
               }
             >
               משלוחים
+            </NavLink>
+            <NavLink
+              to="/service-calls"
+              className={({ isActive }) =>
+                cn(
+                  'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                  isActive
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                )
+              }
+            >
+              קריאות שירות
             </NavLink>
           </nav>
         </div>

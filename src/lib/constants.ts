@@ -21,6 +21,7 @@ export const REVERSE_FIELD_MAP: Record<string, string> = Object.fromEntries(
 );
 
 export const ORDER_STATUS_OPTIONS = [
+  { value: 'ממתין לליקוט', label: 'ממתין לליקוט', color: 'slate' },
   { value: 'ממתין לתאום', label: 'ממתין לתאום', color: 'blue' },
   { value: 'תואמה אספקה ', label: 'תואמה אספקה', color: 'purple' },
   { value: 'איו במלאי', label: 'אין במלאי', color: 'amber' },
@@ -58,3 +59,25 @@ export function getTaskStatusLabel(status: string | undefined): string {
   const option = TASK_STATUS_OPTIONS.find(o => o.value === status);
   return option?.label || status;
 }
+
+// ─── Service Calls ──────────────────────────────────────────
+
+export const SERVICE_CALL_FIELD_MAP: Record<string, string> = {
+  'שם הלקוח': 'customerName',
+  'טלפון': 'phone',
+  'סטטוס לקוח': 'serviceCallStatus',
+  'קופת חולים': 'healthFund',
+  'לקוח נפתח ע״י': 'openedBy',
+  'עיר': 'city',
+};
+
+export const REVERSE_SERVICE_CALL_FIELD_MAP: Record<string, string> = Object.fromEntries(
+  Object.entries(SERVICE_CALL_FIELD_MAP).map(([k, v]) => [v, k])
+);
+
+export const SERVICE_CALL_STATUS_OPTIONS = [
+  { value: 'קריאה חדשה', label: 'קריאה חדשה', color: 'blue' },
+  { value: 'תואם ביקור', label: 'תואם ביקור', color: 'purple' },
+  { value: 'בוצע', label: 'בוצע', color: 'green' },
+  { value: 'בוטל', label: 'בוטל', color: 'red' },
+] as const;

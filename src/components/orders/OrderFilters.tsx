@@ -58,6 +58,7 @@ export function OrderFilters({ filters, onChange, cities }: OrderFiltersProps) {
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="all">כל הסטטוסים</SelectItem>
+          <SelectItem value="not-delivered">הכל חוץ מסופק</SelectItem>
           {ORDER_STATUS_OPTIONS.map((opt) => (
             <SelectItem key={opt.value} value={opt.value}>
               {opt.label}

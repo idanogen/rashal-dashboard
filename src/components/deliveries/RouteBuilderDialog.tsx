@@ -44,6 +44,7 @@ import {
 } from '@/components/ui/select';
 import { DRIVERS, type DriverName } from '@/types/route';
 import { useApproveRoute } from '@/hooks/useApproveRoute';
+import { useApproveServiceRoute } from '@/hooks/useApproveServiceRoute';
 import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import {
@@ -68,6 +69,7 @@ interface RouteBuilderDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   orders: Order[];
+  routeType?: 'delivery' | 'service';
 }
 
 // ─── Sortable Stop Item ────────────────────────────────────
@@ -269,6 +271,7 @@ export function RouteBuilderDialog({
   open,
   onOpenChange,
   orders,
+  routeType = 'delivery',
 }: RouteBuilderDialogProps) {
   const navigate = useNavigate();
   const [stops, setStops] = useState<Order[]>([]);
@@ -277,6 +280,7 @@ export function RouteBuilderDialog({
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [selectedDriver, setSelectedDriver] = useState<DriverName | ''>('');
   const approveRoute = useApproveRoute();
+  const approveServiceRoute = useApproveServiceRoute();
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -360,6 +364,8 @@ export function RouteBuilderDialog({
     onOpenChange(false);
   };
 
+  const currentApproval = routeType === 'service' ? approveServiceRoute : approveRoute;
+
   const handleApproveRoute = async () => {
     if (!selectedDriver || stops.length === 0) return;
 
@@ -368,13 +374,23 @@ export function RouteBuilderDialog({
     const deliveryDate = tomorrow.toISOString().split('T')[0];
 
     try {
-      await approveRoute.mutateAsync({
-        orders: stops,
-        driver: selectedDriver as DriverName,
-        deliveryDate,
-        totalDistance,
-        estimatedTime: estimatedDuration,
-      });
+      if (routeType === 'service') {
+        await approveServiceRoute.mutateAsync({
+          calls: stops as unknown as import('@/types/service-call').ServiceCall[],
+          driver: selectedDriver as DriverName,
+          deliveryDate,
+          totalDistance,
+          estimatedTime: estimatedDuration,
+        });
+      } else {
+        await approveRoute.mutateAsync({
+          orders: stops,
+          driver: selectedDriver as DriverName,
+          deliveryDate,
+          totalDistance,
+          estimatedTime: estimatedDuration,
+        });
+      }
       onOpenChange(false);
     } catch {
       // שגיאה מטופלת ב-hook
@@ -435,9 +451,11 @@ export function RouteBuilderDialog({
       >
         {/* Header */}
         <DialogHeader className="border-b px-6 py-4">
-          <DialogTitle className="text-xl">בניית מסלול משלוח</DialogTitle>
+          <DialogTitle className="text-xl">
+            {routeType === 'service' ? 'בניית מסלול שירות' : 'בניית מסלול משלוח'}
+          </DialogTitle>
           <p className="text-sm text-muted-foreground">
-            {orders.length} הזמנות נבחרו • סדר, ערוך ונווט
+            {orders.length} {routeType === 'service' ? 'קריאות נבחרו' : 'הזמנות נבחרו'} • סדר, ערוך ונווט
           </p>
         </DialogHeader>
 
@@ -692,15 +710,15 @@ export function RouteBuilderDialog({
           </Button>
           <Button
             onClick={handleApproveRoute}
-            disabled={stops.length === 0 || !selectedDriver || approveRoute.isPending}
+            disabled={stops.length === 0 || !selectedDriver || currentApproval.isPending}
             className="gap-2 bg-green-600 hover:bg-green-700 text-white"
           >
-            {approveRoute.isPending ? (
+            {currentApproval.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <CheckCircle className="h-4 w-4" />
             )}
-            {approveRoute.isPending ? 'מאשר מסלול...' : 'אשר מסלול'}
+            {currentApproval.isPending ? 'מאשר מסלול...' : 'אשר מסלול'}
           </Button>
           <Button
             onClick={handleStartNavigation}

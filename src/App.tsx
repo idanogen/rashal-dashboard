@@ -4,6 +4,7 @@ import { Toaster } from 'sonner';
 import { AppShell } from '@/components/layout/AppShell';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { DeliveriesPage } from '@/pages/DeliveriesPage';
+import { ServiceCallsPage } from '@/pages/ServiceCallsPage';
 import { RouteNavigationPage } from '@/pages/RouteNavigationPage';
 
 const queryClient = new QueryClient({
@@ -23,6 +24,7 @@ function App() {
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/routes" element={<DeliveriesPage />} />
+            <Route path="/service-calls" element={<ServiceCallsPage />} />
             <Route path="/route-navigation" element={<RouteNavigationPage />} />
           </Routes>
         </AppShell>

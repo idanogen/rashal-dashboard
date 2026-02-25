@@ -2,13 +2,15 @@ import { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useOrders } from '@/hooks/useOrders';
 import { useOrderStats } from '@/hooks/useOrderStats';
+import { useZonedServiceCalls } from '@/hooks/useZonedServiceCalls';
 import { StaleOrdersAlert } from '@/components/dashboard/StaleOrdersAlert';
 import { StatsCards } from '@/components/dashboard/StatsCards';
+import { ServiceCallStatsCards } from '@/components/dashboard/ServiceCallStatsCards';
 import { DailyOrdersChart } from '@/components/dashboard/DailyOrdersChart';
 import { HealthFundChart } from '@/components/dashboard/HealthFundChart';
 import { OrderFilters, type OrderFiltersState } from '@/components/orders/OrderFilters';
 import { OrdersTable } from '@/components/orders/OrdersTable';
-import { Loader2, AlertCircle, Truck, ArrowLeft } from 'lucide-react';
+import { Loader2, AlertCircle, Truck, Wrench, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -16,6 +18,11 @@ import { Badge } from '@/components/ui/badge';
 export function DashboardPage() {
   const { data: orders, isLoading, error, refetch } = useOrders();
   const stats = useOrderStats(orders ?? []);
+  const {
+    pendingCalls,
+    scheduledCalls,
+    completedCalls,
+  } = useZonedServiceCalls();
   const [filters, setFilters] = useState<OrderFiltersState>({
     search: '',
     orderStatus: '',
@@ -88,8 +95,42 @@ export function DashboardPage() {
         </Card>
       )}
 
+      {/* Service Calls Summary Card */}
+      {pendingCalls.length > 0 && (
+        <Card className="border-purple-200 bg-purple-50/50">
+          <CardContent className="flex items-center justify-between p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-100">
+                <Wrench className="h-5 w-5 text-purple-600" />
+              </div>
+              <div>
+                <p className="font-semibold">
+                  {pendingCalls.length} קריאות שירות חדשות
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  עבור לדף קריאות שירות כדי לטפל בקריאות הממתינות
+                </p>
+              </div>
+            </div>
+            <Link to="/service-calls">
+              <Button variant="default" className="gap-2 bg-purple-600 hover:bg-purple-700">
+                לקריאות שירות
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Stats */}
       <StatsCards stats={stats} />
+
+      {/* Service Call Stats */}
+      <ServiceCallStatsCards
+        pending={pendingCalls.length}
+        scheduled={scheduledCalls.length}
+        completed={completedCalls.length}
+      />
 
       {/* Charts Grid */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
