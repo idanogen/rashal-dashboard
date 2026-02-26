@@ -8,20 +8,25 @@ import { StatsCards } from '@/components/dashboard/StatsCards';
 import { ServiceCallStatsCards } from '@/components/dashboard/ServiceCallStatsCards';
 import { DailyOrdersChart } from '@/components/dashboard/DailyOrdersChart';
 import { HealthFundChart } from '@/components/dashboard/HealthFundChart';
+import { DailyServiceCallsChart } from '@/components/dashboard/DailyServiceCallsChart';
+import { ServiceCallHealthFundChart } from '@/components/dashboard/ServiceCallHealthFundChart';
+import { ServiceCallsTable } from '@/components/dashboard/ServiceCallsTable';
 import { OrderFilters, type OrderFiltersState } from '@/components/orders/OrderFilters';
 import { OrdersTable } from '@/components/orders/OrdersTable';
-import { Loader2, AlertCircle, Truck, Wrench, ArrowLeft } from 'lucide-react';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Loader2, AlertCircle, Truck, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 
 export function DashboardPage() {
   const { data: orders, isLoading, error, refetch } = useOrders();
   const stats = useOrderStats(orders ?? []);
   const {
+    allCalls,
     pendingCalls,
     scheduledCalls,
     completedCalls,
+    isLoading: isLoadingCalls,
   } = useZonedServiceCalls();
   const [filters, setFilters] = useState<OrderFiltersState>({
     search: '',
@@ -65,9 +70,6 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Stale Orders Alert */}
-      <StaleOrdersAlert orders={orders ?? []} onShowStale={handleShowStale} />
-
       {/* Delivery Summary Card */}
       {waitingCount > 0 && (
         <Card className="border-amber-200 bg-amber-50/50">
@@ -95,58 +97,57 @@ export function DashboardPage() {
         </Card>
       )}
 
-      {/* Service Calls Summary Card */}
-      {pendingCalls.length > 0 && (
-        <Card className="border-purple-200 bg-purple-50/50">
-          <CardContent className="flex items-center justify-between p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-100">
-                <Wrench className="h-5 w-5 text-purple-600" />
-              </div>
-              <div>
-                <p className="font-semibold">
-                  {pendingCalls.length} קריאות שירות חדשות
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  עבור לדף קריאות שירות כדי לטפל בקריאות הממתינות
-                </p>
-              </div>
+      {/* Tabs */}
+      <Tabs defaultValue="orders" dir="rtl">
+        <TabsList className="w-full sm:w-auto">
+          <TabsTrigger value="orders" className="gap-1.5">
+            <span>📦</span>
+            הזמנות
+          </TabsTrigger>
+          <TabsTrigger value="service-calls" className="gap-1.5">
+            <span>🔧</span>
+            קריאות שירות
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Orders Tab */}
+        <TabsContent value="orders" className="space-y-6">
+          <StaleOrdersAlert orders={orders ?? []} onShowStale={handleShowStale} />
+          <StatsCards stats={stats} />
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <DailyOrdersChart orders={orders ?? []} />
+            <HealthFundChart orders={orders ?? []} />
+          </div>
+          <div ref={tableRef} className="space-y-4">
+            <OrderFilters
+              filters={filters}
+              onChange={setFilters}
+              cities={stats.uniqueCities}
+            />
+            <OrdersTable orders={orders ?? []} filters={filters} />
+          </div>
+        </TabsContent>
+
+        {/* Service Calls Tab */}
+        <TabsContent value="service-calls" className="space-y-6">
+          <ServiceCallStatsCards
+            pending={pendingCalls.length}
+            scheduled={scheduledCalls.length}
+            completed={completedCalls.length}
+          />
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <DailyServiceCallsChart calls={allCalls} />
+            <ServiceCallHealthFundChart calls={allCalls} />
+          </div>
+          {isLoadingCalls ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-            <Link to="/service-calls">
-              <Button variant="default" className="gap-2 bg-purple-600 hover:bg-purple-700">
-                לקריאות שירות
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Stats */}
-      <StatsCards stats={stats} />
-
-      {/* Service Call Stats */}
-      <ServiceCallStatsCards
-        pending={pendingCalls.length}
-        scheduled={scheduledCalls.length}
-        completed={completedCalls.length}
-      />
-
-      {/* Charts Grid */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <DailyOrdersChart orders={orders ?? []} />
-        <HealthFundChart orders={orders ?? []} />
-      </div>
-
-      {/* Filters + Table */}
-      <div ref={tableRef} className="space-y-4">
-        <OrderFilters
-          filters={filters}
-          onChange={setFilters}
-          cities={stats.uniqueCities}
-        />
-        <OrdersTable orders={orders ?? []} filters={filters} />
-      </div>
+          ) : (
+            <ServiceCallsTable calls={allCalls} />
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
