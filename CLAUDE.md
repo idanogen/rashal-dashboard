@@ -20,7 +20,7 @@
 **גרסה:** 0.0.0
 **תיאור:** דשבורד לניהול הזמנות, משלוחים לפי אזורים, ובניית מסלולים
 **פריסה:** https://rashal-dashboard.vercel.app
-**Dev Server:** http://localhost:3001 (port 3000 משמש לפרויקטים אחרים)
+**Dev Server:** http://localhost:3000
 
 ---
 
@@ -337,6 +337,32 @@ interface Zone {
 ---
 
 ## עדכונים אחרונים
+
+### 18/03/2026 - יומן משלוחים עם גרירה + שיפור מסך בניית מסלול ⭐⭐⭐
+
+**קומפוננטות חדשות:**
+- **DeliveryCalendar.tsx** — יומן שבועי (ראשון-חמישי) עם drop zones לכל יום, ניווט שבועי, כרטיסי עצירות צבעוניים לפי נהג
+- **DriverSelector.tsx** — דיאלוג בחירת נהג (רודי דויד / נהג חיצוני מועלם) עם כפתורים ויזואליים
+- **delivery.ts** — טיפוסים: CalendarDelivery, CalendarStop, DRIVER_CONFIG
+
+**שינויים מרכזיים:**
+- **UnscheduledOrders** — כרטיסי הזמנות ניתנים לגרירה (useDraggable מ-@dnd-kit) + סימון מרובה בלחיצה + strip תחתון "גרור אחת ליומן כדי לשבץ את כולן"
+- **DeliveriesPage** — עטיפה ב-DndContext עם closestCenter collision detection, גרירה ליום ביומן → פתיחת RouteBuilderDialog ישירות
+- **RouteBuilderDialog layout חדש** — Header עם שיוך נהג + מטריקות + אופטימיזציה (במקום בצד), רשימת עצירות על כל צד ימין לצד המפה
+- **הסרת "התחל ניווט"** מ-RouteBuilderDialog (לא רלוונטי לשלב בניית מסלול במשרד)
+- **הסרת כפתורים מיותרים** — "בנה מסלול ישיר", "תזמן הזמנות"
+
+**זרימת עבודה חדשה:**
+1. סמן הזמנות (אופציונלי, לגרירה קבוצתית)
+2. גרור ליום ביומן → ישר נפתח מסך מפה
+3. סדר עצירות (drag & drop) + בחר נהג
+4. אשר מסלול → נשמר ב-Airtable + הזמנות מתעדכנות ל"תואמה אספקה"
+5. היומן מציג מסלולים מאושרים עם צבע לפי נהג
+
+**קבצים חדשים:** delivery.ts, DeliveryCalendar.tsx, DriverSelector.tsx
+**קבצים ששונו:** DeliveriesPage.tsx, UnscheduledOrders.tsx, RouteBuilderDialog.tsx
+
+---
 
 ### 17/02/2026 - מערכת אישור מסלולים + שיוך נהגים ⭐⭐⭐
 - **טבלת מסלולים חדשה באיירטייבל** (tblI27BH5i7YlPq1P) — שמירת מסלולים עם JSON stops
