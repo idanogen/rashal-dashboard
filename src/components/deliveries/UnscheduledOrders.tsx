@@ -10,38 +10,89 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Package, Phone, MapPin, Clock, Truck, X, Undo2, RotateCcw, ChevronDown, ChevronLeft, ChevronsUpDown } from 'lucide-react';
+import {
+  Package,
+  Phone,
+  MapPin,
+  Clock,
+  X,
+  Undo2,
+  RotateCcw,
+  ChevronDown,
+  ChevronLeft,
+  ChevronsUpDown,
+  CheckCircle2,
+  GripVertical,
+} from 'lucide-react';
 import { ZoneFilter } from './ZoneFilter';
-import { RouteBuilderDialog } from './RouteBuilderDialog';
 import { getZoneById, ZONES } from '@/types/zone';
 import { getDaysSinceCreated, getDaysColor, cn } from '@/lib/utils';
+import { useDraggable } from '@dnd-kit/core';
 
-// ─── Order Card ────────────────────────────────────────────
+// ─── Draggable Order Card ──────────────────────────────────
 interface OrderCardProps {
   order: Order;
   isExcluded?: boolean;
+  isSelected?: boolean;
+  isDragging?: boolean;
   onExclude?: (id: string) => void;
   onRestore?: (id: string) => void;
+  onToggleSelect?: (id: string) => void;
 }
 
-function OrderCard({ order, isExcluded, onExclude, onRestore }: OrderCardProps) {
+function DraggableOrderCard({
+  order,
+  isExcluded,
+  isSelected,
+  isDragging: isAnyDragging,
+  onExclude,
+  onRestore,
+  onToggleSelect,
+}: OrderCardProps) {
   const days = getDaysSinceCreated(order.created);
   const daysColor = getDaysColor(days);
 
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `order-${order.id}`,
+    data: {
+      type: 'order',
+      order,
+    },
+    disabled: isExcluded,
+  });
+
   return (
     <Card
+      ref={setNodeRef}
       className={cn(
         'relative transition-all',
         isExcluded
-          ? 'opacity-40 border-dashed'
-          : 'hover:shadow-md'
+          ? 'opacity-40 border-dashed cursor-default'
+          : 'cursor-grab active:cursor-grabbing hover:shadow-md',
+        isSelected && !isExcluded && 'ring-2 ring-primary bg-primary/5',
+        isDragging && 'opacity-30 scale-95'
       )}
+      onClick={() => {
+        if (!isExcluded && !isDragging) onToggleSelect?.(order.id);
+      }}
+      {...(isExcluded ? {} : { ...listeners, ...attributes })}
     >
       <CardContent className="p-3">
+        {/* Selection indicator */}
+        {isSelected && !isExcluded && (
+          <div className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+          </div>
+        )}
+
         {/* Exclude / Restore button */}
         {isExcluded ? (
           <button
-            onClick={() => onRestore?.(order.id)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onRestore?.(order.id);
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
             className="absolute left-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
             title="החזר למסלול"
           >
@@ -49,12 +100,23 @@ function OrderCard({ order, isExcluded, onExclude, onRestore }: OrderCardProps) 
           </button>
         ) : (
           <button
-            onClick={() => onExclude?.(order.id)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onExclude?.(order.id);
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
             className="absolute left-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive transition-all"
             title="הסר מהמסלול"
           >
             <X className="h-3.5 w-3.5" />
           </button>
+        )}
+
+        {/* Grip handle */}
+        {!isExcluded && (
+          <div className="absolute left-2 bottom-2 text-muted-foreground/30">
+            <GripVertical className="h-3.5 w-3.5" />
+          </div>
         )}
 
         <div className="mb-2 flex items-start justify-between">
@@ -74,6 +136,8 @@ function OrderCard({ order, isExcluded, onExclude, onRestore }: OrderCardProps) 
                   href={`tel:${order.phone}`}
                   className="text-xs text-muted-foreground hover:text-primary"
                   dir="ltr"
+                  onClick={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
                 >
                   {order.phone}
                 </a>
@@ -104,17 +168,32 @@ interface UnscheduledOrdersProps {
   orders: Order[];
   orderCountByZone: Map<string, number>;
   orderZoneMap: Map<string, string>;
+  // Selection props
+  selectedOrderIds?: Set<string>;
+  onToggleSelect?: (orderId: string) => void;
+  onBulkSchedule?: () => void;
+  onClearSelection?: () => void;
+  isDragging?: boolean;
+  // Route building → calendar
+  onBuildRoute?: (orders: Order[]) => void;
 }
 
 export function UnscheduledOrders({
   orders,
   orderCountByZone,
   orderZoneMap,
+  selectedOrderIds = new Set(),
+  onToggleSelect,
+  onBulkSchedule,
+  onClearSelection,
+  isDragging,
+  onBuildRoute,
 }: UnscheduledOrdersProps) {
   const [selectedZones, setSelectedZones] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'all' | 'grouped'>('all');
-  const [isRouteBuilderOpen, setIsRouteBuilderOpen] = useState(false);
-  const [excludedOrderIds, setExcludedOrderIds] = useState<Set<string>>(new Set());
+  const [excludedOrderIds, setExcludedOrderIds] = useState<Set<string>>(
+    new Set()
+  );
   const [expandedZones, setExpandedZones] = useState<Set<string>>(new Set());
 
   const handleZoneToggle = (zoneId: string) => {
@@ -179,7 +258,6 @@ export function UnscheduledOrders({
       group.push(order);
       map.set(zoneId, group);
     }
-    // מיון לפי סדר ZONES (צפון → מרכז → דרום), "ללא אזור" בסוף
     const sorted = new Map<string, Order[]>();
     const zoneOrder = ZONES.map((z) => z.id);
     Array.from(map.entries())
@@ -204,7 +282,10 @@ export function UnscheduledOrders({
 
   const allZonesExpanded = useMemo(() => {
     const allZoneIds = Array.from(groupedByZone.keys());
-    return allZoneIds.length > 0 && allZoneIds.every((id) => expandedZones.has(id));
+    return (
+      allZoneIds.length > 0 &&
+      allZoneIds.every((id) => expandedZones.has(id))
+    );
   }, [groupedByZone, expandedZones]);
 
   if (orders.length === 0) {
@@ -212,7 +293,7 @@ export function UnscheduledOrders({
       <div className="rounded-lg border-2 border-dashed bg-muted/30 p-6 text-center">
         <Package className="mx-auto mb-2 h-12 w-12 text-muted-foreground" />
         <p className="text-sm text-muted-foreground">
-          אין הזמנות ממתינות לתיאום 🎉
+          אין הזמנות ממתינות לתיאום
         </p>
       </div>
     );
@@ -238,7 +319,10 @@ export function UnscheduledOrders({
               <Badge variant="secondary">{filteredOrders.length}</Badge>
               {excludedCount > 0 && (
                 <>
-                  <Badge variant="outline" className="text-destructive border-destructive/30">
+                  <Badge
+                    variant="outline"
+                    className="text-destructive border-destructive/30"
+                  >
                     {excludedCount} הוסרו
                   </Badge>
                   <Button
@@ -254,16 +338,6 @@ export function UnscheduledOrders({
               )}
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                size="default"
-                variant="default"
-                onClick={() => setIsRouteBuilderOpen(true)}
-                disabled={activeOrders.length === 0}
-                className="gap-2"
-              >
-                <Truck className="h-4 w-4" />
-                בנה מסלול ({activeOrders.length})
-              </Button>
               <Select
                 value={viewMode}
                 onValueChange={(v) => setViewMode(v as 'all' | 'grouped')}
@@ -285,18 +359,20 @@ export function UnscheduledOrders({
           <div className="grid max-h-[500px] grid-cols-1 gap-3 overflow-y-auto p-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {filteredOrders.map((order) => (
               <div key={order.id} className="group">
-                <OrderCard
+                <DraggableOrderCard
                   order={order}
                   isExcluded={excludedOrderIds.has(order.id)}
+                  isSelected={selectedOrderIds.has(order.id)}
+                  isDragging={isDragging}
                   onExclude={handleExcludeOrder}
                   onRestore={handleRestoreOrder}
+                  onToggleSelect={onToggleSelect}
                 />
               </div>
             ))}
           </div>
         ) : (
           <div className="max-h-[600px] space-y-2 overflow-y-auto p-4">
-            {/* כפתור פתח/סגור הכל */}
             <div className="mb-3 flex justify-end">
               <Button
                 variant="ghost"
@@ -316,8 +392,10 @@ export function UnscheduledOrders({
                 ).length;
                 const isExpanded = expandedZones.has(zoneId);
                 return (
-                  <div key={zoneId} className="overflow-hidden rounded-lg border">
-                    {/* כותרת אזור clickable */}
+                  <div
+                    key={zoneId}
+                    className="overflow-hidden rounded-lg border"
+                  >
                     <button
                       onClick={() => handleToggleZone(zoneId)}
                       className={cn(
@@ -331,7 +409,12 @@ export function UnscheduledOrders({
                         <ChevronLeft className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
                       )}
                       {zone?.color && (
-                        <span className={cn('h-3 w-3 flex-shrink-0 rounded-full', zone.color)} />
+                        <span
+                          className={cn(
+                            'h-3 w-3 flex-shrink-0 rounded-full',
+                            zone.color
+                          )}
+                        />
                       )}
                       <span className="font-semibold">
                         {zone?.name || 'ללא אזור'}
@@ -340,16 +423,18 @@ export function UnscheduledOrders({
                         {activeInZone}/{zoneOrders.length}
                       </Badge>
                     </button>
-                    {/* תוכן - כרטיסיות */}
                     {isExpanded && (
                       <div className="grid grid-cols-1 gap-3 p-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                         {zoneOrders.map((order) => (
                           <div key={order.id} className="group">
-                            <OrderCard
+                            <DraggableOrderCard
                               order={order}
                               isExcluded={excludedOrderIds.has(order.id)}
+                              isSelected={selectedOrderIds.has(order.id)}
+                              isDragging={isDragging}
                               onExclude={handleExcludeOrder}
                               onRestore={handleRestoreOrder}
+                              onToggleSelect={onToggleSelect}
                             />
                           </div>
                         ))}
@@ -361,14 +446,26 @@ export function UnscheduledOrders({
             )}
           </div>
         )}
+
+        {/* Selection indicator - drag one to move all selected */}
+        {selectedOrderIds.size > 0 && (
+          <div className="sticky bottom-0 flex items-center justify-between border-t bg-primary/5 px-4 py-3 backdrop-blur-sm">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <CheckCircle2 className="h-4 w-4 text-primary" />
+              <span>{selectedOrderIds.size} הזמנות נבחרו — גרור אחת ליומן כדי לשבץ את כולן</span>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onClearSelection}
+              className="text-xs"
+            >
+              בטל בחירה
+            </Button>
+          </div>
+        )}
       </div>
 
-      {/* Route Builder Dialog */}
-      <RouteBuilderDialog
-        open={isRouteBuilderOpen}
-        onOpenChange={setIsRouteBuilderOpen}
-        orders={activeOrders}
-      />
     </div>
   );
 }

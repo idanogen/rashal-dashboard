@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import type { Order } from '@/types/order';
 import {
   geocodeOrderByCity,
@@ -273,7 +272,6 @@ export function RouteBuilderDialog({
   orders,
   routeType = 'delivery',
 }: RouteBuilderDialogProps) {
-  const navigate = useNavigate();
   const [stops, setStops] = useState<Order[]>([]);
   const [unmappedOrders, setUnmappedOrders] = useState<Order[]>([]);
   const [totalDistance, setTotalDistance] = useState(0);
@@ -354,15 +352,6 @@ export function RouteBuilderDialog({
     toast.success('קובץ CSV יוצא בהצלחה');
   };
 
-  const handleStartNavigation = () => {
-    navigate('/route-navigation', {
-      state: {
-        route: stops,
-        routeName: `מסלול ${new Date().toLocaleDateString('he-IL')}`,
-      },
-    });
-    onOpenChange(false);
-  };
 
   const currentApproval = routeType === 'service' ? approveServiceRoute : approveRoute;
 
@@ -449,45 +438,53 @@ export function RouteBuilderDialog({
         className="flex h-[100vh] w-screen max-w-[100vw] sm:max-w-[100vw] flex-col rounded-none border-0 p-0"
         dir="rtl"
       >
-        {/* Header */}
+        {/* Header — title + driver + metrics + optimize */}
         <DialogHeader className="border-b px-6 py-4">
-          <DialogTitle className="text-xl">
-            {routeType === 'service' ? 'בניית מסלול שירות' : 'בניית מסלול משלוח'}
-          </DialogTitle>
-          <p className="text-sm text-muted-foreground">
-            {orders.length} {routeType === 'service' ? 'קריאות נבחרו' : 'הזמנות נבחרו'} • סדר, ערוך ונווט
-          </p>
-        </DialogHeader>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <DialogTitle className="text-xl">
+                {routeType === 'service' ? 'בניית מסלול שירות' : 'בניית מסלול משלוח'}
+              </DialogTitle>
+              <p className="text-sm text-muted-foreground">
+                {orders.length} {routeType === 'service' ? 'קריאות נבחרו' : 'הזמנות נבחרו'} • סדר, ערוך ואשר
+              </p>
+            </div>
 
-        {/* Main Content */}
-        <div className="flex flex-1 flex-col gap-4 overflow-hidden p-4 lg:flex-row">
-          {/* Left Panel - Stops */}
-          <div className="flex max-h-[400px] flex-col gap-4 overflow-y-auto lg:w-1/3 lg:max-h-full">
-            {/* Actions */}
-            <Card className="space-y-3 p-4">
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Metrics (inline) */}
+              {stops.length > 0 && (
+                <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                  <span><Badge variant="secondary">{stops.length}</Badge> עצירות</span>
+                  {totalDistance > 0 && <span>{totalDistance} ק"מ</span>}
+                  {totalDistance > 0 && (
+                    <span className="flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      {Math.floor(estimatedDuration / 60)} ש׳ {estimatedDuration % 60} דק׳
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Optimize */}
               <Button
                 onClick={handleOptimize}
                 disabled={isOptimizing || orders.length === 0}
-                className="w-full gap-2"
+                size="sm"
                 variant="outline"
+                className="gap-1.5"
               >
                 <Zap className="h-4 w-4" />
-                {isOptimizing ? 'מאופטם...' : 'אופטימיזציית מסלול'}
+                {isOptimizing ? 'מאופטם...' : 'אופטימיזציה'}
               </Button>
-            </Card>
 
-            {/* Driver Selection */}
-            <Card className="space-y-3 p-4">
-              <h4 className="flex items-center gap-2 text-sm font-semibold">
-                <UserCircle className="h-4 w-4" />
-                שיוך נהג
-              </h4>
+              {/* Driver */}
               <Select
                 value={selectedDriver}
                 onValueChange={(v) => setSelectedDriver(v as DriverName)}
               >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="בחר נהג למסלול..." />
+                <SelectTrigger className="w-[180px]">
+                  <UserCircle className="ml-2 h-4 w-4" />
+                  <SelectValue placeholder="בחר נהג..." />
                 </SelectTrigger>
                 <SelectContent>
                   {DRIVERS.map((driver) => (
@@ -497,75 +494,26 @@ export function RouteBuilderDialog({
                   ))}
                 </SelectContent>
               </Select>
-            </Card>
+            </div>
+          </div>
 
-            {/* Metrics */}
-            {stops.length > 0 && (
-              <Card className="p-4">
-                <h4 className="mb-3 flex items-center gap-2 font-semibold">
-                  <Navigation className="h-4 w-4" />
-                  מטריקות מסלול
-                </h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">עצירות:</span>
-                    <Badge variant="secondary">{stops.length}</Badge>
-                  </div>
-                  {totalDistance > 0 && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">
-                        מרחק משוער:
-                      </span>
-                      <span className="font-semibold">
-                        {totalDistance} ק"מ
-                      </span>
-                    </div>
-                  )}
-                  {totalDistance > 0 && (
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">
-                        זמן משוער:
-                      </span>
-                      <div className="flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        <span className="font-semibold">
-                          {Math.floor(estimatedDuration / 60)} ש׳{' '}
-                          {estimatedDuration % 60} דק׳
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                  {stops.length > MAX_GOOGLE_MAPS_STOPS && (
-                    <p className="text-xs text-amber-600">
-                      ⚠️ Google Maps תומך בעד {MAX_GOOGLE_MAPS_STOPS} עצירות
-                    </p>
-                  )}
-                </div>
-              </Card>
-            )}
+          {/* Unmapped warning */}
+          {unmappedOrders.length > 0 && (
+            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400">
+              <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
+              <span className="font-medium">{unmappedOrders.length} ללא מיקום:</span>
+              {unmappedOrders.map((o) => (
+                <span key={o.id}>{o.customerName}</span>
+              ))}
+            </div>
+          )}
+        </DialogHeader>
 
-            {/* Unmapped Orders Warning */}
-            {unmappedOrders.length > 0 && (
-              <Card className="border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950">
-                <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-700 dark:text-amber-400">
-                  <AlertTriangle className="h-4 w-4" />
-                  {unmappedOrders.length} הזמנות ללא מיקום ידוע
-                </h4>
-                <div className="space-y-1">
-                  {unmappedOrders.map((order) => (
-                    <p
-                      key={order.id}
-                      className="text-xs text-amber-600 dark:text-amber-500"
-                    >
-                      {order.customerName} — {order.city || 'ללא עיר'}
-                    </p>
-                  ))}
-                </div>
-              </Card>
-            )}
-
-            {/* Stops List */}
-            <Card className="flex min-h-[250px] flex-1 flex-col overflow-hidden p-4">
+        {/* Main Content */}
+        <div className="flex flex-1 flex-col gap-4 overflow-hidden p-4 lg:flex-row">
+          {/* Right Panel - Stops List (full height) */}
+          <div className="flex max-h-[400px] flex-col overflow-hidden lg:w-[340px] lg:max-h-full">
+            <Card className="flex flex-1 flex-col overflow-hidden p-4">
               <h4 className="mb-3 flex items-center gap-2 font-semibold">
                 <MapPin className="h-4 w-4" />
                 עצירות (ניתן לגרור) • {stops.length}
@@ -605,7 +553,7 @@ export function RouteBuilderDialog({
             </Card>
           </div>
 
-          {/* Right Panel - Map */}
+          {/* Left Panel - Map */}
           <div className="flex min-h-[600px] flex-1 flex-col overflow-hidden lg:min-h-0">
             <Card className="flex h-full flex-col p-4">
               <h4 className="mb-3 flex items-center gap-2 font-semibold">
@@ -719,14 +667,6 @@ export function RouteBuilderDialog({
               <CheckCircle className="h-4 w-4" />
             )}
             {currentApproval.isPending ? 'מאשר מסלול...' : 'אשר מסלול'}
-          </Button>
-          <Button
-            onClick={handleStartNavigation}
-            disabled={stops.length === 0}
-            className="gap-2"
-          >
-            <Truck className="h-4 w-4" />
-            התחל ניווט
           </Button>
         </DialogFooter>
       </DialogContent>
