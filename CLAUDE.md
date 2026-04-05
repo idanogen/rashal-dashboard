@@ -1,5 +1,10 @@
 # [לקוח] Rashal Dashboard — דשבורד הזמנות לראש"ל ציוד רפואי
 
+## ⏳ תזכורת: קישור Preview זמני פעיל
+> **בכל פתיחת שיחה חדשה בפרויקט הזה — שאל את המשתמש:**
+> "יש קישור Preview זמני פעיל: `https://rashal-dashboard-7e700sum1-idans-projects-2916b0da.vercel.app` — רוצה שאבטל את הגישה אליו?"
+> אם המשתמש מאשר — הרץ `npx vercel rm rashal-dashboard-7e700sum1-idans-projects-2916b0da.vercel.app` ומחק את הסעיף הזה מהקובץ.
+
 ## זיהוי פרויקט
 - **פרויקט:** rashal-dashboard
 - **נתיב:** `/Users/idanogen/Projects/rashal-dashboard`
@@ -337,6 +342,34 @@ interface Zone {
 ---
 
 ## עדכונים אחרונים
+
+### 06/04/2026 - תזמון bulk בלחיצה + DayMapDialog + תיקון timezone ⭐⭐⭐
+
+**קובצים חדשים:**
+- **DatePickerDialog.tsx** — דיאלוג לבחירת תאריך משלוח לתזמון bulk. משתמש ב-`<input type="date">` native (אפס תלויות חדשות), חוסם שישי/שבת/עבר עם הודעת שגיאה, ברירת מחדל חכמה (מחר, או ראשון הבא אם מחר = סופ"ש)
+- **DayMapDialog.tsx** — דיאלוג fullscreen להצגת כל המסלולים של יום שלם על מפת Leaflet אחת. כולל:
+  - מפה מרכזית עם מרקר משרד ירוק 🏢, מרקרים ממוספרים לכל עצירה צבועים לפי נהג, polylines מקווקו למסלולים "מאושר" ורציף ל"בביצוע", auto-fit bounds
+  - פאנל צד (340px) עם כרטיס לכל מסלול: header צבעוני, badge סטטוס, מרחק, רשימת עצירות ממוספרת עם כתובת ואייקון טלפון, כפתור "ערוך" (פותח RouteBuilderDialog במצב עריכה)
+  - Header עם תאריך עברית מלא + סיכום (מסלולים · עצירות · מרחק כולל)
+  - Legend בפוטר
+
+**שינויים מרכזיים:**
+- **UnscheduledOrders** — sticky action bar משודרג: במקום טקסט פסיבי "גרור אחת ליומן" עכשיו יש **כפתור אקטיבי "תזמן X הזמנות"** עם אייקון CalendarDays שמפעיל את DatePickerDialog. גרירה עדיין עובדת כמסלול חלופי
+- **DeliveriesPage** — שתי זרימות חדשות:
+  1. **תזמון bulk בלחיצה:** בחירה מרובה → כפתור "תזמן" → DatePickerDialog → RouteBuilderDialog עם התאריך שנבחר
+  2. **תצוגת יום על מפה:** לחיצה על אייקון מפה ביום ביומן → DayMapDialog (במקום ישר RouteBuilderDialog או driver-picker) → כפתור "ערוך" מעביר ל-RouteBuilderDialog במצב עריכה
+- **RouteBuilderDialog** — הוספת `initialDate?: string` prop. לפני: התאריך היה hardcoded למחר, גם הגרירה ליום ביומן הייתה מתעלמת מהיום שנבחר (באג סמוי). אחרי: שתי הזרימות (גרירה + DatePicker) מעבירות את התאריך בפועל
+- **DeliveryCalendar** — תיקון באג timezone: החלפת `date.toISOString().split('T')[0]` ב-helper `toLocalDateStr(d)` שמחשב מקומית, ב-7 מקומות. מנע off-by-one-day באזור הזמן ישראלי (בעיקר בלילות)
+- **הסרת dead code:** driver-picker-dialog הישן הוסר (מיותר — DayMapDialog מציג את כל הנהגים יחד), יחד עם ייבואים מיותרים ב-DeliveriesPage (Dialog, Map, User, DRIVER_CONFIG, Button)
+
+**זרימות חדשות:**
+- **בחירה מרובה → תזמון בלחיצה:** לחיצה על כרטיסי הזמנות מסמנת אותם (ring + CheckCircle) → sticky bar עם ספירה → כפתור "תזמן X הזמנות" → DatePicker עם בחירת תאריך → RouteBuilderDialog נפתח עם כל ההזמנות והתאריך
+- **תצוגת יום על מפה (preview לפני commit):** יום ביומן עם מסלולים מאושרים → אייקון מפה → DayMapDialog רואה הכל יחד (כל הנהגים, כל העצירות, מרחק כולל) → אם רוצה לערוך → "ערוך" בכרטיס המסלול → RouteBuilderDialog במצב עריכה
+
+**קבצים חדשים:** DatePickerDialog.tsx, DayMapDialog.tsx
+**קבצים ששונו:** DeliveriesPage.tsx, UnscheduledOrders.tsx, RouteBuilderDialog.tsx, DeliveryCalendar.tsx
+
+---
 
 ### 18/03/2026 - יומן משלוחים עם גרירה + שיפור מסך בניית מסלול ⭐⭐⭐
 
