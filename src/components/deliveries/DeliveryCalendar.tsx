@@ -12,12 +12,18 @@ import {
   Trash2,
   GripVertical,
   Phone,
+  Map,
 } from 'lucide-react';
 import { useDroppable } from '@dnd-kit/core';
+
+// פורמט תאריך מקומי (לא UTC) למניעת באגי timezone
+const toLocalDateStr = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 interface DeliveryCalendarProps {
   deliveries: CalendarDelivery[];
   onRemoveOrder?: (deliveryId: string, orderId: string) => void;
+  onViewDayRoute?: (dateStr: string) => void;
 }
 
 // ─── Stop Card ─────────────────────────────────────────────
@@ -104,7 +110,7 @@ function DayDropZone({
   isToday: boolean;
   isPast: boolean;
 }) {
-  const dateStr = date.toISOString().split('T')[0];
+  const dateStr = toLocalDateStr(date);
   const { isOver, setNodeRef } = useDroppable({
     id: `day-${dateStr}`,
     data: { type: 'day', date: dateStr },
@@ -133,6 +139,7 @@ const MIN_VISIBLE_DAYS = 3;
 export function DeliveryCalendar({
   deliveries,
   onRemoveOrder,
+  onViewDayRoute,
 }: DeliveryCalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
 
@@ -146,11 +153,7 @@ export function DeliveryCalendar({
     'שבת',
   ];
 
-  const todayStr = useMemo(() => {
-    const t = new Date();
-    t.setHours(0, 0, 0, 0);
-    return t.toISOString().split('T')[0];
-  }, []);
+  const todayStr = useMemo(() => toLocalDateStr(new Date()), []);
 
   // Get working days (Sun-Thu) for a given week
   const getWeekWorkDays = (date: Date): Date[] => {
@@ -173,11 +176,11 @@ export function DeliveryCalendar({
   };
 
   const isPastDay = (date: Date): boolean => {
-    return date.toISOString().split('T')[0] < todayStr;
+    return toLocalDateStr(date) < todayStr;
   };
 
   const isToday = (date: Date): boolean => {
-    return date.toISOString().split('T')[0] === todayStr;
+    return toLocalDateStr(date) === todayStr;
   };
 
   // Flatten all stops for a given date
@@ -200,7 +203,7 @@ export function DeliveryCalendar({
     const currentAndFuture = weekDays.filter((d) => !isPastDay(d));
     const pastWithStops = weekDays.filter((d) => {
       if (!isPastDay(d)) return false;
-      const dateStr = d.toISOString().split('T')[0];
+      const dateStr = toLocalDateStr(d);
       return getDeliveriesForDate(dateStr).length > 0;
     });
 
@@ -216,13 +219,7 @@ export function DeliveryCalendar({
 
       for (const day of nextWeekDays) {
         if (visible.length >= MIN_VISIBLE_DAYS) break;
-        if (
-          !visible.some(
-            (d) =>
-              d.toISOString().split('T')[0] ===
-              day.toISOString().split('T')[0]
-          )
-        ) {
+        if (!visible.some((d) => toLocalDateStr(d) === toLocalDateStr(day))) {
           visible.push(day);
         }
       }
@@ -305,7 +302,7 @@ export function DeliveryCalendar({
         className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 ${gridCols} gap-4`}
       >
         {visibleDays.map((day) => {
-          const dateStr = day.toISOString().split('T')[0];
+          const dateStr = toLocalDateStr(day);
           const dayStops = getStopsForDate(dateStr);
           const isTodayFlag = isToday(day);
           const isPast = isPastDay(day);
@@ -351,11 +348,24 @@ export function DeliveryCalendar({
                   </div>
                 </div>
                 {dayStops.length > 0 && (
-                  <div className="flex items-center gap-1.5 mt-2">
-                    <Truck className="h-3 w-3 text-primary/70" />
-                    <span className="text-xs text-muted-foreground font-medium">
-                      {dayStops.length} הזמנות
-                    </span>
+                  <div className="flex items-center justify-between mt-2">
+                    <div className="flex items-center gap-1.5">
+                      <Truck className="h-3 w-3 text-primary/70" />
+                      <span className="text-xs text-muted-foreground font-medium">
+                        {dayStops.length} הזמנות
+                      </span>
+                    </div>
+                    {onViewDayRoute && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 rounded-md hover:bg-primary/10"
+                        onClick={() => onViewDayRoute(dateStr)}
+                        title="צפה במסלולים על המפה"
+                      >
+                        <Map className="h-4 w-4 text-primary" />
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>

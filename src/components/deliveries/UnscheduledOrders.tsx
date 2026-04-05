@@ -23,7 +23,9 @@ import {
   ChevronsUpDown,
   CheckCircle2,
   GripVertical,
+  CalendarDays,
 } from 'lucide-react';
+import { useCallback } from 'react';
 import { ZoneFilter } from './ZoneFilter';
 import { getZoneById, ZONES } from '@/types/zone';
 import { getDaysSinceCreated, getDaysColor, cn } from '@/lib/utils';
@@ -195,6 +197,8 @@ export function UnscheduledOrders({
     new Set()
   );
   const [expandedZones, setExpandedZones] = useState<Set<string>>(new Set());
+  const [zoneFilterCollapsed, setZoneFilterCollapsed] = useState(false);
+  const [ordersCollapsed, setOrdersCollapsed] = useState(false);
 
   const handleZoneToggle = (zoneId: string) => {
     setSelectedZones((prev) =>
@@ -307,6 +311,8 @@ export function UnscheduledOrders({
         onZoneToggle={handleZoneToggle}
         onClearAll={handleClearAllZones}
         orderCountByZone={orderCountByZone}
+        collapsed={zoneFilterCollapsed}
+        onToggleCollapse={() => setZoneFilterCollapsed((p) => !p)}
       />
 
       {/* Main Panel */}
@@ -350,12 +356,20 @@ export function UnscheduledOrders({
                   <SelectItem value="grouped">קיבוץ לפי אזור</SelectItem>
                 </SelectContent>
               </Select>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => setOrdersCollapsed((p) => !p)}
+              >
+                {ordersCollapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </Button>
             </div>
           </div>
         </div>
 
         {/* Content */}
-        {viewMode === 'all' ? (
+        {ordersCollapsed ? null : viewMode === 'all' ? (
           <div className="grid max-h-[500px] grid-cols-1 gap-3 overflow-y-auto p-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {filteredOrders.map((order) => (
               <div key={order.id} className="group">
@@ -447,21 +461,42 @@ export function UnscheduledOrders({
           </div>
         )}
 
-        {/* Selection indicator - drag one to move all selected */}
-        {selectedOrderIds.size > 0 && (
-          <div className="sticky bottom-0 flex items-center justify-between border-t bg-primary/5 px-4 py-3 backdrop-blur-sm">
+        {/* Floating action bar — מציע גם לחיצה (לפתיחת DatePicker) וגם גרירה */}
+        {!ordersCollapsed && selectedOrderIds.size > 0 && (
+          <div className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 border-t bg-primary/5 px-4 py-3 backdrop-blur-sm">
             <div className="flex items-center gap-2 text-sm font-medium">
               <CheckCircle2 className="h-4 w-4 text-primary" />
-              <span>{selectedOrderIds.size} הזמנות נבחרו — גרור אחת ליומן כדי לשבץ את כולן</span>
+              <span>
+                <span className="font-bold text-primary">
+                  {selectedOrderIds.size}
+                </span>{' '}
+                {selectedOrderIds.size === 1 ? 'הזמנה נבחרה' : 'הזמנות נבחרו'}
+              </span>
+              <span className="hidden text-xs text-muted-foreground sm:inline">
+                · ניתן לתזמן בלחיצה או בגרירה ליומן
+              </span>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onClearSelection}
-              className="text-xs"
-            >
-              בטל בחירה
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onClearSelection}
+                className="text-xs"
+              >
+                בטל
+              </Button>
+              {onBulkSchedule && (
+                <Button
+                  size="sm"
+                  onClick={onBulkSchedule}
+                  className="gap-1.5"
+                >
+                  <CalendarDays className="h-4 w-4" />
+                  תזמן {selectedOrderIds.size}{' '}
+                  {selectedOrderIds.size === 1 ? 'הזמנה' : 'הזמנות'}
+                </Button>
+              )}
+            </div>
           </div>
         )}
       </div>

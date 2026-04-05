@@ -8,10 +8,13 @@ import { UnscheduledOrders } from '@/components/deliveries/UnscheduledOrders';
 import { ApprovedRoutesList } from '@/components/deliveries/ApprovedRoutesList';
 import { DeliveryCalendar } from '@/components/deliveries/DeliveryCalendar';
 import { RouteBuilderDialog } from '@/components/deliveries/RouteBuilderDialog';
+import { DatePickerDialog } from '@/components/deliveries/DatePickerDialog';
+import { DayMapDialog } from '@/components/deliveries/DayMapDialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, AlertCircle, Package, Truck } from 'lucide-react';
 import type { Order } from '@/types/order';
+import type { ApprovedRoute } from '@/types/route';
 import type { CalendarDelivery, CalendarStop } from '@/types/delivery';
 import { toast } from 'sonner';
 import {
@@ -62,6 +65,14 @@ export function DeliveriesPage() {
   );
   const [routeBuilderOpen, setRouteBuilderOpen] = useState(false);
   const [routeBuilderOrders, setRouteBuilderOrders] = useState<Order[]>([]);
+  const [routeBuilderDate, setRouteBuilderDate] = useState<string | undefined>(
+    undefined
+  );
+  const [editRoute, setEditRoute] = useState<ApprovedRoute | undefined>(undefined);
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [dayMapOpen, setDayMapOpen] = useState(false);
+  const [dayMapDate, setDayMapDate] = useState<string | null>(null);
+  const [dayMapRoutes, setDayMapRoutes] = useState<ApprovedRoute[]>([]);
 
   // Calendar deliveries from approved routes
   const calendarDeliveries: CalendarDelivery[] = useMemo(
@@ -103,6 +114,30 @@ export function DeliveriesPage() {
     setSelectedOrderIds(new Set());
   }, []);
 
+  // ─── Bulk schedule (click-to-schedule flow) ────────────
+  const handleBulkSchedule = useCallback(() => {
+    if (selectedOrderIds.size === 0) return;
+    setDatePickerOpen(true);
+  }, [selectedOrderIds]);
+
+  const handleDateSelected = useCallback(
+    (date: string) => {
+      const ordersForRoute = unscheduledOrders.filter((o) =>
+        selectedOrderIds.has(o.id)
+      );
+      if (ordersForRoute.length === 0) {
+        setDatePickerOpen(false);
+        return;
+      }
+      setRouteBuilderOrders(ordersForRoute);
+      setRouteBuilderDate(date);
+      setRouteBuilderOpen(true);
+      setDatePickerOpen(false);
+      setSelectedOrderIds(new Set());
+    },
+    [selectedOrderIds, unscheduledOrders]
+  );
+
   // ─── Drag → immediately open RouteBuilder ───────────────
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
@@ -141,12 +176,39 @@ export function DeliveriesPage() {
         ordersForRoute = [order];
       }
 
-      // Open RouteBuilderDialog immediately
+      // Open RouteBuilderDialog immediately with the dropped date
       setRouteBuilderOrders(ordersForRoute);
+      setRouteBuilderDate(date);
       setRouteBuilderOpen(true);
       setSelectedOrderIds(new Set());
     }
   };
+
+  // ─── View day on map (preview before editing) ──────────
+  const handleViewDayRoute = useCallback(
+    (dateStr: string) => {
+      const dayRoutes = routes.filter(
+        (r) =>
+          r.deliveryDate === dateStr &&
+          (r.status === 'מאושר' || r.status === 'בביצוע')
+      );
+
+      if (dayRoutes.length === 0) return;
+
+      setDayMapDate(dateStr);
+      setDayMapRoutes(dayRoutes);
+      setDayMapOpen(true);
+    },
+    [routes]
+  );
+
+  const openRouteForEdit = useCallback((route: ApprovedRoute) => {
+    setEditRoute(route);
+    setRouteBuilderOrders([]);
+    setRouteBuilderDate(undefined);
+    setRouteBuilderOpen(true);
+    setDayMapOpen(false);
+  }, []);
 
   // ─── Remove order from calendar (approved route) ────────
   const handleRemoveFromCalendar = async (
@@ -255,12 +317,14 @@ export function DeliveriesPage() {
               selectedOrderIds={selectedOrderIds}
               onToggleSelect={handleToggleSelect}
               onClearSelection={handleClearSelection}
+              onBulkSchedule={handleBulkSchedule}
               isDragging={!!draggedOrder}
             />
 
             <DeliveryCalendar
               deliveries={calendarDeliveries}
               onRemoveOrder={handleRemoveFromCalendar}
+              onViewDayRoute={handleViewDayRoute}
             />
           </TabsContent>
 
@@ -291,11 +355,36 @@ export function DeliveriesPage() {
         )}
       </DragOverlay>
 
-      {/* Route Builder — opens immediately after drag to day */}
+      {/* Date Picker — bulk schedule via click */}
+      <DatePickerDialog
+        open={datePickerOpen}
+        onClose={() => setDatePickerOpen(false)}
+        onDateSelected={handleDateSelected}
+        orderCount={selectedOrderIds.size}
+      />
+
+      {/* Day Map — preview of all routes for a specific day */}
+      <DayMapDialog
+        open={dayMapOpen}
+        onClose={() => setDayMapOpen(false)}
+        date={dayMapDate}
+        routes={dayMapRoutes}
+        onEditRoute={openRouteForEdit}
+      />
+
+      {/* Route Builder — opens after drag to day OR after date picker */}
       <RouteBuilderDialog
         open={routeBuilderOpen}
-        onOpenChange={setRouteBuilderOpen}
+        onOpenChange={(open) => {
+          setRouteBuilderOpen(open);
+          if (!open) {
+            setEditRoute(undefined);
+            setRouteBuilderDate(undefined);
+          }
+        }}
         orders={routeBuilderOrders}
+        editRoute={editRoute}
+        initialDate={routeBuilderDate}
       />
     </DndContext>
   );

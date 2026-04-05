@@ -41,9 +41,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { DRIVERS, type DriverName } from '@/types/route';
+import { DRIVERS, type DriverName, type ApprovedRoute } from '@/types/route';
 import { useApproveRoute } from '@/hooks/useApproveRoute';
 import { useApproveServiceRoute } from '@/hooks/useApproveServiceRoute';
+import { useUpdateRoute } from '@/hooks/useUpdateRoute';
 import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import {
@@ -69,6 +70,9 @@ interface RouteBuilderDialogProps {
   onOpenChange: (open: boolean) => void;
   orders: Order[];
   routeType?: 'delivery' | 'service';
+  editRoute?: ApprovedRoute;
+  /** תאריך משלוח מראש (YYYY-MM-DD) — אם לא סופק, ברירת מחדל היא מחר */
+  initialDate?: string;
 }
 
 // ─── Sortable Stop Item ────────────────────────────────────
@@ -271,6 +275,8 @@ export function RouteBuilderDialog({
   onOpenChange,
   orders,
   routeType = 'delivery',
+  editRoute,
+  initialDate,
 }: RouteBuilderDialogProps) {
   const [stops, setStops] = useState<Order[]>([]);
   const [unmappedOrders, setUnmappedOrders] = useState<Order[]>([]);
@@ -279,17 +285,44 @@ export function RouteBuilderDialog({
   const [selectedDriver, setSelectedDriver] = useState<DriverName | ''>('');
   const approveRoute = useApproveRoute();
   const approveServiceRoute = useApproveServiceRoute();
+  const updateRoute = useUpdateRoute();
+  const isEditMode = !!editRoute;
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   );
 
-  // Auto-optimize on open
+  // Auto-optimize on open / load edit route
   useEffect(() => {
-    if (open && orders.length > 0) {
+    if (!open) return;
+    if (editRoute) {
+      // Edit mode: load existing route stops as Order objects
+      setSelectedDriver(editRoute.driver);
+      const routeOrders: Order[] = editRoute.stops.map((stop) => ({
+        id: stop.id,
+        customerName: stop.customerName,
+        address: stop.address,
+        city: stop.city,
+        phone: stop.phone,
+        created: '',
+      }));
+      setStops(routeOrders);
+      setUnmappedOrders([]);
+      // Calculate distance for existing order
+      const geocoded = routeOrders.map(geocodeOrderByCity).filter((o) => o.coordinates);
+      let dist = 0;
+      if (geocoded.length > 0) {
+        dist += calculateDistance(OFFICE_COORDINATES, geocoded[0].coordinates!);
+        for (let i = 1; i < geocoded.length; i++) {
+          dist += calculateDistance(geocoded[i - 1].coordinates!, geocoded[i].coordinates!);
+        }
+      }
+      setTotalDistance(Math.round(dist));
+      setIsOptimizing(false);
+    } else if (orders.length > 0) {
       handleOptimize();
     }
-  }, [open, orders]);
+  }, [open, orders, editRoute]);
 
   const handleOptimize = useCallback(() => {
     setIsOptimizing(true);
@@ -353,16 +386,45 @@ export function RouteBuilderDialog({
   };
 
 
-  const currentApproval = routeType === 'service' ? approveServiceRoute : approveRoute;
+  const currentApproval = isEditMode ? updateRoute : routeType === 'service' ? approveServiceRoute : approveRoute;
 
   const handleApproveRoute = async () => {
     if (!selectedDriver || stops.length === 0) return;
 
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const deliveryDate = tomorrow.toISOString().split('T')[0];
-
     try {
+      if (isEditMode && editRoute) {
+        // Edit mode: update existing route
+        const newStops = stops.map((o, idx) => ({
+          id: o.id,
+          customerName: o.customerName,
+          address: o.address,
+          city: o.city,
+          phone: o.phone,
+          sequence: idx + 1,
+        }));
+        await updateRoute.mutateAsync({
+          id: editRoute.id,
+          fields: {
+            stops: newStops,
+            orderIds: stops.map((o) => o.id),
+            stopCount: stops.length,
+          },
+        });
+        toast.success('המסלול עודכן בהצלחה!');
+        onOpenChange(false);
+        return;
+      }
+
+      // תאריך המשלוח: מה-prop אם סופק, אחרת מחר (בפורמט מקומי למניעת באגי timezone)
+      let deliveryDate: string;
+      if (initialDate) {
+        deliveryDate = initialDate;
+      } else {
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        deliveryDate = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`;
+      }
+
       if (routeType === 'service') {
         await approveServiceRoute.mutateAsync({
           calls: stops as unknown as import('@/types/service-call').ServiceCall[],
@@ -443,10 +505,14 @@ export function RouteBuilderDialog({
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
               <DialogTitle className="text-xl">
-                {routeType === 'service' ? 'בניית מסלול שירות' : 'בניית מסלול משלוח'}
+                {isEditMode
+                  ? `עריכת מסלול — ${editRoute?.routeName ?? ''}`
+                  : routeType === 'service' ? 'בניית מסלול שירות' : 'בניית מסלול משלוח'}
               </DialogTitle>
               <p className="text-sm text-muted-foreground">
-                {orders.length} {routeType === 'service' ? 'קריאות נבחרו' : 'הזמנות נבחרו'} • סדר, ערוך ואשר
+                {isEditMode
+                  ? `${stops.length} עצירות • ערוך סדר, הסר או אשר שינויים`
+                  : `${orders.length} ${routeType === 'service' ? 'קריאות נבחרו' : 'הזמנות נבחרו'} • סדר, ערוך ואשר`}
               </p>
             </div>
 
@@ -666,7 +732,9 @@ export function RouteBuilderDialog({
             ) : (
               <CheckCircle className="h-4 w-4" />
             )}
-            {currentApproval.isPending ? 'מאשר מסלול...' : 'אשר מסלול'}
+            {currentApproval.isPending
+              ? (isEditMode ? 'מעדכן מסלול...' : 'מאשר מסלול...')
+              : (isEditMode ? 'שמור שינויים' : 'אשר מסלול')}
           </Button>
         </DialogFooter>
       </DialogContent>
