@@ -1,12 +1,14 @@
-import { RefreshCw, Package } from 'lucide-react';
+import { RefreshCw, Package, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/lib/auth-context';
 
 export function AppHeader() {
   const queryClient = useQueryClient();
+  const { signOut } = useAuth();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [timeAgo, setTimeAgo] = useState('עכשיו');
@@ -107,6 +109,9 @@ export function AppHeader() {
           >
             <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline">רענון</span>
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => signOut()} title="התנתק">
+            <LogOut className="h-4 w-4" />
           </Button>
         </div>
       </div>

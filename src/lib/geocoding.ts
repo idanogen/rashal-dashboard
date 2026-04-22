@@ -140,44 +140,44 @@ const CITY_COORDINATES: Record<string, Coordinates> = {
  * @param order - הזמנה
  * @returns הזמנה עם קואורדינטות (אם נמצאה העיר)
  */
-export function geocodeOrderByCity(order: Order): GeocodedOrder {
-  const city = order.city?.trim();
+/**
+ * Look up city coordinates with fuzzy matching:
+ *  1. Exact match
+ *  2. Normalised whitespace
+ *  3. Dashes removed
+ *  4. Partial match (city contains known key, or vice versa)
+ */
+export function getCityCoordinates(city: string | undefined | null): Coordinates | undefined {
+  if (!city) return undefined;
+  const trimmed = city.trim();
+  if (!trimmed) return undefined;
 
-  if (!city) {
-    return order;
-  }
+  // Exact match
+  if (CITY_COORDINATES[trimmed]) return CITY_COORDINATES[trimmed];
 
-  // חיפוש ישיר
-  let coords = CITY_COORDINATES[city];
+  // Normalised whitespace
+  const normalised = trimmed.replace(/\s+/g, ' ');
+  if (CITY_COORDINATES[normalised]) return CITY_COORDINATES[normalised];
 
-  // נרמול רווחים
-  if (!coords) {
-    const normalizedCity = city.replace(/\s+/g, ' ').trim();
-    coords = CITY_COORDINATES[normalizedCity];
-  }
+  // No dashes
+  const noDash = trimmed.replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
+  if (CITY_COORDINATES[noDash]) return CITY_COORDINATES[noDash];
 
-  // ללא מקפים
-  if (!coords) {
-    const noDash = city.replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
-    coords = CITY_COORDINATES[noDash];
-  }
-
-  // חיפוש חלקי - אם העיר מכילה שם ידוע או להפך
-  if (!coords) {
-    const cityNorm = city.replace(/[-\s]+/g, ' ').trim();
-    const keys = Object.keys(CITY_COORDINATES);
-    const found = keys.find((key) => {
-      const keyNorm = key.replace(/[-\s]+/g, ' ').trim();
-      return cityNorm.includes(keyNorm) || keyNorm.includes(cityNorm);
-    });
-    if (found) {
-      coords = CITY_COORDINATES[found];
+  // Partial match
+  const cityNorm = trimmed.replace(/[-\s]+/g, ' ').trim();
+  for (const key of Object.keys(CITY_COORDINATES)) {
+    const keyNorm = key.replace(/[-\s]+/g, ' ').trim();
+    if (cityNorm.includes(keyNorm) || keyNorm.includes(cityNorm)) {
+      return CITY_COORDINATES[key];
     }
   }
+  return undefined;
+}
 
+export function geocodeOrderByCity(order: Order): GeocodedOrder {
   return {
     ...order,
-    coordinates: coords,
+    coordinates: getCityCoordinates(order.city),
   };
 }
 

@@ -23,7 +23,7 @@ export function useOrderStats(orders: Order[]): OrderStats {
       total: orders.length,
       byOrderStatus: {
         waiting: orders.filter((o) => o.orderStatus === 'ממתין לתאום').length,
-        outOfStock: orders.filter((o) => o.orderStatus === 'איו במלאי').length,
+        outOfStock: orders.filter((o) => o.orderStatus === 'אין במלאי').length,
         delivered: orders.filter((o) => o.orderStatus === 'סופק').length,
       },
       byWorker,

@@ -24,6 +24,8 @@ import {
   CheckCircle2,
   GripVertical,
   CalendarDays,
+  CheckSquare,
+  Square,
 } from 'lucide-react';
 import { useCallback } from 'react';
 import { ZoneFilter } from './ZoneFilter';
@@ -173,6 +175,8 @@ interface UnscheduledOrdersProps {
   // Selection props
   selectedOrderIds?: Set<string>;
   onToggleSelect?: (orderId: string) => void;
+  /** Replace the whole selection with these IDs (or empty = clear). */
+  onSelectAll?: (orderIds: string[]) => void;
   onBulkSchedule?: () => void;
   onClearSelection?: () => void;
   isDragging?: boolean;
@@ -186,6 +190,7 @@ export function UnscheduledOrders({
   orderZoneMap,
   selectedOrderIds = new Set(),
   onToggleSelect,
+  onSelectAll,
   onBulkSchedule,
   onClearSelection,
   isDragging,
@@ -319,10 +324,37 @@ export function UnscheduledOrders({
       <div className="rounded-lg border bg-card shadow-sm">
         <div className="border-b bg-muted/30 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Package className="h-5 w-5 text-muted-foreground" />
               <h3 className="font-bold">הזמנות ממתינות לתיאום</h3>
               <Badge variant="secondary">{filteredOrders.length}</Badge>
+              {/* Select-all / clear-selection toggle */}
+              {onSelectAll && activeOrders.length > 0 && (() => {
+                const activeIds = activeOrders.map((o) => o.id);
+                const allSelected =
+                  activeIds.length > 0 &&
+                  activeIds.every((id) => selectedOrderIds.has(id));
+                return (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onSelectAll(allSelected ? [] : activeIds)}
+                    className="h-7 gap-1 text-xs"
+                  >
+                    {allSelected ? (
+                      <>
+                        <Square className="h-3 w-3" />
+                        בטל סימון
+                      </>
+                    ) : (
+                      <>
+                        <CheckSquare className="h-3 w-3" />
+                        סמן את כל ההזמנות ({activeOrders.length})
+                      </>
+                    )}
+                  </Button>
+                );
+              })()}
               {excludedCount > 0 && (
                 <>
                   <Badge

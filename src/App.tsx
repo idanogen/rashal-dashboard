@@ -6,6 +6,9 @@ import { DashboardPage } from '@/pages/DashboardPage';
 import { DeliveriesPage } from '@/pages/DeliveriesPage';
 import { ServiceCallsPage } from '@/pages/ServiceCallsPage';
 import { RouteNavigationPage } from '@/pages/RouteNavigationPage';
+import { LoginPage } from '@/pages/LoginPage';
+import { AuthProvider } from '@/lib/auth-context';
+import { ProtectedRoute } from '@/components/ProtectedRoute';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -20,14 +23,26 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <AppShell>
+        <AuthProvider>
           <Routes>
-            <Route path="/" element={<DashboardPage />} />
-            <Route path="/routes" element={<DeliveriesPage />} />
-            <Route path="/service-calls" element={<ServiceCallsPage />} />
-            <Route path="/route-navigation" element={<RouteNavigationPage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route
+              path="/*"
+              element={
+                <ProtectedRoute>
+                  <AppShell>
+                    <Routes>
+                      <Route path="/" element={<DashboardPage />} />
+                      <Route path="/routes" element={<DeliveriesPage />} />
+                      <Route path="/service-calls" element={<ServiceCallsPage />} />
+                      <Route path="/route-navigation" element={<RouteNavigationPage />} />
+                    </Routes>
+                  </AppShell>
+                </ProtectedRoute>
+              }
+            />
           </Routes>
-        </AppShell>
+        </AuthProvider>
       </BrowserRouter>
       <Toaster
         position="bottom-left"

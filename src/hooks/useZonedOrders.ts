@@ -46,7 +46,7 @@ export function useZonedOrders(): ZonedOrdersResult {
     );
 
     const scheduledOrders = allOrders.filter(
-      (o) => o.orderStatus === 'תואמה אספקה '
+      (o) => o.orderStatus === 'תואמה אספקה'
     );
 
     const deliveredOrders = allOrders.filter(

@@ -46,3 +46,10 @@ export function buildRouteUrl(orders: Order[], originAddress?: string): string {
 
 /** Maximum stops Google Maps URL supports (origin + destination + ~9 waypoints) */
 export const MAX_GOOGLE_MAPS_STOPS = 11;
+
+/** Warehouse — נקודת מוצא וסיום של כל מסלול. משה שרת 15, ראשון לציון. */
+export const WAREHOUSE_LOCATION = {
+  lat: 31.9730,
+  lng: 34.7925,
+  name: 'משרדי החברה — משה שרת 15, ראשון לציון',
+};

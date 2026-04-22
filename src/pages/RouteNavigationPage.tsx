@@ -45,7 +45,7 @@ export function RouteNavigationPage() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [tempRoute, setTempRoute] = useState<Order[]>(routeOrders);
 
-  // שליפת כל ההזמנות מ-Airtable (לצורך הוספה במצב עריכה)
+  // שליפת כל ההזמנות מ-Supabase (לצורך הוספה במצב עריכה)
   const { data: allOrders = [] } = useOrders();
 
   // סינון הזמנות זמינות - רק "ממתין לתאום"

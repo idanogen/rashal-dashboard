@@ -1,30 +1,8 @@
-// Airtable field names (Hebrew) mapped to our property names
-export const FIELD_MAP: Record<string, string> = {
-  'שם הלקוח': 'customerName',
-  'טלפון': 'phone',
-  'סטטוס לקוח': 'customerStatus',
-  'Status': 'status',
-  'סטטוס הזמנה': 'orderStatus',
-  'קופת חולים': 'healthFund',
-  'לקוח נפתח ע״י': 'openedBy',
-  'פקס': 'fax',
-  'כתובת': 'address',
-  'עיר': 'city',
-  'סוכן': 'agent',
-  'מסמכים': 'documents',
-  // הסרנו 'Created': 'created' - משתמשים ב-createdTime המובנה
-};
-
-// Reverse map: English property name -> Hebrew field name
-export const REVERSE_FIELD_MAP: Record<string, string> = Object.fromEntries(
-  Object.entries(FIELD_MAP).map(([k, v]) => [v, k])
-);
-
 export const ORDER_STATUS_OPTIONS = [
   { value: 'ממתין לליקוט', label: 'ממתין לליקוט', color: 'slate' },
   { value: 'ממתין לתאום', label: 'ממתין לתאום', color: 'blue' },
-  { value: 'תואמה אספקה ', label: 'תואמה אספקה', color: 'purple' },
-  { value: 'איו במלאי', label: 'אין במלאי', color: 'amber' },
+  { value: 'תואמה אספקה', label: 'תואמה אספקה', color: 'purple' },
+  { value: 'אין במלאי', label: 'אין במלאי', color: 'amber' },
   { value: 'סופק', label: 'סופק', color: 'green' },
 ] as const;
 
@@ -41,7 +19,6 @@ export const CUSTOMER_STATUS_OPTIONS = [
 
 export const WORKERS = ['שורה', 'אילונה'] as const;
 
-// Display name for order status (handles typo "איו" -> "אין")
 export function getOrderStatusLabel(status: string | undefined): string {
   if (!status) return 'לא ידוע';
   const option = ORDER_STATUS_OPTIONS.find(o => o.value === status);
@@ -61,19 +38,6 @@ export function getTaskStatusLabel(status: string | undefined): string {
 }
 
 // ─── Service Calls ──────────────────────────────────────────
-
-export const SERVICE_CALL_FIELD_MAP: Record<string, string> = {
-  'שם הלקוח': 'customerName',
-  'טלפון': 'phone',
-  'סטטוס לקוח': 'serviceCallStatus',
-  'קופת חולים': 'healthFund',
-  'לקוח נפתח ע״י': 'openedBy',
-  'עיר': 'city',
-};
-
-export const REVERSE_SERVICE_CALL_FIELD_MAP: Record<string, string> = Object.fromEntries(
-  Object.entries(SERVICE_CALL_FIELD_MAP).map(([k, v]) => [v, k])
-);
 
 export const SERVICE_CALL_STATUS_OPTIONS = [
   { value: 'קריאה חדשה', label: 'קריאה חדשה', color: 'blue' },

@@ -2,8 +2,25 @@ import type { DriverName } from './route';
 
 export type { DriverName };
 
+export type CalendarStopSource = 'delivery' | 'service' | 'task';
+export type CalendarStopStatus =
+  | 'planned'
+  | 'in_progress'
+  | 'completed'
+  | 'not_completed'
+  | 'cancelled';
+
 export interface CalendarStop {
-  orderId: string;
+  /** calendar_stops.id — יחידת הזיהוי של ה-stop ביומן */
+  stopId: string;
+  /** orderId או serviceCallId — תלוי בסוג */
+  sourceId: string;
+  sourceType: CalendarStopSource;
+  status: CalendarStopStatus;
+  /** יום האספקה */
+  deliveryDate: string;
+  /** הנהג המשויך */
+  driver: DriverName;
   customerName: string;
   address?: string;
   city?: string;

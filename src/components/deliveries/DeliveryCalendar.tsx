@@ -4,6 +4,12 @@ import { DRIVER_CONFIG } from '@/types/delivery';
 import type { DriverName } from '@/types/route';
 import { Button } from '@/components/ui/button';
 import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import {
   ChevronLeft,
   ChevronRight,
   Calendar,
@@ -12,7 +18,13 @@ import {
   Trash2,
   GripVertical,
   Phone,
-  Map,
+  Package,
+  Wrench,
+  ClipboardList,
+  Plus,
+  Check,
+  X,
+  Map as MapIcon,
 } from 'lucide-react';
 import { useDroppable } from '@dnd-kit/core';
 
@@ -22,8 +34,14 @@ const toLocalDateStr = (d: Date) =>
 
 interface DeliveryCalendarProps {
   deliveries: CalendarDelivery[];
-  onRemoveOrder?: (deliveryId: string, orderId: string) => void;
-  onViewDayRoute?: (dateStr: string) => void;
+  /** Called with the calendar_stops.id to remove (single source of truth) */
+  onRemoveOrder?: (stopId: string) => void;
+  /** Called when user clicks "+" on a day to create a free-standing task */
+  onAddTask?: (dateStr: string) => void;
+  /** Called to mark a stop as completed / not_completed */
+  onResolveStop?: (stopId: string, status: 'completed' | 'not_completed') => void;
+  /** Called when user clicks "map" on a day to see the full day's route */
+  onViewDayMap?: (dateStr: string) => void;
 }
 
 // ─── Stop Card ─────────────────────────────────────────────
@@ -31,41 +49,129 @@ interface DeliveryCalendarProps {
 interface StopCardProps {
   stop: CalendarStop;
   delivery: CalendarDelivery;
-  onRemove?: (deliveryId: string, orderId: string) => void;
+  onRemove?: (stopId: string) => void;
+  onResolve?: (stopId: string, status: 'completed' | 'not_completed') => void;
 }
 
-function StopCard({ stop, delivery, onRemove }: StopCardProps) {
+function StopCard({ stop, delivery, onRemove, onResolve }: StopCardProps) {
   const config = DRIVER_CONFIG[delivery.driver];
+
+  // Sortable — sortable-drag רק כשעוצמת ה-stop לא resolved
+  const isResolved = stop.status === 'completed' || stop.status === 'not_completed';
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: stop.stopId,
+    data: {
+      type: 'stop',
+      stopId: stop.stopId,
+      deliveryDate: delivery.date,
+      driver: delivery.driver,
+    },
+    disabled: isResolved,
+  });
+
+  const sortableStyle: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  };
+
+  // אייקון + צבע לפי סוג מקור
+  const sourceConfig = {
+    delivery: { Icon: Package, color: 'text-blue-600', bg: 'bg-blue-50', label: 'משלוח' },
+    service: { Icon: Wrench, color: 'text-orange-600', bg: 'bg-orange-50', label: 'שירות' },
+    task: { Icon: ClipboardList, color: 'text-amber-600', bg: 'bg-amber-50', label: 'משימה' },
+  } as const;
+  const src = sourceConfig[stop.sourceType];
+  const SrcIcon = src.Icon;
+
+  // רקע לפי סטטוס
+  const statusBg =
+    stop.status === 'completed'
+      ? 'bg-emerald-50/80 dark:bg-emerald-900/20'
+      : stop.status === 'not_completed'
+        ? 'bg-red-50/60 dark:bg-red-900/20'
+        : 'bg-background/60';
+  const nameClass =
+    stop.status === 'not_completed'
+      ? 'line-through text-muted-foreground'
+      : '';
 
   return (
     <div
+      ref={setNodeRef}
+      style={sortableStyle}
       className={`
-        group rounded-lg border-s-[3px] ${config.borderColor} border bg-background/60
+        group rounded-lg border-s-[3px] ${config.borderColor} border ${statusBg}
         p-2 transition-all duration-200 hover:shadow-md
+        ${!isResolved ? 'cursor-grab active:cursor-grabbing' : ''}
       `}
+      {...(isResolved ? {} : { ...listeners, ...attributes })}
     >
-      {/* Top row: customer name + driver badge + trash */}
+      {/* Top row: source icon + customer name + driver badge + action buttons */}
       <div className="flex items-center justify-between gap-1 mb-1">
         <div className="flex items-center gap-1.5 min-w-0">
           <GripVertical className="h-3 w-3 text-muted-foreground/30 flex-shrink-0" />
-          <span className="font-semibold text-xs truncate">
+          <span
+            className={`flex h-5 w-5 items-center justify-center rounded-md ${src.bg} ${src.color} flex-shrink-0`}
+            title={src.label}
+          >
+            <SrcIcon className="h-3 w-3" />
+          </span>
+          <span className={`font-semibold text-xs truncate ${nameClass}`}>
             {stop.customerName}
           </span>
+          {stop.status === 'completed' && (
+            <Check className="h-3 w-3 text-emerald-600 flex-shrink-0" aria-label="בוצע" />
+          )}
+          {stop.status === 'not_completed' && (
+            <X className="h-3 w-3 text-red-600 flex-shrink-0" aria-label="לא בוצע" />
+          )}
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
-          <span
-            className={`text-[9px] px-1.5 py-0.5 rounded-md font-medium ${config.color}`}
-          >
-            {config.label}
-          </span>
+          {/* Resolve buttons — always visible when planned/in_progress */}
+          {onResolve && !isResolved && (
+            <>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onResolve(stop.stopId, 'completed');
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="flex items-center gap-0.5 rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-500/20 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50 transition-colors"
+                title="סמן כבוצע"
+              >
+                <Check className="h-2.5 w-2.5" />
+                בוצע
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onResolve(stop.stopId, 'not_completed');
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="flex items-center gap-0.5 rounded-md bg-red-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-red-700 hover:bg-red-500/20 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 transition-colors"
+                title="סמן כלא בוצע"
+              >
+                <X className="h-2.5 w-2.5" />
+                לא בוצע
+              </button>
+            </>
+          )}
           {onRemove && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                onRemove(delivery.id, stop.orderId);
+                onRemove(stop.stopId);
               }}
               className="h-5 w-5 flex items-center justify-center rounded-md opacity-0 group-hover:opacity-100 hover:bg-destructive/10 transition-all"
-              title="החזר לממתינות"
+              title="הסר מהיומן"
             >
               <Trash2 className="h-3 w-3 text-destructive" />
             </button>
@@ -139,7 +245,9 @@ const MIN_VISIBLE_DAYS = 3;
 export function DeliveryCalendar({
   deliveries,
   onRemoveOrder,
-  onViewDayRoute,
+  onAddTask,
+  onResolveStop,
+  onViewDayMap,
 }: DeliveryCalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
 
@@ -304,6 +412,12 @@ export function DeliveryCalendar({
         {visibleDays.map((day) => {
           const dateStr = toLocalDateStr(day);
           const dayStops = getStopsForDate(dateStr);
+          // קיבוץ לפי נהג — רודי דויד קודם, אחר כך נהג חיצוני
+          const driverOrder: DriverName[] = ['רודי דויד', 'נהג חיצוני מועלם'];
+          const dayDeliveries = getDeliveriesForDate(dateStr).sort(
+            (a, b) =>
+              driverOrder.indexOf(a.driver) - driverOrder.indexOf(b.driver)
+          );
           const isTodayFlag = isToday(day);
           const isPast = isPastDay(day);
 
@@ -325,17 +439,30 @@ export function DeliveryCalendar({
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span
-                    className={`font-semibold text-sm ${
-                      isTodayFlag
-                        ? 'text-primary'
-                        : isPast
-                          ? 'text-amber-600'
-                          : 'text-muted-foreground'
-                    }`}
-                  >
-                    {dayNames[day.getDay()]}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className={`font-semibold text-sm ${
+                        isTodayFlag
+                          ? 'text-primary'
+                          : isPast
+                            ? 'text-amber-600'
+                            : 'text-muted-foreground'
+                      }`}
+                    >
+                      {dayNames[day.getDay()]}
+                    </span>
+                    {onAddTask && !isPast && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 rounded-md hover:bg-amber-100 dark:hover:bg-amber-900/30"
+                        onClick={() => onAddTask(dateStr)}
+                        title="הוסף משימה לנהג"
+                      >
+                        <Plus className="h-3.5 w-3.5 text-amber-600" />
+                      </Button>
+                    )}
+                  </div>
                   <div className="text-left">
                     <div
                       className={`text-lg font-bold ${isTodayFlag ? 'text-primary' : ''}`}
@@ -348,43 +475,72 @@ export function DeliveryCalendar({
                   </div>
                 </div>
                 {dayStops.length > 0 && (
-                  <div className="flex items-center justify-between mt-2">
+                  <div className="mt-2 flex items-center justify-between gap-1.5">
                     <div className="flex items-center gap-1.5">
                       <Truck className="h-3 w-3 text-primary/70" />
-                      <span className="text-xs text-muted-foreground font-medium">
-                        {dayStops.length} הזמנות
+                      <span className="text-xs font-medium text-muted-foreground">
+                        {dayStops.length} עצירות
                       </span>
                     </div>
-                    {onViewDayRoute && (
+                    {onViewDayMap && (
                       <Button
                         variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 rounded-md hover:bg-primary/10"
-                        onClick={() => onViewDayRoute(dateStr)}
-                        title="צפה במסלולים על המפה"
+                        size="sm"
+                        onClick={() => onViewDayMap(dateStr)}
+                        className="h-6 gap-1 rounded-md px-2 text-[10px] text-muted-foreground hover:bg-sky-50 hover:text-sky-700 dark:hover:bg-sky-950/30"
+                        title="הצג את יום המסלול על המפה"
                       >
-                        <Map className="h-4 w-4 text-primary" />
+                        <MapIcon className="h-3 w-3" />
+                        מפה
                       </Button>
                     )}
                   </div>
                 )}
               </div>
 
-              {/* Stop Cards */}
-              <div className="space-y-1.5 p-2 min-h-[180px]">
-                {dayStops.length > 0 ? (
-                  dayStops.map(({ stop, delivery }) => (
-                    <StopCard
-                      key={`${delivery.id}-${stop.orderId}`}
-                      stop={stop}
-                      delivery={delivery}
-                      onRemove={onRemoveOrder}
-                    />
-                  ))
+              {/* Stop Cards — grouped by driver */}
+              <div className="p-2 min-h-[180px] space-y-3">
+                {dayDeliveries.length > 0 ? (
+                  dayDeliveries.map((delivery) => {
+                    const driverCfg = DRIVER_CONFIG[delivery.driver];
+                    return (
+                      <div key={delivery.id} className="space-y-1.5">
+                        {/* Driver subheader */}
+                        <div
+                          className={`flex items-center justify-between rounded-md px-2 py-1 ${driverCfg.color}`}
+                        >
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Truck className="h-3 w-3 flex-shrink-0" />
+                            <span className="text-[11px] font-semibold truncate">
+                              {driverCfg.label}
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-bold opacity-80">
+                            {delivery.stops.length}
+                          </span>
+                        </div>
+                        {/* Stops for this driver — sortable within group */}
+                        <SortableContext
+                          items={delivery.stops.map((s) => s.stopId)}
+                          strategy={verticalListSortingStrategy}
+                        >
+                          {delivery.stops.map((stop) => (
+                            <StopCard
+                              key={stop.stopId}
+                              stop={stop}
+                              delivery={delivery}
+                              onRemove={onRemoveOrder}
+                              onResolve={onResolveStop}
+                            />
+                          ))}
+                        </SortableContext>
+                      </div>
+                    );
+                  })
                 ) : (
                   <div className="flex flex-col items-center justify-center h-32 text-muted-foreground/50">
                     <Truck className="h-5 w-5 mb-1" />
-                    <span className="text-xs">אין הזמנות</span>
+                    <span className="text-xs">אין עצירות</span>
                   </div>
                 )}
               </div>

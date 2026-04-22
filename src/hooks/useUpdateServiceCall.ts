@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { updateServiceCall } from '@/lib/airtable-service-calls';
+import { updateServiceCall } from '@/lib/service-calls';
 import type { ServiceCall } from '@/types/service-call';
 import { toast } from 'sonner';
 

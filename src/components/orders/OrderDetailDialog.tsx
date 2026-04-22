@@ -163,19 +163,18 @@ export function OrderDetailDialog({ order, open, onClose }: OrderDetailDialogPro
               </label>
               <div className="space-y-1.5">
                 {order.documents.map((doc) => (
-                  <a
+                  <div
                     key={doc.id}
-                    href={doc.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 rounded-md border bg-card p-2 text-sm hover:bg-accent transition-colors"
+                    className="flex items-center gap-2 rounded-md border bg-card p-2 text-sm"
                   >
                     <FileText className="h-4 w-4 text-muted-foreground" />
                     <span className="truncate flex-1">{doc.filename}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {(doc.size / 1024).toFixed(0)} KB
-                    </span>
-                  </a>
+                    {doc.sizeBytes != null && (
+                      <span className="text-xs text-muted-foreground">
+                        {(doc.sizeBytes / 1024).toFixed(0)} KB
+                      </span>
+                    )}
+                  </div>
                 ))}
               </div>
             </div>

@@ -1,13 +1,12 @@
-export interface AirtableAttachment {
+// Row from public.order_documents (loaded separately from the orders query)
+export interface OrderDocument {
   id: string;
-  url: string;
+  orderId: string;
+  storagePath: string;
   filename: string;
-  size: number;
-  type: string;
-  thumbnails?: {
-    small?: { url: string; width: number; height: number };
-    large?: { url: string; width: number; height: number };
-  };
+  sizeBytes?: number;
+  mimeType?: string;
+  created: string;
 }
 
 export interface Order {
@@ -16,14 +15,14 @@ export interface Order {
   phone?: string;
   customerStatus?: 'לקוח חדש' | 'לקוח קיים';
   status?: 'Todo' | 'In progress' | 'Done';
-  orderStatus?: 'ממתין לליקוט' | 'ממתין לתאום' | 'תואמה אספקה ' | 'איו במלאי' | 'סופק';
+  orderStatus?: 'ממתין לליקוט' | 'ממתין לתאום' | 'תואמה אספקה' | 'אין במלאי' | 'סופק';
   healthFund?: string;
   openedBy?: string;
   fax?: string;
   address?: string;
   city?: string;
   agent?: string;
-  documents?: AirtableAttachment[];
+  documents?: OrderDocument[];
   created: string;
 }
 

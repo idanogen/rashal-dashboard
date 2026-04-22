@@ -1,11 +1,13 @@
 import type { ReactNode } from 'react';
 import { AppHeader } from './AppHeader';
+import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 
 interface AppShellProps {
   children: ReactNode;
 }
 
 export function AppShell({ children }: AppShellProps) {
+  useRealtimeSync();
   return (
     <div className="min-h-screen bg-background">
       <AppHeader />

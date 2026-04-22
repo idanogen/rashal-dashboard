@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useDraggable } from '@dnd-kit/core';
 import type { ServiceCall } from '@/types/service-call';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -10,12 +11,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Wrench, Phone, MapPin, Clock, Truck, X, Undo2, RotateCcw, ChevronDown, ChevronLeft, ChevronsUpDown } from 'lucide-react';
+import { Wrench, Phone, MapPin, Clock, X, Undo2, RotateCcw, ChevronDown, ChevronLeft, ChevronsUpDown } from 'lucide-react';
 import { ZoneFilter } from '@/components/deliveries/ZoneFilter';
-import { RouteBuilderDialog } from '@/components/deliveries/RouteBuilderDialog';
 import { getZoneById, ZONES } from '@/types/zone';
 import { getDaysSinceCreated, getDaysColor, cn } from '@/lib/utils';
-import type { Order } from '@/types/order';
 
 // ─── Service Call Card ────────────────────────────────────────
 interface ServiceCallCardProps {
@@ -29,13 +28,22 @@ function ServiceCallCard({ call, isExcluded, onExclude, onRestore }: ServiceCall
   const days = getDaysSinceCreated(call.created);
   const daysColor = getDaysColor(days);
 
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `servicecall-${call.id}`,
+    data: { type: 'serviceCall', call },
+    disabled: isExcluded,
+  });
+
   return (
     <Card
+      ref={setNodeRef}
+      {...(isExcluded ? {} : { ...listeners, ...attributes })}
       className={cn(
         'relative transition-all',
         isExcluded
           ? 'opacity-40 border-dashed'
-          : 'hover:shadow-md'
+          : 'cursor-grab active:cursor-grabbing hover:shadow-md',
+        isDragging && 'opacity-30'
       )}
     >
       <CardContent className="p-3">
@@ -98,21 +106,6 @@ function ServiceCallCard({ call, isExcluded, onExclude, onRestore }: ServiceCall
   );
 }
 
-// ─── Adapter: ServiceCall → Order-like shape for RouteBuilderDialog ───
-function serviceCallToOrder(call: ServiceCall): Order {
-  return {
-    id: call.id,
-    customerName: call.customerName,
-    phone: call.phone,
-    customerStatus: call.customerStatus,
-    healthFund: call.healthFund,
-    openedBy: call.openedBy,
-    city: call.city,
-    address: call.city, // use city as address for service calls
-    created: call.created,
-  };
-}
-
 // ─── Main Component ────────────────────────────────────────
 interface UnscheduledServiceCallsProps {
   calls: ServiceCall[];
@@ -127,7 +120,6 @@ export function UnscheduledServiceCalls({
 }: UnscheduledServiceCallsProps) {
   const [selectedZones, setSelectedZones] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'all' | 'grouped'>('all');
-  const [isRouteBuilderOpen, setIsRouteBuilderOpen] = useState(false);
   const [excludedCallIds, setExcludedCallIds] = useState<Set<string>>(new Set());
   const [expandedZones, setExpandedZones] = useState<Set<string>>(new Set());
 
@@ -217,12 +209,6 @@ export function UnscheduledServiceCalls({
     return allZoneIds.length > 0 && allZoneIds.every((id) => expandedZones.has(id));
   }, [groupedByZone, expandedZones]);
 
-  // Convert active service calls to Order shape for RouteBuilderDialog
-  const activeOrdersForDialog = useMemo(
-    () => activeCalls.map(serviceCallToOrder),
-    [activeCalls]
-  );
-
   if (calls.length === 0) {
     return (
       <div className="rounded-lg border-2 border-dashed bg-muted/30 p-6 text-center">
@@ -270,16 +256,6 @@ export function UnscheduledServiceCalls({
               )}
             </div>
             <div className="flex items-center gap-2">
-              <Button
-                size="default"
-                variant="default"
-                onClick={() => setIsRouteBuilderOpen(true)}
-                disabled={activeCalls.length === 0}
-                className="gap-2"
-              >
-                <Truck className="h-4 w-4" />
-                בנה מסלול ({activeCalls.length})
-              </Button>
               <Select
                 value={viewMode}
                 onValueChange={(v) => setViewMode(v as 'all' | 'grouped')}
@@ -376,13 +352,6 @@ export function UnscheduledServiceCalls({
         )}
       </div>
 
-      {/* Route Builder Dialog — using same dialog with routeType */}
-      <RouteBuilderDialog
-        open={isRouteBuilderOpen}
-        onOpenChange={setIsRouteBuilderOpen}
-        orders={activeOrdersForDialog}
-        routeType="service"
-      />
     </div>
   );
 }

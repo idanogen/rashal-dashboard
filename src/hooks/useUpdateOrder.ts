@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { updateOrder } from '@/lib/airtable';
+import { updateOrder } from '@/lib/orders';
 import type { Order } from '@/types/order';
 import { toast } from 'sonner';
 

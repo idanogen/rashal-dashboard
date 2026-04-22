@@ -1,10 +1,5 @@
 # [לקוח] Rashal Dashboard — דשבורד הזמנות לראש"ל ציוד רפואי
 
-## ⏳ תזכורת: קישור Preview זמני פעיל
-> **בכל פתיחת שיחה חדשה בפרויקט הזה — שאל את המשתמש:**
-> "יש קישור Preview זמני פעיל: `https://rashal-dashboard-7e700sum1-idans-projects-2916b0da.vercel.app` — רוצה שאבטל את הגישה אליו?"
-> אם המשתמש מאשר — הרץ `npx vercel rm rashal-dashboard-7e700sum1-idans-projects-2916b0da.vercel.app` ומחק את הסעיף הזה מהקובץ.
-
 ## זיהוי פרויקט
 - **פרויקט:** rashal-dashboard
 - **נתיב:** `/Users/idanogen/Projects/rashal-dashboard`
@@ -47,7 +42,8 @@
 
 ### State & Data
 - **TanStack React Query** 5.90.20 - ניהול state וcaching
-- **Airtable API** - מסד נתונים (REST)
+- **Supabase** (PostgreSQL + Auth + Realtime + Storage) - מסד הנתונים של המערכת
+- **`useRealtimeSync`** - מאזין ל-postgres_changes על `orders`, `routes`, `service_calls` ומעדכן את ה-cache אוטומטית
 
 ### Charts & Visualization
 - **Recharts** 3.7.0 - תרשימים
@@ -70,7 +66,7 @@
 │   ├── /route-navigation          # MapView - מפה אינטראקטיבית עם Leaflet
 │   └── /ui                        # Shadcn components (Button, Dialog, Card...)
 ├── /hooks                         # React Query hooks + useZonedOrders
-├── /lib                           # Airtable API, utilities, constants, Maps, Geocoding, Export
+├── /lib                           # Supabase client + API (orders/routes/service-calls), utilities, Maps, Geocoding, Export
 ├── /pages                         # DashboardPage, DeliveriesPage, RouteNavigationPage
 ├── /types                         # TypeScript interfaces (order.ts, zone.ts, route.ts)
 ├── /assets                        # תמונות, לוגו
@@ -91,17 +87,19 @@ Config:
 צור קובץ `.env` בשורש הפרויקט:
 
 ```env
-VITE_AIRTABLE_PAT=your_personal_access_token_here
-VITE_AIRTABLE_BASE_ID=appe17N3EbbGYogGK
-VITE_AIRTABLE_TABLE_ID=tblRskogYbE0RoCz0
-VITE_AIRTABLE_ROUTES_TABLE_ID=tblI27BH5i7YlPq1P
+VITE_SUPABASE_URL=https://kukstfxtznymfkirdmty.supabase.co
+VITE_SUPABASE_ANON_KEY=<publishable / anon key>
 ```
 
-**איך לקבל Airtable PAT:**
-1. היכנס ל-Airtable -> Account -> Developer Hub -> Personal Access Tokens
-2. Create new token עם הרשאות: `data.records:read`, `data.records:write`, `schema.bases:read`
-3. בחר את הבסיס הספציפי (appe17N3EbbGYogGK)
-4. העתק את ה-token ל-`.env` **וגם ל-Vercel Environment Variables**
+**Supabase project:** `kukstfxtznymfkirdmty` (ref), region eu-central-1.
+
+**איך לקבל את המפתחות:**
+1. Supabase Dashboard → Project `rashal-dashboard` → Settings → API
+2. העתק את `Project URL` ואת ה-`anon / publishable key`
+3. הוסף לקובץ `.env` **וגם ל-Vercel Environment Variables**
+4. Service Role Key — **לעולם לא בצד לקוח**. רק עבור scripts/Edge Functions.
+
+**RLS:** מופעל בכל 5 הטבלאות (`profiles`, `orders`, `service_calls`, `routes`, `order_documents`). וודא שה-policies מתאימים לצורך ה-app (כרגע auth דרך Supabase Auth — ראה `src/lib/auth-context.tsx`).
 
 ---
 
@@ -209,7 +207,7 @@ npm run lint       # Linting
 - **נהגים:** רודי דויד, נהג חיצוני מועלם (`DRIVERS` ב-`route.ts`)
 - `Select` לבחירת נהג בפאנל השמאלי
 - כפתור **"אשר מסלול"** (ירוק) בפוטר
-- אישור → שמירה בטבלת מסלולים באיירטייבל + עדכון הזמנות ל"תואמה אספקה"
+- אישור → שמירה בטבלת `routes` ב-Supabase + עדכון הזמנות ל"תואמה אספקה"
 - תאריך משלוח = מחר (אוטומטי)
 - שם מסלול = `מסלול DD/MM - {שם נהג}`
 
@@ -222,9 +220,28 @@ npm run lint       # Linting
 
 ## מערכת מסלולים מאושרים ⭐⭐
 
-### טבלת Airtable: מסלולים
-- **Table ID:** `tblI27BH5i7YlPq1P`
-- **שדות:** שם מסלול, נהג (single select), תאריך משלוח, סטטוס מסלול, הזמנות (JSON), פרטי עצירות (JSON), מספר עצירות, מרחק משוער, זמן משוער, הערות
+### טבלת Supabase: `public.routes`
+- **Primary key:** `id` (uuid)
+- **עמודות:**
+  - `route_name text`, `driver driver_name enum` (`רודי דויד` / `נהג חיצוני מועלם`)
+  - `delivery_date date`, `status route_status enum` (`מאושר` / `בביצוע` / `הושלם` / `בוטל`)
+  - `stops jsonb` (מערך RouteStop — id, customerName, address, city, phone, sequence)
+  - `order_ids text[]`, `stop_count int`
+  - `estimated_distance_km numeric`, `estimated_time_minutes int`
+  - `notes text`, `created_at timestamptz`, `updated_at timestamptz`
+- **RLS:** מופעל.
+
+### טבלאות נוספות ב-Supabase
+| טבלה | תיאור | Primary key |
+|------|--------|-------------|
+| `public.orders` | הזמנות (600 רשומות) | uuid |
+| `public.service_calls` | קריאות שירות (658 רשומות) | uuid |
+| `public.calendar_stops` ⭐ | עצירות ביומן (משלוח / שירות / משימה) — מקור האמת ליומן | uuid |
+| `public.routes` | מסלולים מאושרים (לא בשימוש בזרימה החדשה — ראה "עדכונים אחרונים") | uuid |
+| `public.order_documents` | קבצי הזמנה (Supabase Storage) | uuid, FK → orders.id |
+| `public.profiles` | פרופילי משתמשים | uuid, FK → auth.users.id |
+
+**Enums ב-Postgres:** `customer_status`, `task_status`, `order_status`, `service_call_status`, `driver_name`, `route_status`.
 
 ### `route.ts` - טיפוסים
 - `DriverName` = 'רודי דויד' | 'נהג חיצוני מועלם'
@@ -232,10 +249,10 @@ npm run lint       # Linting
 - `RouteStop` interface (id, customerName, address, city, phone, sequence)
 - `ApprovedRoute` interface
 
-### `airtable-routes.ts` - API
-- `fetchAllRoutes()` — שליפה עם pagination + JSON.parse לשדות
-- `createRoute()` — יצירת מסלול חדש (POST)
-- `updateRoute()` — עדכון סטטוס/עצירות (PATCH)
+### `src/lib/routes.ts` - API
+- `fetchAllRoutes()` — `supabase.from('routes').select('*').order('delivery_date', desc)`
+- `createRoute()` — INSERT עם המרת camelCase → snake_case
+- `updateRoute()` — UPDATE עם eq('id', …)
 
 ### `ApprovedRoutesList` - תצוגה
 - כרטיסים מתקפלים (Collapsible) עם פרטי מסלול
@@ -281,15 +298,43 @@ npm run lint       # Linting
 
 ## Hooks
 
+### Calendar stops ⭐ (המודל החדש)
 | Hook | קובץ | תיאור |
 |------|-------|--------|
-| `useOrders()` | hooks/useOrders.ts | כל ההזמנות מ-Airtable (staleTime 30s, refetch 60s) |
+| `useCalendarStops()` | hooks/useCalendarStops.ts | כל העצירות (משלוח + שירות + משימה) ⭐ |
+| `useScheduleStop()` | hooks/useScheduleStop.ts | יצירת stop + עדכון source ל"תואמה אספקה"/"תואם ביקור" |
+| `useResolveStop()` | hooks/useResolveStop.ts | סימון completed/not_completed + סנכרון source |
+| `useReorderStops()` | hooks/useReorderStops.ts | סידור עצירות באותו יום × נהג |
+| `useDeleteStop()` | hooks/useDeleteStop.ts | מחיקה + החזרת source לממתינים |
+
+### Orders
+| Hook | קובץ | תיאור |
+|------|-------|--------|
+| `useOrders()` | hooks/useOrders.ts | כל ההזמנות מ-Supabase (staleTime 30s) |
 | `useUpdateOrder()` | hooks/useUpdateOrder.ts | Mutation + optimistic update |
 | `useOrderStats(orders)` | hooks/useOrderStats.ts | סטטיסטיקה מחושבת |
-| `useZonedOrders(orders, zoneIds)` | hooks/useZonedOrders.ts | סינון לפי אזורים ⭐ |
-| `useRoutes()` | hooks/useRoutes.ts | כל המסלולים מ-Airtable |
-| `useApproveRoute()` | hooks/useApproveRoute.ts | Mutation: שמירת מסלול + עדכון הזמנות |
-| `useUpdateRoute()` | hooks/useUpdateRoute.ts | Mutation: עדכון סטטוס/עצירות מסלול |
+| `useZonedOrders(orders, zoneIds)` | hooks/useZonedOrders.ts | סינון לפי אזורים |
+
+### Service calls
+| Hook | קובץ | תיאור |
+|------|-------|--------|
+| `useServiceCalls()` | hooks/useServiceCalls.ts | כל קריאות השירות מ-Supabase |
+| `useUpdateServiceCall()` | hooks/useUpdateServiceCall.ts | Mutation + optimistic update |
+| `useZonedServiceCalls()` | hooks/useZonedServiceCalls.ts | סינון קריאות לפי אזור |
+
+### Routes (dead code — ראה "עדכונים אחרונים" 22/04/2026)
+| Hook | קובץ | תיאור |
+|------|-------|--------|
+| `useRoutes()` | hooks/useRoutes.ts | כל המסלולים מ-Supabase (לא בשימוש בזרימה החדשה) |
+| `useApproveRoute()` | hooks/useApproveRoute.ts | ⚠ לא בשימוש — הוחלף ב-`useScheduleStop` |
+| `useUpdateRoute()` | hooks/useUpdateRoute.ts | ⚠ לא בשימוש |
+| `useApproveServiceRoute()` | hooks/useApproveServiceRoute.ts | ⚠ לא בשימוש — הוחלף ב-`useScheduleStop` |
+
+### Utilities
+| Hook | קובץ | תיאור |
+|------|-------|--------|
+| `useRealtimeSync()` | hooks/useRealtimeSync.ts | Supabase channel על 4 הטבלאות → invalidate cache |
+| `useRouteOptimizer()` | hooks/useRouteOptimizer.ts | Nearest Neighbor מהמשרד |
 
 ---
 
@@ -297,9 +342,13 @@ npm run lint       # Linting
 
 | Module | קובץ | תיאור |
 |--------|-------|--------|
-| `airtable.ts` | lib/airtable.ts | fetchAllOrders, updateOrder, updateMultipleOrders, mapRecord (createdTime) |
-| `airtable-routes.ts` | lib/airtable-routes.ts | fetchAllRoutes, createRoute, updateRoute (טבלת מסלולים) |
-| `constants.ts` | lib/constants.ts | FIELD_MAP, ORDER_STATUS_OPTIONS, WORKERS |
+| `supabase.ts` | lib/supabase.ts | createClient + persistSession — `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` |
+| `orders.ts` | lib/orders.ts | fetchAllOrders, updateOrder, updateMultipleOrders, createOrder — טבלת `orders` |
+| `calendar-stops.ts` ⭐ | lib/calendar-stops.ts | CRUD ליומן המשולב — fetchAll, fetchByDateRange, create, update, delete, reorder, resolve |
+| `routes.ts` | lib/routes.ts | fetchAllRoutes, createRoute, updateRoute — טבלת `routes` (לא בשימוש בזרימה החדשה) |
+| `service-calls.ts` | lib/service-calls.ts | fetchAllServiceCalls, updateServiceCall, updateMultipleServiceCalls, createServiceCall — טבלת `service_calls` |
+| `auth-context.tsx` | lib/auth-context.tsx | AuthProvider + useAuth — Supabase Auth session |
+| `constants.ts` | lib/constants.ts | ORDER_STATUS_OPTIONS, TASK_STATUS_OPTIONS, CUSTOMER_STATUS_OPTIONS, SERVICE_CALL_STATUS_OPTIONS, WORKERS |
 | `geocoding.ts` | lib/geocoding.ts | ~100 ערים, fuzzy match, Haversine distance ⭐ |
 | `maps.ts` | lib/maps.ts | buildRouteUrl, MAX_GOOGLE_MAPS_STOPS=11 |
 | `export.ts` | lib/export.ts | exportRouteToCSV (BOM עברית) |
@@ -312,19 +361,19 @@ npm run lint       # Linting
 ### `Order` Interface (`/src/types/order.ts`)
 ```typescript
 interface Order {
-  id: string                    // Airtable record ID
+  id: string                    // Supabase UUID
   customerName: string          // שם הלקוח
   phone?: string
   customerStatus?: 'לקוח חדש' | 'לקוח קיים'
   status?: 'Todo' | 'In progress' | 'Done'
-  orderStatus?: 'ממתין לתאום' | 'תואמה אספקה ' | 'איו במלאי' | 'סופק'
+  orderStatus?: 'ממתין לליקוט' | 'ממתין לתאום' | 'תואמה אספקה' | 'אין במלאי' | 'סופק'
   healthFund?: string
   openedBy?: string             // שורה / אילונה
   address?: string
   city?: string
   agent?: string
-  documents?: AirtableAttachment[]
-  created: string               // ISO timestamp (createdTime)
+  documents?: OrderDocument[]   // נטענים בנפרד מ-order_documents (לא חלק מ-fetchAllOrders)
+  created: string               // ISO — מ-orders.created_at
 }
 ```
 
@@ -342,6 +391,176 @@ interface Zone {
 ---
 
 ## עדכונים אחרונים
+
+### 22/04/2026 — יומן משולב (משלוחים + שירות) על מודל `calendar_stops` חדש ⭐⭐⭐⭐
+
+**שינוי ארכיטקטורלי מרכזי**: הוחלף המודל `routes` (מסלול = 1 נהג × 1 יום × סוג מסלול אחד) במודל גמיש של `calendar_stops` — כל עצירה היא שורה נפרדת ב-DB עם FK polymorphic למקור (`orders` או `service_calls`). משמעות: **נהג אחד יכול לבצע גם משלוחים וגם קריאות שירות באותו יום**, והכל מוצג ביומן אחד משולב.
+
+#### הסכמה החדשה — `public.calendar_stops`
+
+```sql
+CREATE TABLE public.calendar_stops (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- Scheduling
+  delivery_date   date          NOT NULL,
+  driver          driver_name   NOT NULL,
+  sequence        int           NOT NULL DEFAULT 0,
+  -- Optional FK ל-routes (תקציר יום × נהג — לא חובה)
+  route_id        uuid          REFERENCES public.routes(id) ON DELETE SET NULL,
+  -- Polymorphic source (בדיוק אחד מלא, אלא אם task)
+  source_type     text          NOT NULL
+                  CHECK (source_type IN ('delivery','service','task')),
+  order_id        uuid          REFERENCES public.orders(id) ON DELETE CASCADE,
+  service_call_id uuid          REFERENCES public.service_calls(id) ON DELETE CASCADE,
+  -- Cached stop data (נשמר בעת התיזמון, יכול לסטות אם נערך)
+  customer_name   text          NOT NULL,
+  address         text,
+  city            text,
+  phone           text,
+  -- Status של ה-stop עצמו (נפרד מסטטוס ה-source)
+  status          text          NOT NULL DEFAULT 'planned'
+                  CHECK (status IN ('planned','in_progress','completed','not_completed','cancelled')),
+  completed_at    timestamptz,
+  notes           text,
+  created_at      timestamptz   NOT NULL DEFAULT now(),
+  updated_at      timestamptz   NOT NULL DEFAULT now(),
+  -- Constraint — FK אחד בלבד לפי source_type
+  CONSTRAINT calendar_stops_source_check CHECK (
+    (source_type = 'delivery' AND order_id IS NOT NULL AND service_call_id IS NULL) OR
+    (source_type = 'service'  AND service_call_id IS NOT NULL AND order_id IS NULL) OR
+    (source_type = 'task'     AND order_id IS NULL AND service_call_id IS NULL)
+  )
+);
+```
+
+**Indexes:** `(delivery_date, driver, sequence)`, `(order_id)`, `(service_call_id)`, `(route_id)`, `(status)`.
+**RLS:** מופעל, policy `authenticated_all_calendar_stops` (אותה מדיניות כמו שאר הטבלאות).
+**Realtime:** הוסף ל-publication `supabase_realtime`.
+**Trigger:** `set_updated_at` לעדכון אוטומטי של `updated_at`.
+
+#### סנכרון סטטוס דו-כיווני (S2 — אפליקציה, לא DB triggers)
+
+| פעולה | stop.status | source.status |
+|---|---|---|
+| שיבוץ (drag → driver) | `planned` | delivery → `'תואמה אספקה'` / service → `'תואם ביקור'` |
+| סימון כבוצע (`useResolveStop`) | `completed` | delivery → `'סופק'` / service → `'בוצע'` |
+| סימון כלא בוצע | `not_completed` | delivery → `'ממתין לתאום'` / service → `'קריאה חדשה'` |
+| הסרה מהיומן (`useDeleteStop`) | נמחק | delivery → `'ממתין לתאום'` / service → `'קריאה חדשה'` |
+
+**סיבה:** app-side sync ברור, קל לדבג, הגיון עסקי גלוי בקוד (ולא מוסתר ב-DB triggers).
+
+#### קבצים חדשים
+
+| קובץ | תפקיד |
+|---|---|
+| `src/types/calendar-stop.ts` | `CalendarStop`, `StopSourceType`, `StopStatus`, `ScheduleStopInput`, labels |
+| `src/lib/calendar-stops.ts` | CRUD — fetchAll, fetchByDateRange, fetchByOrder/Service, create, update, delete, reorder, resolve |
+| `src/hooks/useCalendarStops.ts` | Query — כל ה-stops (staleTime 30s) |
+| `src/hooks/useScheduleStop.ts` | Mutation — יצירת stop + עדכון source status |
+| `src/hooks/useResolveStop.ts` | Mutation — סימון completed/not_completed + סנכרון source |
+| `src/hooks/useReorderStops.ts` | Mutation — סידור עצירות באותו יום × נהג |
+| `src/hooks/useDeleteStop.ts` | Mutation — מחיקת stop + החזרת source לממתינים |
+
+#### זרימת UI חדשה (Y flow — parcel-story style)
+
+**גרירה זריזה במקום RouteBuilderDialog fullscreen:**
+
+1. משתמש גורר הזמנה/קריאת שירות ליום ביומן
+2. **`DriverSelector`** קטן קופץ (2 כפתורים: רודי דויד / נהג חיצוני)
+3. לחיצה על נהג → `useScheduleStop` יוצר `calendar_stop` + מעדכן את ה-source
+4. העצירה מופיעה ביומן מיד (דרך realtime subscription)
+
+**ה-RouteBuilderDialog fullscreen עדיין קיים** אבל כבר לא נפתח אוטומטית בגרירה — הוא מוכן לשימוש עתידי בתור "ערוך מסלול" מתוך יום.
+
+#### יומן משולב + קיבוץ לפי נהג
+
+`DeliveryCalendar` (שמתוכנן לעתיד להיקרא `UnifiedCalendar`) מציג את שני סוגי העצירות יחד:
+- **אייקון לפי סוג מקור:** 📦 משלוח (כחול), 🔧 שירות (כתום), 📋 משימה (ענבר)
+- **צבע נהג:** border-left של הכרטיס + badge
+- **קיבוץ תוך יום:** כל יום מחולק לקבוצות לפי נהג (רודי דויד ראשון, אחר כך חיצוני), עם subheader צבעוני + ספירה
+- **דרופ זון אחד** לכל יום — גרירה משני הסוגים עובדת אותו דבר
+
+`DeliveryCalendar` מוצג עכשיו **בשני הדפים:**
+- `/routes` — טאב "הזמנות ממתינות" (יחד עם רשימת הממתינים)
+- `/service-calls` — טאב חדש "יומן משולב" + גם בתוך "קריאות ממתינות"
+
+#### טיפוס `CalendarStop` (בקובץ `delivery.ts`) — תאימות עם הקומפוננטה הקיימת
+
+```typescript
+export type CalendarStopSource = 'delivery' | 'service' | 'task';
+export interface CalendarStop {
+  stopId: string;     // calendar_stops.id — מזהה יחיד
+  sourceId: string;   // orderId או serviceCallId — לפי sourceType
+  sourceType: CalendarStopSource;
+  customerName: string;
+  address?: string;
+  city?: string;
+  phone?: string;
+}
+```
+
+הערה: יש **שני טיפוסים שנקראים `CalendarStop`** בקוד — אחד ב-`types/delivery.ts` (ה-view-level, משמש את הקומפוננטה) ואחד ב-`types/calendar-stop.ts` (ה-DB-level, המלא). ה-DeliveriesPage/ServiceCallsPage בונים adapter ממני לשני.
+
+#### סטטוס של dead code (נשאר בקוד, לא בשימוש בזרימה הראשית)
+
+- `RouteBuilderDialog.tsx` — לא מופעל בגרירה עכשיו. זמין כ-JSX ב-DeliveriesPage לעריכת route (מ-DayMapDialog).
+- `useApproveRoute`, `useApproveServiceRoute` — hooks ישנים שיוצרים רשומת `routes` עם `stops jsonb` — **לא בשימוש בזרימה החדשה** (הגרירה יוצרת `calendar_stops` ישירות).
+- טבלת `public.routes` עצמה נשארת כטבלת "תקציר יום × נהג" (עבור שם מסלול, הערות, מרחק משוער). כרגע 0 שורות, לא פעיל בזרימה.
+- שדות ב-`routes` שבשימוש בעבר (`stops jsonb`, `order_ids text[]`, `stop_count int`) — לא נמחקו, אבל לא נכתבים עוד.
+
+#### Milestones שנעשו
+
+1. ✅ סכמת DB (`calendar_stops` + RLS + realtime + triggers)
+2. ✅ Types + lib/calendar-stops.ts
+3. ✅ 5 hooks חדשים
+4. ✅ חיבור ל-DeliveriesPage (גרירה → DriverSelector → `useScheduleStop`)
+5. ✅ חיבור ל-ServiceCallsPage + יומן משולב
+6. ✅ קיבוץ עצירות לפי נהג בתא יום
+
+#### Milestones פתוחים
+
+- 7 — ניקוי dead code (RouteBuilderDialog, useApproveRoute, useApproveServiceRoute)
+- 8 — משימות עצמאיות לנהג (`source_type='task'` + UI)
+- 10 — Reorder של עצירות דרך drag בתוך יום (ה-hook מוכן)
+- 11 — Resolve מ-UI (כפתורי ✓/✗ על כרטיס — ה-hook מוכן)
+
+---
+
+### 22/04/2026 — מעבר מלא מ-Airtable ל-Supabase ⭐⭐⭐
+
+**המערכת הועברה לניהול מלא ב-Supabase** (project ref: `kukstfxtznymfkirdmty`, region `eu-central-1`). כבר בעבר (Sprint קודם) המעבר *התחיל* — ה-env והcreateClient היו מוגדרים, וה-`useRealtimeSync` האזין ל-`orders/routes/service_calls`, אבל השמות של קבצי ה-lib והטיפוסים עדיין נשאו את המותג "Airtable" והיו מבלבלים.
+
+**מה השתנה בסיבוב הזה:**
+- **rename של 3 קבצי lib:**
+  - `src/lib/airtable.ts` → `src/lib/orders.ts`
+  - `src/lib/airtable-routes.ts` → `src/lib/routes.ts`
+  - `src/lib/airtable-service-calls.ts` → `src/lib/service-calls.ts`
+- **עדכון 10 imports** בכל ה-hooks (`useOrders`, `useUpdateOrder`, `useRoutes`, `useUpdateRoute`, `useApproveRoute`, `useServiceCalls`, `useUpdateServiceCall`, `useApproveServiceRoute`) ובקומפוננטה `ApprovedRoutesList.tsx`
+- **`src/types/order.ts`** — הטיפוס `AirtableAttachment` שונה ל-`OrderDocument` כדי להתאים לטבלת `order_documents` ב-Supabase (שדות: `id`, `orderId`, `storagePath`, `filename`, `sizeBytes`, `mimeType`, `created`). שדה `documents` נשאר optional — נטען בנפרד מ-`order_documents` (לא חלק מ-fetchAllOrders כיום)
+- **`src/components/orders/OrderDetailDialog.tsx`** — התצוגה של קבצים הותאמה לשדות החדשים (`sizeBytes` במקום `size`, הוסר `href={doc.url}` עד שיוטמע Supabase Storage `getPublicUrl`)
+- **`src/lib/constants.ts`** — הוסרו `FIELD_MAP`, `REVERSE_FIELD_MAP`, `SERVICE_CALL_FIELD_MAP`, `REVERSE_SERVICE_CALL_FIELD_MAP` — היו dead code מתקופת Airtable (לא היו שימושים)
+- **`.env`** — `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` (הוסרו `VITE_AIRTABLE_*` מהתיעוד)
+- **`CLAUDE.md`** — עודכן בהתאם: tech stack, ENV, tables, hooks, lib
+
+**סכמת Supabase (snapshot 22/04/2026):**
+| טבלה | שורות | תיאור |
+|------|-------|--------|
+| `public.orders` | 600 | הזמנות |
+| `public.service_calls` | 658 | קריאות שירות |
+| `public.routes` | 0 | מסלולים מאושרים |
+| `public.order_documents` | 0 | קבצי הזמנה (FK → orders) |
+| `public.profiles` | 1 | פרופילים (FK → auth.users) |
+
+**Enums:** `customer_status`, `task_status`, `order_status`, `service_call_status`, `driver_name`, `route_status`.
+
+**הערה חשובה:** ה-`order_status` ב-DB מכיל 5 ערכים — נוסף `'ממתין לליקוט'` (מעבר ל-4 שהיו באיירטייבל), וגם תוקן ה-typo הישן `'איו במלאי'` → `'אין במלאי'`. הטיפוס `Order['orderStatus']` עודכן בהתאם.
+
+**בדיקה:** `npm run build` ✅ עובר נקי (2662 modules, 2s).
+
+**קבצים ששונה שמם:** airtable.ts, airtable-routes.ts, airtable-service-calls.ts → orders.ts, routes.ts, service-calls.ts
+**קבצים ששונו:** 10 hooks, OrderDetailDialog.tsx, constants.ts, RouteNavigationPage.tsx (comment), types/order.ts, CLAUDE.md
+
+---
 
 ### 06/04/2026 - תזמון bulk בלחיצה + DayMapDialog + תיקון timezone ⭐⭐⭐
 
@@ -389,7 +608,7 @@ interface Zone {
 1. סמן הזמנות (אופציונלי, לגרירה קבוצתית)
 2. גרור ליום ביומן → ישר נפתח מסך מפה
 3. סדר עצירות (drag & drop) + בחר נהג
-4. אשר מסלול → נשמר ב-Airtable + הזמנות מתעדכנות ל"תואמה אספקה"
+4. אשר מסלול → נשמר ב-Supabase + הזמנות מתעדכנות ל"תואמה אספקה"
 5. היומן מציג מסלולים מאושרים עם צבע לפי נהג
 
 **קבצים חדשים:** delivery.ts, DeliveryCalendar.tsx, DriverSelector.tsx
@@ -398,13 +617,13 @@ interface Zone {
 ---
 
 ### 17/02/2026 - מערכת אישור מסלולים + שיוך נהגים ⭐⭐⭐
-- **טבלת מסלולים חדשה באיירטייבל** (tblI27BH5i7YlPq1P) — שמירת מסלולים עם JSON stops
+- **טבלת מסלולים** (`public.routes` ב-Supabase) — שמירת מסלולים עם `stops jsonb`
 - **שיוך נהגים:** Select בחירת נהג (רודי דויד / נהג חיצוני מועלם) ב-RouteBuilderDialog
-- **כפתור "אשר מסלול"** — שומר באיירטייבל + מעדכן הזמנות ל"תואמה אספקה"
+- **כפתור "אשר מסלול"** — שומר ב-Supabase + מעדכן הזמנות ל"תואמה אספקה"
 - **טאב "מסלולים מאושרים"** ב-DeliveriesPage עם Shadcn Tabs
 - **ApprovedRoutesList** — כרטיסים מתקפלים עם פרטי מסלול + כפתורי פעולה
 - **כפתור "החזר"** ליד כל עצירה — מחזיר הזמנה ל"ממתין לתאום" ומעדכן מסלול
-- **6 קבצים חדשים:** route.ts, airtable-routes.ts, useRoutes.ts, useApproveRoute.ts, useUpdateRoute.ts, ApprovedRoutesList.tsx
+- **6 קבצים חדשים:** route.ts, routes.ts (lib), useRoutes.ts, useApproveRoute.ts, useUpdateRoute.ts, ApprovedRoutesList.tsx
 
 ### 17/02/2026 - מערכת משלוחים חדשה עם אזורים ⭐⭐
 
@@ -438,5 +657,5 @@ interface Zone {
 
 ---
 
-**עודכן לאחרונה:** 17 בפברואר 2026 (מערכת מסלולים + נהגים)
+**עודכן לאחרונה:** 22 באפריל 2026 (יומן משולב + `calendar_stops` + מעבר מלא ל-Supabase)
 **מפתחים:** צוות Rashal + Claude Code

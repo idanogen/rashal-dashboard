@@ -1,21 +1,21 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useZonedOrders } from '@/hooks/useZonedOrders';
-import { useRoutes } from '@/hooks/useRoutes';
-import { useUpdateOrder } from '@/hooks/useUpdateOrder';
-import { useUpdateRoute } from '@/hooks/useUpdateRoute';
+import { useCalendarStops } from '@/hooks/useCalendarStops';
+import { useScheduleStop } from '@/hooks/useScheduleStop';
+import { useDeleteStop } from '@/hooks/useDeleteStop';
+import { useResolveStop } from '@/hooks/useResolveStop';
+import { useReorderStops } from '@/hooks/useReorderStops';
 import { DeliveryStatusBar } from '@/components/deliveries/DeliveryStatusBar';
 import { UnscheduledOrders } from '@/components/deliveries/UnscheduledOrders';
-import { ApprovedRoutesList } from '@/components/deliveries/ApprovedRoutesList';
 import { DeliveryCalendar } from '@/components/deliveries/DeliveryCalendar';
-import { RouteBuilderDialog } from '@/components/deliveries/RouteBuilderDialog';
+import { DriverSelector } from '@/components/deliveries/DriverSelector';
 import { DatePickerDialog } from '@/components/deliveries/DatePickerDialog';
+import { TaskDialog } from '@/components/deliveries/TaskDialog';
 import { DayMapDialog } from '@/components/deliveries/DayMapDialog';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Badge } from '@/components/ui/badge';
-import { Loader2, AlertCircle, Package, Truck } from 'lucide-react';
+import { Loader2, AlertCircle } from 'lucide-react';
 import type { Order } from '@/types/order';
-import type { ApprovedRoute } from '@/types/route';
-import type { CalendarDelivery, CalendarStop } from '@/types/delivery';
+import type { DriverName } from '@/types/route';
+import type { CalendarDelivery } from '@/types/delivery';
 import { toast } from 'sonner';
 import {
   DndContext,
@@ -48,9 +48,11 @@ export function DeliveriesPage() {
     error,
   } = useZonedOrders();
 
-  const { data: routes = [], isLoading: routesLoading } = useRoutes();
-  const updateOrder = useUpdateOrder();
-  const updateRoute = useUpdateRoute();
+  const { data: calendarStops = [] } = useCalendarStops();
+  const scheduleStop = useScheduleStop();
+  const deleteStop = useDeleteStop();
+  const resolveStop = useResolveStop();
+  const reorderStops = useReorderStops();
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -63,42 +65,53 @@ export function DeliveriesPage() {
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(
     new Set()
   );
-  const [routeBuilderOpen, setRouteBuilderOpen] = useState(false);
-  const [routeBuilderOrders, setRouteBuilderOrders] = useState<Order[]>([]);
-  const [routeBuilderDate, setRouteBuilderDate] = useState<string | undefined>(
-    undefined
-  );
-  const [editRoute, setEditRoute] = useState<ApprovedRoute | undefined>(undefined);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
-  const [dayMapOpen, setDayMapOpen] = useState(false);
-  const [dayMapDate, setDayMapDate] = useState<string | null>(null);
-  const [dayMapRoutes, setDayMapRoutes] = useState<ApprovedRoute[]>([]);
 
-  // Calendar deliveries from approved routes
-  const calendarDeliveries: CalendarDelivery[] = useMemo(
-    () =>
-      routes
-        .filter((r) => r.status === 'מאושר' || r.status === 'בביצוע')
-        .map((route) => ({
-          id: route.id,
-          date: route.deliveryDate,
-          driver: route.driver,
-          stops: route.stops.map(
-            (stop): CalendarStop => ({
-              orderId: stop.id,
-              customerName: stop.customerName,
-              address: stop.address,
-              city: stop.city,
-              phone: stop.phone,
-            })
-          ),
-        })),
-    [routes]
-  );
+  // Quick-schedule flow: drag → DriverSelector → useScheduleStop
+  const [driverPickerOpen, setDriverPickerOpen] = useState(false);
+  const [pendingSchedule, setPendingSchedule] = useState<{
+    orders: Order[];
+    date: string;
+  } | null>(null);
 
-  const activeRoutesCount = routes.filter(
-    (r) => r.status === 'מאושר' || r.status === 'בביצוע'
-  ).length;
+  // Task flow: "+" on day header → TaskDialog → useScheduleStop (sourceType='task')
+  const [taskDialogDate, setTaskDialogDate] = useState<string | null>(null);
+
+  // Day map dialog — click "מפה" on day header
+  const [mapDialogDate, setMapDialogDate] = useState<string | null>(null);
+
+  // Calendar deliveries — מקובצים מ-calendar_stops (מקור האמת החדש).
+  // מציג את כל הסוגים (משלוחים + שירות + משימות).
+  const calendarDeliveries: CalendarDelivery[] = useMemo(() => {
+    const groups = new Map<string, CalendarDelivery>();
+    for (const s of calendarStops) {
+      if (s.status === 'cancelled') continue;
+      const key = `${s.deliveryDate}__${s.driver}`;
+      let group = groups.get(key);
+      if (!group) {
+        group = {
+          id: key,
+          date: s.deliveryDate,
+          driver: s.driver as DriverName,
+          stops: [],
+        };
+        groups.set(key, group);
+      }
+      group.stops.push({
+        stopId: s.id,
+        sourceId: s.orderId ?? s.serviceCallId ?? s.id,
+        sourceType: s.sourceType,
+        status: s.status,
+        deliveryDate: s.deliveryDate,
+        driver: s.driver as DriverName,
+        customerName: s.customerName,
+        address: s.address,
+        city: s.city,
+        phone: s.phone,
+      });
+    }
+    return Array.from(groups.values());
+  }, [calendarStops]);
 
   // ─── Selection ──────────────────────────────────────────
   const handleToggleSelect = useCallback((orderId: string) => {
@@ -122,18 +135,17 @@ export function DeliveriesPage() {
 
   const handleDateSelected = useCallback(
     (date: string) => {
-      const ordersForRoute = unscheduledOrders.filter((o) =>
+      const ordersForSchedule = unscheduledOrders.filter((o) =>
         selectedOrderIds.has(o.id)
       );
-      if (ordersForRoute.length === 0) {
+      if (ordersForSchedule.length === 0) {
         setDatePickerOpen(false);
         return;
       }
-      setRouteBuilderOrders(ordersForRoute);
-      setRouteBuilderDate(date);
-      setRouteBuilderOpen(true);
+      // Quick flow: open DriverSelector instead of RouteBuilder
+      setPendingSchedule({ orders: ordersForSchedule, date });
+      setDriverPickerOpen(true);
       setDatePickerOpen(false);
-      setSelectedOrderIds(new Set());
     },
     [selectedOrderIds, unscheduledOrders]
   );
@@ -152,12 +164,57 @@ export function DeliveriesPage() {
 
     if (!over) return;
 
+    // ─── Reorder: stop → stop (באותו יום × נהג) ───
     if (
-      active.data.current?.type === 'order' &&
-      over.data.current?.type === 'day'
+      active.data.current?.type === 'stop' &&
+      over.data.current?.type === 'stop' &&
+      active.id !== over.id
     ) {
+      const srcDate = active.data.current.deliveryDate as string;
+      const srcDriver = active.data.current.driver as DriverName;
+      const overDate = over.data.current.deliveryDate as string;
+      const overDriver = over.data.current.driver as DriverName;
+      if (srcDate !== overDate || srcDriver !== overDriver) return;
+
+      const groupStops = calendarStops
+        .filter(
+          (s) =>
+            s.deliveryDate === srcDate &&
+            s.driver === srcDriver &&
+            s.status !== 'cancelled'
+        )
+        .sort((a, b) => a.sequence - b.sequence)
+        .map((s) => s.id);
+      const oldIndex = groupStops.indexOf(active.id as string);
+      const newIndex = groupStops.indexOf(over.id as string);
+      if (oldIndex < 0 || newIndex < 0) return;
+
+      // arrayMove
+      const next = [...groupStops];
+      const [moved] = next.splice(oldIndex, 1);
+      next.splice(newIndex, 0, moved);
+
+      reorderStops.mutate({
+        deliveryDate: srcDate,
+        driver: srcDriver,
+        orderedIds: next,
+      });
+      return;
+    }
+
+    // ─── Schedule: order → day (may land on an existing stop inside the day) ───
+    if (active.data.current?.type === 'order') {
+      const over_t = over.data.current?.type;
+      // Extract the target date whether we dropped on the day background or on a stop
+      let date: string | undefined;
+      if (over_t === 'day') {
+        date = over.data.current?.date as string;
+      } else if (over_t === 'stop') {
+        date = over.data.current?.deliveryDate as string;
+      }
+      if (!date) return;
+
       const order = active.data.current.order as Order;
-      const date = over.data.current.date as string;
 
       // Block Friday/Saturday
       const targetDay = new Date(date + 'T00:00:00').getDay();
@@ -167,88 +224,112 @@ export function DeliveriesPage() {
       }
 
       // Collect orders: if part of selection, take all selected
-      let ordersForRoute: Order[];
+      let ordersForSchedule: Order[];
       if (selectedOrderIds.has(order.id) && selectedOrderIds.size > 1) {
-        ordersForRoute = unscheduledOrders.filter((o) =>
+        ordersForSchedule = unscheduledOrders.filter((o) =>
           selectedOrderIds.has(o.id)
         );
       } else {
-        ordersForRoute = [order];
+        ordersForSchedule = [order];
       }
 
-      // Open RouteBuilderDialog immediately with the dropped date
-      setRouteBuilderOrders(ordersForRoute);
-      setRouteBuilderDate(date);
-      setRouteBuilderOpen(true);
-      setSelectedOrderIds(new Set());
+      // Quick flow: DriverSelector instead of RouteBuilder
+      setPendingSchedule({ orders: ordersForSchedule, date });
+      setDriverPickerOpen(true);
     }
   };
 
-  // ─── View day on map (preview before editing) ──────────
-  const handleViewDayRoute = useCallback(
-    (dateStr: string) => {
-      const dayRoutes = routes.filter(
-        (r) =>
-          r.deliveryDate === dateStr &&
-          (r.status === 'מאושר' || r.status === 'בביצוע')
-      );
+  // Driver selected → create one calendar_stop per order + update order_status
+  const handleDriverSelected = useCallback(
+    async (driver: DriverName) => {
+      if (!pendingSchedule) return;
+      const { orders, date } = pendingSchedule;
+      setDriverPickerOpen(false);
 
-      if (dayRoutes.length === 0) return;
-
-      setDayMapDate(dateStr);
-      setDayMapRoutes(dayRoutes);
-      setDayMapOpen(true);
+      try {
+        for (const order of orders) {
+          await scheduleStop.mutateAsync({
+            deliveryDate: date,
+            driver,
+            sourceType: 'delivery',
+            orderId: order.id,
+            customerName: order.customerName,
+            address: order.address,
+            city: order.city,
+            phone: order.phone,
+          });
+        }
+        toast.success(
+          orders.length > 1
+            ? `שובצו ${orders.length} הזמנות ל${driver}`
+            : `ההזמנה שובצה ל${driver}`
+        );
+      } catch (err) {
+        console.error('schedule failed:', err);
+      } finally {
+        setPendingSchedule(null);
+        setSelectedOrderIds(new Set());
+      }
     },
-    [routes]
+    [pendingSchedule, scheduleStop]
   );
 
-  const openRouteForEdit = useCallback((route: ApprovedRoute) => {
-    setEditRoute(route);
-    setRouteBuilderOrders([]);
-    setRouteBuilderDate(undefined);
-    setRouteBuilderOpen(true);
-    setDayMapOpen(false);
-  }, []);
-
-  // ─── Remove order from calendar (approved route) ────────
-  const handleRemoveFromCalendar = async (
-    deliveryId: string,
-    orderId: string
-  ) => {
-    const route = routes.find((r) => r.id === deliveryId);
-    if (!route) return;
-
+  // ─── Remove stop from calendar (new model) ────────
+  const handleRemoveFromCalendar = async (stopId: string) => {
+    const stop = calendarStops.find((s) => s.id === stopId);
+    if (!stop) return;
     try {
-      await updateOrder.mutateAsync({
-        id: orderId,
-        fields: { orderStatus: 'ממתין לתאום' },
-      });
-
-      const newStops = route.stops.filter((s) => s.id !== orderId);
-      const newOrderIds = route.orderIds.filter((id) => id !== orderId);
-
-      if (newStops.length === 0) {
-        await updateRoute.mutateAsync({
-          id: deliveryId,
-          fields: { status: 'בוטל' },
-        });
-      } else {
-        await updateRoute.mutateAsync({
-          id: deliveryId,
-          fields: {
-            stops: newStops,
-            orderIds: newOrderIds,
-            stopCount: newStops.length,
-          },
-        });
-      }
-
-      toast.success('ההזמנה הוחזרה לממתינות');
+      await deleteStop.mutateAsync(stop);
     } catch (err) {
-      console.error('Failed to remove from calendar:', err);
-      toast.error('שגיאה בהסרת ההזמנה');
+      console.error('Failed to remove stop:', err);
     }
   };
+
+  // ─── Resolve stop (mark as completed / not_completed) ────────
+  const handleResolveStop = async (
+    stopId: string,
+    status: 'completed' | 'not_completed'
+  ) => {
+    const stop = calendarStops.find((s) => s.id === stopId);
+    if (!stop) return;
+    try {
+      await resolveStop.mutateAsync({ stop, status });
+    } catch (err) {
+      console.error('Failed to resolve stop:', err);
+    }
+  };
+
+  // ─── Create free-standing task ────────
+  const handleCreateTask = useCallback(
+    async (data: {
+      driver: DriverName;
+      customerName: string;
+      address?: string;
+      city?: string;
+      phone?: string;
+      notes?: string;
+    }) => {
+      if (!taskDialogDate) return;
+      try {
+        await scheduleStop.mutateAsync({
+          deliveryDate: taskDialogDate,
+          driver: data.driver,
+          sourceType: 'task',
+          customerName: data.customerName,
+          address: data.address,
+          city: data.city,
+          phone: data.phone,
+          notes: data.notes,
+        });
+        toast.success(`המשימה נוספה ליומן (${data.driver})`);
+      } catch (err) {
+        console.error('Failed to create task:', err);
+      } finally {
+        setTaskDialogDate(null);
+      }
+    },
+    [taskDialogDate, scheduleStop]
+  );
 
   if (isLoading) {
     return (
@@ -286,52 +367,25 @@ export function DeliveriesPage() {
           deliveredThisWeek={deliveredOrders.length}
         />
 
-        <Tabs defaultValue="unscheduled" dir="rtl">
-          <TabsList>
-            <TabsTrigger value="unscheduled" className="gap-1.5">
-              <Package className="h-4 w-4" />
-              הזמנות ממתינות
-              <Badge variant="secondary" className="mr-1 h-5 px-1.5 text-xs">
-                {unscheduledOrders.length}
-              </Badge>
-            </TabsTrigger>
-            <TabsTrigger value="approved" className="gap-1.5">
-              <Truck className="h-4 w-4" />
-              מסלולים מאושרים
-              {activeRoutesCount > 0 && (
-                <Badge
-                  variant="secondary"
-                  className="mr-1 h-5 px-1.5 text-xs"
-                >
-                  {activeRoutesCount}
-                </Badge>
-              )}
-            </TabsTrigger>
-          </TabsList>
+        <UnscheduledOrders
+          orders={unscheduledOrders}
+          orderCountByZone={orderCountByZone}
+          orderZoneMap={orderZoneMap}
+          selectedOrderIds={selectedOrderIds}
+          onToggleSelect={handleToggleSelect}
+          onSelectAll={(ids) => setSelectedOrderIds(new Set(ids))}
+          onClearSelection={handleClearSelection}
+          onBulkSchedule={handleBulkSchedule}
+          isDragging={!!draggedOrder}
+        />
 
-          <TabsContent value="unscheduled" className="space-y-6">
-            <UnscheduledOrders
-              orders={unscheduledOrders}
-              orderCountByZone={orderCountByZone}
-              orderZoneMap={orderZoneMap}
-              selectedOrderIds={selectedOrderIds}
-              onToggleSelect={handleToggleSelect}
-              onClearSelection={handleClearSelection}
-              onBulkSchedule={handleBulkSchedule}
-              isDragging={!!draggedOrder}
-            />
-
-            <DeliveryCalendar
-              deliveries={calendarDeliveries}
-              onRemoveOrder={handleRemoveFromCalendar}
-              onViewDayRoute={handleViewDayRoute}
-            />
-          </TabsContent>
-
-          <TabsContent value="approved">
-            <ApprovedRoutesList routes={routes} isLoading={routesLoading} />
-          </TabsContent>
-        </Tabs>
+        <DeliveryCalendar
+          deliveries={calendarDeliveries}
+          onRemoveOrder={handleRemoveFromCalendar}
+          onAddTask={(date) => setTaskDialogDate(date)}
+          onResolveStop={handleResolveStop}
+          onViewDayMap={(date) => setMapDialogDate(date)}
+        />
       </div>
 
       {/* Drag Overlay */}
@@ -355,6 +409,28 @@ export function DeliveriesPage() {
         )}
       </DragOverlay>
 
+      {/* Driver Selector — quick pick after drag / date pick */}
+      <DriverSelector
+        open={driverPickerOpen}
+        onClose={() => {
+          setDriverPickerOpen(false);
+          setPendingSchedule(null);
+        }}
+        onSelectDriver={handleDriverSelected}
+        orderInfo={
+          pendingSchedule
+            ? pendingSchedule.orders.length > 1
+              ? `${pendingSchedule.orders.length} הזמנות`
+              : pendingSchedule.orders[0].customerName
+            : undefined
+        }
+        customerName={
+          pendingSchedule && pendingSchedule.orders.length === 1
+            ? pendingSchedule.orders[0].address ?? undefined
+            : undefined
+        }
+      />
+
       {/* Date Picker — bulk schedule via click */}
       <DatePickerDialog
         open={datePickerOpen}
@@ -363,28 +439,34 @@ export function DeliveriesPage() {
         orderCount={selectedOrderIds.size}
       />
 
-      {/* Day Map — preview of all routes for a specific day */}
-      <DayMapDialog
-        open={dayMapOpen}
-        onClose={() => setDayMapOpen(false)}
-        date={dayMapDate}
-        routes={dayMapRoutes}
-        onEditRoute={openRouteForEdit}
+      {/* Task Dialog — free-standing driver task */}
+      <TaskDialog
+        open={taskDialogDate !== null}
+        onClose={() => setTaskDialogDate(null)}
+        date={taskDialogDate}
+        onSubmit={handleCreateTask}
       />
 
-      {/* Route Builder — opens after drag to day OR after date picker */}
-      <RouteBuilderDialog
-        open={routeBuilderOpen}
-        onOpenChange={(open) => {
-          setRouteBuilderOpen(open);
-          if (!open) {
-            setEditRoute(undefined);
-            setRouteBuilderDate(undefined);
-          }
+      {/* Day Map Dialog — full route + map for a selected day */}
+      <DayMapDialog
+        open={mapDialogDate !== null}
+        onClose={() => setMapDialogDate(null)}
+        date={mapDialogDate}
+        stops={
+          mapDialogDate
+            ? (calendarDeliveries
+                .filter((d) => d.date === mapDialogDate)
+                .flatMap((d) => d.stops))
+            : []
+        }
+        onOptimize={(driver, orderedIds) => {
+          if (!mapDialogDate) return;
+          reorderStops.mutate({
+            deliveryDate: mapDialogDate,
+            driver,
+            orderedIds,
+          });
         }}
-        orders={routeBuilderOrders}
-        editRoute={editRoute}
-        initialDate={routeBuilderDate}
       />
     </DndContext>
   );
