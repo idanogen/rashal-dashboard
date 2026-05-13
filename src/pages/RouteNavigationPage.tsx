@@ -48,11 +48,12 @@ export function RouteNavigationPage() {
   // שליפת כל ההזמנות מ-Supabase (לצורך הוספה במצב עריכה)
   const { data: allOrders = [] } = useOrders();
 
-  // סינון הזמנות זמינות - רק "ממתין לתאום"
+  // סינון הזמנות זמינות - רק "ממתין לתאום" (בלי כפילויות Priority)
   const availableOrders = useMemo(() => {
     return allOrders.filter(
       (o) =>
         o.orderStatus === 'ממתין לתאום' &&
+        !o.duplicateOf &&
         o.address &&
         o.city
     );

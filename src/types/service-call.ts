@@ -9,5 +9,7 @@ export interface ServiceCall {
   openedBy?: string;
   city?: string;
   serviceCallStatus?: ServiceCallStatus;
+  /** If set, this row is a Priority dupe of the referenced head row. */
+  duplicateOf?: string;
   created: string;
 }

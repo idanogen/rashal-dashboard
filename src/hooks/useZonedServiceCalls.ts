@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useServiceCalls } from './useServiceCalls';
+import { useDedupedServiceCalls } from './useDedupedServiceCalls';
 import { getZoneForCity, ZONES } from '@/types/zone';
 import type { ServiceCall } from '@/types/service-call';
 
@@ -11,15 +11,18 @@ export interface ZonedServiceCallsResult {
   callCountByZone: Map<string, number>;
   callZoneMap: Map<string, string>;
   getCallZone: (callId: string) => string | undefined;
+  /** callId → group size (>=2 = duplicate group). Empty when dedup is off. */
+  groupSize: Map<string, number>;
+  hiddenCount: number;
   isLoading: boolean;
   error: Error | null;
 }
 
 export function useZonedServiceCalls(): ZonedServiceCallsResult {
-  const { data: calls, isLoading, error } = useServiceCalls();
+  const { calls, groupSize, hiddenCount, isLoading, error } = useDedupedServiceCalls();
 
   const result = useMemo(() => {
-    const allCalls = calls ?? [];
+    const allCalls = calls;
 
     const callZoneMap = new Map<string, string>();
     for (const call of allCalls) {
@@ -67,7 +70,9 @@ export function useZonedServiceCalls(): ZonedServiceCallsResult {
 
   return {
     ...result,
+    groupSize,
+    hiddenCount,
     isLoading,
-    error: error as Error | null,
+    error,
   };
 }

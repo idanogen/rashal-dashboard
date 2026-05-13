@@ -39,6 +39,7 @@ interface OrderCardProps {
   isExcluded?: boolean;
   isSelected?: boolean;
   isDragging?: boolean;
+  dupCount?: number;
   onExclude?: (id: string) => void;
   onRestore?: (id: string) => void;
   onToggleSelect?: (id: string) => void;
@@ -49,6 +50,7 @@ function DraggableOrderCard({
   isExcluded,
   isSelected,
   isDragging: isAnyDragging,
+  dupCount,
   onExclude,
   onRestore,
   onToggleSelect,
@@ -132,6 +134,14 @@ function DraggableOrderCard({
               )}
             >
               {order.customerName}
+              {dupCount && dupCount > 1 && (
+                <span
+                  className="ms-1 inline-flex h-4 items-center rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-800"
+                  title={`כפילות מ-Priority — ${dupCount} רשומות זהות אוחדו לשורה אחת`}
+                >
+                  ×{dupCount}
+                </span>
+              )}
             </p>
             {order.phone && (
               <div className="mt-1 flex items-center gap-1">
@@ -182,6 +192,8 @@ interface UnscheduledOrdersProps {
   isDragging?: boolean;
   // Route building → calendar
   onBuildRoute?: (orders: Order[]) => void;
+  /** orderId → group size for "x2" badge on duplicate groups */
+  groupSize?: Map<string, number>;
 }
 
 export function UnscheduledOrders({
@@ -195,6 +207,7 @@ export function UnscheduledOrders({
   onClearSelection,
   isDragging,
   onBuildRoute,
+  groupSize,
 }: UnscheduledOrdersProps) {
   const [selectedZones, setSelectedZones] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'all' | 'grouped'>('all');
@@ -410,6 +423,7 @@ export function UnscheduledOrders({
                   isExcluded={excludedOrderIds.has(order.id)}
                   isSelected={selectedOrderIds.has(order.id)}
                   isDragging={isDragging}
+                  dupCount={groupSize?.get(order.id)}
                   onExclude={handleExcludeOrder}
                   onRestore={handleRestoreOrder}
                   onToggleSelect={onToggleSelect}
@@ -478,6 +492,7 @@ export function UnscheduledOrders({
                               isExcluded={excludedOrderIds.has(order.id)}
                               isSelected={selectedOrderIds.has(order.id)}
                               isDragging={isDragging}
+                              dupCount={groupSize?.get(order.id)}
                               onExclude={handleExcludeOrder}
                               onRestore={handleRestoreOrder}
                               onToggleSelect={onToggleSelect}

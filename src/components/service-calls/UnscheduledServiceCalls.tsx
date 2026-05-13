@@ -20,11 +20,12 @@ import { getDaysSinceCreated, getDaysColor, cn } from '@/lib/utils';
 interface ServiceCallCardProps {
   call: ServiceCall;
   isExcluded?: boolean;
+  dupCount?: number;
   onExclude?: (id: string) => void;
   onRestore?: (id: string) => void;
 }
 
-function ServiceCallCard({ call, isExcluded, onExclude, onRestore }: ServiceCallCardProps) {
+function ServiceCallCard({ call, isExcluded, dupCount, onExclude, onRestore }: ServiceCallCardProps) {
   const days = getDaysSinceCreated(call.created);
   const daysColor = getDaysColor(days);
 
@@ -74,6 +75,14 @@ function ServiceCallCard({ call, isExcluded, onExclude, onRestore }: ServiceCall
               )}
             >
               {call.customerName}
+              {dupCount && dupCount > 1 && (
+                <span
+                  className="ms-1 inline-flex h-4 items-center rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-800"
+                  title={`כפילות מ-Priority — ${dupCount} רשומות זהות אוחדו לשורה אחת`}
+                >
+                  ×{dupCount}
+                </span>
+              )}
             </p>
             {call.phone && (
               <div className="mt-1 flex items-center gap-1">
@@ -111,12 +120,14 @@ interface UnscheduledServiceCallsProps {
   calls: ServiceCall[];
   callCountByZone: Map<string, number>;
   callZoneMap: Map<string, string>;
+  groupSize?: Map<string, number>;
 }
 
 export function UnscheduledServiceCalls({
   calls,
   callCountByZone,
   callZoneMap,
+  groupSize,
 }: UnscheduledServiceCallsProps) {
   const [selectedZones, setSelectedZones] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'all' | 'grouped'>('all');
@@ -280,6 +291,7 @@ export function UnscheduledServiceCalls({
                 <ServiceCallCard
                   call={call}
                   isExcluded={excludedCallIds.has(call.id)}
+                  dupCount={groupSize?.get(call.id)}
                   onExclude={handleExcludeCall}
                   onRestore={handleRestoreCall}
                 />
@@ -337,6 +349,7 @@ export function UnscheduledServiceCalls({
                             <ServiceCallCard
                               call={call}
                               isExcluded={excludedCallIds.has(call.id)}
+                              dupCount={groupSize?.get(call.id)}
                               onExclude={handleExcludeCall}
                               onRestore={handleRestoreCall}
                             />

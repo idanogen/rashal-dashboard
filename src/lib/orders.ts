@@ -14,6 +14,7 @@ type OrderRow = {
   address: string | null;
   city: string | null;
   agent: string | null;
+  duplicate_of: string | null;
   created_at: string;
 };
 
@@ -31,6 +32,7 @@ function rowToOrder(row: OrderRow): Order {
     address: row.address ?? undefined,
     city: row.city ?? undefined,
     agent: row.agent ?? undefined,
+    duplicateOf: row.duplicate_of ?? undefined,
     created: row.created_at,
   };
 }
@@ -52,13 +54,23 @@ function orderFieldsToRow(fields: Partial<Omit<Order, 'id'>>): Record<string, un
 }
 
 export async function fetchAllOrders(): Promise<Order[]> {
-  const { data, error } = await supabase
-    .from('orders')
-    .select('*')
-    .order('created_at', { ascending: false });
-
-  if (error) throw new Error(`Supabase fetchAllOrders: ${error.message}`);
-  return (data as OrderRow[]).map(rowToOrder);
+  // PostgREST defaults max-rows to 1000. Paginate explicitly so we always get every row.
+  const PAGE = 1000;
+  const all: Order[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('orders')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(`Supabase fetchAllOrders: ${error.message}`);
+    const rows = (data as OrderRow[]) ?? [];
+    all.push(...rows.map(rowToOrder));
+    if (rows.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
 }
 
 export async function updateOrder(

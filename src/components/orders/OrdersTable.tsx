@@ -19,12 +19,25 @@ import { getDaysSinceCreated, getDaysColor } from '@/lib/utils';
 interface OrdersTableProps {
   orders: Order[];
   filters: OrderFiltersState;
+  /** orderId → group size (>=2 = duplicate group; surviving row shows xN) */
+  groupSize?: Map<string, number>;
 }
 
 type SortKey = 'customerName' | 'city' | 'orderStatus' | 'openedBy' | 'created' | 'daysSince';
 type SortDir = 'asc' | 'desc';
 
-export function OrdersTable({ orders, filters }: OrdersTableProps) {
+function DupBadge({ count }: { count: number }) {
+  return (
+    <span
+      className="ms-1 inline-flex h-4 items-center rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-800"
+      title={`כפילות מ-Priority — ${count} רשומות זהות אוחדו לשורה אחת`}
+    >
+      ×{count}
+    </span>
+  );
+}
+
+export function OrdersTable({ orders, filters, groupSize }: OrdersTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>('created');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -129,7 +142,12 @@ export function OrdersTable({ orders, filters }: OrdersTableProps) {
                     <TableCell className="text-center text-xs text-muted-foreground">
                       {idx + 1}
                     </TableCell>
-                    <TableCell className="font-medium">{order.customerName}</TableCell>
+                    <TableCell className="font-medium">
+                      {order.customerName}
+                      {groupSize && (groupSize.get(order.id) ?? 0) > 1 && (
+                        <DupBadge count={groupSize.get(order.id)!} />
+                      )}
+                    </TableCell>
                     <TableCell>
                       {order.phone && (
                         <a
@@ -194,7 +212,12 @@ export function OrdersTable({ orders, filters }: OrdersTableProps) {
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold truncate">{order.customerName}</p>
+                  <p className="font-semibold truncate">
+                    {order.customerName}
+                    {groupSize && (groupSize.get(order.id) ?? 0) > 1 && (
+                      <DupBadge count={groupSize.get(order.id)!} />
+                    )}
+                  </p>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                     {order.phone && (
                       <span className="flex items-center gap-1">

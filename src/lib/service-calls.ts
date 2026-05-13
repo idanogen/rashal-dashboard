@@ -10,6 +10,7 @@ type ServiceCallRow = {
   opened_by: string | null;
   city: string | null;
   service_call_status: ServiceCallStatus | null;
+  duplicate_of: string | null;
   created_at: string;
 };
 
@@ -23,6 +24,7 @@ function rowToServiceCall(row: ServiceCallRow): ServiceCall {
     openedBy: row.opened_by ?? undefined,
     city: row.city ?? undefined,
     serviceCallStatus: row.service_call_status ?? undefined,
+    duplicateOf: row.duplicate_of ?? undefined,
     created: row.created_at,
   };
 }
@@ -40,13 +42,23 @@ function fieldsToRow(fields: Partial<Omit<ServiceCall, 'id'>>): Record<string, u
 }
 
 export async function fetchAllServiceCalls(): Promise<ServiceCall[]> {
-  const { data, error } = await supabase
-    .from('service_calls')
-    .select('*')
-    .order('created_at', { ascending: false });
-
-  if (error) throw new Error(`Supabase fetchAllServiceCalls: ${error.message}`);
-  return (data as ServiceCallRow[]).map(rowToServiceCall);
+  // PostgREST defaults max-rows to 1000. Paginate so we always get every row.
+  const PAGE = 1000;
+  const all: ServiceCall[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('service_calls')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(`Supabase fetchAllServiceCalls: ${error.message}`);
+    const rows = (data as ServiceCallRow[]) ?? [];
+    all.push(...rows.map(rowToServiceCall));
+    if (rows.length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
 }
 
 export async function updateServiceCall(

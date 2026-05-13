@@ -5,6 +5,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { DeliveriesPage } from '@/pages/DeliveriesPage';
 import { ServiceCallsPage } from '@/pages/ServiceCallsPage';
+import { InspectionsPage } from '@/pages/InspectionsPage';
 import { RouteNavigationPage } from '@/pages/RouteNavigationPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { AuthProvider } from '@/lib/auth-context';
@@ -35,6 +36,7 @@ function App() {
                       <Route path="/" element={<DashboardPage />} />
                       <Route path="/routes" element={<DeliveriesPage />} />
                       <Route path="/service-calls" element={<ServiceCallsPage />} />
+                      <Route path="/inspections" element={<InspectionsPage />} />
                       <Route path="/route-navigation" element={<RouteNavigationPage />} />
                     </Routes>
                   </AppShell>

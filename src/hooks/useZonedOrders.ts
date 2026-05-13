@@ -1,10 +1,10 @@
 import { useMemo } from 'react';
-import { useOrders } from './useOrders';
+import { useDedupedOrders } from './useDedupedOrders';
 import { getZoneForCity, ZONES } from '@/types/zone';
 import type { Order } from '@/types/order';
 
 export interface ZonedOrdersResult {
-  /** כל ההזמנות (ללא שינוי) */
+  /** כל ההזמנות (אחרי dedup) */
   allOrders: Order[];
   /** הזמנות ממתינות לתיאום עם כתובת ועיר */
   unscheduledOrders: Order[];
@@ -18,15 +18,19 @@ export interface ZonedOrdersResult {
   orderZoneMap: Map<string, string>;
   /** קבל אזור של הזמנה */
   getOrderZone: (orderId: string) => string | undefined;
+  /** orderId → group size (>=2 = duplicate group). Empty when dedup is off. */
+  groupSize: Map<string, number>;
+  /** כמה הזמנות הוסתרו ע"י הסינון */
+  hiddenCount: number;
   isLoading: boolean;
   error: Error | null;
 }
 
 export function useZonedOrders(): ZonedOrdersResult {
-  const { data: orders, isLoading, error } = useOrders();
+  const { orders, groupSize, hiddenCount, isLoading, error } = useDedupedOrders();
 
   const result = useMemo(() => {
-    const allOrders = orders ?? [];
+    const allOrders = orders;
 
     // מיפוי כל הזמנה לאזור
     const orderZoneMap = new Map<string, string>();
@@ -82,7 +86,9 @@ export function useZonedOrders(): ZonedOrdersResult {
 
   return {
     ...result,
+    groupSize,
+    hiddenCount,
     isLoading,
-    error: error as Error | null,
+    error,
   };
 }

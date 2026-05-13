@@ -25,10 +25,22 @@ import { getDaysSinceCreated, getDaysColor } from '@/lib/utils';
 
 interface ServiceCallsTableProps {
   calls: ServiceCall[];
+  groupSize?: Map<string, number>;
 }
 
 type SortKey = 'customerName' | 'city' | 'serviceCallStatus' | 'created' | 'daysSince';
 type SortDir = 'asc' | 'desc';
+
+function DupBadge({ count }: { count: number }) {
+  return (
+    <span
+      className="ms-1 inline-flex h-4 items-center rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-800"
+      title={`כפילות מ-Priority — ${count} רשומות זהות אוחדו לשורה אחת`}
+    >
+      ×{count}
+    </span>
+  );
+}
 
 const statusColorMap: Record<string, string> = {
   blue: 'bg-blue-50 text-blue-700 border-blue-200',
@@ -93,7 +105,7 @@ function ServiceCallStatusDropdown({
   );
 }
 
-export function ServiceCallsTable({ calls }: ServiceCallsTableProps) {
+export function ServiceCallsTable({ calls, groupSize }: ServiceCallsTableProps) {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('created');
@@ -207,7 +219,12 @@ export function ServiceCallsTable({ calls }: ServiceCallsTableProps) {
                     <TableCell className="text-center text-xs text-muted-foreground">
                       {idx + 1}
                     </TableCell>
-                    <TableCell className="font-medium">{call.customerName}</TableCell>
+                    <TableCell className="font-medium">
+                      {call.customerName}
+                      {groupSize && (groupSize.get(call.id) ?? 0) > 1 && (
+                        <DupBadge count={groupSize.get(call.id)!} />
+                      )}
+                    </TableCell>
                     <TableCell>
                       {call.phone && (
                         <a
@@ -263,7 +280,12 @@ export function ServiceCallsTable({ calls }: ServiceCallsTableProps) {
             <Card key={call.id} className="p-3">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold truncate">{call.customerName}</p>
+                  <p className="font-semibold truncate">
+                    {call.customerName}
+                    {groupSize && (groupSize.get(call.id) ?? 0) > 1 && (
+                      <DupBadge count={groupSize.get(call.id)!} />
+                    )}
+                  </p>
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                     {call.phone && (
                       <span className="flex items-center gap-1">

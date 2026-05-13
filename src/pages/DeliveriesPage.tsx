@@ -5,8 +5,14 @@ import { useScheduleStop } from '@/hooks/useScheduleStop';
 import { useDeleteStop } from '@/hooks/useDeleteStop';
 import { useResolveStop } from '@/hooks/useResolveStop';
 import { useReorderStops } from '@/hooks/useReorderStops';
+import { DedupToggle } from '@/components/dashboard/DedupToggle';
 import { DeliveryStatusBar } from '@/components/deliveries/DeliveryStatusBar';
 import { UnscheduledOrders } from '@/components/deliveries/UnscheduledOrders';
+import {
+  DuplicateScheduleWarningDialog,
+  type DuplicateConflict,
+} from '@/components/deliveries/DuplicateScheduleWarningDialog';
+import { findActiveDuplicateStops } from '@/lib/calendar-stops';
 import { DeliveryCalendar } from '@/components/deliveries/DeliveryCalendar';
 import { DriverSelector } from '@/components/deliveries/DriverSelector';
 import { DatePickerDialog } from '@/components/deliveries/DatePickerDialog';
@@ -26,7 +32,10 @@ import {
   useSensor,
   useSensors,
   type Announcements,
+  type CollisionDetection,
   closestCenter,
+  pointerWithin,
+  rectIntersection,
 } from '@dnd-kit/core';
 
 const screenReaderInstructions = { draggable: '' };
@@ -37,6 +46,41 @@ const announcements: Announcements = {
   onDragCancel: () => '',
 };
 
+// Collision detection: כשגוררים הזמנה (order) — נעדיף את ה-day שהמצביע ממש מעליו,
+// ונסנן החוצה sortable-stops שנמצאים בעמודות אחרות (חמישי וכו').
+// כשגוררים stop (reorder) — נשתמש ב-closestCenter הרגיל.
+const collisionDetection: CollisionDetection = (args) => {
+  const activeType = args.active.data.current?.type;
+
+  if (activeType === 'order') {
+    // 1) pointerWithin — איזה droppable המצביע ממש בתוכו כרגע
+    const pointerHits = pointerWithin(args);
+    const pointerDayHits = pointerHits.filter(
+      (c) =>
+        args.droppableContainers.find((d) => d.id === c.id)?.data.current
+          ?.type === 'day'
+    );
+    if (pointerDayHits.length > 0) return pointerDayHits;
+
+    // 2) rectIntersection — אם לא מעל אף יום ישירות, מי חותך את הדראג rect
+    const rectHits = rectIntersection(args);
+    const rectDayHits = rectHits.filter(
+      (c) =>
+        args.droppableContainers.find((d) => d.id === c.id)?.data.current
+          ?.type === 'day'
+    );
+    if (rectDayHits.length > 0) return rectDayHits;
+
+    // 3) fallback — closestCenter אבל רק על days (לא על stops)
+    const dayOnlyContainers = args.droppableContainers.filter(
+      (d) => d.data.current?.type === 'day'
+    );
+    return closestCenter({ ...args, droppableContainers: dayOnlyContainers });
+  }
+
+  return closestCenter(args);
+};
+
 export function DeliveriesPage() {
   const {
     unscheduledOrders,
@@ -44,6 +88,8 @@ export function DeliveriesPage() {
     deliveredOrders,
     orderCountByZone,
     orderZoneMap,
+    groupSize: ordersGroupSize,
+    hiddenCount: ordersHiddenCount,
     isLoading,
     error,
   } = useZonedOrders();
@@ -79,6 +125,14 @@ export function DeliveriesPage() {
 
   // Day map dialog — click "מפה" on day header
   const [mapDialogDate, setMapDialogDate] = useState<string | null>(null);
+
+  // Duplicate-prevention dialog (shown when scheduling would create an active dup)
+  const [duplicateState, setDuplicateState] = useState<{
+    conflicts: DuplicateConflict[];
+    nonConflictingOrders: Order[];
+    driver: DriverName;
+    date: string;
+  } | null>(null);
 
   // Calendar deliveries — מקובצים מ-calendar_stops (מקור האמת החדש).
   // מציג את כל הסוגים (משלוחים + שירות + משימות).
@@ -239,13 +293,9 @@ export function DeliveriesPage() {
     }
   };
 
-  // Driver selected → create one calendar_stop per order + update order_status
-  const handleDriverSelected = useCallback(
-    async (driver: DriverName) => {
-      if (!pendingSchedule) return;
-      const { orders, date } = pendingSchedule;
-      setDriverPickerOpen(false);
-
+  // Actually run the schedule for a list of orders (no further dup checks)
+  const runScheduleOrders = useCallback(
+    async (orders: Order[], driver: DriverName, date: string) => {
       try {
         for (const order of orders) {
           await scheduleStop.mutateAsync({
@@ -266,12 +316,61 @@ export function DeliveriesPage() {
         );
       } catch (err) {
         console.error('schedule failed:', err);
+        const msg = err instanceof Error ? err.message : '';
+        if (msg.includes('calendar_stops_no_active_dup') || msg.includes('duplicate key')) {
+          toast.error('השיבוץ נחסם: לקוח זה כבר משובץ פעיל ביומן');
+        }
       } finally {
         setPendingSchedule(null);
         setSelectedOrderIds(new Set());
       }
     },
-    [pendingSchedule, scheduleStop]
+    [scheduleStop]
+  );
+
+  // Driver selected → pre-check duplicates → schedule or show warning
+  const handleDriverSelected = useCallback(
+    async (driver: DriverName) => {
+      if (!pendingSchedule) return;
+      const { orders, date } = pendingSchedule;
+      setDriverPickerOpen(false);
+
+      // Pre-check each order for active duplicate stops
+      const conflicts: DuplicateConflict[] = [];
+      const nonConflicting: Order[] = [];
+      for (const order of orders) {
+        try {
+          const dupes = await findActiveDuplicateStops({
+            customerName: order.customerName,
+            phone: order.phone,
+            address: order.address,
+            city: order.city,
+          });
+          if (dupes.length > 0) {
+            conflicts.push({
+              customerName: order.customerName,
+              city: order.city,
+              phone: order.phone,
+              existing: dupes,
+            });
+          } else {
+            nonConflicting.push(order);
+          }
+        } catch (err) {
+          console.error('pre-check failed for order', order.id, err);
+          // On check failure we let the DB constraint catch it
+          nonConflicting.push(order);
+        }
+      }
+
+      if (conflicts.length > 0) {
+        setDuplicateState({ conflicts, nonConflictingOrders: nonConflicting, driver, date });
+        return;
+      }
+
+      await runScheduleOrders(orders, driver, date);
+    },
+    [pendingSchedule, runScheduleOrders]
   );
 
   // ─── Remove stop from calendar (new model) ────────
@@ -355,7 +454,7 @@ export function DeliveriesPage() {
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={collisionDetection}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       accessibility={{ announcements, screenReaderInstructions }}
@@ -367,6 +466,10 @@ export function DeliveriesPage() {
           deliveredThisWeek={deliveredOrders.length}
         />
 
+        <div className="flex justify-end">
+          <DedupToggle hiddenCount={ordersHiddenCount} />
+        </div>
+
         <UnscheduledOrders
           orders={unscheduledOrders}
           orderCountByZone={orderCountByZone}
@@ -377,6 +480,7 @@ export function DeliveriesPage() {
           onClearSelection={handleClearSelection}
           onBulkSchedule={handleBulkSchedule}
           isDragging={!!draggedOrder}
+          groupSize={ordersGroupSize}
         />
 
         <DeliveryCalendar
@@ -408,6 +512,28 @@ export function DeliveriesPage() {
           </div>
         )}
       </DragOverlay>
+
+      {/* Duplicate prevention — shown when scheduling would create an active dup */}
+      <DuplicateScheduleWarningDialog
+        open={duplicateState !== null}
+        onOpenChange={(o) => {
+          if (!o) setDuplicateState(null);
+        }}
+        conflicts={duplicateState?.conflicts ?? []}
+        nonConflictingCount={duplicateState?.nonConflictingOrders.length ?? 0}
+        onCancel={() => {
+          setDuplicateState(null);
+          setPendingSchedule(null);
+        }}
+        onScheduleOthers={() => {
+          if (!duplicateState) return;
+          const { nonConflictingOrders, driver, date } = duplicateState;
+          setDuplicateState(null);
+          if (nonConflictingOrders.length > 0) {
+            void runScheduleOrders(nonConflictingOrders, driver, date);
+          }
+        }}
+      />
 
       {/* Driver Selector — quick pick after drag / date pick */}
       <DriverSelector

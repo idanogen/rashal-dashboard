@@ -123,6 +123,51 @@ export async function fetchStopsByServiceCallId(
   return (data as CalendarStopRow[]).map(rowToStop);
 }
 
+/**
+ * Find ACTIVE (planned/in_progress) stops that match a customer's dedup key.
+ * Used to warn before scheduling: same customer can't have two active stops.
+ * The DB also enforces this via `calendar_stops_no_active_dup` unique index.
+ */
+export async function findActiveDuplicateStops(input: {
+  customerName: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+}): Promise<CalendarStop[]> {
+  const target = {
+    customerName: norm(input.customerName),
+    phone: norm(input.phone),
+    address: norm(input.address),
+    city: norm(input.city),
+  };
+
+  const query = supabase
+    .from('calendar_stops')
+    .select('*')
+    .in('status', ['planned', 'in_progress'])
+    .ilike('customer_name', input.customerName.trim());
+  // Pull a wide candidate set (by customer name) and filter the rest client-side
+  // so we don't have to construct case-insensitive ilike clauses for every column.
+
+  const { data, error } = await query;
+  if (error) throw new Error(`findActiveDuplicateStops: ${error.message}`);
+  const rows = (data as CalendarStopRow[]) ?? [];
+  return rows
+    .map(rowToStop)
+    .filter(
+      (s) =>
+        norm(s.customerName) === target.customerName &&
+        norm(s.phone) === target.phone &&
+        norm(s.address) === target.address &&
+        norm(s.city) === target.city
+    );
+}
+
+function norm(s: string | undefined | null): string {
+  if (!s) return '';
+  return s.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
 // ─── Writes ─────────────────────────────────────────────────────
 
 export async function createStop(input: ScheduleStopInput): Promise<CalendarStop> {

@@ -23,6 +23,8 @@ export interface Order {
   city?: string;
   agent?: string;
   documents?: OrderDocument[];
+  /** If set, this row is a Priority dupe of the referenced head row. */
+  duplicateOf?: string;
   created: string;
 }
 

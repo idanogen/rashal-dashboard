@@ -1,8 +1,9 @@
 import { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { useOrders } from '@/hooks/useOrders';
+import { useDedupedOrders } from '@/hooks/useDedupedOrders';
 import { useOrderStats } from '@/hooks/useOrderStats';
 import { useZonedServiceCalls } from '@/hooks/useZonedServiceCalls';
+import { DedupToggle } from '@/components/dashboard/DedupToggle';
 import { StaleOrdersAlert } from '@/components/dashboard/StaleOrdersAlert';
 import { StatsCards } from '@/components/dashboard/StatsCards';
 import { ServiceCallStatsCards } from '@/components/dashboard/ServiceCallStatsCards';
@@ -19,13 +20,22 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 
 export function DashboardPage() {
-  const { data: orders, isLoading, error, refetch } = useOrders();
-  const stats = useOrderStats(orders ?? []);
+  const {
+    orders,
+    groupSize: ordersGroupSize,
+    hiddenCount: ordersHiddenCount,
+    isLoading,
+    error,
+    refetch,
+  } = useDedupedOrders();
+  const stats = useOrderStats(orders);
   const {
     allCalls,
     pendingCalls,
     scheduledCalls,
     completedCalls,
+    groupSize: callsGroupSize,
+    hiddenCount: callsHiddenCount,
     isLoading: isLoadingCalls,
   } = useZonedServiceCalls();
   const [filters, setFilters] = useState<OrderFiltersState>({
@@ -119,12 +129,15 @@ export function DashboardPage() {
             <HealthFundChart orders={orders ?? []} />
           </div>
           <div ref={tableRef} className="space-y-4">
-            <OrderFilters
-              filters={filters}
-              onChange={setFilters}
-              cities={stats.uniqueCities}
-            />
-            <OrdersTable orders={orders ?? []} filters={filters} />
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <OrderFilters
+                filters={filters}
+                onChange={setFilters}
+                cities={stats.uniqueCities}
+              />
+              <DedupToggle hiddenCount={ordersHiddenCount} />
+            </div>
+            <OrdersTable orders={orders} filters={filters} groupSize={ordersGroupSize} />
           </div>
         </TabsContent>
 
@@ -144,7 +157,12 @@ export function DashboardPage() {
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : (
-            <ServiceCallsTable calls={allCalls} />
+            <div className="space-y-3">
+              <div className="flex justify-end">
+                <DedupToggle hiddenCount={callsHiddenCount} />
+              </div>
+              <ServiceCallsTable calls={allCalls} groupSize={callsGroupSize} />
+            </div>
           )}
         </TabsContent>
       </Tabs>

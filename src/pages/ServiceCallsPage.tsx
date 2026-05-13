@@ -21,6 +21,12 @@ import { DeliveryCalendar } from '@/components/deliveries/DeliveryCalendar';
 import { DriverSelector } from '@/components/deliveries/DriverSelector';
 import { TaskDialog } from '@/components/deliveries/TaskDialog';
 import { DayMapDialog } from '@/components/deliveries/DayMapDialog';
+import { DedupToggle } from '@/components/dashboard/DedupToggle';
+import {
+  DuplicateScheduleWarningDialog,
+  type DuplicateConflict,
+} from '@/components/deliveries/DuplicateScheduleWarningDialog';
+import { findActiveDuplicateStops } from '@/lib/calendar-stops';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, AlertCircle, Wrench, CalendarDays } from 'lucide-react';
@@ -36,6 +42,8 @@ export function ServiceCallsPage() {
     completedCalls,
     callCountByZone,
     callZoneMap,
+    groupSize: callsGroupSize,
+    hiddenCount: callsHiddenCount,
     isLoading,
     error,
   } = useZonedServiceCalls();
@@ -60,6 +68,11 @@ export function ServiceCallsPage() {
   } | null>(null);
   const [taskDialogDate, setTaskDialogDate] = useState<string | null>(null);
   const [mapDialogDate, setMapDialogDate] = useState<string | null>(null);
+
+  // Duplicate-prevention dialog
+  const [duplicateState, setDuplicateState] = useState<{
+    conflicts: DuplicateConflict[];
+  } | null>(null);
 
   // יומן משולב — מציג משלוחים + קריאות שירות באותה תצוגה
   const calendarDeliveries: CalendarDelivery[] = useMemo(() => {
@@ -174,6 +187,32 @@ export function ServiceCallsPage() {
       const { call, date } = pendingSchedule;
       setDriverPickerOpen(false);
 
+      // Pre-check: refuse if customer already has an active stop
+      try {
+        const dupes = await findActiveDuplicateStops({
+          customerName: call.customerName,
+          phone: call.phone,
+          city: call.city,
+        });
+        if (dupes.length > 0) {
+          setDuplicateState({
+            conflicts: [
+              {
+                customerName: call.customerName,
+                city: call.city,
+                phone: call.phone,
+                existing: dupes,
+              },
+            ],
+          });
+          setPendingSchedule(null);
+          return;
+        }
+      } catch (err) {
+        console.error('dup pre-check failed:', err);
+        // fall through — DB constraint is the backstop
+      }
+
       try {
         await scheduleStop.mutateAsync({
           deliveryDate: date,
@@ -187,6 +226,10 @@ export function ServiceCallsPage() {
         toast.success(`קריאת השירות שובצה ל${driver}`);
       } catch (err) {
         console.error('schedule failed:', err);
+        const msg = err instanceof Error ? err.message : '';
+        if (msg.includes('calendar_stops_no_active_dup') || msg.includes('duplicate key')) {
+          toast.error('השיבוץ נחסם: לקוח זה כבר משובץ פעיל ביומן');
+        }
       } finally {
         setPendingSchedule(null);
       }
@@ -308,10 +351,14 @@ export function ServiceCallsPage() {
           </TabsList>
 
           <TabsContent value="pending" className="space-y-6">
+            <div className="flex justify-end">
+              <DedupToggle hiddenCount={callsHiddenCount} />
+            </div>
             <UnscheduledServiceCalls
               calls={pendingCalls}
               callCountByZone={callCountByZone}
               callZoneMap={callZoneMap}
+              groupSize={callsGroupSize}
             />
 
             <DeliveryCalendar
@@ -347,6 +394,15 @@ export function ServiceCallsPage() {
           </div>
         )}
       </DragOverlay>
+
+      <DuplicateScheduleWarningDialog
+        open={duplicateState !== null}
+        onOpenChange={(o) => {
+          if (!o) setDuplicateState(null);
+        }}
+        conflicts={duplicateState?.conflicts ?? []}
+        onCancel={() => setDuplicateState(null)}
+      />
 
       <DriverSelector
         open={driverPickerOpen}
