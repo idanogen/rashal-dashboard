@@ -392,6 +392,97 @@ interface Zone {
 
 ## עדכונים אחרונים
 
+### 13/05/2026 — דף "בדיקות מנופים" + מניעת כפילויות Priority ⭐⭐⭐⭐
+
+#### A) דף `/inspections` — ניהול בדיקות תקופתיות למנופי G150/G175
+
+מערכת חדשה לעקוב אחרי בדיקות שמחויבות **כל 3 שנים** למנופי הרמה רפואיים (`G150` / `G175`) המותקנים אצל לקוחות סופיים (משרד הבריאות, כללית, מכבי וכו'). הבדיקה היא חובה רגולטורית — רשעל מספקת ומשלמת.
+
+**טבלאות חדשות ב-Supabase:**
+
+| טבלה | שורות התחלתיות | תיאור |
+|------|--------|--------|
+| `cranes` | 2,055 | מלאי מנופים מהאקסל של פריוריטי. כולל 127 מבוטלים. עמודות: `device_number` (unique), `model`, `customer_*`, `install_date`, `warranty_*`, `cancelled_at`, `sticker_number` |
+| `crane_inspections` | 0 | היסטוריית בדיקות, ממולא ידנית. עמודות: `crane_id` FK, `inspection_date`, `next_due_date`, `status` (planned/scheduled/completed/failed/cancelled), `technician`, `result`, `defects`, `certificate_number` |
+| `crane_sync_history` | 1 | רשומת סנכרון לכל העלאת אקסל. עמודות: `synced_at`, `source_filename`, `new_cranes_count`, `updated_cranes_count`, `unchanged_count`, `missing_in_file_count`, `conflict_summary jsonb` |
+
+**`calendar_stops` הורחב לתמיכה בבדיקות:** `source_type` קיבל ערך נוסף `'inspection'` + עמודת FK חדשה `inspection_id`. ה-CHECK constraint עודכן בהתאם. (בפועל ה-UI עדיין לא משבץ בדיקות ביומן — הסכמה מוכנה לעתיד.)
+
+**רכיבים חדשים:**
+
+| קובץ | תפקיד |
+|---|---|
+| `src/types/crane.ts` | `Crane`, `CraneInspection`, `CraneSyncHistory`, `InspectionStatus`, `CraneStatus` (urgency: overdue/due_soon/ok/unknown) |
+| `src/lib/cranes.ts` | CRUD על `cranes` + `computeCraneStatus(crane, inspections)` שמחשב next-due = install_date+3y או last_completed_inspection+3y |
+| `src/lib/crane-inspections.ts` | CRUD על `crane_inspections` |
+| `src/lib/crane-sync.ts` | `diffAgainstExisting(existing, parsed)` + `applySyncDiff(diff, meta)` — תומך בסנכרון חודשי |
+| `src/lib/crane-excel-parser.ts` | קורא .xlsx של פריוריטי, מטפל בתאריכי Excel/מחרוזות, מסנן תאריכי 1900-1949 (Excel zero sentinel) |
+| `src/hooks/useCranes.ts`, `useCraneInspections.ts`, `useCraneSync.ts` | React Query wrappers |
+| `src/pages/InspectionsPage.tsx` | הדף הראשי — סינון לקוח (ברירת מחדל: כללית), 4 כרטיסי סטטיסטיקה, חיפוש, פילטר urgency, צ'קבוקס "כלול מבוטלים", טבלה ממוינת לפי דחיפות |
+| `src/components/inspections/*` | InspectionStatsCards, CustomerTypeFilter, CranesTable, CraneDetailDialog, CreateInspectionDialog, SyncDialog |
+
+**ייבוא חודשי:** המשתמש מעלה אקסל חדש דרך כפתור "סנכרן דוח" → המערכת מנתחת client-side, משווה ל-DB, ומציגה preview עם new/updated/unchanged/missing-in-file לפני האישור. שדה-אחר-שדה של מה השתנה בכל מנוף מעודכן. בסיום נוצרת רשומה ב-`crane_sync_history` לתיעוד.
+
+**npm dependency חדש:** `xlsx@0.18.5` לקריאת קבצי Excel ב-browser.
+
+#### B) סינון כפילויות Priority — DB + UI
+
+פריוריטי שולח לעתים אותה הזמנה / קריאת שירות כפול-משולש תוך שניות. שיבוץ של נציג לאותו לקוח פעמיים מתבזבז שיחה / טכנאי. הפתרון בנוי ב-3 שכבות:
+
+**שכבה A — DB triggers (BEFORE INSERT):**
+
+```sql
+ALTER TABLE public.orders ADD COLUMN duplicate_of uuid REFERENCES public.orders(id) ON DELETE SET NULL;
+ALTER TABLE public.service_calls ADD COLUMN duplicate_of uuid REFERENCES public.service_calls(id) ON DELETE SET NULL;
+```
+
+`mark_new_order_as_duplicate()` ו-`mark_new_service_call_as_duplicate()` — לפני כל INSERT, בודקים אם קיימת רשומה "ראש" (`duplicate_of IS NULL`) עם אותה dedup-key (`lower(customer_name) + phone + address + city`) שנפתחה ב-±5 דק'. אם כן — שדה `NEW.duplicate_of` מוגדר אוטומטית.
+
+**Backfill חד-פעמי** (DO block בלולאה chronological): 774 הזמנות + 448 קריאות שירות סומנו כדופליקטים על הנתונים הקיימים.
+
+**שכבה B — UI סינון אוטומטי:**
+
+- `useDedupedOrders` ו-`useDedupedServiceCalls` (`src/hooks/`) מסננים מתוך הקליינט כל מי ש-`duplicateOf` שלו מוגדר. ה-API פשוט: `{ orders, groupSize: Map<id,count>, hiddenCount }`.
+- ה-hooks הקיימים `useZonedOrders` / `useZonedServiceCalls` עוטפים אותם → **כל מסך** (דשבורד, משלוחים, קריאות שירות, ניווט מסלולים) מסונן אוטומטית.
+- שורה ראש עם דופליקטים מסומנת ב-UI עם **באדג' `×N`** ליד שם הלקוח (יישום ב-OrdersTable, ServiceCallsTable, UnscheduledOrders, UnscheduledServiceCalls).
+- `useDedupEnabled` (`src/hooks/`) שומר את מצב הטוגל ב-localStorage עם CustomEvent לסנכרון בין דפים באותו tab; ברירת מחדל ON.
+- `DedupToggle` (`src/components/dashboard/`) — כפתור inline שמציג ספירה ומאפשר להציג הכל כשנדרש.
+
+**שכבה C — חסם DB על שיבוצים פעילים:**
+
+```sql
+CREATE UNIQUE INDEX calendar_stops_no_active_dup
+  ON public.calendar_stops (
+    lower(coalesce(customer_name,'')), coalesce(phone,''),
+    coalesce(address,''), coalesce(city,'')
+  )
+  WHERE status IN ('planned', 'in_progress');
+```
+
+לפני יצירת unique index, נוקו 14 שיבוצים שכבר היו כפולים (סטטוס `cancelled` + הערה "בוטל אוטומטית — כפילות").
+
+**שכבה D — פרה-בדיקה לפני שיבוץ (UX):**
+
+- `findActiveDuplicateStops()` ב-`src/lib/calendar-stops.ts` — שאילתה לחיפוש stops פעילים לאותו לקוח.
+- `DuplicateScheduleWarningDialog` (`src/components/deliveries/`) — מוצג בכל ניסיון שיבוץ. בשיבוץ קבוצתי: אם רק חלק בקונפליקט, כפתור "דלג על הכפילויות ושבץ X" מאפשר ביצוע חלקי.
+- ב-`DeliveriesPage.handleDriverSelected`: לולאה על כל ההזמנות → אוסף קונפליקטים → אם יש, פותח דיאלוג; אחרת ממשיך.
+- ב-`ServiceCallsPage.handleDriverSelected`: בדיקה דומה לקריאה בודדת.
+- אם השגיאה מ-DB מכילה `calendar_stops_no_active_dup` או `duplicate key` → toast "השיבוץ נחסם: לקוח זה כבר משובץ פעיל ביומן".
+
+#### C) תיקון pagination
+
+`fetchAllOrders` ו-`fetchAllServiceCalls` היו מוגבלים ל-1,000 שורות (PostgREST max-rows). עכשיו טוענים בלולאה עם `.range(from, from + PAGE - 1)` כל 1,000.
+
+#### קבצים חדשים (סיכום)
+
+**Crane inspections:** types/crane.ts, lib/cranes.ts, lib/crane-inspections.ts, lib/crane-sync.ts, lib/crane-excel-parser.ts, hooks/useCranes.ts, hooks/useCraneInspections.ts, hooks/useCraneSync.ts, pages/InspectionsPage.tsx, components/inspections/*.tsx (8 קבצים).
+
+**Dedup:** hooks/useDedupEnabled.ts, hooks/useDedupedOrders.ts, hooks/useDedupedServiceCalls.ts, components/dashboard/DedupToggle.tsx, components/deliveries/DuplicateScheduleWarningDialog.tsx.
+
+**Modified:** App.tsx, AppHeader.tsx (לינק "בדיקות מנופים"), DashboardPage/DeliveriesPage/ServiceCallsPage/RouteNavigationPage, OrdersTable/ServiceCallsTable/UnscheduledOrders/UnscheduledServiceCalls, useZonedOrders/Service-Calls, lib/orders.ts (+duplicate_of + pagination), lib/service-calls.ts (+duplicate_of + pagination), lib/calendar-stops.ts (+findActiveDuplicateStops), types/order.ts (+duplicateOf), types/service-call.ts (+duplicateOf).
+
+---
+
 ### 22/04/2026 — יומן משולב (משלוחים + שירות) על מודל `calendar_stops` חדש ⭐⭐⭐⭐
 
 **שינוי ארכיטקטורלי מרכזי**: הוחלף המודל `routes` (מסלול = 1 נהג × 1 יום × סוג מסלול אחד) במודל גמיש של `calendar_stops` — כל עצירה היא שורה נפרדת ב-DB עם FK polymorphic למקור (`orders` או `service_calls`). משמעות: **נהג אחד יכול לבצע גם משלוחים וגם קריאות שירות באותו יום**, והכל מוצג ביומן אחד משולב.
@@ -657,5 +748,5 @@ export interface CalendarStop {
 
 ---
 
-**עודכן לאחרונה:** 22 באפריל 2026 (יומן משולב + `calendar_stops` + מעבר מלא ל-Supabase)
+**עודכן לאחרונה:** 13 במאי 2026 (דף בדיקות מנופים + מניעת כפילויות Priority ב-3 שכבות)
 **מפתחים:** צוות Rashal + Claude Code
