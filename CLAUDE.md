@@ -392,6 +392,73 @@ interface Zone {
 
 ## עדכונים אחרונים
 
+### 24/05/2026 — אינטגרציית WhatsApp דרך heyy.io + שיפורי גרירה ⭐⭐⭐⭐
+
+#### A) WhatsApp integration (pre-built, ממתין לחשבון heyy + Meta template approval)
+
+מערכת מלאה לשליחת הודעות יוצאות ולקבלת תשובות לקוח, פעילה אחרי שyahyahonline חשבון heyy יאופעל ושmeta יאשר את התבניות.
+
+**טבלאות חדשות + שדות:**
+- `supabase/migrations/20260524_whatsapp_integration.sql` — הוספת שדות `customer_reply_status`, `customer_requested_time` ל-`orders` + טבלאות `whatsapp_messages_outbound` / `whatsapp_messages_inbound`.
+
+**Edge / Vercel serverless functions (`api/`):**
+- `heyy-send.ts` — שליחת הודעה יוצאת דרך heyy API, רישום ב-DB
+- `heyy-webhook.ts` — endpoint שwebhook של heyy קורא לו, מפרסר תשובות לקוח (זמן מבוקש, אישור) ומעדכן את ה-order
+- `cron-daily-reminders.ts` — pg_cron יומי 06:00 ב-vercel.json (`0 6 * * *`) — שולח תזכורות לתעודות שעדיין `ממתין לתאום`
+- `_lib/` — utils משותפים: Supabase admin client, normalize טלפון ישראלי, extract של שדות מטקסט חופשי
+
+**UI חדש (`src/`):**
+- `pages/WhatsAppPage.tsx` (route `/whatsapp`, קישור בתפריט "💬 וואטסאפ")
+- `components/whatsapp/` — `WhatsAppActions` (כפתורי שליחה), `CustomerReplyBadge` (status pill), `InboundMessagesPanel`, `OutboundLog`, `DemoSimulator`, `FullFlowDemo`
+- `lib/heyy/` — `client.ts` (heyy REST), `templates.ts` (תבניות), `phone.ts`, `extract.ts` (NLP בסיסי), `db.ts`, `types.ts`
+- `hooks/useWhatsAppSend.ts` + `useWhatsAppMessages.ts`
+- `OrdersTable` — עמודה חדשה "תשובת לקוח" + עמודת וואטסאפ עם actions inline
+
+**תצורה:**
+- `@vercel/node` נוסף ל-devDependencies
+- `tsconfig.api.json` נפרד ל-Vercel functions, מקושר מ-`tsconfig.json`
+- `vercel.json` — rewrite מעודכן (`(?!api/)`) כדי שהפונקציות לא ירדו ל-SPA fallback + cron entry
+- `docs/heyy-setup.md` — הוראות הגדרת חשבון + webhook
+
+**מצב נוכחי:** הקוד פרוס ל-Vercel, אבל לא פעיל עד שיתקבל account active מ-heyy + Meta יאשר את התבניות. ה-`DemoSimulator` ו-`FullFlowDemo` מאפשרים לבדוק את ה-flow ללא heyy חיצוני (משחזר את ה-webhook events מקומית).
+
+#### B) שיפורי גרירה ביומן + bulk schedule בקריאות שירות
+
+**שווי לקריאות שירות עם משלוחים:**
+- בחירה מרובה (Set<string>) ב-`ServiceCallsPage` עם ring כחול + ✓ ב-`UnscheduledServiceCalls`
+- כפתור "סמן את כל הקריאות"
+- floating action bar עם "תזמן N קריאות" → `DatePickerDialog` → `DriverSelector`
+- גרירה מרובה (selection מצורף לכרטיס שגוררים)
+- pre-check duplicates עם schedule-others fallback (כמו במשלוחים)
+
+**שיפורי DnD בשני הדפים:**
+- `collisionDetection` מותאם — `pointerWithin` → `rectIntersection` על days בלבד, **ללא fallback** ל-closestCenter (drop מחוץ ליום לא מפעיל יותר את ה-handler — היה באג שדיאלוג הנהג נפתח גם בשחרור בחוץ)
+- `DragOverlay` חדש: stack visualization ל-bulk (2 כרטיסים מאחור עם offset), ring + rotate-2
+- `src/lib/dnd-animations.ts` (חדש) — `dropAnimationDown` (150ms, fade עם side-effects של opacity 0) + `silentAnnouncements` (מבטל overlay זוהר של dnd-kit ב-RTL) + `silentScreenReaderInstructions`
+- `activationConstraint.distance: 8 → 6` (איזון בין click ל-drag — 3 היה נמוך מדי, גרם לכל לחיצה להפעיל drag רגעי)
+- `isPending` — `opacity-25 scale-[0.97] pointer-events-none` על הכרטיס המקור בין drop לבחירת נהג. `pendingScheduleIds` Set מחושב מ-`pendingSchedule` ב-page level ומועבר ל-`UnscheduledOrders` / `UnscheduledServiceCalls`
+- `transition-all` הוסר בזמן `isDragging` — `!isDragging && 'transition-[opacity,transform,box-shadow] duration-150'`. מנע "תקיעה" של 150ms בה ה-CSS transition נאבק עם transform של dnd-kit
+- הסרת `filter: drop-shadow` מ-DragOverlay (יקר ב-GPU — מחושב מחדש בכל frame של גרירה) — הוחלף ב-`shadow-2xl` של Tailwind
+
+**`DayMapDialog` — drag-to-reorder לעצירות:**
+- `SortableStopsList` חדש — `DndContext` פנימי לדיאלוג + `SortableContext` עם `verticalListSortingStrategy`
+- `SortableSideStopItem` — wrap של `SideStopItem` עם `useSortable`, GripVertical handle משמאל
+- **Optimistic local order** — מציג מיד את הסדר החדש, מסונכרן מחדש כשה-props משתנות אחרי שה-mutation מסיים. `effectiveIds` נופל בחזרה ל-props אם ה-IDs שונים (הוספה/הסרה של עצירה)
+- `arrayMove` מ-`@dnd-kit/sortable` ב-`handleDragEnd` → קריאה ל-`onOptimize(driver, orderedIds)` שמופעלת אצל ההורה דרך `useReorderStops`
+- DndContext פנימי לא מתנגש עם החיצוני של הדף (nested DndContexts ב-dnd-kit עובדים)
+
+**`geocoding.ts` — ערים שנוספו + indicator לערים חסרות:**
+- נוספו: `קרית עקרון` / `קריית עקרון`, `מזכרת בתיה`, `טייבה`, `טירה`, `קלנסווה` (כיסוי טוב יותר לאזור השרון והמשולש)
+- **`SideStopItem` ב-`DayMapDialog`** — אם `getCityCoordinates(stop.city)` מחזיר `null`, הכרטיס מסומן ענבר: רקע `bg-amber-50/40`, border `border-amber-300`, מספר מעגלי בענבר עם ring, `AlertTriangle` קטן ליד שם הלקוח, tooltip "העיר X לא נמצאת במאגר הקואורדינטות". מאפשר לזהות שיבושי איות במהירות במקום לתהות למה חסר מספר במפה.
+
+**Files שהשתנו (7):**
+- `src/lib/dnd-animations.ts` (חדש), `src/lib/geocoding.ts`
+- `src/components/deliveries/DayMapDialog.tsx`, `UnscheduledOrders.tsx`
+- `src/components/service-calls/UnscheduledServiceCalls.tsx`
+- `src/pages/DeliveriesPage.tsx`, `ServiceCallsPage.tsx`
+
+---
+
 ### 13/05/2026 — דף "בדיקות מנופים" + מניעת כפילויות Priority ⭐⭐⭐⭐
 
 #### A) דף `/inspections` — ניהול בדיקות תקופתיות למנופי G150/G175
@@ -748,5 +815,5 @@ export interface CalendarStop {
 
 ---
 
-**עודכן לאחרונה:** 13 במאי 2026 (דף בדיקות מנופים + מניעת כפילויות Priority ב-3 שכבות)
+**עודכן לאחרונה:** 24 במאי 2026 (אינטגרציית WhatsApp דרך heyy.io + שיפורי גרירה ביומן + drag-to-reorder ב-DayMapDialog)
 **מפתחים:** צוות Rashal + Claude Code
