@@ -6,6 +6,7 @@ export type CustomerReplyStatus = 'ממתין' | 'מתאים' | 'לא מתאים
 export type WhatsAppReminderKind =
   | 'delivery_reminder'
   | 'schedule_request'
+  | 'schedule_coordination'
   | 'team_notification'
   | 'custom';
 

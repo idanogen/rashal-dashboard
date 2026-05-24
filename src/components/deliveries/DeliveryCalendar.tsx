@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import confetti from 'canvas-confetti';
 import type { CalendarDelivery, CalendarStop } from '@/types/delivery';
 import { DRIVER_CONFIG } from '@/types/delivery';
 import type { DriverName } from '@/types/route';
@@ -25,8 +26,11 @@ import {
   Check,
   X,
   Map as MapIcon,
+  MessageCircle,
 } from 'lucide-react';
 import { useDroppable } from '@dnd-kit/core';
+import { ScheduleCoordinationDialog } from '@/components/whatsapp/ScheduleCoordinationDialog';
+import { CoordinationStatusBadge } from '@/components/whatsapp/CoordinationStatusBadge';
 
 // פורמט תאריך מקומי (לא UTC) למניעת באגי timezone
 const toLocalDateStr = (d: Date) =>
@@ -51,10 +55,36 @@ interface StopCardProps {
   delivery: CalendarDelivery;
   onRemove?: (stopId: string) => void;
   onResolve?: (stopId: string, status: 'completed' | 'not_completed') => void;
+  onCoordinate?: (stop: CalendarStop) => void;
 }
 
-function StopCard({ stop, delivery, onRemove, onResolve }: StopCardProps) {
+function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate }: StopCardProps) {
   const config = DRIVER_CONFIG[delivery.driver];
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const prevCoordRef = useRef<typeof stop.coordinationStatus>(stop.coordinationStatus);
+
+  // Confetti + flash when status transitions to customer_confirmed
+  useEffect(() => {
+    const prev = prevCoordRef.current;
+    if (stop.coordinationStatus === 'customer_confirmed' && prev !== 'customer_confirmed') {
+      const el = cardRef.current;
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        confetti({
+          particleCount: 60,
+          spread: 50,
+          startVelocity: 25,
+          origin: {
+            x: (rect.left + rect.width / 2) / window.innerWidth,
+            y: (rect.top + rect.height / 2) / window.innerHeight,
+          },
+          colors: ['#10b981', '#34d399', '#6ee7b7', '#fef08a'],
+          scalar: 0.8,
+        });
+      }
+    }
+    prevCoordRef.current = stop.coordinationStatus;
+  }, [stop.coordinationStatus]);
 
   // Sortable — sortable-drag רק כשעוצמת ה-stop לא resolved
   const isResolved = stop.status === 'completed' || stop.status === 'not_completed';
@@ -92,97 +122,86 @@ function StopCard({ stop, delivery, onRemove, onResolve }: StopCardProps) {
   const SrcIcon = src.Icon;
 
   // רקע לפי סטטוס
+  const isCustomerConfirmed = stop.coordinationStatus === 'customer_confirmed';
+  const isCustomerRejected = stop.coordinationStatus === 'customer_rejected';
   const statusBg =
     stop.status === 'completed'
       ? 'bg-emerald-50/80 dark:bg-emerald-900/20'
       : stop.status === 'not_completed'
         ? 'bg-red-50/60 dark:bg-red-900/20'
-        : 'bg-background/60';
+        : isCustomerConfirmed
+          ? 'bg-emerald-100/80 ring-2 ring-emerald-400/60 dark:bg-emerald-900/40'
+          : isCustomerRejected
+            ? 'bg-red-50/70 ring-1 ring-red-300/60 dark:bg-red-900/30'
+            : 'bg-background/60';
   const nameClass =
     stop.status === 'not_completed'
       ? 'line-through text-muted-foreground'
       : '';
 
+  // Combine the sortable ref + our own ref (for confetti positioning)
+  const setRefs = (node: HTMLDivElement | null) => {
+    setNodeRef(node);
+    cardRef.current = node;
+  };
+
   return (
     <div
-      ref={setNodeRef}
+      ref={setRefs}
       style={sortableStyle}
       className={`
-        group rounded-lg border-s-[3px] ${config.borderColor} border ${statusBg}
-        p-2 transition-all duration-200 hover:shadow-md
+        group relative rounded-lg border-s-[4px] ${config.borderColor} border ${statusBg}
+        p-3 transition-all duration-300 hover:shadow-md
+        ${isCustomerConfirmed ? 'shadow-md shadow-emerald-200/50' : ''}
         ${!isResolved ? 'cursor-grab active:cursor-grabbing' : ''}
       `}
       {...(isResolved ? {} : { ...listeners, ...attributes })}
     >
+      {/* Confirmed ribbon — top-left corner */}
+      {isCustomerConfirmed && (
+        <div className="absolute top-0 start-0 flex items-center gap-1 rounded-tr-lg rounded-es-lg bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm">
+          <Check className="h-2.5 w-2.5" />
+          הלקוח אישר
+        </div>
+      )}
       {/* Top row: source icon + customer name + driver badge + action buttons */}
-      <div className="flex items-center justify-between gap-1 mb-1">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <GripVertical className="h-3 w-3 text-muted-foreground/30 flex-shrink-0" />
+      <div className={`flex items-center justify-between gap-1.5 mb-1.5 ${isCustomerConfirmed ? 'mt-3' : ''}`}>
+        <div className="flex items-center gap-2 min-w-0">
+          <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40 flex-shrink-0" />
           <span
-            className={`flex h-5 w-5 items-center justify-center rounded-md ${src.bg} ${src.color} flex-shrink-0`}
+            className={`flex h-6 w-6 items-center justify-center rounded-md ${src.bg} ${src.color} flex-shrink-0`}
             title={src.label}
           >
-            <SrcIcon className="h-3 w-3" />
+            <SrcIcon className="h-3.5 w-3.5" />
           </span>
-          <span className={`font-semibold text-xs truncate ${nameClass}`}>
+          <span className={`font-semibold text-sm truncate ${nameClass}`}>
             {stop.customerName}
           </span>
           {stop.status === 'completed' && (
-            <Check className="h-3 w-3 text-emerald-600 flex-shrink-0" aria-label="בוצע" />
+            <Check className="h-4 w-4 text-emerald-600 flex-shrink-0" aria-label="בוצע" />
           )}
           {stop.status === 'not_completed' && (
-            <X className="h-3 w-3 text-red-600 flex-shrink-0" aria-label="לא בוצע" />
+            <X className="h-4 w-4 text-red-600 flex-shrink-0" aria-label="לא בוצע" />
           )}
         </div>
-        <div className="flex items-center gap-1 flex-shrink-0">
-          {/* Resolve buttons — always visible when planned/in_progress */}
-          {onResolve && !isResolved && (
-            <>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onResolve(stop.stopId, 'completed');
-                }}
-                onPointerDown={(e) => e.stopPropagation()}
-                className="flex items-center gap-0.5 rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-500/20 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50 transition-colors"
-                title="סמן כבוצע"
-              >
-                <Check className="h-2.5 w-2.5" />
-                בוצע
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onResolve(stop.stopId, 'not_completed');
-                }}
-                onPointerDown={(e) => e.stopPropagation()}
-                className="flex items-center gap-0.5 rounded-md bg-red-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-red-700 hover:bg-red-500/20 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 transition-colors"
-                title="סמן כלא בוצע"
-              >
-                <X className="h-2.5 w-2.5" />
-                לא בוצע
-              </button>
-            </>
-          )}
-          {onRemove && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onRemove(stop.stopId);
-              }}
-              className="h-5 w-5 flex items-center justify-center rounded-md opacity-0 group-hover:opacity-100 hover:bg-destructive/10 transition-all"
-              title="הסר מהיומן"
-            >
-              <Trash2 className="h-3 w-3 text-destructive" />
-            </button>
-          )}
-        </div>
+        {onRemove && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onRemove(stop.stopId);
+            }}
+            className="h-6 w-6 flex items-center justify-center rounded-md opacity-0 group-hover:opacity-100 hover:bg-destructive/10 transition-all flex-shrink-0"
+            title="הסר מהיומן"
+          >
+            <Trash2 className="h-3.5 w-3.5 text-destructive" />
+          </button>
+        )}
       </div>
 
       {/* Address */}
       {(stop.address || stop.city) && (
-        <p className="text-[10px] text-muted-foreground flex items-center gap-0.5 mt-0.5 truncate">
-          <MapPin className="h-2.5 w-2.5 flex-shrink-0" />
+        <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1 truncate">
+          <MapPin className="h-3 w-3 flex-shrink-0" />
           <span className="truncate">
             {stop.address}
             {stop.city ? `, ${stop.city}` : ''}
@@ -192,12 +211,80 @@ function StopCard({ stop, delivery, onRemove, onResolve }: StopCardProps) {
 
       {/* Phone */}
       {stop.phone && (
-        <p className="text-[10px] text-muted-foreground flex items-center gap-0.5 mt-0.5">
-          <Phone className="h-2.5 w-2.5 flex-shrink-0" />
-          <a href={`tel:${stop.phone}`} className="hover:text-primary" dir="ltr">
+        <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+          <Phone className="h-3 w-3 flex-shrink-0" />
+          <a href={`tel:${stop.phone}`} className="hover:text-primary font-medium" dir="ltr">
             {stop.phone}
           </a>
         </p>
+      )}
+
+      {/* Coordination status indicators */}
+      {((stop.coordinationStatus && !isCustomerConfirmed) ||
+        (stop.timeWindowStart && stop.timeWindowEnd)) && (
+        <div className="flex items-center flex-wrap gap-1.5 mt-2">
+          {stop.coordinationStatus && !isCustomerConfirmed && (
+            <CoordinationStatusBadge status={stop.coordinationStatus} showLabel className="text-[11px] py-0.5" />
+          )}
+          {stop.timeWindowStart && stop.timeWindowEnd && (
+            <span
+              className={`text-xs font-medium ${
+                isCustomerConfirmed ? 'text-emerald-700 font-bold' : 'text-muted-foreground'
+              }`}
+              dir="ltr"
+            >
+              🕐 {stop.timeWindowStart}–{stop.timeWindowEnd}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Action buttons row — bigger and on their own line for easier tap */}
+      {!isResolved && (onCoordinate || onResolve) && (
+        <div className="flex items-center gap-1.5 mt-2.5 pt-2 border-t border-border/40">
+          {onCoordinate && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onCoordinate(stop);
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              className="flex-1 flex items-center justify-center gap-1 rounded-md bg-emerald-500/10 px-2 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-500/20 transition-colors"
+              title="שלח תיאום ללקוח"
+            >
+              <MessageCircle className="h-3.5 w-3.5" />
+              תיאום
+            </button>
+          )}
+          {onResolve && (
+            <>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onResolve(stop.stopId, 'completed');
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="flex-1 flex items-center justify-center gap-1 rounded-md bg-emerald-500/10 px-2 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-500/20 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50 transition-colors"
+                title="סמן כבוצע"
+              >
+                <Check className="h-3.5 w-3.5" />
+                בוצע
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onResolve(stop.stopId, 'not_completed');
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="flex-1 flex items-center justify-center gap-1 rounded-md bg-red-500/10 px-2 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-500/20 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 transition-colors"
+                title="סמן כלא בוצע"
+              >
+                <X className="h-3.5 w-3.5" />
+                לא בוצע
+              </button>
+            </>
+          )}
+        </div>
       )}
     </div>
   );
@@ -250,6 +337,7 @@ export function DeliveryCalendar({
   onViewDayMap,
 }: DeliveryCalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [coordinationStop, setCoordinationStop] = useState<CalendarStop | null>(null);
 
   const dayNames = [
     'ראשון',
@@ -531,6 +619,7 @@ export function DeliveryCalendar({
                               delivery={delivery}
                               onRemove={onRemoveOrder}
                               onResolve={onResolveStop}
+                              onCoordinate={setCoordinationStop}
                             />
                           ))}
                         </SortableContext>
@@ -548,6 +637,15 @@ export function DeliveryCalendar({
           );
         })}
       </div>
+
+      {/* Coordination dialog — opens when a card's "תיאום" button is clicked */}
+      <ScheduleCoordinationDialog
+        stop={coordinationStop}
+        open={!!coordinationStop}
+        onOpenChange={(open) => {
+          if (!open) setCoordinationStop(null);
+        }}
+      />
     </div>
   );
 }

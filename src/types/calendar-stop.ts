@@ -9,6 +9,15 @@ export type StopStatus =
   | 'not_completed'
   | 'cancelled';
 
+export type CoordinationStatus =
+  | 'whatsapp_sent'
+  | 'phone_confirmed'
+  | 'customer_confirmed'
+  | 'customer_rejected'
+  | 'customer_change';
+
+export type CoordinationMethod = 'whatsapp' | 'phone';
+
 export interface CalendarStop {
   id: string;
 
@@ -35,6 +44,13 @@ export interface CalendarStop {
   status: StopStatus;
   completedAt?: string;
   notes?: string;
+
+  // Coordination (WhatsApp / phone)
+  coordinationStatus?: CoordinationStatus;
+  coordinationMethod?: CoordinationMethod;
+  coordinatedAt?: string;
+  timeWindowStart?: string;
+  timeWindowEnd?: string;
 
   created: string;
   updated: string;

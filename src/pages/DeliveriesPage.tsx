@@ -164,6 +164,11 @@ export function DeliveriesPage() {
         address: s.address,
         city: s.city,
         phone: s.phone,
+        coordinationStatus: s.coordinationStatus,
+        coordinationMethod: s.coordinationMethod,
+        coordinatedAt: s.coordinatedAt,
+        timeWindowStart: s.timeWindowStart,
+        timeWindowEnd: s.timeWindowEnd,
       });
     }
     return Array.from(groups.values());

@@ -10,6 +10,15 @@ export type CalendarStopStatus =
   | 'not_completed'
   | 'cancelled';
 
+export type CoordinationStatus =
+  | 'whatsapp_sent'
+  | 'phone_confirmed'
+  | 'customer_confirmed'
+  | 'customer_rejected'
+  | 'customer_change';
+
+export type CoordinationMethod = 'whatsapp' | 'phone';
+
 export interface CalendarStop {
   /** calendar_stops.id — יחידת הזיהוי של ה-stop ביומן */
   stopId: string;
@@ -25,6 +34,12 @@ export interface CalendarStop {
   address?: string;
   city?: string;
   phone?: string;
+  /** WhatsApp / phone coordination tracking */
+  coordinationStatus?: CoordinationStatus;
+  coordinationMethod?: CoordinationMethod;
+  coordinatedAt?: string;
+  timeWindowStart?: string;
+  timeWindowEnd?: string;
 }
 
 export interface CalendarDelivery {

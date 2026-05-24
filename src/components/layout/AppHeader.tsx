@@ -5,10 +5,12 @@ import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
+import { useIsAdmin } from '@/hooks/useProfile';
 
 export function AppHeader() {
   const queryClient = useQueryClient();
   const { signOut } = useAuth();
+  const isAdmin = useIsAdmin();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [timeAgo, setTimeAgo] = useState('עכשיו');
@@ -120,6 +122,21 @@ export function AppHeader() {
             >
               💬 וואטסאפ
             </NavLink>
+            {isAdmin && (
+              <NavLink
+                to="/admin/users"
+                className={({ isActive }) =>
+                  cn(
+                    'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                    isActive
+                      ? 'bg-purple-50 text-purple-700'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                  )
+                }
+              >
+                👥 משתמשים
+              </NavLink>
+            )}
           </nav>
         </div>
 

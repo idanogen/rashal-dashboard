@@ -13,6 +13,8 @@ import type {
   WhatsAppInboundStatus,
   WhatsAppOutbound,
 } from './types';
+import { normalizePhone } from './phone';
+import { parseCustomerReply } from './extract';
 
 interface InboundRow {
   id: string;
@@ -133,32 +135,88 @@ export async function markInboundProcessed(id: string, notes?: string): Promise<
 }
 
 /**
- * Simulate an inbound message in demo mode by POSTing to our own /api/heyy-webhook
- * with the same payload shape heyy would send. This exercises the real webhook
- * code path — parse reply, match to order, update orders.customer_reply_status.
+ * Simulate an inbound message in demo mode. Does the SAME work the real
+ * /api/heyy-webhook does — parse, match to order, update orders — but runs
+ * client-side via the anon supabase client. This avoids needing `vercel dev`
+ * for local demo work.
+ *
+ * In production with HEYY_MODE=real, the real heyy → /api/heyy-webhook path
+ * is exercised; this function is only called from the DemoSimulator UI.
  */
 export async function simulateInbound(input: {
   phoneE164: string;
   bodyText: string;
 }): Promise<{ ok: boolean; inboundId?: string; matchedOrderId?: string | null }> {
-  const payload = {
-    event: 'message.received',
-    data: {
-      id: `demo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      sender: 'inbound',
-      content: { body: input.bodyText },
-      contact: { phoneNumber: input.phoneE164 },
-      handle: { value: input.phoneE164 },
-    },
-    _demo: true,
-  };
-  const res = await fetch('/api/heyy-webhook', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  const json = (await res.json().catch(() => ({}))) as { ok?: boolean; inboundId?: string; matchedOrderId?: string | null };
-  return { ok: json.ok === true, inboundId: json.inboundId, matchedOrderId: json.matchedOrderId };
+  const phoneLocal = normalizePhone(input.phoneE164);
+
+  // Match to a real order by phone (most-recent)
+  let orderId: string | null = null;
+  if (phoneLocal) {
+    const { data: matchingOrders } = await supabase
+      .from('orders')
+      .select('id')
+      .eq('phone', phoneLocal)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    orderId = matchingOrders?.[0]?.id ?? null;
+  }
+
+  // Deterministic parser (same as server)
+  const parsed = parseCustomerReply(input.bodyText);
+
+  const providerMessageId = `demo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  const { data: inboundRow, error: insertErr } = await supabase
+    .from('whatsapp_inbound')
+    .insert({
+      provider_message_id: providerMessageId,
+      phone_e164: input.phoneE164,
+      phone_local: phoneLocal,
+      body_text: input.bodyText,
+      raw_payload: { simulated: true, source: 'dashboard-demo' },
+      status: 'received',
+      order_id: orderId,
+      parsed_reply_status: parsed.status,
+      is_demo: true,
+    })
+    .select()
+    .single();
+  if (insertErr) throw new Error(`simulateInbound: ${insertErr.message}`);
+
+  // If matched + parsed → update the order
+  if (orderId && parsed.status) {
+    const orderUpdate: Record<string, unknown> = { customer_reply_status: parsed.status };
+    if (parsed.requestedTime) orderUpdate.customer_requested_time = parsed.requestedTime;
+    await supabase.from('orders').update(orderUpdate).eq('id', orderId);
+
+    // If there's a planned calendar_stops for this order, also mark it as customer-confirmed
+    if (parsed.status === 'מתאים') {
+      await supabase
+        .from('calendar_stops')
+        .update({
+          coordination_status: 'customer_confirmed',
+          coordinated_at: new Date().toISOString(),
+        })
+        .eq('order_id', orderId)
+        .eq('status', 'planned');
+    } else if (parsed.status === 'לא מתאים' || parsed.status === 'בקשת שינוי') {
+      await supabase
+        .from('calendar_stops')
+        .update({
+          coordination_status: parsed.status === 'לא מתאים' ? 'customer_rejected' : 'customer_change',
+          coordinated_at: new Date().toISOString(),
+        })
+        .eq('order_id', orderId)
+        .eq('status', 'planned');
+    }
+  }
+
+  await supabase
+    .from('whatsapp_inbound')
+    .update({ status: 'processed', processed_at: new Date().toISOString() })
+    .eq('id', inboundRow.id);
+
+  return { ok: true, inboundId: inboundRow.id, matchedOrderId: orderId };
 }
 
 /** Check whether a reminder of this kind was sent for this order in the cooldown window. */

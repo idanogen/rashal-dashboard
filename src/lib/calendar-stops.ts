@@ -1,5 +1,7 @@
 import type {
   CalendarStop,
+  CoordinationMethod,
+  CoordinationStatus,
   ScheduleStopInput,
   StopStatus,
 } from '@/types/calendar-stop';
@@ -21,6 +23,11 @@ type CalendarStopRow = {
   status: StopStatus;
   completed_at: string | null;
   notes: string | null;
+  coordination_status: CoordinationStatus | null;
+  coordination_method: CoordinationMethod | null;
+  coordinated_at: string | null;
+  time_window_start: string | null;
+  time_window_end: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -42,6 +49,11 @@ function rowToStop(row: CalendarStopRow): CalendarStop {
     status: row.status,
     completedAt: row.completed_at ?? undefined,
     notes: row.notes ?? undefined,
+    coordinationStatus: row.coordination_status ?? undefined,
+    coordinationMethod: row.coordination_method ?? undefined,
+    coordinatedAt: row.coordinated_at ?? undefined,
+    timeWindowStart: row.time_window_start ?? undefined,
+    timeWindowEnd: row.time_window_end ?? undefined,
     created: row.created_at,
     updated: row.updated_at,
   };
@@ -65,6 +77,11 @@ function stopFieldsToRow(
   if ('status' in fields) row.status = fields.status;
   if ('completedAt' in fields) row.completed_at = fields.completedAt ?? null;
   if ('notes' in fields) row.notes = fields.notes ?? null;
+  if ('coordinationStatus' in fields) row.coordination_status = fields.coordinationStatus ?? null;
+  if ('coordinationMethod' in fields) row.coordination_method = fields.coordinationMethod ?? null;
+  if ('coordinatedAt' in fields) row.coordinated_at = fields.coordinatedAt ?? null;
+  if ('timeWindowStart' in fields) row.time_window_start = fields.timeWindowStart ?? null;
+  if ('timeWindowEnd' in fields) row.time_window_end = fields.timeWindowEnd ?? null;
   return row;
 }
 

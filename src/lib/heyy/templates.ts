@@ -46,6 +46,21 @@ export const TEMPLATES: Record<WhatsAppReminderKind, TemplateDef> = {
     paramLabels: ['שם הלקוח'],
     buildParams: (i) => [i.customerName ?? ''],
   },
+  schedule_coordination: {
+    kind: 'schedule_coordination',
+    templateId: 'DEMO-schedule-coordination',
+    label: 'תיאום משלוח עם תאריך ושעה',
+    bodyPreview:
+      'שלום {{1}},\nתיאמנו עבורכם משלוח של ראש"ל ציוד רפואי ביום {{2}}, בין השעות {{3}} ל-{{4}}.\n{{5}}\nאם נוח לכם — ענו "אישור". אם לא — ענו עם זמן מועדף.',
+    paramLabels: ['שם הלקוח', 'תאריך', 'שעת התחלה', 'שעת סיום', 'הערה (אופציונלי)'],
+    buildParams: (i) => [
+      i.customerName ?? '',
+      i.dateLabel ?? '',
+      i.timeStart ?? '09:00',
+      i.timeEnd ?? '13:00',
+      i.note ?? '',
+    ],
+  },
   team_notification: {
     kind: 'team_notification',
     templateId: 'DEMO-team-notification',

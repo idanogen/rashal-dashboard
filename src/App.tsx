@@ -8,9 +8,11 @@ import { ServiceCallsPage } from '@/pages/ServiceCallsPage';
 import { InspectionsPage } from '@/pages/InspectionsPage';
 import { RouteNavigationPage } from '@/pages/RouteNavigationPage';
 import { WhatsAppPage } from '@/pages/WhatsAppPage';
+import { AdminUsersPage } from '@/pages/AdminUsersPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { AuthProvider } from '@/lib/auth-context';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
+import { ProtectedAdminRoute } from '@/components/ProtectedAdminRoute';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -39,6 +41,14 @@ function App() {
                       <Route path="/service-calls" element={<ServiceCallsPage />} />
                       <Route path="/inspections" element={<InspectionsPage />} />
                       <Route path="/whatsapp" element={<WhatsAppPage />} />
+                      <Route
+                        path="/admin/users"
+                        element={
+                          <ProtectedAdminRoute>
+                            <AdminUsersPage />
+                          </ProtectedAdminRoute>
+                        }
+                      />
                       <Route path="/route-navigation" element={<RouteNavigationPage />} />
                     </Routes>
                   </AppShell>
