@@ -15,6 +15,11 @@ type OrderRow = {
   city: string | null;
   agent: string | null;
   duplicate_of: string | null;
+  scheduled_reminder_at: string | null;
+  customer_reply_status: Order['customerReplyStatus'] | null;
+  customer_requested_time: string | null;
+  last_reminder_at: string | null;
+  delivery_date: string | null;
   created_at: string;
 };
 
@@ -33,6 +38,11 @@ function rowToOrder(row: OrderRow): Order {
     city: row.city ?? undefined,
     agent: row.agent ?? undefined,
     duplicateOf: row.duplicate_of ?? undefined,
+    scheduledReminderAt: row.scheduled_reminder_at ?? undefined,
+    customerReplyStatus: row.customer_reply_status ?? undefined,
+    customerRequestedTime: row.customer_requested_time ?? undefined,
+    lastReminderAt: row.last_reminder_at ?? undefined,
+    deliveryDate: row.delivery_date ?? undefined,
     created: row.created_at,
   };
 }
@@ -50,6 +60,11 @@ function orderFieldsToRow(fields: Partial<Omit<Order, 'id'>>): Record<string, un
   if ('address' in fields) row.address = fields.address;
   if ('city' in fields) row.city = fields.city;
   if ('agent' in fields) row.agent = fields.agent;
+  if ('scheduledReminderAt' in fields) row.scheduled_reminder_at = fields.scheduledReminderAt;
+  if ('customerReplyStatus' in fields) row.customer_reply_status = fields.customerReplyStatus;
+  if ('customerRequestedTime' in fields) row.customer_requested_time = fields.customerRequestedTime;
+  if ('lastReminderAt' in fields) row.last_reminder_at = fields.lastReminderAt;
+  if ('deliveryDate' in fields) row.delivery_date = fields.deliveryDate;
   return row;
 }
 

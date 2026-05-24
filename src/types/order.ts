@@ -9,6 +9,8 @@ export interface OrderDocument {
   created: string;
 }
 
+export type CustomerReplyStatus = 'ממתין' | 'מתאים' | 'לא מתאים' | 'בקשת שינוי';
+
 export interface Order {
   id: string;
   customerName: string;
@@ -25,6 +27,16 @@ export interface Order {
   documents?: OrderDocument[];
   /** If set, this row is a Priority dupe of the referenced head row. */
   duplicateOf?: string;
+  /** When the user scheduled a manual WhatsApp reminder for this order. */
+  scheduledReminderAt?: string;
+  /** Last parsed WhatsApp reply status from the customer. */
+  customerReplyStatus?: CustomerReplyStatus;
+  /** Free-text time the customer requested (e.g. "אחה"צ", "מחר"). */
+  customerRequestedTime?: string;
+  /** When the most recent WhatsApp reminder was sent for this order. */
+  lastReminderAt?: string;
+  /** YYYY-MM-DD — when the order is scheduled for delivery (cron uses this). */
+  deliveryDate?: string;
   created: string;
 }
 

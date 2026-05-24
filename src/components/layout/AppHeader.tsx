@@ -107,6 +107,19 @@ export function AppHeader() {
             >
               בדיקות מנופים
             </NavLink>
+            <NavLink
+              to="/whatsapp"
+              className={({ isActive }) =>
+                cn(
+                  'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                  isActive
+                    ? 'bg-emerald-50 text-emerald-700'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                )
+              }
+            >
+              💬 וואטסאפ
+            </NavLink>
           </nav>
         </div>
 

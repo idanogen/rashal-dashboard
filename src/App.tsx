@@ -7,6 +7,7 @@ import { DeliveriesPage } from '@/pages/DeliveriesPage';
 import { ServiceCallsPage } from '@/pages/ServiceCallsPage';
 import { InspectionsPage } from '@/pages/InspectionsPage';
 import { RouteNavigationPage } from '@/pages/RouteNavigationPage';
+import { WhatsAppPage } from '@/pages/WhatsAppPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { AuthProvider } from '@/lib/auth-context';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
@@ -37,6 +38,7 @@ function App() {
                       <Route path="/routes" element={<DeliveriesPage />} />
                       <Route path="/service-calls" element={<ServiceCallsPage />} />
                       <Route path="/inspections" element={<InspectionsPage />} />
+                      <Route path="/whatsapp" element={<WhatsAppPage />} />
                       <Route path="/route-navigation" element={<RouteNavigationPage />} />
                     </Routes>
                   </AppShell>

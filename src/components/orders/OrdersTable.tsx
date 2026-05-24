@@ -15,6 +15,8 @@ import { StatusDropdown } from './StatusDropdown';
 import { OrderDetailDialog } from './OrderDetailDialog';
 import { type OrderFiltersState } from './OrderFilters';
 import { getDaysSinceCreated, getDaysColor } from '@/lib/utils';
+import { WhatsAppActions } from '@/components/whatsapp/WhatsAppActions';
+import { CustomerReplyBadge } from '@/components/whatsapp/CustomerReplyBadge';
 
 interface OrdersTableProps {
   orders: Order[];
@@ -120,15 +122,17 @@ export function OrdersTable({ orders, filters, groupSize }: OrdersTableProps) {
                 <TableHead className="text-xs font-semibold">קופ״ח</TableHead>
                 <TableHead className="text-xs font-semibold">סוכן</TableHead>
                 <SortableHeader column="orderStatus">סטטוס הזמנה</SortableHeader>
+                <TableHead className="text-xs font-semibold">תשובת לקוח</TableHead>
                 <SortableHeader column="openedBy">נפתח ע״י</SortableHeader>
                 <SortableHeader column="created">תאריך</SortableHeader>
                 <SortableHeader column="daysSince">ימים</SortableHeader>
+                <TableHead className="text-xs font-semibold text-center">וואטסאפ</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {sorted.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={11} className="h-32 text-center text-muted-foreground">
+                  <TableCell colSpan={13} className="h-32 text-center text-muted-foreground">
                     לא נמצאו הזמנות
                   </TableCell>
                 </TableRow>
@@ -171,6 +175,12 @@ export function OrdersTable({ orders, filters, groupSize }: OrdersTableProps) {
                         type="orderStatus"
                       />
                     </TableCell>
+                    <TableCell>
+                      <CustomerReplyBadge
+                        status={order.customerReplyStatus}
+                        requestedTime={order.customerRequestedTime}
+                      />
+                    </TableCell>
                     <TableCell className="text-sm">{order.openedBy || '—'}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">
                       {order.created
@@ -187,6 +197,9 @@ export function OrdersTable({ orders, filters, groupSize }: OrdersTableProps) {
                           </span>
                         );
                       })()}
+                    </TableCell>
+                    <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
+                      <WhatsAppActions order={order} compact />
                     </TableCell>
                   </TableRow>
                 ))
@@ -243,7 +256,13 @@ export function OrdersTable({ orders, filters, groupSize }: OrdersTableProps) {
                     )}
                   </div>
                 </div>
-                <OrderStatusBadge status={order.orderStatus} />
+                <div className="flex flex-col items-end gap-1">
+                  <OrderStatusBadge status={order.orderStatus} />
+                  <CustomerReplyBadge
+                    status={order.customerReplyStatus}
+                    requestedTime={order.customerRequestedTime}
+                  />
+                </div>
               </div>
               <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
                 <span>{order.openedBy || '—'}</span>
@@ -262,6 +281,9 @@ export function OrdersTable({ orders, filters, groupSize }: OrdersTableProps) {
                       </span>
                     );
                   })()}
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <WhatsAppActions order={order} compact />
+                  </div>
                 </div>
               </div>
             </Card>
