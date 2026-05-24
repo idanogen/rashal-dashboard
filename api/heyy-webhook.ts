@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabaseAdmin } from './_lib/supabase-admin';
-import { extractMessage, parseCustomerReply } from './_lib/extract';
-import { normalizePhone, toE164 } from './_lib/phone';
+import { supabaseAdmin } from './_lib/supabase-admin.js';
+import { extractMessage, parseCustomerReply } from './_lib/extract.js';
+import { normalizePhone, toE164 } from './_lib/phone.js';
 
 // heyy webhook receiver.
 //

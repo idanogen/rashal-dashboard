@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabaseAdmin } from './_lib/supabase-admin';
-import { heyySendTemplate, isHeyyDemo } from './_lib/heyy-server';
-import { toE164 } from './_lib/phone';
+import { supabaseAdmin } from './_lib/supabase-admin.js';
+import { heyySendTemplate, isHeyyDemo } from './_lib/heyy-server.js';
+import { toE164 } from './_lib/phone.js';
 
 // Runs daily via Vercel Cron (see vercel.json). Schedule "0 6 * * *" = 06:00 UTC = 09:00 Israel (08:00 in winter).
 //

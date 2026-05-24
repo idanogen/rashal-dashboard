@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabaseAdmin } from './_lib/supabase-admin';
-import { heyySendTemplate, heyySendText, isHeyyDemo } from './_lib/heyy-server';
-import { toE164 } from './_lib/phone';
+import { supabaseAdmin } from './_lib/supabase-admin.js';
+import { heyySendTemplate, heyySendText, isHeyyDemo } from './_lib/heyy-server.js';
+import { toE164 } from './_lib/phone.js';
 
 // Send endpoint called from the browser. Wraps heyySendText / heyySendTemplate,
 // logs the result to whatsapp_outbound, and (for reminders) writes whatsapp_reminder_log.

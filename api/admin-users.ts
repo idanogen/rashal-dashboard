@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
-import { supabaseAdmin } from './_lib/supabase-admin';
+import { supabaseAdmin } from './_lib/supabase-admin.js';
 
 // Admin user-management endpoint. Single POST endpoint with `action` switch.
 //
