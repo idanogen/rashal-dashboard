@@ -31,23 +31,20 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  type Announcements,
   type CollisionDetection,
   closestCenter,
   pointerWithin,
   rectIntersection,
 } from '@dnd-kit/core';
-
-const screenReaderInstructions = { draggable: '' };
-const announcements: Announcements = {
-  onDragStart: () => '',
-  onDragOver: () => '',
-  onDragEnd: () => '',
-  onDragCancel: () => '',
-};
+import {
+  dropAnimationDown,
+  silentAnnouncements,
+  silentScreenReaderInstructions,
+} from '@/lib/dnd-animations';
 
 // Collision detection: כשגוררים הזמנה (order) — נעדיף את ה-day שהמצביע ממש מעליו,
 // ונסנן החוצה sortable-stops שנמצאים בעמודות אחרות (חמישי וכו').
+// אם המצביע לא ממש על יום — אין hit (drop לא יעשה כלום).
 // כשגוררים stop (reorder) — נשתמש ב-closestCenter הרגיל.
 const collisionDetection: CollisionDetection = (args) => {
   const activeType = args.active.data.current?.type;
@@ -71,11 +68,8 @@ const collisionDetection: CollisionDetection = (args) => {
     );
     if (rectDayHits.length > 0) return rectDayHits;
 
-    // 3) fallback — closestCenter אבל רק על days (לא על stops)
-    const dayOnlyContainers = args.droppableContainers.filter(
-      (d) => d.data.current?.type === 'day'
-    );
-    return closestCenter({ ...args, droppableContainers: dayOnlyContainers });
+    // אין hit — drop ייעצור בלי לפתוח דיאלוג נהג
+    return [];
   }
 
   return closestCenter(args);
@@ -102,7 +96,8 @@ export function DeliveriesPage() {
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: { distance: 8 },
+      // 6px — איזון בין רספונסיביות לבין לחיצה רגילה (toggle select)
+      activationConstraint: { distance: 6 },
     })
   );
 
@@ -133,6 +128,13 @@ export function DeliveriesPage() {
     driver: DriverName;
     date: string;
   } | null>(null);
+
+  // IDs של הזמנות שנמצאות בין drop לבחירת נהג —
+  // לרינדור opacity מופחת בכרטיס המקור.
+  const pendingScheduleIds = useMemo(
+    () => new Set<string>(pendingSchedule?.orders.map((o) => o.id) ?? []),
+    [pendingSchedule]
+  );
 
   // Calendar deliveries — מקובצים מ-calendar_stops (מקור האמת החדש).
   // מציג את כל הסוגים (משלוחים + שירות + משימות).
@@ -457,7 +459,10 @@ export function DeliveriesPage() {
       collisionDetection={collisionDetection}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
-      accessibility={{ announcements, screenReaderInstructions }}
+      accessibility={{
+        announcements: silentAnnouncements,
+        screenReaderInstructions: silentScreenReaderInstructions,
+      }}
     >
       <div className="space-y-6">
         <DeliveryStatusBar
@@ -480,6 +485,7 @@ export function DeliveriesPage() {
           onClearSelection={handleClearSelection}
           onBulkSchedule={handleBulkSchedule}
           isDragging={!!draggedOrder}
+          pendingScheduleIds={pendingScheduleIds}
           groupSize={ordersGroupSize}
         />
 
@@ -493,24 +499,40 @@ export function DeliveriesPage() {
       </div>
 
       {/* Drag Overlay */}
-      <DragOverlay>
-        {draggedOrder && (
-          <div className="w-56 rounded-xl border bg-card p-3 shadow-lg">
-            <div className="text-sm font-bold">
-              {draggedOrder.customerName}
-            </div>
-            <div className="mt-1 truncate text-xs text-muted-foreground">
-              {draggedOrder.address}
-              {draggedOrder.city ? `, ${draggedOrder.city}` : ''}
-            </div>
-            {selectedOrderIds.has(draggedOrder.id) &&
-              selectedOrderIds.size > 1 && (
-                <div className="absolute -top-2.5 -start-2.5 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground shadow-md ring-2 ring-background">
-                  {selectedOrderIds.size}
-                </div>
+      <DragOverlay dropAnimation={dropAnimationDown}>
+        {draggedOrder && (() => {
+          const isMulti =
+            selectedOrderIds.has(draggedOrder.id) &&
+            selectedOrderIds.size > 1;
+          return (
+            <div className="relative">
+              {/* Stack visualization — 2 כרטיסים מאחור כשבחירה מרובה */}
+              {isMulti && (
+                <>
+                  <div className="absolute inset-0 w-56 rounded-xl border bg-card shadow-md opacity-60 -rotate-3 translate-y-2 translate-x-2" />
+                  <div className="absolute inset-0 w-56 rounded-xl border bg-card shadow-md opacity-80 -rotate-1 translate-y-1 translate-x-1" />
+                </>
               )}
-          </div>
-        )}
+              <div className="relative w-56 rounded-xl border-2 border-primary bg-card p-3 shadow-2xl rotate-2 cursor-grabbing ring-4 ring-primary/20">
+                <div className="flex items-center gap-1.5 text-sm font-bold">
+                  <span className="text-primary">📦</span>
+                  <span className="truncate">
+                    {draggedOrder.customerName}
+                  </span>
+                </div>
+                <div className="mt-1 truncate text-xs text-muted-foreground">
+                  {draggedOrder.address}
+                  {draggedOrder.city ? `, ${draggedOrder.city}` : ''}
+                </div>
+                {isMulti && (
+                  <div className="absolute -top-2.5 -start-2.5 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground shadow-lg ring-2 ring-background">
+                    {selectedOrderIds.size}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
       </DragOverlay>
 
       {/* Duplicate prevention — shown when scheduling would create an active dup */}

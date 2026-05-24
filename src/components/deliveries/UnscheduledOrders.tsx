@@ -39,6 +39,8 @@ interface OrderCardProps {
   isExcluded?: boolean;
   isSelected?: boolean;
   isDragging?: boolean;
+  /** הזמנה ששוחררה ומחכה לבחירת נהג — opacity מופחת. */
+  isPending?: boolean;
   dupCount?: number;
   onExclude?: (id: string) => void;
   onRestore?: (id: string) => void;
@@ -50,6 +52,7 @@ function DraggableOrderCard({
   isExcluded,
   isSelected,
   isDragging: isAnyDragging,
+  isPending,
   dupCount,
   onExclude,
   onRestore,
@@ -71,12 +74,15 @@ function DraggableOrderCard({
     <Card
       ref={setNodeRef}
       className={cn(
-        'relative transition-all',
+        'relative',
+        // אין transition בזמן גרירה — מונע "תקיעה" בין ה-isDragging ל-transform
+        !isDragging && 'transition-[opacity,transform,box-shadow] duration-150',
         isExcluded
           ? 'opacity-40 border-dashed cursor-default'
           : 'cursor-grab active:cursor-grabbing hover:shadow-md',
         isSelected && !isExcluded && 'ring-2 ring-primary bg-primary/5',
-        isDragging && 'opacity-30 scale-95'
+        isDragging && 'opacity-30 ring-2 ring-primary',
+        isPending && !isDragging && 'opacity-25 scale-[0.97] pointer-events-none'
       )}
       onClick={() => {
         if (!isExcluded && !isDragging) onToggleSelect?.(order.id);
@@ -190,6 +196,8 @@ interface UnscheduledOrdersProps {
   onBulkSchedule?: () => void;
   onClearSelection?: () => void;
   isDragging?: boolean;
+  /** הזמנות שמחכות לבחירת נהג — opacity מופחת על הכרטיס */
+  pendingScheduleIds?: Set<string>;
   // Route building → calendar
   onBuildRoute?: (orders: Order[]) => void;
   /** orderId → group size for "x2" badge on duplicate groups */
@@ -206,6 +214,7 @@ export function UnscheduledOrders({
   onBulkSchedule,
   onClearSelection,
   isDragging,
+  pendingScheduleIds,
   onBuildRoute,
   groupSize,
 }: UnscheduledOrdersProps) {
@@ -423,6 +432,7 @@ export function UnscheduledOrders({
                   isExcluded={excludedOrderIds.has(order.id)}
                   isSelected={selectedOrderIds.has(order.id)}
                   isDragging={isDragging}
+                  isPending={pendingScheduleIds?.has(order.id)}
                   dupCount={groupSize?.get(order.id)}
                   onExclude={handleExcludeOrder}
                   onRestore={handleRestoreOrder}

@@ -8,7 +8,15 @@ import {
   useSensor,
   useSensors,
   closestCenter,
+  pointerWithin,
+  rectIntersection,
+  type CollisionDetection,
 } from '@dnd-kit/core';
+import {
+  dropAnimationDown,
+  silentAnnouncements,
+  silentScreenReaderInstructions,
+} from '@/lib/dnd-animations';
 import { useZonedServiceCalls } from '@/hooks/useZonedServiceCalls';
 import { useCalendarStops } from '@/hooks/useCalendarStops';
 import { useScheduleStop } from '@/hooks/useScheduleStop';
@@ -21,6 +29,7 @@ import { DeliveryCalendar } from '@/components/deliveries/DeliveryCalendar';
 import { DriverSelector } from '@/components/deliveries/DriverSelector';
 import { TaskDialog } from '@/components/deliveries/TaskDialog';
 import { DayMapDialog } from '@/components/deliveries/DayMapDialog';
+import { DatePickerDialog } from '@/components/deliveries/DatePickerDialog';
 import { DedupToggle } from '@/components/dashboard/DedupToggle';
 import {
   DuplicateScheduleWarningDialog,
@@ -34,6 +43,36 @@ import type { ServiceCall } from '@/types/service-call';
 import type { DriverName } from '@/types/route';
 import type { CalendarDelivery } from '@/types/delivery';
 import { toast } from 'sonner';
+
+// כשגוררים קריאת שירות — נעדיף את ה-day שהמצביע ממש מעליו,
+// ונסנן החוצה sortable-stops שנמצאים ביום אחר. אם לא ממש על יום —
+// אין hit (drop לא יעשה כלום).
+const collisionDetection: CollisionDetection = (args) => {
+  const activeType = args.active.data.current?.type;
+
+  if (activeType === 'serviceCall') {
+    const pointerHits = pointerWithin(args);
+    const pointerDayHits = pointerHits.filter(
+      (c) =>
+        args.droppableContainers.find((d) => d.id === c.id)?.data.current
+          ?.type === 'day'
+    );
+    if (pointerDayHits.length > 0) return pointerDayHits;
+
+    const rectHits = rectIntersection(args);
+    const rectDayHits = rectHits.filter(
+      (c) =>
+        args.droppableContainers.find((d) => d.id === c.id)?.data.current
+          ?.type === 'day'
+    );
+    if (rectDayHits.length > 0) return rectDayHits;
+
+    // אין hit — drop ייעצור בלי לפתוח דיאלוג נהג
+    return [];
+  }
+
+  return closestCenter(args);
+};
 
 export function ServiceCallsPage() {
   const {
@@ -56,14 +95,19 @@ export function ServiceCallsPage() {
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: { distance: 8 },
+      // 6px — איזון בין רספונסיביות לבין לחיצה רגילה (toggle select)
+      activationConstraint: { distance: 6 },
     })
   );
 
   const [draggedCall, setDraggedCall] = useState<ServiceCall | null>(null);
+  const [selectedCallIds, setSelectedCallIds] = useState<Set<string>>(
+    new Set()
+  );
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [driverPickerOpen, setDriverPickerOpen] = useState(false);
   const [pendingSchedule, setPendingSchedule] = useState<{
-    call: ServiceCall;
+    calls: ServiceCall[];
     date: string;
   } | null>(null);
   const [taskDialogDate, setTaskDialogDate] = useState<string | null>(null);
@@ -72,7 +116,34 @@ export function ServiceCallsPage() {
   // Duplicate-prevention dialog
   const [duplicateState, setDuplicateState] = useState<{
     conflicts: DuplicateConflict[];
+    nonConflictingCalls: ServiceCall[];
+    driver: DriverName;
+    date: string;
   } | null>(null);
+
+  const handleToggleSelect = useCallback((callId: string) => {
+    setSelectedCallIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(callId)) next.delete(callId);
+      else next.add(callId);
+      return next;
+    });
+  }, []);
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedCallIds(new Set());
+  }, []);
+
+  const handleBulkSchedule = useCallback(() => {
+    if (selectedCallIds.size === 0) return;
+    setDatePickerOpen(true);
+  }, [selectedCallIds]);
+
+  // IDs של קריאות שירות שמחכות לבחירת נהג — opacity מופחת בכרטיס המקור.
+  const pendingScheduleIds = useMemo(
+    () => new Set<string>(pendingSchedule?.calls.map((c) => c.id) ?? []),
+    [pendingSchedule]
+  );
 
   // יומן משולב — מציג משלוחים + קריאות שירות באותה תצוגה
   const calendarDeliveries: CalendarDelivery[] = useMemo(() => {
@@ -176,54 +247,56 @@ export function ServiceCallsPage() {
         return;
       }
 
-      setPendingSchedule({ call, date });
+      // אם הקריאה הנגררת היא חלק מבחירה מרובה — קח את כולן
+      let callsForSchedule: ServiceCall[];
+      if (selectedCallIds.has(call.id) && selectedCallIds.size > 1) {
+        callsForSchedule = pendingCalls.filter((c) =>
+          selectedCallIds.has(c.id)
+        );
+      } else {
+        callsForSchedule = [call];
+      }
+
+      setPendingSchedule({ calls: callsForSchedule, date });
       setDriverPickerOpen(true);
     }
   };
 
-  const handleDriverSelected = useCallback(
-    async (driver: DriverName) => {
-      if (!pendingSchedule) return;
-      const { call, date } = pendingSchedule;
-      setDriverPickerOpen(false);
-
-      // Pre-check: refuse if customer already has an active stop
-      try {
-        const dupes = await findActiveDuplicateStops({
-          customerName: call.customerName,
-          phone: call.phone,
-          city: call.city,
-        });
-        if (dupes.length > 0) {
-          setDuplicateState({
-            conflicts: [
-              {
-                customerName: call.customerName,
-                city: call.city,
-                phone: call.phone,
-                existing: dupes,
-              },
-            ],
-          });
-          setPendingSchedule(null);
-          return;
-        }
-      } catch (err) {
-        console.error('dup pre-check failed:', err);
-        // fall through — DB constraint is the backstop
+  const handleDateSelected = useCallback(
+    (date: string) => {
+      const callsForSchedule = pendingCalls.filter((c) =>
+        selectedCallIds.has(c.id)
+      );
+      if (callsForSchedule.length === 0) {
+        setDatePickerOpen(false);
+        return;
       }
+      setPendingSchedule({ calls: callsForSchedule, date });
+      setDriverPickerOpen(true);
+      setDatePickerOpen(false);
+    },
+    [pendingCalls, selectedCallIds]
+  );
 
+  const runScheduleCalls = useCallback(
+    async (calls: ServiceCall[], driver: DriverName, date: string) => {
       try {
-        await scheduleStop.mutateAsync({
-          deliveryDate: date,
-          driver,
-          sourceType: 'service',
-          serviceCallId: call.id,
-          customerName: call.customerName,
-          city: call.city,
-          phone: call.phone,
-        });
-        toast.success(`קריאת השירות שובצה ל${driver}`);
+        for (const call of calls) {
+          await scheduleStop.mutateAsync({
+            deliveryDate: date,
+            driver,
+            sourceType: 'service',
+            serviceCallId: call.id,
+            customerName: call.customerName,
+            city: call.city,
+            phone: call.phone,
+          });
+        }
+        toast.success(
+          calls.length > 1
+            ? `שובצו ${calls.length} קריאות ל${driver}`
+            : `קריאת השירות שובצה ל${driver}`
+        );
       } catch (err) {
         console.error('schedule failed:', err);
         const msg = err instanceof Error ? err.message : '';
@@ -232,9 +305,57 @@ export function ServiceCallsPage() {
         }
       } finally {
         setPendingSchedule(null);
+        setSelectedCallIds(new Set());
       }
     },
-    [pendingSchedule, scheduleStop]
+    [scheduleStop]
+  );
+
+  const handleDriverSelected = useCallback(
+    async (driver: DriverName) => {
+      if (!pendingSchedule) return;
+      const { calls, date } = pendingSchedule;
+      setDriverPickerOpen(false);
+
+      // Pre-check each call for active duplicate stops
+      const conflicts: DuplicateConflict[] = [];
+      const nonConflicting: ServiceCall[] = [];
+      for (const call of calls) {
+        try {
+          const dupes = await findActiveDuplicateStops({
+            customerName: call.customerName,
+            phone: call.phone,
+            city: call.city,
+          });
+          if (dupes.length > 0) {
+            conflicts.push({
+              customerName: call.customerName,
+              city: call.city,
+              phone: call.phone,
+              existing: dupes,
+            });
+          } else {
+            nonConflicting.push(call);
+          }
+        } catch (err) {
+          console.error('pre-check failed for call', call.id, err);
+          nonConflicting.push(call);
+        }
+      }
+
+      if (conflicts.length > 0) {
+        setDuplicateState({
+          conflicts,
+          nonConflictingCalls: nonConflicting,
+          driver,
+          date,
+        });
+        return;
+      }
+
+      await runScheduleCalls(calls, driver, date);
+    },
+    [pendingSchedule, runScheduleCalls]
   );
 
   const handleRemoveFromCalendar = async (stopId: string) => {
@@ -319,9 +440,13 @@ export function ServiceCallsPage() {
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={collisionDetection}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      accessibility={{
+        announcements: silentAnnouncements,
+        screenReaderInstructions: silentScreenReaderInstructions,
+      }}
     >
       <div className="space-y-6">
         <ServiceCallStatusBar
@@ -359,6 +484,12 @@ export function ServiceCallsPage() {
               callCountByZone={callCountByZone}
               callZoneMap={callZoneMap}
               groupSize={callsGroupSize}
+              selectedCallIds={selectedCallIds}
+              onToggleSelect={handleToggleSelect}
+              onSelectAll={(ids) => setSelectedCallIds(new Set(ids))}
+              onClearSelection={handleClearSelection}
+              onBulkSchedule={handleBulkSchedule}
+              pendingScheduleIds={pendingScheduleIds}
             />
 
             <DeliveryCalendar
@@ -382,17 +513,38 @@ export function ServiceCallsPage() {
         </Tabs>
       </div>
 
-      <DragOverlay>
-        {draggedCall && (
-          <div className="w-56 rounded-xl border bg-card p-3 shadow-lg">
-            <div className="text-sm font-bold">{draggedCall.customerName}</div>
-            {draggedCall.city && (
-              <div className="mt-1 truncate text-xs text-muted-foreground">
-                🔧 {draggedCall.city}
+      <DragOverlay dropAnimation={dropAnimationDown}>
+        {draggedCall && (() => {
+          const isMulti =
+            selectedCallIds.has(draggedCall.id) && selectedCallIds.size > 1;
+          return (
+            <div className="relative">
+              {/* Stack visualization — 2 כרטיסים מאחור כשבחירה מרובה */}
+              {isMulti && (
+                <>
+                  <div className="absolute inset-0 w-56 rounded-xl border bg-card shadow-md opacity-60 -rotate-3 translate-y-2 translate-x-2" />
+                  <div className="absolute inset-0 w-56 rounded-xl border bg-card shadow-md opacity-80 -rotate-1 translate-y-1 translate-x-1" />
+                </>
+              )}
+              <div className="relative w-56 rounded-xl border-2 border-orange-400 bg-card p-3 shadow-2xl rotate-2 cursor-grabbing ring-4 ring-orange-400/20">
+                <div className="flex items-center gap-1.5 text-sm font-bold">
+                  <span className="text-orange-600">🔧</span>
+                  <span className="truncate">{draggedCall.customerName}</span>
+                </div>
+                {draggedCall.city && (
+                  <div className="mt-1 truncate text-xs text-muted-foreground">
+                    {draggedCall.city}
+                  </div>
+                )}
+                {isMulti && (
+                  <div className="absolute -top-2.5 -start-2.5 flex h-7 w-7 items-center justify-center rounded-full bg-orange-500 text-xs font-bold text-white shadow-lg ring-2 ring-background">
+                    {selectedCallIds.size}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          );
+        })()}
       </DragOverlay>
 
       <DuplicateScheduleWarningDialog
@@ -401,7 +553,28 @@ export function ServiceCallsPage() {
           if (!o) setDuplicateState(null);
         }}
         conflicts={duplicateState?.conflicts ?? []}
-        onCancel={() => setDuplicateState(null)}
+        nonConflictingCount={
+          duplicateState?.nonConflictingCalls.length ?? 0
+        }
+        onCancel={() => {
+          setDuplicateState(null);
+          setPendingSchedule(null);
+        }}
+        onScheduleOthers={() => {
+          if (!duplicateState) return;
+          const { nonConflictingCalls, driver, date } = duplicateState;
+          setDuplicateState(null);
+          if (nonConflictingCalls.length > 0) {
+            void runScheduleCalls(nonConflictingCalls, driver, date);
+          }
+        }}
+      />
+
+      <DatePickerDialog
+        open={datePickerOpen}
+        onClose={() => setDatePickerOpen(false)}
+        onDateSelected={handleDateSelected}
+        orderCount={selectedCallIds.size}
       />
 
       <DriverSelector
@@ -411,8 +584,18 @@ export function ServiceCallsPage() {
           setPendingSchedule(null);
         }}
         onSelectDriver={handleDriverSelected}
-        orderInfo={pendingSchedule?.call.customerName}
-        customerName={pendingSchedule?.call.city}
+        orderInfo={
+          pendingSchedule
+            ? pendingSchedule.calls.length > 1
+              ? `${pendingSchedule.calls.length} קריאות שירות`
+              : pendingSchedule.calls[0].customerName
+            : undefined
+        }
+        customerName={
+          pendingSchedule && pendingSchedule.calls.length === 1
+            ? pendingSchedule.calls[0].city ?? undefined
+            : undefined
+        }
       />
 
       <TaskDialog

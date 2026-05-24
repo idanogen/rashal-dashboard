@@ -11,7 +11,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Wrench, Phone, MapPin, Clock, X, Undo2, RotateCcw, ChevronDown, ChevronLeft, ChevronsUpDown } from 'lucide-react';
+import {
+  Wrench,
+  Phone,
+  MapPin,
+  Clock,
+  X,
+  Undo2,
+  RotateCcw,
+  ChevronDown,
+  ChevronLeft,
+  ChevronsUpDown,
+  CheckCircle2,
+  CheckSquare,
+  Square,
+  CalendarDays,
+  GripVertical,
+} from 'lucide-react';
 import { ZoneFilter } from '@/components/deliveries/ZoneFilter';
 import { getZoneById, ZONES } from '@/types/zone';
 import { getDaysSinceCreated, getDaysColor, cn } from '@/lib/utils';
@@ -20,12 +36,25 @@ import { getDaysSinceCreated, getDaysColor, cn } from '@/lib/utils';
 interface ServiceCallCardProps {
   call: ServiceCall;
   isExcluded?: boolean;
+  isSelected?: boolean;
+  /** קריאה ששוחררה ומחכה לבחירת נהג — opacity מופחת. */
+  isPending?: boolean;
   dupCount?: number;
   onExclude?: (id: string) => void;
   onRestore?: (id: string) => void;
+  onToggleSelect?: (id: string) => void;
 }
 
-function ServiceCallCard({ call, isExcluded, dupCount, onExclude, onRestore }: ServiceCallCardProps) {
+function ServiceCallCard({
+  call,
+  isExcluded,
+  isSelected,
+  isPending,
+  dupCount,
+  onExclude,
+  onRestore,
+  onToggleSelect,
+}: ServiceCallCardProps) {
   const days = getDaysSinceCreated(call.created);
   const daysColor = getDaysColor(days);
 
@@ -38,19 +67,37 @@ function ServiceCallCard({ call, isExcluded, dupCount, onExclude, onRestore }: S
   return (
     <Card
       ref={setNodeRef}
-      {...(isExcluded ? {} : { ...listeners, ...attributes })}
       className={cn(
-        'relative transition-all',
+        'relative',
+        // אין transition בזמן גרירה — מונע "תקיעה" בין ה-isDragging ל-transform
+        !isDragging && 'transition-[opacity,transform,box-shadow] duration-150',
         isExcluded
-          ? 'opacity-40 border-dashed'
+          ? 'opacity-40 border-dashed cursor-default'
           : 'cursor-grab active:cursor-grabbing hover:shadow-md',
-        isDragging && 'opacity-30'
+        isSelected && !isExcluded && 'ring-2 ring-primary bg-primary/5',
+        isDragging && 'opacity-30 ring-2 ring-orange-400',
+        isPending && !isDragging && 'opacity-25 scale-[0.97] pointer-events-none'
       )}
+      onClick={() => {
+        if (!isExcluded && !isDragging) onToggleSelect?.(call.id);
+      }}
+      {...(isExcluded ? {} : { ...listeners, ...attributes })}
     >
       <CardContent className="p-3">
+        {/* Selection indicator */}
+        {isSelected && !isExcluded && (
+          <div className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+          </div>
+        )}
+
         {isExcluded ? (
           <button
-            onClick={() => onRestore?.(call.id)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onRestore?.(call.id);
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
             className="absolute left-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
             title="החזר למסלול"
           >
@@ -58,12 +105,23 @@ function ServiceCallCard({ call, isExcluded, dupCount, onExclude, onRestore }: S
           </button>
         ) : (
           <button
-            onClick={() => onExclude?.(call.id)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onExclude?.(call.id);
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
             className="absolute left-2 top-2 flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive transition-all"
             title="הסר מהמסלול"
           >
             <X className="h-3.5 w-3.5" />
           </button>
+        )}
+
+        {/* Grip handle */}
+        {!isExcluded && (
+          <div className="absolute left-2 bottom-2 text-muted-foreground/30">
+            <GripVertical className="h-3.5 w-3.5" />
+          </div>
         )}
 
         <div className="mb-2 flex items-start justify-between">
@@ -91,6 +149,8 @@ function ServiceCallCard({ call, isExcluded, dupCount, onExclude, onRestore }: S
                   href={`tel:${call.phone}`}
                   className="text-xs text-muted-foreground hover:text-primary"
                   dir="ltr"
+                  onClick={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
                 >
                   {call.phone}
                 </a>
@@ -121,6 +181,14 @@ interface UnscheduledServiceCallsProps {
   callCountByZone: Map<string, number>;
   callZoneMap: Map<string, string>;
   groupSize?: Map<string, number>;
+  // Selection props
+  selectedCallIds?: Set<string>;
+  onToggleSelect?: (callId: string) => void;
+  onSelectAll?: (callIds: string[]) => void;
+  onBulkSchedule?: () => void;
+  onClearSelection?: () => void;
+  /** קריאות שמחכות לבחירת נהג — opacity מופחת */
+  pendingScheduleIds?: Set<string>;
 }
 
 export function UnscheduledServiceCalls({
@@ -128,6 +196,12 @@ export function UnscheduledServiceCalls({
   callCountByZone,
   callZoneMap,
   groupSize,
+  selectedCallIds = new Set(),
+  onToggleSelect,
+  onSelectAll,
+  onBulkSchedule,
+  onClearSelection,
+  pendingScheduleIds,
 }: UnscheduledServiceCallsProps) {
   const [selectedZones, setSelectedZones] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'all' | 'grouped'>('all');
@@ -245,10 +319,37 @@ export function UnscheduledServiceCalls({
       <div className="rounded-lg border bg-card shadow-sm">
         <div className="border-b bg-muted/30 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Wrench className="h-5 w-5 text-muted-foreground" />
               <h3 className="font-bold">קריאות שירות חדשות</h3>
               <Badge variant="secondary">{filteredCalls.length}</Badge>
+              {/* Select-all / clear-selection toggle */}
+              {onSelectAll && activeCalls.length > 0 && (() => {
+                const activeIds = activeCalls.map((c) => c.id);
+                const allSelected =
+                  activeIds.length > 0 &&
+                  activeIds.every((id) => selectedCallIds.has(id));
+                return (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onSelectAll(allSelected ? [] : activeIds)}
+                    className="h-7 gap-1 text-xs"
+                  >
+                    {allSelected ? (
+                      <>
+                        <Square className="h-3 w-3" />
+                        בטל סימון
+                      </>
+                    ) : (
+                      <>
+                        <CheckSquare className="h-3 w-3" />
+                        סמן את כל הקריאות ({activeCalls.length})
+                      </>
+                    )}
+                  </Button>
+                );
+              })()}
               {excludedCount > 0 && (
                 <>
                   <Badge variant="outline" className="text-destructive border-destructive/30">
@@ -291,9 +392,12 @@ export function UnscheduledServiceCalls({
                 <ServiceCallCard
                   call={call}
                   isExcluded={excludedCallIds.has(call.id)}
+                  isSelected={selectedCallIds.has(call.id)}
+                  isPending={pendingScheduleIds?.has(call.id)}
                   dupCount={groupSize?.get(call.id)}
                   onExclude={handleExcludeCall}
                   onRestore={handleRestoreCall}
+                  onToggleSelect={onToggleSelect}
                 />
               </div>
             ))}
@@ -363,8 +467,42 @@ export function UnscheduledServiceCalls({
             )}
           </div>
         )}
-      </div>
 
+        {/* Floating action bar — בחירה מרובה: לחיצה (DatePicker) או גרירה ליומן */}
+        {selectedCallIds.size > 0 && (
+          <div className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 border-t bg-primary/5 px-4 py-3 backdrop-blur-sm">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <CheckCircle2 className="h-4 w-4 text-primary" />
+              <span>
+                <span className="font-bold text-primary">
+                  {selectedCallIds.size}
+                </span>{' '}
+                {selectedCallIds.size === 1 ? 'קריאה נבחרה' : 'קריאות נבחרו'}
+              </span>
+              <span className="hidden text-xs text-muted-foreground sm:inline">
+                · ניתן לתזמן בלחיצה או בגרירה ליומן
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onClearSelection}
+                className="text-xs"
+              >
+                בטל
+              </Button>
+              {onBulkSchedule && (
+                <Button size="sm" onClick={onBulkSchedule} className="gap-1.5">
+                  <CalendarDays className="h-4 w-4" />
+                  תזמן {selectedCallIds.size}{' '}
+                  {selectedCallIds.size === 1 ? 'קריאה' : 'קריאות'}
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

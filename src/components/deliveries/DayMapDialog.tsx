@@ -20,12 +20,29 @@ import {
   ClipboardList,
   Wand2,
   Sparkles,
+  GripVertical,
+  AlertTriangle,
 } from 'lucide-react';
 import { buildWazeUrl, buildTelUrl } from '@/lib/navigation';
 import { getCityCoordinates } from '@/lib/geocoding';
 import { optimizeStops } from '@/lib/stopOptimizer';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RouteCelebration } from './RouteCelebration';
+import {
+  DndContext,
+  type DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 interface DayMapDialogProps {
   open: boolean;
@@ -310,26 +327,12 @@ export function DayMapDialog({ open, onClose, date, stops, onOptimize }: DayMapD
                         אין עצירות
                       </div>
                     ) : (
-                      <motion.div className="space-y-1" layout>
-                        <AnimatePresence initial={false}>
-                          {ds.map((stop, idx) => (
-                            <motion.div
-                              key={stop.stopId}
-                              layout
-                              initial={{ opacity: 0, y: -8 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              exit={{ opacity: 0, y: 8 }}
-                              transition={{
-                                type: 'spring',
-                                stiffness: 350,
-                                damping: 28,
-                              }}
-                            >
-                              <SideStopItem stop={stop} index={idx + 1} />
-                            </motion.div>
-                          ))}
-                        </AnimatePresence>
-                      </motion.div>
+                      <SortableStopsList
+                        stops={ds}
+                        onReorder={(orderedIds) => {
+                          onOptimize?.(driver, orderedIds);
+                        }}
+                      />
                     )}
                   </div>
                 );
@@ -357,8 +360,136 @@ export function DayMapDialog({ open, onClose, date, stops, onOptimize }: DayMapD
   );
 }
 
-function SideStopItem({ stop, index }: { stop: CalendarStop; index: number }) {
+// ─── Sortable wrapper — drag-to-reorder לעצירות ────────────────
+function SortableStopsList({
+  stops,
+  onReorder,
+}: {
+  stops: CalendarStop[];
+  onReorder: (orderedIds: string[]) => void;
+}) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
+  );
+
+  // Optimistic local order — מציג מיד את הסדר החדש לפני שה-DB מתעדכן.
+  // מסתנכרן מחדש כש-props.stops משתנה (אחרי שה-mutation מסיים).
+  const [localOrder, setLocalOrder] = useState<string[] | null>(null);
+
+  // אם הproפס השתנו אחרי mutation — נקה את ה-local order
+  const propsIds = useMemo(() => stops.map((s) => s.stopId), [stops]);
+  const effectiveIds = useMemo(() => {
+    if (!localOrder) return propsIds;
+    // אם ה-IDs שונים (הוספה/הסרה) — חזור לסדר מה-props
+    if (
+      localOrder.length !== propsIds.length ||
+      !localOrder.every((id) => propsIds.includes(id))
+    ) {
+      return propsIds;
+    }
+    return localOrder;
+  }, [localOrder, propsIds]);
+
+  const orderedStops = useMemo(() => {
+    const byId = new Map(stops.map((s) => [s.stopId, s]));
+    return effectiveIds
+      .map((id) => byId.get(id))
+      .filter((s): s is CalendarStop => Boolean(s));
+  }, [stops, effectiveIds]);
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = effectiveIds.indexOf(active.id as string);
+    const newIndex = effectiveIds.indexOf(over.id as string);
+    if (oldIndex < 0 || newIndex < 0) return;
+
+    const next = arrayMove(effectiveIds, oldIndex, newIndex);
+    setLocalOrder(next);
+    onReorder(next);
+  };
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={handleDragEnd}
+    >
+      <SortableContext items={effectiveIds} strategy={verticalListSortingStrategy}>
+        <motion.div className="space-y-1" layout>
+          <AnimatePresence initial={false}>
+            {orderedStops.map((stop, idx) => (
+              <motion.div
+                key={stop.stopId}
+                layout
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 8 }}
+                transition={{
+                  type: 'spring',
+                  stiffness: 350,
+                  damping: 28,
+                }}
+              >
+                <SortableSideStopItem stop={stop} index={idx + 1} />
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </motion.div>
+      </SortableContext>
+    </DndContext>
+  );
+}
+
+function SortableSideStopItem({
+  stop,
+  index,
+}: {
+  stop: CalendarStop;
+  index: number;
+}) {
+  const isResolved =
+    stop.status === 'completed' || stop.status === 'not_completed';
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: stop.stopId,
+    disabled: isResolved,
+  });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+    zIndex: isDragging ? 10 : 'auto',
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <SideStopItem
+        stop={stop}
+        index={index}
+        dragHandleProps={isResolved ? undefined : { ...listeners, ...attributes }}
+      />
+    </div>
+  );
+}
+
+interface SideStopItemProps {
+  stop: CalendarStop;
+  index: number;
+  dragHandleProps?: React.HTMLAttributes<HTMLDivElement>;
+}
+
+function SideStopItem({ stop, index, dragHandleProps }: SideStopItemProps) {
   const coords = getCityCoordinates(stop.city);
+  const hasMapLocation = Boolean(coords);
   const wazeUrl = buildWazeUrl({
     address: stop.address ?? stop.city ?? null,
     coordinates: coords ?? null,
@@ -370,8 +501,28 @@ function SideStopItem({ stop, index }: { stop: CalendarStop; index: number }) {
   const isNotDelivered = stop.status === 'not_completed';
 
   return (
-    <div className="flex items-center gap-2 rounded-lg border bg-background/80 p-2 text-xs transition-all hover:shadow-sm">
-      <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-primary/10 text-[11px] font-bold text-primary">
+    <div
+      className={`flex items-center gap-2 rounded-lg border bg-background/80 p-2 text-xs transition-all hover:shadow-sm ${
+        !hasMapLocation ? 'border-amber-300 bg-amber-50/40 dark:bg-amber-950/10' : ''
+      }`}
+      title={!hasMapLocation ? `העיר "${stop.city ?? '—'}" לא נמצאת במאגר הקואורדינטות — לא מוצגת במפה` : undefined}
+    >
+      {dragHandleProps && (
+        <div
+          {...dragHandleProps}
+          className="flex-shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground transition-colors -my-2 -ms-1 py-2 ps-1"
+          title="גרור לסידור מחדש"
+        >
+          <GripVertical className="h-4 w-4" />
+        </div>
+      )}
+      <div
+        className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+          hasMapLocation
+            ? 'bg-primary/10 text-primary'
+            : 'bg-amber-100 text-amber-700 ring-1 ring-amber-300 dark:bg-amber-900/40 dark:text-amber-400'
+        }`}
+      >
         {index}
       </div>
       <span
@@ -386,6 +537,12 @@ function SideStopItem({ stop, index }: { stop: CalendarStop; index: number }) {
         >
           {stop.customerName}
           {isDelivered && <span className="ms-1 text-emerald-600">✓</span>}
+          {!hasMapLocation && (
+            <AlertTriangle
+              className="ms-1 inline-block h-3 w-3 text-amber-600 align-text-bottom"
+              aria-label="העיר לא במאגר הקואורדינטות"
+            />
+          )}
         </div>
         {(stop.address || stop.city) && (
           <p className="mt-0.5 flex items-center gap-0.5 truncate text-[10px] text-muted-foreground">
