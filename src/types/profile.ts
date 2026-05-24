@@ -1,3 +1,5 @@
+import type { DriverName } from './route';
+
 export type UserRole = 'admin' | 'dispatcher' | 'driver' | 'viewer';
 
 export const ALLOWED_ROLES: UserRole[] = ['admin', 'dispatcher', 'driver', 'viewer'];
@@ -15,6 +17,8 @@ export interface Profile {
   fullName?: string;
   role: UserRole;
   disabled: boolean;
+  /** When role='driver', links this user to one of the DRIVERS enum values. */
+  linkedDriver?: DriverName;
   createdAt: string;
   updatedAt?: string;
 }

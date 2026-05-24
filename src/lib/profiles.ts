@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import type { Profile, UserRole } from '@/types/profile';
+import type { DriverName } from '@/types/route';
 
 type ProfileRow = {
   id: string;
@@ -7,6 +8,7 @@ type ProfileRow = {
   full_name: string | null;
   role: string;
   disabled: boolean;
+  linked_driver: DriverName | null;
   created_at: string;
   updated_at: string | null;
 };
@@ -18,6 +20,7 @@ function rowToProfile(row: ProfileRow): Profile {
     fullName: row.full_name ?? undefined,
     role: (row.role as UserRole) ?? 'viewer',
     disabled: row.disabled,
+    linkedDriver: row.linked_driver ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at ?? undefined,
   };
@@ -61,10 +64,11 @@ export async function updateOwnProfile(
 // ─── Admin API client (POSTs to /api/admin-users with the user's JWT) ───
 
 export type AdminAction =
-  | { action: 'invite'; email: string; fullName?: string; role: UserRole; redirectTo?: string }
-  | { action: 'create'; email: string; fullName?: string; role: UserRole; password?: string }
+  | { action: 'invite'; email: string; fullName?: string; role: UserRole; linkedDriver?: DriverName; redirectTo?: string }
+  | { action: 'create'; email: string; fullName?: string; role: UserRole; linkedDriver?: DriverName; password?: string }
   | { action: 'delete'; userId: string }
   | { action: 'set_role'; userId: string; role: UserRole }
+  | { action: 'set_linked_driver'; userId: string; linkedDriver: DriverName | null }
   | { action: 'set_disabled'; userId: string; disabled: boolean }
   | { action: 'reset_password'; userId: string };
 

@@ -25,12 +25,16 @@ const SUPABASE_ANON = process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE
 type AllowedRole = 'admin' | 'dispatcher' | 'driver' | 'viewer';
 const ALLOWED_ROLES: AllowedRole[] = ['admin', 'dispatcher', 'driver', 'viewer'];
 
+type DriverName = 'רודי דויד' | 'נהג חיצוני מועלם';
+const ALLOWED_DRIVERS: DriverName[] = ['רודי דויד', 'נהג חיצוני מועלם'];
+
 interface AdminAction {
-  action: 'invite' | 'create' | 'delete' | 'set_role' | 'set_disabled' | 'reset_password';
+  action: 'invite' | 'create' | 'delete' | 'set_role' | 'set_disabled' | 'reset_password' | 'set_linked_driver';
   email?: string;
   password?: string;
   fullName?: string;
   role?: AllowedRole;
+  linkedDriver?: DriverName | null;
   userId?: string;
   disabled?: boolean;
   redirectTo?: string;
@@ -89,17 +93,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case 'invite': {
         if (!body.email) return res.status(400).json({ ok: false, error: 'missing email' });
         const role = body.role && ALLOWED_ROLES.includes(body.role) ? body.role : 'viewer';
+        const linkedDriver = role === 'driver' && body.linkedDriver && ALLOWED_DRIVERS.includes(body.linkedDriver)
+          ? body.linkedDriver : null;
         const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(body.email, {
           data: { full_name: body.fullName ?? null, role },
           redirectTo: body.redirectTo,
         });
         if (error) return res.status(400).json({ ok: false, error: error.message });
-        // profile is auto-created by the handle_new_user() trigger. Update fields explicitly to ensure role + full_name.
         if (data.user?.id) {
           await supabaseAdmin
             .from('profiles')
             .upsert(
-              { id: data.user.id, email: body.email, full_name: body.fullName ?? null, role },
+              { id: data.user.id, email: body.email, full_name: body.fullName ?? null, role, linked_driver: linkedDriver },
               { onConflict: 'id' }
             );
         }
@@ -109,11 +114,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case 'create': {
         if (!body.email) return res.status(400).json({ ok: false, error: 'missing email' });
         const role = body.role && ALLOWED_ROLES.includes(body.role) ? body.role : 'viewer';
+        const linkedDriver = role === 'driver' && body.linkedDriver && ALLOWED_DRIVERS.includes(body.linkedDriver)
+          ? body.linkedDriver : null;
         const password = body.password || generateTempPassword();
         const { data, error } = await supabaseAdmin.auth.admin.createUser({
           email: body.email,
           password,
-          email_confirm: true, // skip email verification for admin-created users
+          email_confirm: true,
           user_metadata: { full_name: body.fullName ?? null, role },
         });
         if (error) return res.status(400).json({ ok: false, error: error.message });
@@ -121,7 +128,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           await supabaseAdmin
             .from('profiles')
             .upsert(
-              { id: data.user.id, email: body.email, full_name: body.fullName ?? null, role },
+              { id: data.user.id, email: body.email, full_name: body.fullName ?? null, role, linked_driver: linkedDriver },
               { onConflict: 'id' }
             );
         }
@@ -131,6 +138,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           email: body.email,
           tempPassword: password,
         });
+      }
+
+      case 'set_linked_driver': {
+        if (!body.userId) return res.status(400).json({ ok: false, error: 'missing userId' });
+        const driver = body.linkedDriver && ALLOWED_DRIVERS.includes(body.linkedDriver) ? body.linkedDriver : null;
+        const { error } = await supabaseAdmin
+          .from('profiles')
+          .update({ linked_driver: driver, updated_at: new Date().toISOString() })
+          .eq('id', body.userId);
+        if (error) return res.status(400).json({ ok: false, error: error.message });
+        return res.status(200).json({ ok: true });
       }
 
       case 'delete': {

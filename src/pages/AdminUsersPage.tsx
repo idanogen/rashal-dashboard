@@ -15,6 +15,8 @@ import {
 import { toast } from 'sonner';
 import { useAllProfiles, useAdminMutation, useCurrentProfile } from '@/hooks/useProfile';
 import { ALLOWED_ROLES, ROLE_LABELS, type UserRole } from '@/types/profile';
+import { DRIVERS, type DriverName } from '@/types/route';
+import { Truck } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -76,6 +78,21 @@ export function AdminUsersPage() {
     const res = await adminMutation.mutateAsync({ action: 'set_role', userId, role });
     if (res.ok) toast.success('תפקיד עודכן');
   }
+
+  async function handleSetLinkedDriver(userId: string, driver: DriverName | null) {
+    const res = await adminMutation.mutateAsync({ action: 'set_linked_driver', userId, linkedDriver: driver });
+    if (res.ok) toast.success(driver ? `נקשר לנהג: ${driver}` : 'בוטל הקישור לנהג');
+  }
+
+  /** Drivers that aren't yet linked to an active user — used for create dialog + inline change. */
+  const availableDrivers = useMemo(() => {
+    const taken = new Set(
+      (profiles ?? [])
+        .filter((p) => p.linkedDriver && !p.disabled)
+        .map((p) => p.linkedDriver as DriverName)
+    );
+    return DRIVERS.filter((d) => !taken.has(d));
+  }, [profiles]);
 
   async function handleToggleDisabled(userId: string, currentlyDisabled: boolean) {
     const res = await adminMutation.mutateAsync({
@@ -154,6 +171,7 @@ export function AdminUsersPage() {
                   <TableRow className="bg-muted/30">
                     <TableHead className="text-xs font-semibold">משתמש</TableHead>
                     <TableHead className="text-xs font-semibold">תפקיד</TableHead>
+                    <TableHead className="text-xs font-semibold">נהג מקושר</TableHead>
                     <TableHead className="text-xs font-semibold">סטטוס</TableHead>
                     <TableHead className="text-xs font-semibold">נוצר</TableHead>
                     <TableHead className="text-xs font-semibold text-center">פעולות</TableHead>
@@ -166,7 +184,9 @@ export function AdminUsersPage() {
                       profile={p}
                       isSelf={p.id === currentProfile?.id}
                       busy={adminMutation.isPending}
+                      availableDrivers={availableDrivers}
                       onChangeRole={(role) => handleSetRole(p.id, role)}
+                      onChangeLinkedDriver={(d) => handleSetLinkedDriver(p.id, d)}
                       onToggleDisabled={() => handleToggleDisabled(p.id, p.disabled)}
                       onResetPassword={() => handleResetPassword(p.id, p.email)}
                       onDelete={() => handleDelete(p.id, p.email)}
@@ -193,13 +213,20 @@ interface UserRowProps {
   profile: Profile;
   isSelf: boolean;
   busy: boolean;
+  availableDrivers: DriverName[];
   onChangeRole: (role: UserRole) => void;
+  onChangeLinkedDriver: (driver: DriverName | null) => void;
   onToggleDisabled: () => void;
   onResetPassword: () => void;
   onDelete: () => void;
 }
 
-function UserRow({ profile, isSelf, busy, onChangeRole, onToggleDisabled, onResetPassword, onDelete }: UserRowProps) {
+function UserRow({ profile, isSelf, busy, availableDrivers, onChangeRole, onChangeLinkedDriver, onToggleDisabled, onResetPassword, onDelete }: UserRowProps) {
+  // Driver dropdown choices: available drivers + the currently-linked one (if any) + "none"
+  const driverChoices = profile.linkedDriver && !availableDrivers.includes(profile.linkedDriver)
+    ? [...availableDrivers, profile.linkedDriver]
+    : availableDrivers;
+  const NONE_VALUE = '__none__';
   return (
     <TableRow className={profile.disabled ? 'opacity-50' : ''}>
       <TableCell>
@@ -232,6 +259,38 @@ function UserRow({ profile, isSelf, busy, onChangeRole, onToggleDisabled, onRese
             ))}
           </SelectContent>
         </Select>
+      </TableCell>
+      <TableCell>
+        {profile.role === 'driver' ? (
+          <Select
+            value={profile.linkedDriver ?? NONE_VALUE}
+            onValueChange={(v) => onChangeLinkedDriver(v === NONE_VALUE ? null : (v as DriverName))}
+            disabled={busy}
+          >
+            <SelectTrigger className="h-8 w-44">
+              <SelectValue>
+                {profile.linkedDriver ? (
+                  <span className="inline-flex items-center gap-1 text-[11px]">
+                    <Truck className="h-3 w-3 text-emerald-600" />
+                    {profile.linkedDriver}
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-muted-foreground">— לא מקושר —</span>
+                )}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NONE_VALUE}>— לא מקושר —</SelectItem>
+              {driverChoices.map((d) => (
+                <SelectItem key={d} value={d}>
+                  {d}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <span className="text-[11px] text-muted-foreground">—</span>
+        )}
       </TableCell>
       <TableCell>
         {profile.disabled ? (
@@ -294,24 +353,38 @@ interface CreateUserDialogProps {
 
 function CreateUserDialog({ open, onOpenChange, onCreated }: CreateUserDialogProps) {
   const adminMutation = useAdminMutation();
+  const { data: profiles } = useAllProfiles();
   const [email, setEmail] = useState('');
   const [fullName, setFullName] = useState('');
   const [role, setRole] = useState<UserRole>('viewer');
+  const [linkedDriver, setLinkedDriver] = useState<DriverName | ''>('');
   const [mode, setMode] = useState<'create' | 'invite'>('create');
+
+  // Drivers not yet linked to an active user
+  const availableDrivers = useMemo(() => {
+    const taken = new Set(
+      (profiles ?? [])
+        .filter((p) => p.linkedDriver && !p.disabled)
+        .map((p) => p.linkedDriver as DriverName)
+    );
+    return DRIVERS.filter((d) => !taken.has(d));
+  }, [profiles]);
 
   function reset() {
     setEmail('');
     setFullName('');
     setRole('viewer');
+    setLinkedDriver('');
     setMode('create');
   }
 
   async function handleSubmit() {
     if (!email.trim()) return;
     const trimmedEmail = email.trim();
+    const driver = role === 'driver' && linkedDriver ? linkedDriver : undefined;
     const action: Parameters<typeof adminMutation.mutateAsync>[0] = mode === 'invite'
-      ? { action: 'invite', email: trimmedEmail, fullName: fullName.trim() || undefined, role }
-      : { action: 'create', email: trimmedEmail, fullName: fullName.trim() || undefined, role };
+      ? { action: 'invite', email: trimmedEmail, fullName: fullName.trim() || undefined, role, linkedDriver: driver }
+      : { action: 'create', email: trimmedEmail, fullName: fullName.trim() || undefined, role, linkedDriver: driver };
 
     const res = await adminMutation.mutateAsync(action);
     if (!res.ok) return;
@@ -391,7 +464,13 @@ function CreateUserDialog({ open, onOpenChange, onCreated }: CreateUserDialogPro
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">תפקיד</Label>
-            <Select value={role} onValueChange={(v) => setRole(v as UserRole)}>
+            <Select
+              value={role}
+              onValueChange={(v) => {
+                setRole(v as UserRole);
+                if (v !== 'driver') setLinkedDriver('');
+              }}
+            >
               <SelectTrigger className="h-9">
                 <SelectValue />
               </SelectTrigger>
@@ -404,13 +483,49 @@ function CreateUserDialog({ open, onOpenChange, onCreated }: CreateUserDialogPro
               </SelectContent>
             </Select>
           </div>
+
+          {role === 'driver' && (
+            <div className="space-y-1.5">
+              <Label className="text-xs flex items-center gap-1">
+                <Truck className="h-3 w-3" /> איזה נהג? *
+              </Label>
+              {availableDrivers.length === 0 ? (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
+                  ⚠ כל הנהגים כבר מקושרים למשתמשים פעילים. השבת משתמש קיים כדי לשחרר נהג, או בחר תפקיד אחר.
+                </p>
+              ) : (
+                <Select value={linkedDriver} onValueChange={(v) => setLinkedDriver(v as DriverName)}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="-- בחר נהג --" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableDrivers.map((d) => (
+                      <SelectItem key={d} value={d}>
+                        {d}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              <p className="text-xs text-muted-foreground">
+                המשתמש יקושר לנהג הזה — הוא יוכל לראות ולעדכן רק את המסלולים שלו (יישום ה-RLS בעתיד).
+              </p>
+            </div>
+          )}
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             ביטול
           </Button>
-          <Button onClick={handleSubmit} disabled={!email.trim() || adminMutation.isPending}>
+          <Button
+            onClick={handleSubmit}
+            disabled={
+              !email.trim() ||
+              adminMutation.isPending ||
+              (role === 'driver' && !linkedDriver)
+            }
+          >
             {adminMutation.isPending ? 'שולח...' : mode === 'invite' ? 'שלח הזמנה' : 'צור משתמש'}
           </Button>
         </DialogFooter>
