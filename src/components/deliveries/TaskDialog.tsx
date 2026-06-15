@@ -9,15 +9,19 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { DRIVERS, type DriverName } from '@/types/route';
+import { DRIVERS, type AssigneeName } from '@/types/route';
 import { ClipboardList } from 'lucide-react';
 
 interface TaskDialogProps {
   open: boolean;
   onClose: () => void;
   date: string | null;
+  /** רשימת המשובצים — ברירת מחדל נהגים; למסך שירות יועברו טכנאים. */
+  assignees?: AssigneeName[];
+  /** תווית השדה — ברירת מחדל "נהג". */
+  assigneeLabel?: string;
   onSubmit: (data: {
-    driver: DriverName;
+    driver: AssigneeName;
     customerName: string;
     address?: string;
     city?: string;
@@ -26,8 +30,15 @@ interface TaskDialogProps {
   }) => void;
 }
 
-export function TaskDialog({ open, onClose, date, onSubmit }: TaskDialogProps) {
-  const [driver, setDriver] = useState<DriverName>(DRIVERS[0]);
+export function TaskDialog({
+  open,
+  onClose,
+  date,
+  assignees = DRIVERS,
+  assigneeLabel = 'נהג',
+  onSubmit,
+}: TaskDialogProps) {
+  const [driver, setDriver] = useState<AssigneeName>(assignees[0]);
   const [customerName, setCustomerName] = useState('');
   const [address, setAddress] = useState('');
   const [city, setCity] = useState('');
@@ -36,7 +47,7 @@ export function TaskDialog({ open, onClose, date, onSubmit }: TaskDialogProps) {
 
   useEffect(() => {
     if (open) {
-      setDriver(DRIVERS[0]);
+      setDriver(assignees[0]);
       setCustomerName('');
       setAddress('');
       setCity('');
@@ -71,7 +82,7 @@ export function TaskDialog({ open, onClose, date, onSubmit }: TaskDialogProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ClipboardList className="h-5 w-5 text-amber-600" />
-            משימה חדשה לנהג
+            משימה חדשה ל{assigneeLabel}
           </DialogTitle>
           {dateLabel && (
             <p className="text-xs text-muted-foreground">{dateLabel}</p>
@@ -81,10 +92,10 @@ export function TaskDialog({ open, onClose, date, onSubmit }: TaskDialogProps) {
         <div className="space-y-3 py-2">
           <div className="space-y-1.5">
             <Label htmlFor="task-driver" className="text-xs">
-              נהג
+              {assigneeLabel}
             </Label>
             <div className="grid grid-cols-2 gap-2">
-              {DRIVERS.map((d) => (
+              {assignees.map((d) => (
                 <button
                   key={d}
                   type="button"

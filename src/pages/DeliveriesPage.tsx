@@ -14,6 +14,7 @@ import {
   type DuplicateConflict,
 } from '@/components/deliveries/DuplicateScheduleWarningDialog';
 import { findActiveDuplicateStops } from '@/lib/calendar-stops';
+import { showScheduleToast } from '@/lib/scheduleToast';
 import { DeliveryCalendar } from '@/components/deliveries/DeliveryCalendar';
 import { DriverSelector } from '@/components/deliveries/DriverSelector';
 import { useRescheduleStop, type RescheduleStopRef } from '@/hooks/useRescheduleStop';
@@ -22,7 +23,7 @@ import { TaskDialog } from '@/components/deliveries/TaskDialog';
 import { DayMapDialog } from '@/components/deliveries/DayMapDialog';
 import { Loader2, AlertCircle } from 'lucide-react';
 import type { Order } from '@/types/order';
-import type { DriverName } from '@/types/route';
+import { TECHNICIAN_ONLY, type AssigneeName } from '@/types/route';
 import type { CalendarDelivery } from '@/types/delivery';
 import { toast } from 'sonner';
 import {
@@ -141,7 +142,7 @@ export function DeliveriesPage() {
       sourceId: s.orderId ?? s.serviceCallId ?? s.id,
       sourceType: s.sourceType,
       deliveryDate: s.deliveryDate,
-      driver: s.driver as DriverName,
+      driver: s.driver as AssigneeName,
       coordinationStatus: s.coordinationStatus,
       timeWindowStart: s.timeWindowStart,
       timeWindowEnd: s.timeWindowEnd,
@@ -159,7 +160,7 @@ export function DeliveriesPage() {
     setPendingReschedule({ stop: ref, newDate });
   };
 
-  const handleRescheduleDriverSelected = (newDriver: DriverName) => {
+  const handleRescheduleDriverSelected = (newDriver: AssigneeName) => {
     if (!pendingReschedule) return;
     rescheduleStopMut.mutate({
       stop: pendingReschedule.stop,
@@ -179,7 +180,7 @@ export function DeliveriesPage() {
   const [duplicateState, setDuplicateState] = useState<{
     conflicts: DuplicateConflict[];
     nonConflictingOrders: Order[];
-    driver: DriverName;
+    driver: AssigneeName;
     date: string;
   } | null>(null);
 
@@ -207,15 +208,16 @@ export function DeliveriesPage() {
     const groups = new Map<string, CalendarDelivery>();
     for (const s of calendarStops) {
       if (s.status === 'cancelled') continue;
-      // מסך המשלוחים מציג משלוחים + משימות בלבד — לא קריאות שירות (יומן נפרד).
+      // מסך המשלוחים: משלוחים + משימות של נהגים. לא קריאות שירות, ולא משימות של טכנאי-בלבד.
       if (s.sourceType === 'service') continue;
+      if (s.sourceType === 'task' && TECHNICIAN_ONLY.has(s.driver)) continue;
       const key = `${s.deliveryDate}__${s.driver}`;
       let group = groups.get(key);
       if (!group) {
         group = {
           id: key,
           date: s.deliveryDate,
-          driver: s.driver as DriverName,
+          driver: s.driver as AssigneeName,
           stops: [],
         };
         groups.set(key, group);
@@ -226,7 +228,7 @@ export function DeliveriesPage() {
         sourceType: s.sourceType,
         status: s.status,
         deliveryDate: s.deliveryDate,
-        driver: s.driver as DriverName,
+        driver: s.driver as AssigneeName,
         customerName: s.customerName,
         address: s.address,
         city: s.city,
@@ -314,9 +316,9 @@ export function DeliveriesPage() {
       active.id !== over.id
     ) {
       const srcDate = active.data.current.deliveryDate as string;
-      const srcDriver = active.data.current.driver as DriverName;
+      const srcDriver = active.data.current.driver as AssigneeName;
       const overDate = over.data.current.deliveryDate as string;
-      const overDriver = over.data.current.driver as DriverName;
+      const overDriver = over.data.current.driver as AssigneeName;
       // נפל על יום אחר → שיבוץ מחדש (בורר נהג), לא reorder.
       if (srcDate !== overDate) {
         startReschedule(active.id as string, overDate);
@@ -396,7 +398,7 @@ export function DeliveriesPage() {
 
   // Actually run the schedule for a list of orders (no further dup checks)
   const runScheduleOrders = useCallback(
-    async (orders: Order[], driver: DriverName, date: string) => {
+    async (orders: Order[], driver: AssigneeName, date: string) => {
       try {
         for (const order of orders) {
           await scheduleStop.mutateAsync({
@@ -410,11 +412,7 @@ export function DeliveriesPage() {
             phone: order.phone,
           });
         }
-        toast.success(
-          orders.length > 1
-            ? `שובצו ${orders.length} הזמנות ל${driver}`
-            : `ההזמנה שובצה ל${driver}`
-        );
+        showScheduleToast({ count: orders.length, assignee: driver, date, kind: 'delivery' });
       } catch (err) {
         console.error('schedule failed:', err);
         const msg = err instanceof Error ? err.message : '';
@@ -431,7 +429,7 @@ export function DeliveriesPage() {
 
   // Driver selected → pre-check duplicates → schedule or show warning
   const handleDriverSelected = useCallback(
-    async (driver: DriverName) => {
+    async (driver: AssigneeName) => {
       if (!pendingSchedule) return;
       const { orders, date } = pendingSchedule;
       setDriverPickerOpen(false);
@@ -502,7 +500,7 @@ export function DeliveriesPage() {
   // ─── Create free-standing task ────────
   const handleCreateTask = useCallback(
     async (data: {
-      driver: DriverName;
+      driver: AssigneeName;
       customerName: string;
       address?: string;
       city?: string;

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { CalendarStop } from '@/types/delivery';
-import { DRIVER_CONFIG } from '@/types/delivery';
-import type { DriverName } from '@/types/route';
+import { assigneeStyle } from '@/types/delivery';
+import { DRIVERS, TECHNICIANS, type AssigneeName } from '@/types/route';
 import { RouteMap } from './RouteMap';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -54,10 +54,10 @@ interface DayMapDialogProps {
    * Called when user clicks "אופטימיזציה" — receives the active driver
    * and the new ordered list of stopIds (nearest-neighbour from warehouse).
    */
-  onOptimize?: (driver: DriverName, orderedIds: string[]) => void;
+  onOptimize?: (driver: AssigneeName, orderedIds: string[]) => void;
 }
 
-const DRIVER_ORDER: DriverName[] = ['רודי דויד', 'נהג חיצוני מועלם'];
+const DRIVER_ORDER: AssigneeName[] = Array.from(new Set<AssigneeName>([...DRIVERS, ...TECHNICIANS]));
 
 const sourceConfig = {
   delivery: { Icon: Package, color: 'text-blue-600', bg: 'bg-blue-50', label: 'משלוח' },
@@ -66,7 +66,7 @@ const sourceConfig = {
 } as const;
 
 export function DayMapDialog({ open, onClose, date, stops, onOptimize }: DayMapDialogProps) {
-  const [activeDriver, setActiveDriver] = useState<DriverName>('רודי דויד');
+  const [activeDriver, setActiveDriver] = useState<AssigneeName>(DRIVER_ORDER[0]);
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [celebration, setCelebration] = useState<{
     show: boolean;
@@ -76,7 +76,7 @@ export function DayMapDialog({ open, onClose, date, stops, onOptimize }: DayMapD
 
   // Group stops for this day by driver, filtering cancelled.
   const stopsByDriver = useMemo(() => {
-    const map = new Map<DriverName, CalendarStop[]>();
+    const map = new Map<AssigneeName, CalendarStop[]>();
     DRIVER_ORDER.forEach((d) => map.set(d, []));
     stops
       .filter((s) => s.status !== 'cancelled')
@@ -87,7 +87,7 @@ export function DayMapDialog({ open, onClose, date, stops, onOptimize }: DayMapD
         return 0;
       })
       .forEach((s) => {
-        const list = map.get(s.driver as DriverName);
+        const list = map.get(s.driver as AssigneeName);
         if (list) list.push(s);
       });
     return map;
@@ -168,10 +168,12 @@ export function DayMapDialog({ open, onClose, date, stops, onOptimize }: DayMapD
             <span className="truncate text-sm font-bold">{formattedDate}</span>
           </div>
 
-          {/* Driver tabs */}
+          {/* Driver tabs — only assignees that have stops this day */}
           <div className="flex flex-shrink-0 items-center gap-1">
-            {DRIVER_ORDER.map((driver) => {
-              const cfg = DRIVER_CONFIG[driver];
+            {DRIVER_ORDER.filter(
+              (d) => (stopsByDriver.get(d)?.length ?? 0) > 0 || d === effectiveDriver
+            ).map((driver) => {
+              const cfg = assigneeStyle(driver);
               const count = stopsByDriver.get(driver)?.length ?? 0;
               const isActive = effectiveDriver === driver;
               return (
@@ -306,7 +308,7 @@ export function DayMapDialog({ open, onClose, date, stops, onOptimize }: DayMapD
           <div className="flex-1 overflow-y-auto border-t lg:w-80 lg:flex-none lg:border-s lg:border-t-0 xl:w-96">
             <div className="flex flex-col gap-2 p-3">
               {DRIVER_ORDER.map((driver) => {
-                const cfg = DRIVER_CONFIG[driver];
+                const cfg = assigneeStyle(driver);
                 const ds = stopsByDriver.get(driver) ?? [];
                 const isActive = effectiveDriver === driver;
                 if (!isActive) return null;

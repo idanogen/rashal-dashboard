@@ -1,8 +1,11 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import type { CalendarDelivery, CalendarStop } from '@/types/delivery';
-import { DRIVER_CONFIG } from '@/types/delivery';
-import type { DriverName } from '@/types/route';
+import { assigneeStyle } from '@/types/delivery';
+import { DRIVERS, TECHNICIANS, type AssigneeName } from '@/types/route';
+
+// סדר תצוגה אחיד של משובצים (נהגים ואז טכנאים; דוד מופיע פעם אחת).
+const ASSIGNEE_ORDER: AssigneeName[] = Array.from(new Set<AssigneeName>([...DRIVERS, ...TECHNICIANS]));
 import { Button } from '@/components/ui/button';
 import {
   SortableContext,
@@ -60,7 +63,7 @@ interface StopCardProps {
 }
 
 function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate }: StopCardProps) {
-  const config = DRIVER_CONFIG[delivery.driver];
+  const config = assigneeStyle(delivery.driver);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const prevCoordRef = useRef<typeof stop.coordinationStatus>(stop.coordinationStatus);
 
@@ -530,11 +533,10 @@ export function DeliveryCalendar({
         {visibleDays.map((day) => {
           const dateStr = toLocalDateStr(day);
           const dayStops = getStopsForDate(dateStr);
-          // קיבוץ לפי נהג — רודי דויד קודם, אחר כך נהג חיצוני
-          const driverOrder: DriverName[] = ['רודי דויד', 'נהג חיצוני מועלם'];
+          // קיבוץ לפי משובץ — לפי סדר התצוגה האחיד (נהגים ואז טכנאים)
           const dayDeliveries = getDeliveriesForDate(dateStr).sort(
             (a, b) =>
-              driverOrder.indexOf(a.driver) - driverOrder.indexOf(b.driver)
+              ASSIGNEE_ORDER.indexOf(a.driver) - ASSIGNEE_ORDER.indexOf(b.driver)
           );
           const isTodayFlag = isToday(day);
           const isPast = isPastDay(day);
@@ -620,7 +622,7 @@ export function DeliveryCalendar({
               <div className="p-2 min-h-[180px] space-y-3">
                 {dayDeliveries.length > 0 ? (
                   dayDeliveries.map((delivery) => {
-                    const driverCfg = DRIVER_CONFIG[delivery.driver];
+                    const driverCfg = assigneeStyle(delivery.driver);
                     // סידור אוטומטי לפי שעת התיאום: מוקדם→מאוחר, ועצירות בלי שעה בסוף.
                     const sortedStops = [...delivery.stops].sort((a, b) => {
                       const ta = a.timeWindowStart;

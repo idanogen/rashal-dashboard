@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { rescheduleStop } from '@/lib/calendar-stops';
 import { persistTimelineEvent } from '@/lib/timeline';
 import { useChatAuthor } from '@/hooks/useTimeline';
-import type { DriverName } from '@/types/route';
+import type { AssigneeName } from '@/types/route';
 import type { CoordinationStatus, StopSourceType } from '@/types/calendar-stop';
 import { toast } from 'sonner';
 
@@ -12,7 +12,7 @@ export interface RescheduleStopRef {
   sourceId: string;
   sourceType: StopSourceType;
   deliveryDate: string; // old date
-  driver: DriverName; // old assignee
+  driver: AssigneeName; // old assignee
   coordinationStatus?: CoordinationStatus;
   timeWindowStart?: string;
   timeWindowEnd?: string;
@@ -21,7 +21,7 @@ export interface RescheduleStopRef {
 interface RescheduleParams {
   stop: RescheduleStopRef;
   newDate: string;
-  newDriver: DriverName;
+  newDriver: AssigneeName;
 }
 
 function formatHe(date: string): string {

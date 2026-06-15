@@ -1,4 +1,4 @@
-import type { DriverName } from './route';
+import type { AssigneeName } from './route';
 
 export type StopSourceType = 'delivery' | 'service' | 'task';
 
@@ -23,7 +23,7 @@ export interface CalendarStop {
 
   // Scheduling
   deliveryDate: string; // YYYY-MM-DD
-  driver: DriverName;
+  driver: AssigneeName;
   sequence: number;
 
   // Optional summary record
@@ -88,7 +88,7 @@ export const STOP_STATUS_LABELS: Record<StopStatus, string> = {
 /** Builds a CalendarStop from an Order (used on schedule). */
 export interface ScheduleStopInput {
   deliveryDate: string;
-  driver: DriverName;
+  driver: AssigneeName;
   sequence?: number;
   sourceType: StopSourceType;
   orderId?: string;

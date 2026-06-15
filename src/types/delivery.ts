@@ -1,6 +1,6 @@
-import type { DriverName } from './route';
+import type { DriverName, AssigneeName } from './route';
 
-export type { DriverName };
+export type { DriverName, AssigneeName };
 
 export type CalendarStopSource = 'delivery' | 'service' | 'task';
 export type CalendarStopStatus =
@@ -28,8 +28,8 @@ export interface CalendarStop {
   status: CalendarStopStatus;
   /** יום האספקה */
   deliveryDate: string;
-  /** הנהג המשויך */
-  driver: DriverName;
+  /** המשובץ (נהג או טכנאי) */
+  driver: AssigneeName;
   customerName: string;
   address?: string;
   city?: string;
@@ -55,26 +55,71 @@ export interface CalendarStop {
 export interface CalendarDelivery {
   id: string;
   date: string; // YYYY-MM-DD
-  driver: DriverName;
+  driver: AssigneeName;
   stops: CalendarStop[];
 }
 
-export const DRIVER_CONFIG: Record<DriverName, {
+export interface AssigneeStyle {
   label: string;
   color: string;
   borderColor: string;
   badgeColor: string;
-}> = {
-  'רודי דויד': {
-    label: 'רודי דויד',
+}
+
+export const DRIVER_CONFIG: Record<AssigneeName, AssigneeStyle> = {
+  דוד: {
+    label: 'דוד',
     color: 'bg-blue-100 text-blue-700',
     borderColor: 'border-s-blue-500',
     badgeColor: 'bg-blue-500',
   },
-  'נהג חיצוני מועלם': {
-    label: 'נהג חיצוני',
+  רודי: {
+    label: 'רודי',
+    color: 'bg-emerald-100 text-emerald-700',
+    borderColor: 'border-s-emerald-500',
+    badgeColor: 'bg-emerald-500',
+  },
+  מוחמד: {
+    label: 'מוחמד',
     color: 'bg-purple-100 text-purple-700',
     borderColor: 'border-s-purple-500',
     badgeColor: 'bg-purple-500',
   },
+  מוהנד: {
+    label: 'מוהנד',
+    color: 'bg-amber-100 text-amber-700',
+    borderColor: 'border-s-amber-500',
+    badgeColor: 'bg-amber-500',
+  },
+  אולג: {
+    label: 'אולג',
+    color: 'bg-cyan-100 text-cyan-700',
+    borderColor: 'border-s-cyan-500',
+    badgeColor: 'bg-cyan-500',
+  },
+  ישראל: {
+    label: 'ישראל',
+    color: 'bg-rose-100 text-rose-700',
+    borderColor: 'border-s-rose-500',
+    badgeColor: 'bg-rose-500',
+  },
+  אבי: {
+    label: 'אבי',
+    color: 'bg-indigo-100 text-indigo-700',
+    borderColor: 'border-s-indigo-500',
+    badgeColor: 'bg-indigo-500',
+  },
 };
+
+const NEUTRAL_STYLE: AssigneeStyle = {
+  label: '—',
+  color: 'bg-muted text-muted-foreground',
+  borderColor: 'border-s-muted-foreground',
+  badgeColor: 'bg-muted-foreground',
+};
+
+/** Safe lookup — never crashes on an unknown/legacy assignee value. */
+export function assigneeStyle(name: string | undefined | null): AssigneeStyle {
+  if (!name) return NEUTRAL_STYLE;
+  return DRIVER_CONFIG[name as AssigneeName] ?? { ...NEUTRAL_STYLE, label: name };
+}

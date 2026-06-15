@@ -98,9 +98,23 @@ function App() {
       </BrowserRouter>
       <Toaster
         position="bottom-left"
+        dir="rtl"
+        richColors
+        closeButton
+        expand
         toastOptions={{
           style: {
             fontFamily: 'Assistant, system-ui, sans-serif',
+          },
+          classNames: {
+            toast:
+              'rounded-2xl border shadow-2xl px-5 py-4 gap-3 items-center',
+            title: 'text-[15px] font-bold leading-tight',
+            description: 'text-sm opacity-90',
+            icon: 'scale-125',
+            actionButton: 'rounded-lg font-semibold',
+            cancelButton: 'rounded-lg',
+            closeButton: 'rounded-full',
           },
         }}
       />

@@ -1,11 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { reorderStops } from '@/lib/calendar-stops';
-import type { DriverName } from '@/types/route';
+import type { AssigneeName } from '@/types/route';
 import { toast } from 'sonner';
 
 interface ReorderStopsParams {
   deliveryDate: string;
-  driver: DriverName;
+  driver: AssigneeName;
   orderedIds: string[];
 }
 

@@ -37,11 +37,12 @@ import {
   type DuplicateConflict,
 } from '@/components/deliveries/DuplicateScheduleWarningDialog';
 import { findActiveDuplicateStops } from '@/lib/calendar-stops';
+import { showScheduleToast } from '@/lib/scheduleToast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, AlertCircle, Wrench, CalendarDays } from 'lucide-react';
 import type { ServiceCall } from '@/types/service-call';
-import type { DriverName } from '@/types/route';
+import { TECHNICIANS, TECHNICIAN_ONLY, type AssigneeName } from '@/types/route';
 import type { CalendarDelivery } from '@/types/delivery';
 import { toast } from 'sonner';
 
@@ -134,7 +135,7 @@ export function ServiceCallsPage() {
       sourceId: s.orderId ?? s.serviceCallId ?? s.id,
       sourceType: s.sourceType,
       deliveryDate: s.deliveryDate,
-      driver: s.driver as DriverName,
+      driver: s.driver as AssigneeName,
       coordinationStatus: s.coordinationStatus,
       timeWindowStart: s.timeWindowStart,
       timeWindowEnd: s.timeWindowEnd,
@@ -152,7 +153,7 @@ export function ServiceCallsPage() {
     setPendingReschedule({ stop: ref, newDate });
   };
 
-  const handleRescheduleDriverSelected = (newDriver: DriverName) => {
+  const handleRescheduleDriverSelected = (newDriver: AssigneeName) => {
     if (!pendingReschedule) return;
     rescheduleStopMut.mutate({
       stop: pendingReschedule.stop,
@@ -166,7 +167,7 @@ export function ServiceCallsPage() {
   const [duplicateState, setDuplicateState] = useState<{
     conflicts: DuplicateConflict[];
     nonConflictingCalls: ServiceCall[];
-    driver: DriverName;
+    driver: AssigneeName;
     date: string;
   } | null>(null);
 
@@ -210,14 +211,15 @@ export function ServiceCallsPage() {
     const groups = new Map<string, CalendarDelivery>();
     for (const s of calendarStops) {
       if (s.status === 'cancelled') continue;
-      if (s.sourceType !== 'service') continue;
+      // מסך השירות: קריאות שירות + משימות של טכנאי-בלבד.
+      if (!(s.sourceType === 'service' || (s.sourceType === 'task' && TECHNICIAN_ONLY.has(s.driver)))) continue;
       const key = `${s.deliveryDate}__${s.driver}`;
       let group = groups.get(key);
       if (!group) {
         group = {
           id: key,
           date: s.deliveryDate,
-          driver: s.driver as DriverName,
+          driver: s.driver as AssigneeName,
           stops: [],
         };
         groups.set(key, group);
@@ -228,7 +230,7 @@ export function ServiceCallsPage() {
         sourceType: s.sourceType,
         status: s.status,
         deliveryDate: s.deliveryDate,
-        driver: s.driver as DriverName,
+        driver: s.driver as AssigneeName,
         customerName: s.customerName,
         address: s.address,
         city: s.city,
@@ -279,9 +281,9 @@ export function ServiceCallsPage() {
       active.id !== over.id
     ) {
       const srcDate = active.data.current.deliveryDate as string;
-      const srcDriver = active.data.current.driver as DriverName;
+      const srcDriver = active.data.current.driver as AssigneeName;
       const overDate = over.data.current.deliveryDate as string;
-      const overDriver = over.data.current.driver as DriverName;
+      const overDriver = over.data.current.driver as AssigneeName;
       if (srcDate !== overDate) {
         startReschedule(active.id as string, overDate);
         return;
@@ -371,7 +373,7 @@ export function ServiceCallsPage() {
   );
 
   const runScheduleCalls = useCallback(
-    async (calls: ServiceCall[], driver: DriverName, date: string) => {
+    async (calls: ServiceCall[], driver: AssigneeName, date: string) => {
       try {
         for (const call of calls) {
           await scheduleStop.mutateAsync({
@@ -385,11 +387,7 @@ export function ServiceCallsPage() {
             phone: call.phone,
           });
         }
-        toast.success(
-          calls.length > 1
-            ? `שובצו ${calls.length} קריאות ל${driver}`
-            : `קריאת השירות שובצה ל${driver}`
-        );
+        showScheduleToast({ count: calls.length, assignee: driver, date, kind: 'service' });
       } catch (err) {
         console.error('schedule failed:', err);
         const msg = err instanceof Error ? err.message : '';
@@ -405,7 +403,7 @@ export function ServiceCallsPage() {
   );
 
   const handleDriverSelected = useCallback(
-    async (driver: DriverName) => {
+    async (driver: AssigneeName) => {
       if (!pendingSchedule) return;
       const { calls, date } = pendingSchedule;
       setDriverPickerOpen(false);
@@ -476,7 +474,7 @@ export function ServiceCallsPage() {
 
   const handleCreateTask = useCallback(
     async (data: {
-      driver: DriverName;
+      driver: AssigneeName;
       customerName: string;
       address?: string;
       city?: string;
@@ -684,6 +682,8 @@ export function ServiceCallsPage() {
       />
 
       <DriverSelector
+        assignees={TECHNICIANS}
+        title="בחר טכנאי"
         open={driverPickerOpen}
         onClose={() => {
           setDriverPickerOpen(false);
@@ -706,6 +706,8 @@ export function ServiceCallsPage() {
 
       {/* Reschedule driver picker (drag existing service stop to another day) */}
       <DriverSelector
+        assignees={TECHNICIANS}
+        title="בחר טכנאי"
         open={!!pendingReschedule}
         onClose={() => setPendingReschedule(null)}
         onSelectDriver={handleRescheduleDriverSelected}
@@ -720,6 +722,8 @@ export function ServiceCallsPage() {
         open={taskDialogDate !== null}
         onClose={() => setTaskDialogDate(null)}
         date={taskDialogDate}
+        assignees={TECHNICIANS}
+        assigneeLabel="טכנאי"
         onSubmit={handleCreateTask}
       />
 

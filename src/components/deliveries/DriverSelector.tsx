@@ -5,39 +5,20 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { DRIVERS, type DriverName } from '@/types/route';
+import { DRIVERS, type AssigneeName } from '@/types/route';
 import { Truck, Package } from 'lucide-react';
 
 interface DriverSelectorProps {
   open: boolean;
   onClose: () => void;
-  onSelectDriver: (driver: DriverName) => void;
+  onSelectDriver: (driver: AssigneeName) => void;
   orderInfo?: string;
   customerName?: string;
+  /** רשימת המשובצים להצגה — ברירת מחדל: נהגי חלוקה. למסך שירות יועברו טכנאים. */
+  assignees?: AssigneeName[];
+  /** כותרת הדיאלוג — ברירת מחדל "בחר נהג למשלוח". */
+  title?: string;
 }
-
-const driverConfig: Record<DriverName, {
-  icon: typeof Truck;
-  gradient: string;
-  border: string;
-  iconColor: string;
-  ring: string;
-}> = {
-  'רודי דויד': {
-    icon: Truck,
-    gradient: 'from-blue-500/10 to-blue-600/5',
-    border: 'border-blue-200',
-    iconColor: 'text-blue-600',
-    ring: 'hover:ring-blue-300',
-  },
-  'נהג חיצוני מועלם': {
-    icon: Truck,
-    gradient: 'from-purple-500/10 to-purple-600/5',
-    border: 'border-purple-200',
-    iconColor: 'text-purple-600',
-    ring: 'hover:ring-purple-300',
-  },
-};
 
 export function DriverSelector({
   open,
@@ -45,12 +26,14 @@ export function DriverSelector({
   onSelectDriver,
   orderInfo,
   customerName,
+  assignees = DRIVERS,
+  title = 'בחר נהג למשלוח',
 }: DriverSelectorProps) {
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-md" dir="rtl">
         <DialogHeader>
-          <DialogTitle className="text-base">בחר נהג למשלוח</DialogTitle>
+          <DialogTitle className="text-base">{title}</DialogTitle>
         </DialogHeader>
 
         {orderInfo && (
@@ -70,31 +53,18 @@ export function DriverSelector({
         )}
 
         <div className="grid grid-cols-2 gap-3 py-2">
-          {DRIVERS.map((driver) => {
-            const config = driverConfig[driver];
-            const Icon = config.icon;
-            return (
-              <button
-                key={driver}
-                className={`
-                  group relative flex flex-col items-center justify-center gap-2.5
-                  h-24 rounded-xl border bg-gradient-to-br transition-all duration-200
-                  hover:ring-2 hover:shadow-md active:scale-[0.97]
-                  ${config.gradient} ${config.border} ${config.ring}
-                `}
-                onClick={() => {
-                  onSelectDriver(driver);
-                }}
-              >
-                <div
-                  className={`flex h-10 w-10 items-center justify-center rounded-lg border bg-background/80 shadow-sm transition-transform group-hover:scale-110 ${config.iconColor}`}
-                >
-                  <Icon className="h-5 w-5" />
-                </div>
-                <span className="text-sm font-medium">{driver}</span>
-              </button>
-            );
-          })}
+          {assignees.map((name) => (
+            <button
+              key={name}
+              className="group relative flex h-24 flex-col items-center justify-center gap-2.5 rounded-xl border border-primary/20 bg-gradient-to-br from-primary/10 to-primary/5 transition-all duration-200 hover:shadow-md hover:ring-2 hover:ring-primary/30 active:scale-[0.97]"
+              onClick={() => onSelectDriver(name)}
+            >
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg border bg-background/80 text-primary shadow-sm transition-transform group-hover:scale-110">
+                <Truck className="h-5 w-5" />
+              </div>
+              <span className="text-sm font-medium">{name}</span>
+            </button>
+          ))}
         </div>
 
         <Button
