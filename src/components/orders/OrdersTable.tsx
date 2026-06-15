@@ -17,6 +17,7 @@ import { type OrderFiltersState } from './OrderFilters';
 import { getDaysSinceCreated, getDaysColor } from '@/lib/utils';
 import { WhatsAppActions } from '@/components/whatsapp/WhatsAppActions';
 import { CustomerReplyBadge } from '@/components/whatsapp/CustomerReplyBadge';
+import { OrderChatButton } from '@/components/OrderChatButton';
 
 interface OrdersTableProps {
   orders: Order[];
@@ -147,10 +148,15 @@ export function OrdersTable({ orders, filters, groupSize }: OrdersTableProps) {
                       {idx + 1}
                     </TableCell>
                     <TableCell className="font-medium">
-                      {order.customerName}
-                      {groupSize && (groupSize.get(order.id) ?? 0) > 1 && (
-                        <DupBadge count={groupSize.get(order.id)!} />
-                      )}
+                      <span className="inline-flex items-center gap-1">
+                        <span onClick={(e) => e.stopPropagation()}>
+                          <OrderChatButton order={order} />
+                        </span>
+                        {order.customerName}
+                        {groupSize && (groupSize.get(order.id) ?? 0) > 1 && (
+                          <DupBadge count={groupSize.get(order.id)!} />
+                        )}
+                      </span>
                     </TableCell>
                     <TableCell>
                       {order.phone && (
@@ -175,11 +181,15 @@ export function OrdersTable({ orders, filters, groupSize }: OrdersTableProps) {
                         type="orderStatus"
                       />
                     </TableCell>
-                    <TableCell>
-                      <CustomerReplyBadge
-                        status={order.customerReplyStatus}
-                        requestedTime={order.customerRequestedTime}
-                      />
+                    <TableCell className="text-sm text-muted-foreground">
+                      {order.customerReplyStatus ? (
+                        <CustomerReplyBadge
+                          status={order.customerReplyStatus}
+                          requestedTime={order.customerRequestedTime}
+                        />
+                      ) : (
+                        '—'
+                      )}
                     </TableCell>
                     <TableCell className="text-sm">{order.openedBy || '—'}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">
@@ -283,6 +293,9 @@ export function OrdersTable({ orders, filters, groupSize }: OrdersTableProps) {
                   })()}
                   <div onClick={(e) => e.stopPropagation()}>
                     <WhatsAppActions order={order} compact />
+                  </div>
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <OrderChatButton order={order} />
                   </div>
                 </div>
               </div>

@@ -40,6 +40,14 @@ export interface CalendarStop {
   city?: string;
   phone?: string;
 
+  // Location (3 levels of confidence)
+  /** Resolved point: precise geocode if available, else city center. */
+  coordinates?: { lat: number; lng: number };
+  /** 'geocoded' = precise address, 'city' = city-center fallback, undefined = no location. */
+  coordinatesSource?: 'geocoded' | 'city';
+  geocodedAt?: string;
+  geocodedAddress?: string;
+
   // Status
   status: StopStatus;
   completedAt?: string;
@@ -51,6 +59,13 @@ export interface CalendarStop {
   coordinatedAt?: string;
   timeWindowStart?: string;
   timeWindowEnd?: string;
+  /** Set true when a coordinated stop is rescheduled — coordination must be cancelled with the customer. */
+  coordinationNeedsCancel?: boolean;
+
+  // Scheduling audit (from now on)
+  scheduledBy?: string;
+  rescheduledBy?: string;
+  rescheduledAt?: string;
 
   created: string;
   updated: string;
@@ -83,4 +98,6 @@ export interface ScheduleStopInput {
   city?: string;
   phone?: string;
   notes?: string;
+  /** Display name of the user who scheduled this stop. */
+  scheduledBy?: string;
 }

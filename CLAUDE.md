@@ -392,6 +392,48 @@ interface Zone {
 
 ## עדכונים אחרונים
 
+### 15/06/2026 — geocoding 3-רמות, צ'אט פר-רשומה, הפרדת מסכים, שיבוץ-מחדש בגרירה ⭐⭐⭐⭐⭐
+
+מקבץ עבודה גדול. כל השינויים additive ופרוסים לפרודקשן.
+
+#### A) geocoding אמיתי + 3 רמות ביטחון מיקום + Waze מדויק
+- `src/lib/geocoding.ts` — נוסף מנוע **Nominatim** (`geocodeAddress(address,{city})`) עם תור מווסת-קצב (1.1s), session-cache, וולידציית מרחק ממרכז-העיר (`calculateDistance`, סף 25 ק"מ), fallback של הסרת מילים. (טבלת `CITY_COORDINATES` הקיימת נשארה ל-fallback לפי עיר.)
+- **DB `calendar_stops`**: `geocoded_lat/lng/at/address`. **`service_calls`**: נוספה `address` (כתובת מ-Make שדה `Y_149_0_ESHB`; `Y_2632_5_ESH` → `health_fund`).
+- שמירה על `calendar_stops` (לא על רשומות המקור). `rowToStop` מחשב `coordinates` + `coordinatesSource` ('geocoded'/'city'/undefined).
+- `geocodeStopAddress` (fire-and-forget בעת שיבוץ דרך `useScheduleStop`) + `useGeocodeBackfill` (רץ ב-DeliveriesPage על עצירות פעילות).
+- מפות (`RouteMap`, `DayMapDialog`): מילוי מרקר = סטטוס, **מסגרת = ביטחון מיקום** (כחול=מדויק/כתום=עיר), אזהרה בפופאפ, badge אדום "ללא מיקום", מקרא; Waze לפי קואורדינטות מדויקות (גם `DriverDashboardPage`).
+
+#### B) צ'אט/Timeline פנימי פר-רשומה (הועתק ומותאם מ-parcel-story)
+- טבלה `timeline_events` (id text, `order_id`/`service_call_id`, type, user, content, files[], metadata jsonb) + bucket `timeline-files` (public). RLS authenticated.
+- `src/lib/timeline.ts` + `src/hooks/useTimeline.ts` (React Query, optimistic + blob previews) + `src/lib/mentions.ts` (`splitByMentions`).
+- רכיבים: `components/timeline/{CommentInput,TimelineEvent,FileUploadZone,OrderTimeline}`, `components/{OrderChatSheet,OrderChatButton}`, `context/GlobalChatContext`. נוספו `ui/{sheet,popover}` (radix מאוחד).
+- @mentions דרך `useAllProfiles` (ויזואלי, ללא התראות). כפתור צ'אט: ליד שם הלקוח בטבלת הזמנות + טבלת קריאות שירות + כרטיסי יומן.
+- **הצ'אט נתמך גם לקריאות שירות** (`timeline_events.service_call_id`); `ChatOrderRef` קיבל `kind:'order'|'service'`.
+
+#### C) "חזרו מהקו"
+- עצירה שסומנה "לא בוצע" → המקור חוזר לממתינים + נשאר `calendar_stop` בסטטוס `not_completed`.
+- אזור מובלט אדום **"חזרו מהקו (N)"** בראש רשימות הממתינים (`UnscheduledOrders`/`UnscheduledServiceCalls`) וגם בדשבורד (`ReturnedFromRouteSection`).
+
+#### D) הפרדת מסך משלוחים ממסך קריאות שירות
+- אין יותר יומן משותף: `DeliveriesPage` מסנן `sourceType !== 'service'`; `ServiceCallsPage` מסנן `sourceType === 'service'` (טאב "יומן קריאות שירות").
+- **קריאות שירות → טכנאים** (במקום נהגי חלוקה): **טרם הושלם — ממתין לשמות הטכנאים** (להרחיב enum `driver_name` + `TECHNICIANS` + בורר). כרגע בורר השירות עדיין נהגים.
+
+#### E) מיון אוטומטי לפי שעת תיאום
+- ב-`DeliveryCalendar` עצירות בכל יום×משובץ ממוינות לפי `timeWindowStart` (מוקדם→מאוחר, ללא-שעה בסוף).
+
+#### F) שיבוץ-מחדש בגרירה בין ימים + חותמת משתמש + תיאום-לביטול
+- **DB `calendar_stops`**: `scheduled_by`, `rescheduled_by`, `rescheduled_at`, `coordination_needs_cancel`.
+- `rescheduleStop` (lib) + `useRescheduleStop` (hook). גרירת עצירה משובצת ליום אחר → בורר → העברה + resequence; **DragOverlay** צף שעוקב אחרי העכבר (שני המסכים).
+- חותמת `scheduled_by` על כל שיבוץ (`useScheduleStop`, מכאן והלאה) + `rescheduled_by`; מוצג על הכרטיס.
+- עצירה **מתואמת** ששובצה מחדש → `coordination_needs_cancel=true` → כרטיס כתום + סרט **"⚠ יש לבטל תיאום"** + **הודעת מערכת בצ'אט** (type `reschedule`) עם השעה הישנה + מי שיבץ. ניקוי/תיאום-מחדש ב-`ScheduleCoordinationDialog` מאפס את הדגל.
+
+#### G) תיקוני UI
+- `ui/table.tsx`: כותרות `text-start` (היו `text-left` ונשברו ב-RTL).
+- עמודת "תשובת לקוח" מציגה `—` כשאין ערך.
+- `index.css`: יובא `tw-animate-css` (האנימציות `animate-in`/`slide-in` לא נטענו ב-Tailwind v4 → ה-Sheet/Dialogs לא זזו).
+
+**קבצים חדשים עיקריים:** lib/{timeline,mentions}.ts, hooks/{useTimeline,useRescheduleStop,useGeocodeBackfill}.ts, components/timeline/*, components/{OrderChatSheet,OrderChatButton}.tsx, components/dashboard/ReturnedFromRouteSection.tsx, context/GlobalChatContext.tsx, types/timeline.ts, ui/{sheet,popover}.tsx.
+
 ### 24/05/2026 — אינטגרציית WhatsApp דרך heyy.io + שיפורי גרירה ⭐⭐⭐⭐
 
 #### A) WhatsApp integration (pre-built, ממתין לחשבון heyy + Meta template approval)
@@ -815,5 +857,5 @@ export interface CalendarStop {
 
 ---
 
-**עודכן לאחרונה:** 24 במאי 2026 (אינטגרציית WhatsApp דרך heyy.io + שיפורי גרירה ביומן + drag-to-reorder ב-DayMapDialog)
+**עודכן לאחרונה:** 15 ביוני 2026 (geocoding 3-רמות, צ'אט פר-רשומה גם לשירות, "חזרו מהקו", הפרדת מסכים, מיון לפי תיאום, שיבוץ-מחדש בגרירה + חותמת משתמש + תיאום-לביטול)
 **מפתחים:** צוות Rashal + Claude Code

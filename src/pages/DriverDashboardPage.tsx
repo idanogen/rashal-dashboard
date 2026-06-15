@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { CoordinationStatusBadge } from '@/components/whatsapp/CoordinationStatusBadge';
 import { ScheduleCoordinationDialog } from '@/components/whatsapp/ScheduleCoordinationDialog';
+import { RouteMap } from '@/components/deliveries/RouteMap';
 import { buildWazeUrl, buildTelUrl } from '@/lib/navigation';
 import {
   MapPin,
@@ -24,6 +25,7 @@ import {
   Loader2,
   CalendarClock,
   ListChecks,
+  Map as MapIcon,
 } from 'lucide-react';
 import type { CalendarStop as DbCalendarStop } from '@/types/calendar-stop';
 import type { CalendarStop as UiCalendarStop } from '@/types/delivery';
@@ -75,6 +77,7 @@ export function DriverDashboardPage() {
   const { data: allStops, isLoading } = useCalendarStops();
   const resolveStop = useResolveStop();
   const [coordinationStop, setCoordinationStop] = useState<UiCalendarStop | null>(null);
+  const [showMap, setShowMap] = useState(true);
 
   const today = toLocalDateStr(new Date());
   const tomorrow = toLocalDateStr(new Date(Date.now() + 86_400_000));
@@ -113,6 +116,18 @@ export function DriverDashboardPage() {
   const todayCompleted = todayStops.filter((s) => isResolved(s.status)).length;
   const todayRemaining = todayStops.length - todayCompleted;
 
+  // UI-shaped stops for the map; next unresolved stop for the "navigate" button.
+  const todayUiStops = useMemo(() => todayStops.map(toUiStop), [todayStops]);
+  const nextStop = todayStops.find((s) => !isResolved(s.status));
+  const nextWazeUrl = nextStop
+    ? buildWazeUrl({
+        address: nextStop.address
+          ? `${nextStop.address}${nextStop.city ? `, ${nextStop.city}` : ''}`
+          : nextStop.city ?? null,
+        coordinates: nextStop.coordinates ?? null,
+      })
+    : null;
+
   if (isLoading) {
     return (
       <div className="min-h-[40vh] flex items-center justify-center">
@@ -132,7 +147,7 @@ export function DriverDashboardPage() {
           <div>
             <p className="text-xs text-muted-foreground">{dayLabel(today)}</p>
             <h1 className="text-lg font-bold leading-tight">
-              שלום {profile?.fullName ?? profile?.email ?? 'נהג'} 👋
+              שלום {profile?.fullName ?? profile?.username ?? 'נהג'} 👋
             </h1>
           </div>
         </div>
@@ -191,6 +206,33 @@ export function DriverDashboardPage() {
         </TabsList>
 
         <TabsContent value="today" className="space-y-3">
+          {todayStops.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                {nextWazeUrl && (
+                  <a
+                    href={nextWazeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm active:bg-blue-700"
+                  >
+                    <Navigation className="h-4 w-4" />
+                    נווט לעצירה הבאה{nextStop ? ` · ${nextStop.customerName}` : ''}
+                  </a>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowMap((v) => !v)}
+                  className="h-[42px] gap-1.5 text-xs"
+                >
+                  <MapIcon className="h-4 w-4" />
+                  {showMap ? 'הסתר מפה' : 'הצג מפה'}
+                </Button>
+              </div>
+              {showMap && <RouteMap stops={todayUiStops} height="300px" />}
+            </div>
+          )}
           {todayStops.length === 0 ? (
             <EmptyState message="אין עצירות מתוכננות להיום 🎉" />
           ) : (
@@ -290,7 +332,10 @@ function DriverStopCard({ stop, index, onCoordinate, onResolve, resolving }: Dri
   const src = SOURCE_CONFIG[stop.sourceType] ?? SOURCE_CONFIG.delivery;
   const SrcIcon = src.Icon;
 
-  const wazeUrl = buildWazeUrl({ address: stop.address ? `${stop.address}${stop.city ? `, ${stop.city}` : ''}` : null });
+  const wazeUrl = buildWazeUrl({
+    address: stop.address ? `${stop.address}${stop.city ? `, ${stop.city}` : ''}` : null,
+    coordinates: stop.coordinates ?? null,
+  });
   const telUrl = buildTelUrl(stop.phone);
 
   const bgClass = stop.status === 'completed'

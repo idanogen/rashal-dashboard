@@ -11,7 +11,7 @@ export function LoginPage() {
   const { signIn } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [email, setEmail] = useState('');
+  const [handle, setHandle] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -22,10 +22,10 @@ export function LoginPage() {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    const { error } = await signIn(email, password);
+    const { error } = await signIn(handle, password);
     setLoading(false);
     if (error) {
-      setError('אימייל או סיסמה שגויים');
+      setError('שם משתמש או סיסמה שגויים');
       return;
     }
     navigate(from, { replace: true });
@@ -41,16 +41,17 @@ export function LoginPage() {
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <Label htmlFor="email">אימייל</Label>
+              <Label htmlFor="handle">שם משתמש</Label>
               <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="handle"
+                type="text"
+                value={handle}
+                onChange={(e) => setHandle(e.target.value)}
                 required
-                autoComplete="email"
-                dir="ltr"
-                className="text-left"
+                autoComplete="username"
+                dir="auto"
+                className="font-mono"
+                placeholder="rudi / רודי"
               />
             </div>
             <div>

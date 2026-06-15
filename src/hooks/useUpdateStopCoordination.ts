@@ -12,6 +12,7 @@ export interface UpdateCoordinationInput {
     timeWindowStart?: string | undefined;
     timeWindowEnd?: string | undefined;
     notes?: string | undefined;
+    coordinationNeedsCancel?: boolean | undefined;
   };
   /** Hide the default success toast (use when the caller fires another toast). */
   silent?: boolean;

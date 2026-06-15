@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { toast } from 'sonner';
-import { supabase } from '@/lib/supabase';
+import { supabase, uniqueChannelName } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import {
   callAdminApi,
@@ -30,11 +30,12 @@ export function useIsAdmin(): boolean {
 export function useAllProfiles() {
   const qc = useQueryClient();
   const { user } = useAuth();
+  const userId = user?.id;
 
   useEffect(() => {
-    if (!user) return;
+    if (!userId) return;
     const channel = supabase
-      .channel('profiles-realtime')
+      .channel(uniqueChannelName('profiles-realtime'))
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'profiles' },
@@ -44,7 +45,11 @@ export function useAllProfiles() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [qc, user]);
+    // Depend on the stable user id, not the `user` object — auth-context hands
+    // back a fresh `session.user` reference on every token refresh / tab focus,
+    // which would otherwise resubscribe the channel and churn the realtime
+    // socket ("WebSocket is closed before the connection is established").
+  }, [qc, userId]);
 
   return useQuery({
     queryKey: ['profiles'],

@@ -6,6 +6,7 @@ import type {
   StopStatus,
 } from '@/types/calendar-stop';
 import { supabase } from './supabase';
+import { geocodeAddress, getCityCoordinates } from './geocoding';
 
 type CalendarStopRow = {
   id: string;
@@ -28,11 +29,31 @@ type CalendarStopRow = {
   coordinated_at: string | null;
   time_window_start: string | null;
   time_window_end: string | null;
+  coordination_needs_cancel: boolean | null;
+  scheduled_by: string | null;
+  rescheduled_by: string | null;
+  rescheduled_at: string | null;
+  geocoded_lat: number | null;
+  geocoded_lng: number | null;
+  geocoded_at: string | null;
+  geocoded_address: string | null;
   created_at: string;
   updated_at: string;
 };
 
 function rowToStop(row: CalendarStopRow): CalendarStop {
+  // 3 levels of confidence: precise geocode → city center → none.
+  const hasGeocode = row.geocoded_lat != null && row.geocoded_lng != null;
+  const cityCenter = getCityCoordinates(row.city);
+  const coordinates = hasGeocode
+    ? { lat: Number(row.geocoded_lat), lng: Number(row.geocoded_lng) }
+    : cityCenter;
+  const coordinatesSource: CalendarStop['coordinatesSource'] = hasGeocode
+    ? 'geocoded'
+    : cityCenter
+      ? 'city'
+      : undefined;
+
   return {
     id: row.id,
     deliveryDate: row.delivery_date,
@@ -46,6 +67,10 @@ function rowToStop(row: CalendarStopRow): CalendarStop {
     address: row.address ?? undefined,
     city: row.city ?? undefined,
     phone: row.phone ?? undefined,
+    coordinates,
+    coordinatesSource,
+    geocodedAt: row.geocoded_at ?? undefined,
+    geocodedAddress: row.geocoded_address ?? undefined,
     status: row.status,
     completedAt: row.completed_at ?? undefined,
     notes: row.notes ?? undefined,
@@ -54,6 +79,10 @@ function rowToStop(row: CalendarStopRow): CalendarStop {
     coordinatedAt: row.coordinated_at ?? undefined,
     timeWindowStart: row.time_window_start ?? undefined,
     timeWindowEnd: row.time_window_end ?? undefined,
+    coordinationNeedsCancel: row.coordination_needs_cancel ?? undefined,
+    scheduledBy: row.scheduled_by ?? undefined,
+    rescheduledBy: row.rescheduled_by ?? undefined,
+    rescheduledAt: row.rescheduled_at ?? undefined,
     created: row.created_at,
     updated: row.updated_at,
   };
@@ -82,6 +111,10 @@ function stopFieldsToRow(
   if ('coordinatedAt' in fields) row.coordinated_at = fields.coordinatedAt ?? null;
   if ('timeWindowStart' in fields) row.time_window_start = fields.timeWindowStart ?? null;
   if ('timeWindowEnd' in fields) row.time_window_end = fields.timeWindowEnd ?? null;
+  if ('coordinationNeedsCancel' in fields) row.coordination_needs_cancel = fields.coordinationNeedsCancel ?? false;
+  if ('scheduledBy' in fields) row.scheduled_by = fields.scheduledBy ?? null;
+  if ('rescheduledBy' in fields) row.rescheduled_by = fields.rescheduledBy ?? null;
+  if ('rescheduledAt' in fields) row.rescheduled_at = fields.rescheduledAt ?? null;
   return row;
 }
 
@@ -215,6 +248,7 @@ export async function createStop(input: ScheduleStopInput): Promise<CalendarStop
     city: input.city ?? null,
     phone: input.phone ?? null,
     notes: input.notes ?? null,
+    scheduled_by: input.scheduledBy ?? null,
   };
 
   const { data, error } = await supabase
@@ -225,6 +259,57 @@ export async function createStop(input: ScheduleStopInput): Promise<CalendarStop
 
   if (error) throw new Error(`createStop: ${error.message}`);
   return rowToStop(data as CalendarStopRow);
+}
+
+/**
+ * שיבוץ מחדש של עצירה קיימת ליום/נהג אחר (גרירה בין ימים).
+ * - sequence = סוף קבוצת היעד (אותו lookup כמו createStop).
+ * - חותמת rescheduled_by/at.
+ * - אם יש תיאום לקוח → coordination_needs_cancel=true (צריך לבטל מול הלקוח).
+ */
+export async function rescheduleStop(
+  stopId: string,
+  opts: { newDate: string; newDriver: CalendarStop['driver']; rescheduledBy?: string }
+): Promise<CalendarStop> {
+  const { data: existing, error: seqErr } = await supabase
+    .from('calendar_stops')
+    .select('sequence')
+    .eq('delivery_date', opts.newDate)
+    .eq('driver', opts.newDriver)
+    .order('sequence', { ascending: false })
+    .limit(1);
+  if (seqErr) throw new Error(`rescheduleStop (sequence): ${seqErr.message}`);
+  const sequence = ((existing?.[0]?.sequence as number) ?? -1) + 1;
+
+  const patch: Record<string, unknown> = {
+    delivery_date: opts.newDate,
+    driver: opts.newDriver,
+    sequence,
+    rescheduled_by: opts.rescheduledBy ?? null,
+    rescheduled_at: new Date().toISOString(),
+  };
+
+  const { data, error } = await supabase
+    .from('calendar_stops')
+    .update(patch)
+    .eq('id', stopId)
+    .select()
+    .single();
+  if (error) throw new Error(`rescheduleStop: ${error.message}`);
+  const stop = rowToStop(data as CalendarStopRow);
+
+  // עצירה מתואמת ששובצה מחדש → לסמן שצריך לבטל את התיאום מול הלקוח.
+  if (stop.coordinationStatus && !stop.coordinationNeedsCancel) {
+    const { data: data2, error: err2 } = await supabase
+      .from('calendar_stops')
+      .update({ coordination_needs_cancel: true })
+      .eq('id', stopId)
+      .select()
+      .single();
+    if (err2) throw new Error(`rescheduleStop (flag): ${err2.message}`);
+    return rowToStop(data2 as CalendarStopRow);
+  }
+  return stop;
 }
 
 export async function updateStop(
@@ -288,4 +373,41 @@ export async function resolveStop(
 
   if (error) throw new Error(`resolveStop: ${error.message}`);
   return rowToStop(data as CalendarStopRow);
+}
+
+// ─── Geocoding ──────────────────────────────────────────────────
+
+/**
+ * מבצע geocoding אמיתי לכתובת העצירה ושומר את הנקודה המדויקת ב-DB.
+ * - אם אין כתובת → לא עושה כלום (הקריאה מ-DB תיפול ל-fallback לפי עיר).
+ * - אם ה-geocoding נכשל → לא כותב (יישאר fallback לפי עיר, ננסה שוב ב-backfill).
+ * נועד להרצה fire-and-forget; לא זורק (מחזיר false בכשל).
+ */
+export async function geocodeStopAddress(stop: {
+  id: string;
+  address?: string;
+  city?: string;
+}): Promise<boolean> {
+  if (!stop.address || !stop.address.trim()) return false;
+  try {
+    const result = await geocodeAddress(stop.address, { city: stop.city });
+    if (!result) return false;
+    const { error } = await supabase
+      .from('calendar_stops')
+      .update({
+        geocoded_lat: result.lat,
+        geocoded_lng: result.lng,
+        geocoded_at: new Date().toISOString(),
+        geocoded_address: stop.address,
+      })
+      .eq('id', stop.id);
+    if (error) {
+      console.error('[geocodeStopAddress] update failed:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('[geocodeStopAddress] error:', err);
+    return false;
+  }
 }

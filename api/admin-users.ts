@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { createHash } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { supabaseAdmin } from './_lib/supabase-admin.js';
 
@@ -9,18 +10,29 @@ import { supabaseAdmin } from './_lib/supabase-admin.js';
 //   Body: { action, ...payload }
 //
 //   actions:
-//     invite           — create user with temp password + send invite email
-//     create           — create user with given password (no email)
-//     delete           — hard-delete user + profile
-//     set_role         — update profile.role
-//     set_disabled     — toggle profile.disabled
-//     reset_password   — generate new temp password
+//     create           — create user with username + (optional) password. Auth.users gets a
+//                        synthetic email = `{username}@rashal.internal`.
+//     delete           — hard-delete user + profile.
+//     set_role         — update profile.role.
+//     set_username     — rename a user; auth.users.email is regenerated from the new username.
+//     set_linked_driver— attach/detach a driver enum to a driver-role user.
+//     set_disabled     — toggle profile.disabled + ban/unban at the auth layer.
+//     set_password     — set/rotate password (optionally explicit, otherwise auto-generate).
 //
 // Caller must be an admin (profile.role = 'admin', not disabled).
 // Uses service_role to make admin API calls (bypasses RLS).
 
-const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
-const SUPABASE_ANON = process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY;
+// Strip trailing junk from env values: real whitespace AND a literal `\n`
+// (backslash + n, char codes 92,110) that got baked into the Vercel env var.
+// Left in, it corrupts the apikey header → GoTrue "Invalid API key" → getUser
+// fails → requireAdmin returns 401.
+const cleanEnv = (s?: string): string | undefined => s?.replace(/(?:\\n|\s)+$/g, '');
+const SUPABASE_URL = cleanEnv(process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL);
+const SUPABASE_ANON = cleanEnv(process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY);
+
+const USERNAME_DOMAIN = 'rashal.internal';
+// 3-30 chars: Latin letters, Hebrew letters (א-ת incl. finals), digits, . _ - .
+const USERNAME_PATTERN = /^[a-zA-Z0-9._א-ת-]{3,30}$/u;
 
 type AllowedRole = 'admin' | 'dispatcher' | 'driver' | 'viewer';
 const ALLOWED_ROLES: AllowedRole[] = ['admin', 'dispatcher', 'driver', 'viewer'];
@@ -29,23 +41,59 @@ type DriverName = 'רודי דויד' | 'נהג חיצוני מועלם';
 const ALLOWED_DRIVERS: DriverName[] = ['רודי דויד', 'נהג חיצוני מועלם'];
 
 interface AdminAction {
-  action: 'invite' | 'create' | 'delete' | 'set_role' | 'set_disabled' | 'reset_password' | 'set_linked_driver';
-  email?: string;
+  action:
+    | 'create'
+    | 'delete'
+    | 'set_role'
+    | 'set_username'
+    | 'set_linked_driver'
+    | 'set_disabled'
+    | 'set_password';
+  username?: string;
   password?: string;
   fullName?: string;
   role?: AllowedRole;
   linkedDriver?: DriverName | null;
   userId?: string;
   disabled?: boolean;
-  redirectTo?: string;
 }
 
 function generateTempPassword(): string {
-  // 12 chars, mixed
+  // 10 chars, no easily-confused glyphs (0/O, 1/I/l). Mixed case + digit + symbol.
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
   let out = '';
-  for (let i = 0; i < 12; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  for (let i = 0; i < 10; i++) out += chars[Math.floor(Math.random() * chars.length)];
   return out;
+}
+
+// MUST stay identical to normalizeUsername in src/lib/username.ts.
+function normalizeUsername(raw: string): string {
+  return raw.trim().normalize('NFC').toLowerCase();
+}
+
+const ASCII_HANDLE = /^[a-zA-Z0-9._-]+$/;
+
+/**
+ * Map a (normalized) handle to a synthetic ASCII email.
+ * GoTrue rejects non-ASCII email local parts, so Hebrew handles are hashed.
+ * MUST stay byte-for-byte identical to usernameToEmail in src/lib/username.ts.
+ */
+function usernameToEmail(username: string): string {
+  if (ASCII_HANDLE.test(username)) return `${username}@${USERNAME_DOMAIN}`;
+  const hex = createHash('sha256').update(username, 'utf8').digest('hex').slice(0, 40);
+  return `u${hex}@${USERNAME_DOMAIN}`;
+}
+
+function validateUsername(raw: unknown): { ok: true; value: string } | { ok: false; error: string } {
+  if (typeof raw !== 'string' || !raw.trim()) return { ok: false, error: 'missing username' };
+  const norm = normalizeUsername(raw);
+  if (!USERNAME_PATTERN.test(norm)) {
+    return {
+      ok: false,
+      error: 'username must be 3-30 chars: Hebrew/Latin letters, digits, . _ -',
+    };
+  }
+  return { ok: true, value: norm };
 }
 
 async function requireAdmin(req: VercelRequest): Promise<{ userId: string } | { error: string; status: number }> {
@@ -59,14 +107,12 @@ async function requireAdmin(req: VercelRequest): Promise<{ userId: string } | { 
     return { error: 'server misconfigured: missing SUPABASE_URL or SUPABASE_ANON_KEY', status: 500 };
   }
 
-  // Verify token by asking supabase who it belongs to
   const userClient = createClient(SUPABASE_URL, SUPABASE_ANON, {
     global: { headers: { Authorization: `Bearer ${token}` } },
   });
   const { data: userData, error: userErr } = await userClient.auth.getUser();
   if (userErr || !userData.user) return { error: 'invalid token', status: 401 };
 
-  // Check profile.role via service role (skip RLS)
   const { data: profile, error: profErr } = await supabaseAdmin
     .from('profiles')
     .select('role, disabled')
@@ -77,6 +123,18 @@ async function requireAdmin(req: VercelRequest): Promise<{ userId: string } | { 
   if (profile.role !== 'admin') return { error: 'caller is not admin', status: 403 };
 
   return { userId: userData.user.id };
+}
+
+/** Returns true if any other profile already owns the given username (case-insensitive). */
+async function usernameTaken(username: string, excludeUserId?: string): Promise<boolean> {
+  let q = supabaseAdmin
+    .from('profiles')
+    .select('id')
+    .ilike('username', username)
+    .limit(1);
+  if (excludeUserId) q = q.neq('id', excludeUserId);
+  const { data } = await q;
+  return !!(data && data.length > 0);
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -90,54 +148,99 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     switch (body.action) {
-      case 'invite': {
-        if (!body.email) return res.status(400).json({ ok: false, error: 'missing email' });
-        const role = body.role && ALLOWED_ROLES.includes(body.role) ? body.role : 'viewer';
-        const linkedDriver = role === 'driver' && body.linkedDriver && ALLOWED_DRIVERS.includes(body.linkedDriver)
-          ? body.linkedDriver : null;
-        const { data, error } = await supabaseAdmin.auth.admin.inviteUserByEmail(body.email, {
-          data: { full_name: body.fullName ?? null, role },
-          redirectTo: body.redirectTo,
-        });
-        if (error) return res.status(400).json({ ok: false, error: error.message });
-        if (data.user?.id) {
-          await supabaseAdmin
-            .from('profiles')
-            .upsert(
-              { id: data.user.id, email: body.email, full_name: body.fullName ?? null, role, linked_driver: linkedDriver },
-              { onConflict: 'id' }
-            );
-        }
-        return res.status(200).json({ ok: true, userId: data.user?.id, email: body.email });
-      }
-
       case 'create': {
-        if (!body.email) return res.status(400).json({ ok: false, error: 'missing email' });
+        const v = validateUsername(body.username);
+        if (!v.ok) return res.status(400).json({ ok: false, error: v.error });
+        const username = v.value;
+        if (await usernameTaken(username)) {
+          return res.status(409).json({ ok: false, error: `שם המשתמש ${username} כבר תפוס` });
+        }
         const role = body.role && ALLOWED_ROLES.includes(body.role) ? body.role : 'viewer';
         const linkedDriver = role === 'driver' && body.linkedDriver && ALLOWED_DRIVERS.includes(body.linkedDriver)
-          ? body.linkedDriver : null;
-        const password = body.password || generateTempPassword();
+          ? body.linkedDriver
+          : null;
+        const password = body.password?.trim() ? body.password.trim() : generateTempPassword();
+        if (password.length < 6) {
+          return res.status(400).json({ ok: false, error: 'password must be at least 6 chars' });
+        }
+        const email = usernameToEmail(username);
         const { data, error } = await supabaseAdmin.auth.admin.createUser({
-          email: body.email,
+          email,
           password,
-          email_confirm: true,
-          user_metadata: { full_name: body.fullName ?? null, role },
+          email_confirm: true, // skip the email-verification flow entirely
+          user_metadata: {
+            full_name: body.fullName ?? null,
+            role,
+            username,
+          },
         });
         if (error) return res.status(400).json({ ok: false, error: error.message });
         if (data.user?.id) {
           await supabaseAdmin
             .from('profiles')
             .upsert(
-              { id: data.user.id, email: body.email, full_name: body.fullName ?? null, role, linked_driver: linkedDriver },
+              {
+                id: data.user.id,
+                email,
+                username,
+                full_name: body.fullName ?? null,
+                role,
+                linked_driver: linkedDriver,
+              },
               { onConflict: 'id' }
             );
         }
         return res.status(200).json({
           ok: true,
           userId: data.user?.id,
-          email: body.email,
-          tempPassword: password,
+          username,
+          password,
         });
+      }
+
+      case 'set_username': {
+        if (!body.userId) return res.status(400).json({ ok: false, error: 'missing userId' });
+        const v = validateUsername(body.username);
+        if (!v.ok) return res.status(400).json({ ok: false, error: v.error });
+        const username = v.value;
+        if (await usernameTaken(username, body.userId)) {
+          return res.status(409).json({ ok: false, error: `שם המשתמש ${username} כבר תפוס` });
+        }
+        // Look up the target user to decide if we should rewrite the auth email too.
+        const { data: target } = await supabaseAdmin
+          .from('profiles')
+          .select('email')
+          .eq('id', body.userId)
+          .maybeSingle();
+        const currentEmail = target?.email ?? '';
+        // Only rewrite the auth email when the user is on the synthetic domain.
+        // Real-email accounts (e.g. the seed admin) keep their original email so they
+        // can still log in with it.
+        const newEmail = currentEmail.endsWith(`@${USERNAME_DOMAIN}`)
+          ? usernameToEmail(username)
+          : null;
+        if (newEmail) {
+          const { error: authErr } = await supabaseAdmin.auth.admin.updateUserById(body.userId, {
+            email: newEmail,
+            email_confirm: true,
+            user_metadata: { username },
+          });
+          if (authErr) return res.status(400).json({ ok: false, error: authErr.message });
+        } else {
+          await supabaseAdmin.auth.admin.updateUserById(body.userId, {
+            user_metadata: { username },
+          });
+        }
+        const { error } = await supabaseAdmin
+          .from('profiles')
+          .update({
+            username,
+            ...(newEmail ? { email: newEmail } : {}),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', body.userId);
+        if (error) return res.status(400).json({ ok: false, error: error.message });
+        return res.status(200).json({ ok: true, userId: body.userId, username });
       }
 
       case 'set_linked_driver': {
@@ -156,7 +259,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (body.userId === guard.userId) return res.status(400).json({ ok: false, error: 'cannot delete yourself' });
         const { error } = await supabaseAdmin.auth.admin.deleteUser(body.userId);
         if (error) return res.status(400).json({ ok: false, error: error.message });
-        // profile row will cascade-delete via FK on auth.users
         await supabaseAdmin.from('profiles').delete().eq('id', body.userId);
         return res.status(200).json({ ok: true });
       }
@@ -184,19 +286,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           .update({ disabled: body.disabled, updated_at: new Date().toISOString() })
           .eq('id', body.userId);
         if (error) return res.status(400).json({ ok: false, error: error.message });
-        // Also ban/unban at the auth layer to block login immediately
         await supabaseAdmin.auth.admin.updateUserById(body.userId, {
-          ban_duration: body.disabled ? '876000h' : 'none', // ~100 years vs unban
+          ban_duration: body.disabled ? '876000h' : 'none',
         });
         return res.status(200).json({ ok: true });
       }
 
-      case 'reset_password': {
+      case 'set_password': {
         if (!body.userId) return res.status(400).json({ ok: false, error: 'missing userId' });
-        const password = body.password || generateTempPassword();
+        const password = body.password?.trim() ? body.password.trim() : generateTempPassword();
+        if (password.length < 6) {
+          return res.status(400).json({ ok: false, error: 'password must be at least 6 chars' });
+        }
         const { error } = await supabaseAdmin.auth.admin.updateUserById(body.userId, { password });
         if (error) return res.status(400).json({ ok: false, error: error.message });
-        return res.status(200).json({ ok: true, tempPassword: password });
+        return res.status(200).json({ ok: true, password });
       }
 
       default:

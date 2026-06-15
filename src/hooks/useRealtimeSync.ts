@@ -1,13 +1,22 @@
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
+import { supabase, uniqueChannelName } from '@/lib/supabase';
+import { useAuth } from '@/lib/auth-context';
 
 export function useRealtimeSync() {
   const queryClient = useQueryClient();
+  const { loading } = useAuth();
 
   useEffect(() => {
+    // Wait until the auth session has resolved before opening the socket.
+    // Subscribing earlier connects with the anon apikey, then supabase-js swaps
+    // in the user JWT once the session loads and reconnects — closing the
+    // still-connecting socket ("WebSocket is closed before the connection is
+    // established"). Gating on `loading` lets the socket connect once, already
+    // authenticated.
+    if (loading) return;
     const channel = supabase
-      .channel('db-changes')
+      .channel(uniqueChannelName('db-changes'))
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'orders' },
@@ -33,5 +42,5 @@ export function useRealtimeSync() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [queryClient]);
+  }, [queryClient, loading]);
 }

@@ -8,6 +8,7 @@ type ServiceCallRow = {
   customer_status: ServiceCall['customerStatus'] | null;
   health_fund: string | null;
   opened_by: string | null;
+  address: string | null;
   city: string | null;
   service_call_status: ServiceCallStatus | null;
   duplicate_of: string | null;
@@ -22,6 +23,7 @@ function rowToServiceCall(row: ServiceCallRow): ServiceCall {
     customerStatus: row.customer_status ?? undefined,
     healthFund: row.health_fund ?? undefined,
     openedBy: row.opened_by ?? undefined,
+    address: row.address ?? undefined,
     city: row.city ?? undefined,
     serviceCallStatus: row.service_call_status ?? undefined,
     duplicateOf: row.duplicate_of ?? undefined,
@@ -36,6 +38,7 @@ function fieldsToRow(fields: Partial<Omit<ServiceCall, 'id'>>): Record<string, u
   if ('customerStatus' in fields) row.customer_status = fields.customerStatus;
   if ('healthFund' in fields) row.health_fund = fields.healthFund;
   if ('openedBy' in fields) row.opened_by = fields.openedBy;
+  if ('address' in fields) row.address = fields.address;
   if ('city' in fields) row.city = fields.city;
   if ('serviceCallStatus' in fields) row.service_call_status = fields.serviceCallStatus;
   return row;

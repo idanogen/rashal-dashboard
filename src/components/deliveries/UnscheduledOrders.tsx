@@ -41,6 +41,8 @@ interface OrderCardProps {
   isDragging?: boolean;
   /** הזמנה ששוחררה ומחכה לבחירת נהג — opacity מופחת. */
   isPending?: boolean;
+  /** הזמנה שחזרה מהקו (סומנה "לא בוצע") — הבלטה אדומה. */
+  isReturned?: boolean;
   dupCount?: number;
   onExclude?: (id: string) => void;
   onRestore?: (id: string) => void;
@@ -53,6 +55,7 @@ function DraggableOrderCard({
   isSelected,
   isDragging: isAnyDragging,
   isPending,
+  isReturned,
   dupCount,
   onExclude,
   onRestore,
@@ -80,6 +83,7 @@ function DraggableOrderCard({
         isExcluded
           ? 'opacity-40 border-dashed cursor-default'
           : 'cursor-grab active:cursor-grabbing hover:shadow-md',
+        isReturned && !isExcluded && !isSelected && 'ring-2 ring-red-400 bg-red-50/40 dark:bg-red-950/10',
         isSelected && !isExcluded && 'ring-2 ring-primary bg-primary/5',
         isDragging && 'opacity-30 ring-2 ring-primary',
         isPending && !isDragging && 'opacity-25 scale-[0.97] pointer-events-none'
@@ -148,6 +152,15 @@ function DraggableOrderCard({
                   ×{dupCount}
                 </span>
               )}
+              {isReturned && (
+                <span
+                  className="ms-1 inline-flex h-4 items-center gap-0.5 rounded bg-red-100 px-1 text-[10px] font-bold text-red-700"
+                  title="הזמנה זו סומנה 'לא בוצע' וחזרה מהקו"
+                >
+                  <Undo2 className="h-2.5 w-2.5" />
+                  חזר מהקו
+                </span>
+              )}
             </p>
             {order.phone && (
               <div className="mt-1 flex items-center gap-1">
@@ -202,10 +215,12 @@ interface UnscheduledOrdersProps {
   onBuildRoute?: (orders: Order[]) => void;
   /** orderId → group size for "x2" badge on duplicate groups */
   groupSize?: Map<string, number>;
+  /** orderIds that came back from the route (a not_completed stop exists). */
+  returnedIds?: Set<string>;
 }
 
 export function UnscheduledOrders({
-  orders,
+  orders: allOrders,
   orderCountByZone,
   orderZoneMap,
   selectedOrderIds = new Set(),
@@ -217,7 +232,18 @@ export function UnscheduledOrders({
   pendingScheduleIds,
   onBuildRoute,
   groupSize,
+  returnedIds,
 }: UnscheduledOrdersProps) {
+  // Split off "returned from route" items into their own highlighted section;
+  // the rest flow through the normal zone/group/select machinery unchanged.
+  const returnedOrders = useMemo(
+    () => (returnedIds ? allOrders.filter((o) => returnedIds.has(o.id)) : []),
+    [allOrders, returnedIds]
+  );
+  const orders = useMemo(
+    () => (returnedIds ? allOrders.filter((o) => !returnedIds.has(o.id)) : allOrders),
+    [allOrders, returnedIds]
+  );
   const [selectedZones, setSelectedZones] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'all' | 'grouped'>('all');
   const [excludedOrderIds, setExcludedOrderIds] = useState<Set<string>>(
@@ -319,7 +345,7 @@ export function UnscheduledOrders({
     );
   }, [groupedByZone, expandedZones]);
 
-  if (orders.length === 0) {
+  if (orders.length === 0 && returnedOrders.length === 0) {
     return (
       <div className="rounded-lg border-2 border-dashed bg-muted/30 p-6 text-center">
         <Package className="mx-auto mb-2 h-12 w-12 text-muted-foreground" />
@@ -332,6 +358,32 @@ export function UnscheduledOrders({
 
   return (
     <div className="space-y-4">
+      {/* Returned from route — highlighted section */}
+      {returnedOrders.length > 0 && (
+        <div className="rounded-lg border border-red-300 bg-red-50/60 p-3 shadow-sm dark:border-red-900 dark:bg-red-950/10">
+          <div className="mb-2 flex items-center gap-2">
+            <Undo2 className="h-4 w-4 text-red-600" />
+            <h3 className="text-sm font-bold text-red-700 dark:text-red-400">
+              חזרו מהקו ({returnedOrders.length})
+            </h3>
+            <span className="text-[11px] text-red-600/70">סומנו "לא בוצע" — ממתינות לשיבוץ מחדש</span>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {returnedOrders.map((order) => (
+              <DraggableOrderCard
+                key={order.id}
+                order={order}
+                isReturned
+                isSelected={selectedOrderIds.has(order.id)}
+                isPending={pendingScheduleIds?.has(order.id)}
+                dupCount={groupSize?.get(order.id)}
+                onToggleSelect={onToggleSelect}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Zone Filter */}
       <ZoneFilter
         selectedZones={selectedZones}

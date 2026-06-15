@@ -100,6 +100,7 @@ export function ScheduleCoordinationDialog({ stop, open, onOpenChange }: Schedul
           coordinatedAt: new Date().toISOString(),
           timeWindowStart: timeStart,
           timeWindowEnd: timeEnd,
+          coordinationNeedsCancel: false,
         },
       });
       onOpenChange(false);
@@ -117,6 +118,7 @@ export function ScheduleCoordinationDialog({ stop, open, onOpenChange }: Schedul
         timeWindowStart: timeStart || undefined,
         timeWindowEnd: timeEnd || undefined,
         notes: note || undefined,
+        coordinationNeedsCancel: false,
       },
     });
     onOpenChange(false);
@@ -130,6 +132,7 @@ export function ScheduleCoordinationDialog({ stop, open, onOpenChange }: Schedul
         coordinationStatus: undefined,
         coordinationMethod: undefined,
         coordinatedAt: undefined,
+        coordinationNeedsCancel: false,
       },
     });
     onOpenChange(false);

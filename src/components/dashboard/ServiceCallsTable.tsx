@@ -22,6 +22,7 @@ import type { ServiceCall } from '@/types/service-call';
 import { SERVICE_CALL_STATUS_OPTIONS } from '@/lib/constants';
 import { useUpdateServiceCall } from '@/hooks/useUpdateServiceCall';
 import { getDaysSinceCreated, getDaysColor } from '@/lib/utils';
+import { OrderChatButton } from '@/components/OrderChatButton';
 
 interface ServiceCallsTableProps {
   calls: ServiceCall[];
@@ -220,10 +221,17 @@ export function ServiceCallsTable({ calls, groupSize }: ServiceCallsTableProps) 
                       {idx + 1}
                     </TableCell>
                     <TableCell className="font-medium">
-                      {call.customerName}
-                      {groupSize && (groupSize.get(call.id) ?? 0) > 1 && (
-                        <DupBadge count={groupSize.get(call.id)!} />
-                      )}
+                      <span className="inline-flex items-center gap-1">
+                        <span onClick={(e) => e.stopPropagation()}>
+                          <OrderChatButton
+                            order={{ id: call.id, kind: 'service', customerName: call.customerName, city: call.city }}
+                          />
+                        </span>
+                        {call.customerName}
+                        {groupSize && (groupSize.get(call.id) ?? 0) > 1 && (
+                          <DupBadge count={groupSize.get(call.id)!} />
+                        )}
+                      </span>
                     </TableCell>
                     <TableCell>
                       {call.phone && (

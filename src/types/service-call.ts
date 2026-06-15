@@ -7,6 +7,7 @@ export interface ServiceCall {
   customerStatus?: 'לקוח חדש' | 'לקוח קיים';
   healthFund?: string;
   openedBy?: string;
+  address?: string;
   city?: string;
   serviceCallStatus?: ServiceCallStatus;
   /** If set, this row is a Priority dupe of the referenced head row. */

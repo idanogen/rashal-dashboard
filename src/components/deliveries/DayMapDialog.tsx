@@ -124,7 +124,8 @@ export function DayMapDialog({ open, onClose, date, stops, onOptimize }: DayMapD
 
   const nextStopWazeUrl = useMemo(() => {
     if (!nextStop) return null;
-    const coords = getCityCoordinates(nextStop.city);
+    // נקודה מדויקת אם קיימת (geocoded), אחרת מרכז העיר.
+    const coords = nextStop.coordinates ?? getCityCoordinates(nextStop.city);
     return buildWazeUrl({
       address: nextStop.address ?? nextStop.city ?? null,
       coordinates: coords ?? null,
@@ -488,7 +489,8 @@ interface SideStopItemProps {
 }
 
 function SideStopItem({ stop, index, dragHandleProps }: SideStopItemProps) {
-  const coords = getCityCoordinates(stop.city);
+  // נקודה מדויקת (geocoded) אם קיימת, אחרת מרכז העיר.
+  const coords = stop.coordinates ?? getCityCoordinates(stop.city);
   const hasMapLocation = Boolean(coords);
   const wazeUrl = buildWazeUrl({
     address: stop.address ?? stop.city ?? null,

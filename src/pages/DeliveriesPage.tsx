@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useZonedOrders } from '@/hooks/useZonedOrders';
 import { useCalendarStops } from '@/hooks/useCalendarStops';
+import { useGeocodeBackfill } from '@/hooks/useGeocodeBackfill';
 import { useScheduleStop } from '@/hooks/useScheduleStop';
 import { useDeleteStop } from '@/hooks/useDeleteStop';
 import { useResolveStop } from '@/hooks/useResolveStop';
@@ -15,6 +16,7 @@ import {
 import { findActiveDuplicateStops } from '@/lib/calendar-stops';
 import { DeliveryCalendar } from '@/components/deliveries/DeliveryCalendar';
 import { DriverSelector } from '@/components/deliveries/DriverSelector';
+import { useRescheduleStop, type RescheduleStopRef } from '@/hooks/useRescheduleStop';
 import { DatePickerDialog } from '@/components/deliveries/DatePickerDialog';
 import { TaskDialog } from '@/components/deliveries/TaskDialog';
 import { DayMapDialog } from '@/components/deliveries/DayMapDialog';
@@ -89,10 +91,13 @@ export function DeliveriesPage() {
   } = useZonedOrders();
 
   const { data: calendarStops = [] } = useCalendarStops();
+  // Backfill geocoding מדויק לעצירות פעילות (רץ ברקע, מווסת-קצב).
+  useGeocodeBackfill();
   const scheduleStop = useScheduleStop();
   const deleteStop = useDeleteStop();
   const resolveStop = useResolveStop();
   const reorderStops = useReorderStops();
+  const rescheduleStopMut = useRescheduleStop();
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -103,6 +108,12 @@ export function DeliveriesPage() {
 
   // State
   const [draggedOrder, setDraggedOrder] = useState<Order | null>(null);
+  // עצירה משובצת שנגררת כרגע — להצגת כרטיס צף שעוקב אחרי העכבר.
+  const [draggedStop, setDraggedStop] = useState<{
+    customerName: string;
+    city?: string;
+    sourceType: string;
+  } | null>(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(
     new Set()
   );
@@ -114,6 +125,49 @@ export function DeliveriesPage() {
     orders: Order[];
     date: string;
   } | null>(null);
+
+  // Reschedule flow: drag an existing stop to another day → DriverSelector → useRescheduleStop
+  const [pendingReschedule, setPendingReschedule] = useState<{
+    stop: RescheduleStopRef;
+    newDate: string;
+  } | null>(null);
+
+  // בונה RescheduleStopRef מתוך עצירת DB לפי id.
+  const buildRescheduleRef = (stopId: string): RescheduleStopRef | null => {
+    const s = calendarStops.find((cs) => cs.id === stopId);
+    if (!s) return null;
+    return {
+      stopId: s.id,
+      sourceId: s.orderId ?? s.serviceCallId ?? s.id,
+      sourceType: s.sourceType,
+      deliveryDate: s.deliveryDate,
+      driver: s.driver as DriverName,
+      coordinationStatus: s.coordinationStatus,
+      timeWindowStart: s.timeWindowStart,
+      timeWindowEnd: s.timeWindowEnd,
+    };
+  };
+
+  const startReschedule = (stopId: string, newDate: string) => {
+    const targetDay = new Date(newDate + 'T00:00:00').getDay();
+    if (targetDay === 5 || targetDay === 6) {
+      toast.error('לא ניתן לתזמן ליום שישי או שבת');
+      return;
+    }
+    const ref = buildRescheduleRef(stopId);
+    if (!ref || ref.deliveryDate === newDate) return; // אותו יום → לא שיבוץ מחדש
+    setPendingReschedule({ stop: ref, newDate });
+  };
+
+  const handleRescheduleDriverSelected = (newDriver: DriverName) => {
+    if (!pendingReschedule) return;
+    rescheduleStopMut.mutate({
+      stop: pendingReschedule.stop,
+      newDate: pendingReschedule.newDate,
+      newDriver,
+    });
+    setPendingReschedule(null);
+  };
 
   // Task flow: "+" on day header → TaskDialog → useScheduleStop (sourceType='task')
   const [taskDialogDate, setTaskDialogDate] = useState<string | null>(null);
@@ -136,12 +190,25 @@ export function DeliveriesPage() {
     [pendingSchedule]
   );
 
+  // הזמנות שחזרו מהקו — קיים להן stop בסטטוס "לא בוצע".
+  const returnedOrderIds = useMemo(
+    () =>
+      new Set<string>(
+        calendarStops
+          .filter((s) => s.status === 'not_completed' && s.sourceType === 'delivery' && s.orderId)
+          .map((s) => s.orderId as string)
+      ),
+    [calendarStops]
+  );
+
   // Calendar deliveries — מקובצים מ-calendar_stops (מקור האמת החדש).
   // מציג את כל הסוגים (משלוחים + שירות + משימות).
   const calendarDeliveries: CalendarDelivery[] = useMemo(() => {
     const groups = new Map<string, CalendarDelivery>();
     for (const s of calendarStops) {
       if (s.status === 'cancelled') continue;
+      // מסך המשלוחים מציג משלוחים + משימות בלבד — לא קריאות שירות (יומן נפרד).
+      if (s.sourceType === 'service') continue;
       const key = `${s.deliveryDate}__${s.driver}`;
       let group = groups.get(key);
       if (!group) {
@@ -164,11 +231,17 @@ export function DeliveriesPage() {
         address: s.address,
         city: s.city,
         phone: s.phone,
+        coordinates: s.coordinates,
+        coordinatesSource: s.coordinatesSource,
         coordinationStatus: s.coordinationStatus,
         coordinationMethod: s.coordinationMethod,
         coordinatedAt: s.coordinatedAt,
         timeWindowStart: s.timeWindowStart,
         timeWindowEnd: s.timeWindowEnd,
+        coordinationNeedsCancel: s.coordinationNeedsCancel,
+        scheduledBy: s.scheduledBy,
+        rescheduledBy: s.rescheduledBy,
+        rescheduledAt: s.rescheduledAt,
       });
     }
     return Array.from(groups.values());
@@ -216,12 +289,21 @@ export function DeliveriesPage() {
     const { active } = event;
     if (active.data.current?.type === 'order') {
       setDraggedOrder(active.data.current.order as Order);
+    } else if (active.data.current?.type === 'stop') {
+      const s = calendarStops.find((cs) => cs.id === active.id);
+      if (s) setDraggedStop({ customerName: s.customerName, city: s.city, sourceType: s.sourceType });
     }
+  };
+
+  const handleDragCancel = () => {
+    setDraggedOrder(null);
+    setDraggedStop(null);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setDraggedOrder(null);
+    setDraggedStop(null);
 
     if (!over) return;
 
@@ -235,7 +317,12 @@ export function DeliveriesPage() {
       const srcDriver = active.data.current.driver as DriverName;
       const overDate = over.data.current.deliveryDate as string;
       const overDriver = over.data.current.driver as DriverName;
-      if (srcDate !== overDate || srcDriver !== overDriver) return;
+      // נפל על יום אחר → שיבוץ מחדש (בורר נהג), לא reorder.
+      if (srcDate !== overDate) {
+        startReschedule(active.id as string, overDate);
+        return;
+      }
+      if (srcDriver !== overDriver) return;
 
       const groupStops = calendarStops
         .filter(
@@ -260,6 +347,13 @@ export function DeliveriesPage() {
         driver: srcDriver,
         orderedIds: next,
       });
+      return;
+    }
+
+    // ─── Reschedule: existing stop → day background (cross-day) ───
+    if (active.data.current?.type === 'stop' && over.data.current?.type === 'day') {
+      const newDate = over.data.current?.date as string;
+      if (newDate) startReschedule(active.id as string, newDate);
       return;
     }
 
@@ -464,6 +558,7 @@ export function DeliveriesPage() {
       collisionDetection={collisionDetection}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
       accessibility={{
         announcements: silentAnnouncements,
         screenReaderInstructions: silentScreenReaderInstructions,
@@ -492,6 +587,7 @@ export function DeliveriesPage() {
           isDragging={!!draggedOrder}
           pendingScheduleIds={pendingScheduleIds}
           groupSize={ordersGroupSize}
+          returnedIds={returnedOrderIds}
         />
 
         <DeliveryCalendar
@@ -505,6 +601,17 @@ export function DeliveriesPage() {
 
       {/* Drag Overlay */}
       <DragOverlay dropAnimation={dropAnimationDown}>
+        {draggedStop && (
+          <div className="w-56 rounded-xl border-2 border-primary bg-card p-3 shadow-2xl rotate-2 cursor-grabbing ring-4 ring-primary/20">
+            <div className="flex items-center gap-1.5 text-sm font-bold">
+              <span>{draggedStop.sourceType === 'service' ? '🔧' : draggedStop.sourceType === 'task' ? '📋' : '📦'}</span>
+              <span className="truncate">{draggedStop.customerName}</span>
+            </div>
+            {draggedStop.city && (
+              <div className="mt-1 truncate text-xs text-muted-foreground">{draggedStop.city}</div>
+            )}
+          </div>
+        )}
         {draggedOrder && (() => {
           const isMulti =
             selectedOrderIds.has(draggedOrder.id) &&
@@ -580,6 +687,18 @@ export function DeliveriesPage() {
         customerName={
           pendingSchedule && pendingSchedule.orders.length === 1
             ? pendingSchedule.orders[0].address ?? undefined
+            : undefined
+        }
+      />
+
+      {/* Reschedule driver picker (drag existing stop to another day) */}
+      <DriverSelector
+        open={!!pendingReschedule}
+        onClose={() => setPendingReschedule(null)}
+        onSelectDriver={handleRescheduleDriverSelected}
+        orderInfo={
+          pendingReschedule
+            ? `שיבוץ מחדש ל-${new Date(pendingReschedule.newDate + 'T00:00:00').toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' })}`
             : undefined
         }
       />

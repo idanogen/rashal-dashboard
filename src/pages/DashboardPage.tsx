@@ -1,8 +1,10 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useDedupedOrders } from '@/hooks/useDedupedOrders';
 import { useOrderStats } from '@/hooks/useOrderStats';
 import { useZonedServiceCalls } from '@/hooks/useZonedServiceCalls';
+import { useCalendarStops } from '@/hooks/useCalendarStops';
+import { ReturnedFromRouteSection } from '@/components/dashboard/ReturnedFromRouteSection';
 import { DedupToggle } from '@/components/dashboard/DedupToggle';
 import { StaleOrdersAlert } from '@/components/dashboard/StaleOrdersAlert';
 import { StatsCards } from '@/components/dashboard/StatsCards';
@@ -38,6 +40,20 @@ export function DashboardPage() {
     hiddenCount: callsHiddenCount,
     isLoading: isLoadingCalls,
   } = useZonedServiceCalls();
+  const { data: calendarStops = [] } = useCalendarStops();
+
+  // הזמנות שחזרו מהקו — קיים stop "לא בוצע", וההזמנה עדיין ממתינה לתאום.
+  const returnedOrders = useMemo(() => {
+    const returnedIds = new Set(
+      calendarStops
+        .filter((s) => s.status === 'not_completed' && s.sourceType === 'delivery' && s.orderId)
+        .map((s) => s.orderId as string)
+    );
+    return (orders ?? []).filter(
+      (o) => returnedIds.has(o.id) && o.orderStatus === 'ממתין לתאום'
+    );
+  }, [calendarStops, orders]);
+
   const [filters, setFilters] = useState<OrderFiltersState>({
     search: '',
     orderStatus: '',
@@ -122,6 +138,7 @@ export function DashboardPage() {
 
         {/* Orders Tab */}
         <TabsContent value="orders" className="space-y-6">
+          <ReturnedFromRouteSection orders={returnedOrders} />
           <StaleOrdersAlert orders={orders ?? []} onShowStale={handleShowStale} />
           <StatsCards stats={stats} />
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

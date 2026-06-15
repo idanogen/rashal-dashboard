@@ -1,8 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { createStop } from '@/lib/calendar-stops';
+import { createStop, geocodeStopAddress } from '@/lib/calendar-stops';
 import { updateOrder } from '@/lib/orders';
 import { updateServiceCall } from '@/lib/service-calls';
 import type { ScheduleStopInput } from '@/types/calendar-stop';
+import { useChatAuthor } from '@/hooks/useTimeline';
 import { toast } from 'sonner';
 
 /**
@@ -13,10 +14,11 @@ import { toast } from 'sonner';
  */
 export function useScheduleStop() {
   const queryClient = useQueryClient();
+  const { userName } = useChatAuthor();
 
   return useMutation({
     mutationFn: async (input: ScheduleStopInput) => {
-      const stop = await createStop(input);
+      const stop = await createStop({ scheduledBy: userName, ...input });
 
       if (input.sourceType === 'delivery' && input.orderId) {
         await updateOrder(input.orderId, { orderStatus: 'תואמה אספקה' });
@@ -25,6 +27,12 @@ export function useScheduleStop() {
           serviceCallStatus: 'תואם ביקור',
         });
       }
+
+      // geocoding מדויק לכתובת — fire-and-forget, לא חוסם את השיבוץ.
+      // הקריאה מ-DB נופלת ל-fallback לפי עיר עד שזה מסתיים.
+      void geocodeStopAddress(stop).then((ok) => {
+        if (ok) queryClient.invalidateQueries({ queryKey: ['calendarStops'] });
+      });
 
       return stop;
     },

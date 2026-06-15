@@ -34,12 +34,22 @@ export interface CalendarStop {
   address?: string;
   city?: string;
   phone?: string;
+  /** נקודה מדויקת (geocoded) או מרכז-עיר (fallback) — לציור על המפה ולניווט. */
+  coordinates?: { lat: number; lng: number };
+  /** 'geocoded' = מדויק, 'city' = לפי עיר, undefined = אין מיקום. */
+  coordinatesSource?: 'geocoded' | 'city';
   /** WhatsApp / phone coordination tracking */
   coordinationStatus?: CoordinationStatus;
   coordinationMethod?: CoordinationMethod;
   coordinatedAt?: string;
   timeWindowStart?: string;
   timeWindowEnd?: string;
+  /** Set true when a coordinated stop is rescheduled — coordination must be cancelled. */
+  coordinationNeedsCancel?: boolean;
+  /** Scheduling audit (display names). */
+  scheduledBy?: string;
+  rescheduledBy?: string;
+  rescheduledAt?: string;
 }
 
 export interface CalendarDelivery {

@@ -1,7 +1,8 @@
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { toast } from 'sonner';
-import { supabase } from '@/lib/supabase';
+import { supabase, uniqueChannelName } from '@/lib/supabase';
+import { useAuth } from '@/lib/auth-context';
 import {
   fetchInbound,
   fetchOutbound,
@@ -12,10 +13,12 @@ import {
 
 export function useInboundMessages() {
   const qc = useQueryClient();
+  const { loading } = useAuth();
 
   useEffect(() => {
+    if (loading) return;
     const channel = supabase
-      .channel('whatsapp-inbound-realtime')
+      .channel(uniqueChannelName('whatsapp-inbound-realtime'))
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'whatsapp_inbound' },
@@ -28,7 +31,7 @@ export function useInboundMessages() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [qc]);
+  }, [qc, loading]);
 
   return useQuery({
     queryKey: ['whatsappInbound'],
@@ -39,10 +42,12 @@ export function useInboundMessages() {
 
 export function useOutboundMessages() {
   const qc = useQueryClient();
+  const { loading } = useAuth();
 
   useEffect(() => {
+    if (loading) return;
     const channel = supabase
-      .channel('whatsapp-outbound-realtime')
+      .channel(uniqueChannelName('whatsapp-outbound-realtime'))
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'whatsapp_outbound' },
@@ -55,7 +60,7 @@ export function useOutboundMessages() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [qc]);
+  }, [qc, loading]);
 
   return useQuery({
     queryKey: ['whatsappOutbound'],

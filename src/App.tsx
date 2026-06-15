@@ -11,8 +11,10 @@ import { RouteNavigationPage } from '@/pages/RouteNavigationPage';
 import { WhatsAppPage } from '@/pages/WhatsAppPage';
 import { AdminUsersPage } from '@/pages/AdminUsersPage';
 import { DriverDashboardPage } from '@/pages/DriverDashboardPage';
+import { FeedbackPage } from '@/pages/FeedbackPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { AuthProvider } from '@/lib/auth-context';
+import { GlobalChatProvider } from '@/context/GlobalChatContext';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { ProtectedAdminRoute } from '@/components/ProtectedAdminRoute';
 import { RoleBasedRoute, RedirectDriversHome } from '@/components/RoleBasedRoute';
@@ -51,12 +53,23 @@ function App() {
               }
             />
 
+            {/* Feedback/notes board — accessible to every authenticated role */}
+            <Route
+              path="/feedback"
+              element={
+                <ProtectedRoute>
+                  <FeedbackPage />
+                </ProtectedRoute>
+              }
+            />
+
             {/* Staff (admin / dispatcher / viewer) — full dashboard */}
             <Route
               path="/*"
               element={
                 <ProtectedRoute>
                   <RedirectDriversHome>
+                    <GlobalChatProvider>
                     <AppShell>
                       <Routes>
                         <Route path="/" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><DashboardPage /></RoleBasedRoute>} />
@@ -75,6 +88,7 @@ function App() {
                         <Route path="/route-navigation" element={<RoleBasedRoute allow={[...STAFF_ROLES, 'driver']}><RouteNavigationPage /></RoleBasedRoute>} />
                       </Routes>
                     </AppShell>
+                    </GlobalChatProvider>
                   </RedirectDriversHome>
                 </ProtectedRoute>
               }

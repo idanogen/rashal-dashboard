@@ -5,6 +5,7 @@ import type { DriverName } from '@/types/route';
 type ProfileRow = {
   id: string;
   email: string;
+  username: string | null;
   full_name: string | null;
   role: string;
   disabled: boolean;
@@ -17,6 +18,7 @@ function rowToProfile(row: ProfileRow): Profile {
   return {
     id: row.id,
     email: row.email,
+    username: row.username ?? undefined,
     fullName: row.full_name ?? undefined,
     role: (row.role as UserRole) ?? 'viewer',
     disabled: row.disabled,
@@ -64,20 +66,28 @@ export async function updateOwnProfile(
 // ─── Admin API client (POSTs to /api/admin-users with the user's JWT) ───
 
 export type AdminAction =
-  | { action: 'invite'; email: string; fullName?: string; role: UserRole; linkedDriver?: DriverName; redirectTo?: string }
-  | { action: 'create'; email: string; fullName?: string; role: UserRole; linkedDriver?: DriverName; password?: string }
+  | {
+      action: 'create';
+      username: string;
+      password?: string;
+      fullName?: string;
+      role: UserRole;
+      linkedDriver?: DriverName;
+    }
   | { action: 'delete'; userId: string }
   | { action: 'set_role'; userId: string; role: UserRole }
+  | { action: 'set_username'; userId: string; username: string }
   | { action: 'set_linked_driver'; userId: string; linkedDriver: DriverName | null }
   | { action: 'set_disabled'; userId: string; disabled: boolean }
-  | { action: 'reset_password'; userId: string };
+  | { action: 'set_password'; userId: string; password?: string };
 
 export interface AdminResponse {
   ok: boolean;
   error?: string;
   userId?: string;
-  email?: string;
-  tempPassword?: string;
+  username?: string;
+  /** Returned by `create` and `set_password` — caller shows this once. */
+  password?: string;
 }
 
 export async function callAdminApi(payload: AdminAction): Promise<AdminResponse> {

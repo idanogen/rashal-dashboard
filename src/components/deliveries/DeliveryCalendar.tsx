@@ -31,6 +31,7 @@ import {
 import { useDroppable } from '@dnd-kit/core';
 import { ScheduleCoordinationDialog } from '@/components/whatsapp/ScheduleCoordinationDialog';
 import { CoordinationStatusBadge } from '@/components/whatsapp/CoordinationStatusBadge';
+import { OrderChatButton } from '@/components/OrderChatButton';
 
 // פורמט תאריך מקומי (לא UTC) למניעת באגי timezone
 const toLocalDateStr = (d: Date) =>
@@ -124,6 +125,8 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate }: StopCar
   // רקע לפי סטטוס
   const isCustomerConfirmed = stop.coordinationStatus === 'customer_confirmed';
   const isCustomerRejected = stop.coordinationStatus === 'customer_rejected';
+  // עצירה מתואמת ששובצה מחדש — צריך לבטל את התיאום מול הלקוח.
+  const needsCancel = !!stop.coordinationNeedsCancel && !isResolved;
   const statusBg =
     stop.status === 'completed'
       ? 'bg-emerald-50/80 dark:bg-emerald-900/20'
@@ -152,20 +155,27 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate }: StopCar
       className={`
         group relative rounded-lg border-s-[4px] ${config.borderColor} border ${statusBg}
         p-3 transition-all duration-300 hover:shadow-md
-        ${isCustomerConfirmed ? 'shadow-md shadow-emerald-200/50' : ''}
+        ${needsCancel ? 'ring-2 ring-amber-500/80 bg-amber-50/70 dark:bg-amber-900/25' : ''}
+        ${isCustomerConfirmed && !needsCancel ? 'shadow-md shadow-emerald-200/50' : ''}
         ${!isResolved ? 'cursor-grab active:cursor-grabbing' : ''}
       `}
       {...(isResolved ? {} : { ...listeners, ...attributes })}
     >
-      {/* Confirmed ribbon — top-left corner */}
-      {isCustomerConfirmed && (
-        <div className="absolute top-0 start-0 flex items-center gap-1 rounded-tr-lg rounded-es-lg bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm">
-          <Check className="h-2.5 w-2.5" />
-          הלקוח אישר
+      {/* Needs-cancel ribbon — overrides the confirmed ribbon */}
+      {needsCancel ? (
+        <div className="absolute top-0 start-0 flex items-center gap-1 rounded-tr-lg rounded-es-lg bg-amber-500 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm">
+          ⚠ יש לבטל תיאום
         </div>
+      ) : (
+        isCustomerConfirmed && (
+          <div className="absolute top-0 start-0 flex items-center gap-1 rounded-tr-lg rounded-es-lg bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm">
+            <Check className="h-2.5 w-2.5" />
+            הלקוח אישר
+          </div>
+        )
       )}
       {/* Top row: source icon + customer name + driver badge + action buttons */}
-      <div className={`flex items-center justify-between gap-1.5 mb-1.5 ${isCustomerConfirmed ? 'mt-3' : ''}`}>
+      <div className={`flex items-center justify-between gap-1.5 mb-1.5 ${isCustomerConfirmed || needsCancel ? 'mt-3' : ''}`}>
         <div className="flex items-center gap-2 min-w-0">
           <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40 flex-shrink-0" />
           <span
@@ -184,18 +194,30 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate }: StopCar
             <X className="h-4 w-4 text-red-600 flex-shrink-0" aria-label="לא בוצע" />
           )}
         </div>
-        {onRemove && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onRemove(stop.stopId);
-            }}
-            className="h-6 w-6 flex items-center justify-center rounded-md opacity-0 group-hover:opacity-100 hover:bg-destructive/10 transition-all flex-shrink-0"
-            title="הסר מהיומן"
-          >
-            <Trash2 className="h-3.5 w-3.5 text-destructive" />
-          </button>
-        )}
+        <div className="flex items-center gap-0.5 flex-shrink-0">
+          {(stop.sourceType === 'delivery' || stop.sourceType === 'service') && stop.sourceId && (
+            <OrderChatButton
+              order={{
+                id: stop.sourceId,
+                kind: stop.sourceType === 'service' ? 'service' : 'order',
+                customerName: stop.customerName,
+                city: stop.city,
+              }}
+            />
+          )}
+          {onRemove && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove(stop.stopId);
+              }}
+              className="h-6 w-6 flex items-center justify-center rounded-md opacity-0 group-hover:opacity-100 hover:bg-destructive/10 transition-all"
+              title="הסר מהיומן"
+            >
+              <Trash2 className="h-3.5 w-3.5 text-destructive" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Address */}
@@ -216,6 +238,14 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate }: StopCar
           <a href={`tel:${stop.phone}`} className="hover:text-primary font-medium" dir="ltr">
             {stop.phone}
           </a>
+        </p>
+      )}
+
+      {/* Scheduling stamp — who scheduled / rescheduled */}
+      {(stop.scheduledBy || stop.rescheduledBy) && (
+        <p className="mt-1 truncate text-[10px] text-muted-foreground/70">
+          {stop.scheduledBy && `שובץ ע״י ${stop.scheduledBy}`}
+          {stop.rescheduledBy && ` · ↻ ${stop.rescheduledBy}`}
         </p>
       )}
 
@@ -591,6 +621,15 @@ export function DeliveryCalendar({
                 {dayDeliveries.length > 0 ? (
                   dayDeliveries.map((delivery) => {
                     const driverCfg = DRIVER_CONFIG[delivery.driver];
+                    // סידור אוטומטי לפי שעת התיאום: מוקדם→מאוחר, ועצירות בלי שעה בסוף.
+                    const sortedStops = [...delivery.stops].sort((a, b) => {
+                      const ta = a.timeWindowStart;
+                      const tb = b.timeWindowStart;
+                      if (ta && tb) return ta.localeCompare(tb);
+                      if (ta) return -1;
+                      if (tb) return 1;
+                      return 0;
+                    });
                     return (
                       <div key={delivery.id} className="space-y-1.5">
                         {/* Driver subheader */}
@@ -607,12 +646,12 @@ export function DeliveryCalendar({
                             {delivery.stops.length}
                           </span>
                         </div>
-                        {/* Stops for this driver — sortable within group */}
+                        {/* Stops for this driver — sorted by coordination time */}
                         <SortableContext
-                          items={delivery.stops.map((s) => s.stopId)}
+                          items={sortedStops.map((s) => s.stopId)}
                           strategy={verticalListSortingStrategy}
                         >
-                          {delivery.stops.map((stop) => (
+                          {sortedStops.map((stop) => (
                             <StopCard
                               key={stop.stopId}
                               stop={stop}

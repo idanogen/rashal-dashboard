@@ -23,8 +23,14 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
 
-// Numbered pin icon (with colour by status)
-const createNumberedMarker = (number: number, color: string, muted = false) => {
+// Numbered pin icon.
+// fill = stop status; border = location-confidence (blue=precise, orange=city).
+const createNumberedMarker = (
+  number: number,
+  color: string,
+  muted = false,
+  borderColor = '#ffffff'
+) => {
   const html = `
     <div style="
       background: ${color};
@@ -37,8 +43,8 @@ const createNumberedMarker = (number: number, color: string, muted = false) => {
       justify-content: center;
       font-weight: bold;
       font-size: 14px;
-      border: 3px solid white;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      border: 3px solid ${borderColor};
+      box-shadow: 0 0 0 2px #fff, 0 2px 6px rgba(0,0,0,0.3);
       font-family: system-ui, -apple-system, sans-serif;
       ${muted ? 'opacity: 0.55;' : ''}
     ">${number}</div>
@@ -194,6 +200,12 @@ const sourceIconInPopup: Record<CalendarStop['sourceType'], typeof Package> = {
   task: ClipboardList,
 };
 
+// מסגרת המרקר = רמת ביטחון המיקום
+const GEOCODED_BORDER = '#2563eb'; // blue — מיקום מדויק
+const CITY_BORDER = '#f59e0b'; // amber — לפי מרכז עיר
+const confidenceBorder = (source: CalendarStop['coordinatesSource']): string =>
+  source === 'geocoded' ? GEOCODED_BORDER : CITY_BORDER;
+
 interface RouteMapProps {
   /** Stops of the currently-selected driver, in the sequence they should be driven. */
   stops: CalendarStop[];
@@ -203,16 +215,23 @@ interface RouteMapProps {
 export function RouteMap({ stops, height = '500px' }: RouteMapProps) {
   const mapRef = useRef<L.Map>(null);
 
-  // Resolve coords for each stop via city lookup.
+  // Resolve coords per stop: precise geocode if available, else city center.
+  // The stop already carries `coordinates` (resolved in rowToStop), so just read it.
   const stopsWithCoords: StopWithCoords[] = useMemo(() => {
     const out: StopWithCoords[] = [];
     stops.forEach((stop, i) => {
-      const coords = getCityCoordinates(stop.city);
+      const coords = stop.coordinates ?? getCityCoordinates(stop.city);
       if (!coords) return;
       out.push({ stop, coords, index: i + 1 });
     });
     return out;
   }, [stops]);
+
+  // Stops we can't place on the map at all (no precise coords + unknown city).
+  const unlocatedStops = useMemo(
+    () => stops.filter((s) => !(s.coordinates ?? getCityCoordinates(s.city))),
+    [stops]
+  );
 
   const positionsById = useMemo(() => spreadCoords(stopsWithCoords), [stopsWithCoords]);
 
@@ -306,7 +325,12 @@ export function RouteMap({ stops, height = '500px' }: RouteMapProps) {
             <Marker
               key={stop.stopId}
               position={[pos.lat, pos.lng]}
-              icon={createNumberedMarker(index, color, muted)}
+              icon={createNumberedMarker(
+                index,
+                color,
+                muted,
+                confidenceBorder(stop.coordinatesSource)
+              )}
             >
               <Popup>
                 <div className="min-w-[180px] text-right" dir="rtl">
@@ -335,6 +359,11 @@ export function RouteMap({ stops, height = '500px' }: RouteMapProps) {
                       <div>
                         <span className="text-muted-foreground">טלפון: </span>
                         <span dir="ltr">{stop.phone}</span>
+                      </div>
+                    )}
+                    {stop.coordinatesSource === 'city' && (
+                      <div className="mt-1 rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700">
+                        ⚠ מיקום משוער (לפי מרכז העיר)
                       </div>
                     )}
                   </div>
@@ -375,6 +404,20 @@ export function RouteMap({ stops, height = '500px' }: RouteMapProps) {
               <span>מסלול</span>
             </div>
           )}
+          {/* רמת ביטחון המיקום (מסגרת המרקר) */}
+          <div className="border-t pt-1 mt-1 font-semibold">דיוק מיקום:</div>
+          <div className="flex items-center gap-2">
+            <div className="h-3 w-3 rounded-full border-2" style={{ borderColor: GEOCODED_BORDER }} />
+            <span>מדויק</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="h-3 w-3 rounded-full border-2" style={{ borderColor: CITY_BORDER }} />
+            <span>לפי עיר (משוער)</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="h-3 w-3 rounded-full bg-red-500" />
+            <span>ללא מיקום</span>
+          </div>
         </div>
       </div>
 
@@ -382,6 +425,16 @@ export function RouteMap({ stops, height = '500px' }: RouteMapProps) {
       <div className="absolute top-4 right-4 z-[1000] rounded-full bg-primary px-3 py-1 text-sm font-semibold text-primary-foreground shadow-lg">
         {stopsWithCoords.length} יעדים
       </div>
+
+      {/* Unlocated stops badge */}
+      {unlocatedStops.length > 0 && (
+        <div
+          className="absolute top-14 right-4 z-[1000] rounded-full bg-red-500 px-3 py-1 text-xs font-semibold text-white shadow-lg"
+          title={unlocatedStops.map((s) => `${s.customerName}${s.city ? ` (${s.city})` : ''}`).join('\n')}
+        >
+          {unlocatedStops.length} ללא מיקום
+        </div>
+      )}
     </div>
   );
 }

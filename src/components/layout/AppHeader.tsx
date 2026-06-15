@@ -122,6 +122,19 @@ export function AppHeader() {
             >
               💬 וואטסאפ
             </NavLink>
+            <NavLink
+              to="/feedback"
+              className={({ isActive }) =>
+                cn(
+                  'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                  isActive
+                    ? 'bg-blue-50 text-blue-700'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                )
+              }
+            >
+              📝 הערות
+            </NavLink>
             {isAdmin && (
               <NavLink
                 to="/admin/users"

@@ -1,13 +1,23 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from './supabase';
+import { usernameToEmail } from '@/lib/username';
 
 interface AuthContextValue {
   user: User | null;
   session: Session | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
+  /** Accepts either a real email or a bare username (the synthetic domain is appended automatically). */
+  signIn: (handle: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
+}
+
+async function resolveEmail(handle: string): Promise<string> {
+  const trimmed = handle.trim();
+  if (!trimmed) return '';
+  // A real email (admin seed account) is used as-is; a bare handle (Hebrew or
+  // English) is mapped to its synthetic ASCII email.
+  return trimmed.includes('@') ? trimmed : usernameToEmail(trimmed);
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -29,7 +39,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => sub.subscription.unsubscribe();
   }, []);
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = async (handle: string, password: string) => {
+    const email = await resolveEmail(handle);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     return { error: error ? new Error(error.message) : null };
   };

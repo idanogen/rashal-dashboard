@@ -39,6 +39,8 @@ interface ServiceCallCardProps {
   isSelected?: boolean;
   /** קריאה ששוחררה ומחכה לבחירת נהג — opacity מופחת. */
   isPending?: boolean;
+  /** קריאה שחזרה מהקו (סומנה "לא בוצע") — הבלטה אדומה. */
+  isReturned?: boolean;
   dupCount?: number;
   onExclude?: (id: string) => void;
   onRestore?: (id: string) => void;
@@ -50,6 +52,7 @@ function ServiceCallCard({
   isExcluded,
   isSelected,
   isPending,
+  isReturned,
   dupCount,
   onExclude,
   onRestore,
@@ -74,6 +77,7 @@ function ServiceCallCard({
         isExcluded
           ? 'opacity-40 border-dashed cursor-default'
           : 'cursor-grab active:cursor-grabbing hover:shadow-md',
+        isReturned && !isExcluded && !isSelected && 'ring-2 ring-red-400 bg-red-50/40 dark:bg-red-950/10',
         isSelected && !isExcluded && 'ring-2 ring-primary bg-primary/5',
         isDragging && 'opacity-30 ring-2 ring-orange-400',
         isPending && !isDragging && 'opacity-25 scale-[0.97] pointer-events-none'
@@ -141,6 +145,15 @@ function ServiceCallCard({
                   ×{dupCount}
                 </span>
               )}
+              {isReturned && (
+                <span
+                  className="ms-1 inline-flex h-4 items-center gap-0.5 rounded bg-red-100 px-1 text-[10px] font-bold text-red-700"
+                  title="קריאה זו סומנה 'לא בוצע' וחזרה מהקו"
+                >
+                  <Undo2 className="h-2.5 w-2.5" />
+                  חזרה מהקו
+                </span>
+              )}
             </p>
             {call.phone && (
               <div className="mt-1 flex items-center gap-1">
@@ -189,10 +202,12 @@ interface UnscheduledServiceCallsProps {
   onClearSelection?: () => void;
   /** קריאות שמחכות לבחירת נהג — opacity מופחת */
   pendingScheduleIds?: Set<string>;
+  /** callIds that came back from the route (a not_completed stop exists). */
+  returnedIds?: Set<string>;
 }
 
 export function UnscheduledServiceCalls({
-  calls,
+  calls: allCalls,
   callCountByZone,
   callZoneMap,
   groupSize,
@@ -202,7 +217,17 @@ export function UnscheduledServiceCalls({
   onBulkSchedule,
   onClearSelection,
   pendingScheduleIds,
+  returnedIds,
 }: UnscheduledServiceCallsProps) {
+  // Split off "returned from route" calls into their own highlighted section.
+  const returnedCalls = useMemo(
+    () => (returnedIds ? allCalls.filter((c) => returnedIds.has(c.id)) : []),
+    [allCalls, returnedIds]
+  );
+  const calls = useMemo(
+    () => (returnedIds ? allCalls.filter((c) => !returnedIds.has(c.id)) : allCalls),
+    [allCalls, returnedIds]
+  );
   const [selectedZones, setSelectedZones] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'all' | 'grouped'>('all');
   const [excludedCallIds, setExcludedCallIds] = useState<Set<string>>(new Set());
@@ -294,7 +319,7 @@ export function UnscheduledServiceCalls({
     return allZoneIds.length > 0 && allZoneIds.every((id) => expandedZones.has(id));
   }, [groupedByZone, expandedZones]);
 
-  if (calls.length === 0) {
+  if (calls.length === 0 && returnedCalls.length === 0) {
     return (
       <div className="rounded-lg border-2 border-dashed bg-muted/30 p-6 text-center">
         <Wrench className="mx-auto mb-2 h-12 w-12 text-muted-foreground" />
@@ -307,6 +332,32 @@ export function UnscheduledServiceCalls({
 
   return (
     <div className="space-y-4">
+      {/* Returned from route — highlighted section */}
+      {returnedCalls.length > 0 && (
+        <div className="rounded-lg border border-red-300 bg-red-50/60 p-3 shadow-sm dark:border-red-900 dark:bg-red-950/10">
+          <div className="mb-2 flex items-center gap-2">
+            <Undo2 className="h-4 w-4 text-red-600" />
+            <h3 className="text-sm font-bold text-red-700 dark:text-red-400">
+              חזרו מהקו ({returnedCalls.length})
+            </h3>
+            <span className="text-[11px] text-red-600/70">סומנו "לא בוצע" — ממתינות לשיבוץ מחדש</span>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {returnedCalls.map((call) => (
+              <ServiceCallCard
+                key={call.id}
+                call={call}
+                isReturned
+                isSelected={selectedCallIds.has(call.id)}
+                isPending={pendingScheduleIds?.has(call.id)}
+                dupCount={groupSize?.get(call.id)}
+                onToggleSelect={onToggleSelect}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Zone Filter */}
       <ZoneFilter
         selectedZones={selectedZones}

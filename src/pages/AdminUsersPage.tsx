@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Users,
   UserPlus,
@@ -11,10 +11,15 @@ import {
   Copy,
   AlertCircle,
   Check,
+  Pencil,
+  Eye,
+  EyeOff,
+  RefreshCcw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAllProfiles, useAdminMutation, useCurrentProfile } from '@/hooks/useProfile';
-import { ALLOWED_ROLES, ROLE_LABELS, type UserRole } from '@/types/profile';
+import { ALLOWED_ROLES, ROLE_LABELS, USERNAME_PATTERN, type UserRole } from '@/types/profile';
+import { normalizeUsername } from '@/lib/username';
 import { DRIVERS, type DriverName } from '@/types/route';
 import { Truck } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
@@ -54,13 +59,20 @@ const ROLE_BADGE_STYLES: Record<UserRole, string> = {
   viewer: 'bg-gray-50 text-gray-600 border-gray-200',
 };
 
+/** Display handle for a profile — prefers username, falls back to email for legacy seed users. */
+function displayHandle(p: Profile): string {
+  return p.username ?? p.email;
+}
+
 export function AdminUsersPage() {
   const { data: profiles, isLoading } = useAllProfiles();
   const { data: currentProfile } = useCurrentProfile();
   const adminMutation = useAdminMutation();
   const [search, setSearch] = useState('');
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [resultDialog, setResultDialog] = useState<{ email: string; password: string } | null>(null);
+  const [resultDialog, setResultDialog] = useState<{ username: string; password: string; title?: string } | null>(null);
+  const [renameTarget, setRenameTarget] = useState<Profile | null>(null);
+  const [passwordTarget, setPasswordTarget] = useState<Profile | null>(null);
 
   const filtered = useMemo(() => {
     const items = profiles ?? [];
@@ -68,6 +80,7 @@ export function AdminUsersPage() {
     const q = search.toLowerCase();
     return items.filter(
       (p) =>
+        (p.username ?? '').toLowerCase().includes(q) ||
         p.email.toLowerCase().includes(q) ||
         (p.fullName ?? '').toLowerCase().includes(q) ||
         p.role.toLowerCase().includes(q)
@@ -84,7 +97,7 @@ export function AdminUsersPage() {
     if (res.ok) toast.success(driver ? `נקשר לנהג: ${driver}` : 'בוטל הקישור לנהג');
   }
 
-  /** Drivers that aren't yet linked to an active user — used for create dialog + inline change. */
+  /** Drivers that aren't yet linked to an active user. */
   const availableDrivers = useMemo(() => {
     const taken = new Set(
       (profiles ?? [])
@@ -103,18 +116,10 @@ export function AdminUsersPage() {
     if (res.ok) toast.success(currentlyDisabled ? 'משתמש הופעל' : 'משתמש הושבת');
   }
 
-  async function handleResetPassword(userId: string, email: string) {
-    if (!confirm(`לאפס סיסמה עבור ${email}? תקבל סיסמה זמנית חדשה.`)) return;
-    const res = await adminMutation.mutateAsync({ action: 'reset_password', userId });
-    if (res.ok && res.tempPassword) {
-      setResultDialog({ email, password: res.tempPassword });
-    }
-  }
-
-  async function handleDelete(userId: string, email: string) {
-    if (!confirm(`למחוק את ${email}? פעולה לא הפיכה.`)) return;
-    const res = await adminMutation.mutateAsync({ action: 'delete', userId });
-    if (res.ok) toast.success(`${email} נמחק`);
+  async function handleDelete(profile: Profile) {
+    if (!confirm(`למחוק את ${displayHandle(profile)}? פעולה לא הפיכה.`)) return;
+    const res = await adminMutation.mutateAsync({ action: 'delete', userId: profile.id });
+    if (res.ok) toast.success(`${displayHandle(profile)} נמחק`);
   }
 
   return (
@@ -127,7 +132,7 @@ export function AdminUsersPage() {
           <div>
             <h1 className="text-2xl font-bold">ניהול משתמשים</h1>
             <p className="text-sm text-muted-foreground">
-              הוספה, השבתה, איפוס סיסמאות ושינוי תפקידים
+              הוספה, השבתה, ניהול סיסמאות ושינוי תפקידים — עם שמות משתמש (ללא תלות באימייל)
             </p>
           </div>
         </div>
@@ -140,10 +145,10 @@ export function AdminUsersPage() {
       <Card>
         <CardContent className="p-4 space-y-3">
           <div className="flex items-center justify-between gap-2">
-            <div className="relative w-64">
+            <div className="relative w-72">
               <Search className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
-                placeholder="חיפוש לפי אימייל / שם / תפקיד..."
+                placeholder="חיפוש לפי שם משתמש / שם מלא / תפקיד..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="h-9 ps-7"
@@ -188,8 +193,9 @@ export function AdminUsersPage() {
                       onChangeRole={(role) => handleSetRole(p.id, role)}
                       onChangeLinkedDriver={(d) => handleSetLinkedDriver(p.id, d)}
                       onToggleDisabled={() => handleToggleDisabled(p.id, p.disabled)}
-                      onResetPassword={() => handleResetPassword(p.id, p.email)}
-                      onDelete={() => handleDelete(p.id, p.email)}
+                      onRename={() => setRenameTarget(p)}
+                      onSetPassword={() => setPasswordTarget(p)}
+                      onDelete={() => handleDelete(p)}
                     />
                   ))}
                 </TableBody>
@@ -202,7 +208,20 @@ export function AdminUsersPage() {
       <CreateUserDialog
         open={createDialogOpen}
         onOpenChange={setCreateDialogOpen}
-        onCreated={(email, password) => setResultDialog({ email, password })}
+        onCreated={(username, password) =>
+          setResultDialog({ username, password, title: 'משתמש נוצר' })
+        }
+      />
+      <RenameUserDialog
+        target={renameTarget}
+        onClose={() => setRenameTarget(null)}
+      />
+      <SetPasswordDialog
+        target={passwordTarget}
+        onClose={() => setPasswordTarget(null)}
+        onChanged={(username, password) =>
+          setResultDialog({ username, password, title: 'סיסמה עודכנה' })
+        }
       />
       <CredentialsDialog result={resultDialog} onClose={() => setResultDialog(null)} />
     </div>
@@ -217,12 +236,23 @@ interface UserRowProps {
   onChangeRole: (role: UserRole) => void;
   onChangeLinkedDriver: (driver: DriverName | null) => void;
   onToggleDisabled: () => void;
-  onResetPassword: () => void;
+  onRename: () => void;
+  onSetPassword: () => void;
   onDelete: () => void;
 }
 
-function UserRow({ profile, isSelf, busy, availableDrivers, onChangeRole, onChangeLinkedDriver, onToggleDisabled, onResetPassword, onDelete }: UserRowProps) {
-  // Driver dropdown choices: available drivers + the currently-linked one (if any) + "none"
+function UserRow({
+  profile,
+  isSelf,
+  busy,
+  availableDrivers,
+  onChangeRole,
+  onChangeLinkedDriver,
+  onToggleDisabled,
+  onRename,
+  onSetPassword,
+  onDelete,
+}: UserRowProps) {
   const driverChoices = profile.linkedDriver && !availableDrivers.includes(profile.linkedDriver)
     ? [...availableDrivers, profile.linkedDriver]
     : availableDrivers;
@@ -231,10 +261,26 @@ function UserRow({ profile, isSelf, busy, availableDrivers, onChangeRole, onChan
     <TableRow className={profile.disabled ? 'opacity-50' : ''}>
       <TableCell>
         <div className="flex flex-col">
-          <span className="font-semibold text-sm">{profile.fullName || '—'}</span>
-          <span className="text-xs text-muted-foreground" dir="ltr">
-            {profile.email}
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="font-mono text-sm font-semibold" dir="ltr">
+              {profile.username ?? '—'}
+            </span>
+            {profile.username && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onRename}
+                disabled={busy}
+                title="שנה שם משתמש"
+                className="h-5 w-5 p-0"
+              >
+                <Pencil className="h-3 w-3 text-slate-400" />
+              </Button>
+            )}
+          </div>
+          {profile.fullName && (
+            <span className="text-xs text-muted-foreground">{profile.fullName}</span>
+          )}
           {isSelf && (
             <Badge variant="outline" className="w-fit mt-1 text-[10px] bg-blue-50 text-blue-700 border-blue-200">
               זה אתה
@@ -311,9 +357,9 @@ function UserRow({ profile, isSelf, busy, availableDrivers, onChangeRole, onChan
           <Button
             variant="ghost"
             size="sm"
-            onClick={onResetPassword}
+            onClick={onSetPassword}
             disabled={busy || profile.disabled}
-            title="אפס סיסמה"
+            title="שנה סיסמה"
           >
             <KeyRound className="h-3.5 w-3.5 text-amber-600" />
           </Button>
@@ -348,19 +394,33 @@ function UserRow({ profile, isSelf, busy, availableDrivers, onChangeRole, onChan
 interface CreateUserDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreated: (email: string, password: string) => void;
+  onCreated: (username: string, password: string) => void;
+}
+
+function generateClientPassword(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
+  let out = '';
+  for (let i = 0; i < 10; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
 }
 
 function CreateUserDialog({ open, onOpenChange, onCreated }: CreateUserDialogProps) {
   const adminMutation = useAdminMutation();
   const { data: profiles } = useAllProfiles();
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [fullName, setFullName] = useState('');
   const [role, setRole] = useState<UserRole>('viewer');
   const [linkedDriver, setLinkedDriver] = useState<DriverName | ''>('');
-  const [mode, setMode] = useState<'create' | 'invite'>('create');
 
-  // Drivers not yet linked to an active user
+  const usernameOk = !username || USERNAME_PATTERN.test(normalizeUsername(username));
+  const usernameTaken = useMemo(() => {
+    if (!username) return false;
+    const u = normalizeUsername(username);
+    return (profiles ?? []).some((p) => normalizeUsername(p.username ?? '') === u);
+  }, [profiles, username]);
+
   const availableDrivers = useMemo(() => {
     const taken = new Set(
       (profiles ?? [])
@@ -371,32 +431,39 @@ function CreateUserDialog({ open, onOpenChange, onCreated }: CreateUserDialogPro
   }, [profiles]);
 
   function reset() {
-    setEmail('');
+    setUsername('');
+    setPassword('');
+    setShowPassword(false);
     setFullName('');
     setRole('viewer');
     setLinkedDriver('');
-    setMode('create');
   }
 
   async function handleSubmit() {
-    if (!email.trim()) return;
-    const trimmedEmail = email.trim();
+    const u = normalizeUsername(username);
+    if (!USERNAME_PATTERN.test(u) || usernameTaken) return;
     const driver = role === 'driver' && linkedDriver ? linkedDriver : undefined;
-    const action: Parameters<typeof adminMutation.mutateAsync>[0] = mode === 'invite'
-      ? { action: 'invite', email: trimmedEmail, fullName: fullName.trim() || undefined, role, linkedDriver: driver }
-      : { action: 'create', email: trimmedEmail, fullName: fullName.trim() || undefined, role, linkedDriver: driver };
-
-    const res = await adminMutation.mutateAsync(action);
-    if (!res.ok) return;
-
-    if (mode === 'invite') {
-      toast.success(`הזמנה נשלחה ל-${trimmedEmail}`);
-    } else if (res.tempPassword) {
-      onCreated(trimmedEmail, res.tempPassword);
-    }
+    const trimmedPassword = password.trim();
+    const res = await adminMutation.mutateAsync({
+      action: 'create',
+      username: u,
+      password: trimmedPassword || undefined,
+      fullName: fullName.trim() || undefined,
+      role,
+      linkedDriver: driver,
+    });
+    if (!res.ok || !res.password) return;
+    onCreated(u, res.password);
     reset();
     onOpenChange(false);
   }
+
+  const submitDisabled =
+    !username.trim() ||
+    !usernameOk ||
+    usernameTaken ||
+    (role === 'driver' && !linkedDriver) ||
+    adminMutation.isPending;
 
   return (
     <Dialog
@@ -413,45 +480,74 @@ function CreateUserDialog({ open, onOpenChange, onCreated }: CreateUserDialogPro
             הוסף משתמש חדש
           </DialogTitle>
           <DialogDescription>
-            בחר אם לייצר משתמש עם סיסמה זמנית (העתק ידני אליו) או לשלוח לו הזמנה ב-email.
+            שם משתמש לכניסה למערכת. אין צורך באימייל.
           </DialogDescription>
         </DialogHeader>
 
-        {/* Mode tabs */}
-        <div className="flex gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant={mode === 'create' ? 'default' : 'outline'}
-            onClick={() => setMode('create')}
-            className="flex-1"
-          >
-            צור עם סיסמה זמנית
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant={mode === 'invite' ? 'default' : 'outline'}
-            onClick={() => setMode('invite')}
-            className="flex-1"
-          >
-            שלח הזמנה ב-email
-          </Button>
-        </div>
-
         <div className="space-y-3">
           <div className="space-y-1.5">
-            <Label htmlFor="new-email" className="text-xs">אימייל *</Label>
+            <Label htmlFor="new-username" className="text-xs">שם משתמש *</Label>
             <Input
-              id="new-email"
-              type="email"
-              placeholder="user@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              dir="ltr"
-              className="h-9"
+              id="new-username"
+              placeholder="rudi / רודי"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              dir="auto"
+              className="h-9 font-mono"
+              autoComplete="off"
             />
+            {username && !usernameOk && (
+              <p className="text-xs text-red-600">
+                שם משתמש חייב להיות 3-30 תווים: אותיות (עברית או אנגלית), ספרות, נקודה, קו תחתון או מקף — בלי רווחים.
+              </p>
+            )}
+            {usernameTaken && (
+              <p className="text-xs text-red-600">שם המשתמש כבר תפוס.</p>
+            )}
           </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="new-password" className="text-xs">סיסמה</Label>
+            <div className="flex gap-1.5">
+              <div className="relative flex-1">
+                <Input
+                  id="new-password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="השאר ריק לסיסמה אקראית"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  dir="ltr"
+                  className="h-9 font-mono pe-8"
+                  autoComplete="new-password"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((s) => !s)}
+                  className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setPassword(generateClientPassword());
+                  setShowPassword(true);
+                }}
+                title="הגרל סיסמה אקראית"
+                className="h-9 px-2"
+              >
+                <RefreshCcw className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              לפחות 6 תווים. אם תשאיר ריק — תיוצר סיסמה אקראית.
+            </p>
+          </div>
+
           <div className="space-y-1.5">
             <Label htmlFor="new-name" className="text-xs">שם מלא (אופציונלי)</Label>
             <Input
@@ -508,7 +604,7 @@ function CreateUserDialog({ open, onOpenChange, onCreated }: CreateUserDialogPro
                 </Select>
               )}
               <p className="text-xs text-muted-foreground">
-                המשתמש יקושר לנהג הזה — הוא יוכל לראות ולעדכן רק את המסלולים שלו (יישום ה-RLS בעתיד).
+                המשתמש יקושר לנהג הזה — הוא יוכל לראות ולעדכן רק את המסלולים שלו.
               </p>
             </div>
           )}
@@ -518,15 +614,201 @@ function CreateUserDialog({ open, onOpenChange, onCreated }: CreateUserDialogPro
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             ביטול
           </Button>
+          <Button onClick={handleSubmit} disabled={submitDisabled}>
+            {adminMutation.isPending ? 'יוצר...' : 'צור משתמש'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface RenameDialogProps {
+  target: Profile | null;
+  onClose: () => void;
+}
+
+function RenameUserDialog({ target, onClose }: RenameDialogProps) {
+  const adminMutation = useAdminMutation();
+  const { data: profiles } = useAllProfiles();
+  const [value, setValue] = useState('');
+
+  const open = !!target;
+  useEffect(() => {
+    if (target) setValue(target.username ?? '');
+  }, [target]);
+
+  const u = normalizeUsername(value);
+  const formatOk = !u || USERNAME_PATTERN.test(u);
+  const taken = useMemo(() => {
+    if (!target || !u) return false;
+    return (profiles ?? []).some(
+      (p) => p.id !== target.id && normalizeUsername(p.username ?? '') === u
+    );
+  }, [profiles, target, u]);
+
+  async function handleSubmit() {
+    if (!target || !u || !formatOk || taken) return;
+    const res = await adminMutation.mutateAsync({
+      action: 'set_username',
+      userId: target.id,
+      username: u,
+    });
+    if (res.ok) {
+      toast.success(`שם משתמש שונה ל-${u}`);
+      onClose();
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent dir="rtl" className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Pencil className="h-4 w-4 text-slate-500" />
+            שנה שם משתמש
+          </DialogTitle>
+          <DialogDescription>
+            המשתמש יתחבר עם השם החדש בפעם הבאה. הסיסמה לא משתנה.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-1.5">
+          <Label htmlFor="rename-input" className="text-xs">שם משתמש חדש</Label>
+          <Input
+            id="rename-input"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            dir="auto"
+            className="h-9 font-mono"
+            autoFocus
+          />
+          {value && !formatOk && (
+            <p className="text-xs text-red-600">3-30 תווים: אותיות (עברית/אנגלית), ספרות, נקודה, קו תחתון או מקף — בלי רווחים.</p>
+          )}
+          {taken && <p className="text-xs text-red-600">שם המשתמש כבר תפוס.</p>}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            ביטול
+          </Button>
           <Button
             onClick={handleSubmit}
             disabled={
-              !email.trim() ||
-              adminMutation.isPending ||
-              (role === 'driver' && !linkedDriver)
+              !u || !formatOk || taken || adminMutation.isPending || u === (target?.username ?? '').toLowerCase()
             }
           >
-            {adminMutation.isPending ? 'שולח...' : mode === 'invite' ? 'שלח הזמנה' : 'צור משתמש'}
+            {adminMutation.isPending ? 'שומר...' : 'שמור'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+interface SetPasswordDialogProps {
+  target: Profile | null;
+  onClose: () => void;
+  onChanged: (username: string, password: string) => void;
+}
+
+function SetPasswordDialog({ target, onClose, onChanged }: SetPasswordDialogProps) {
+  const adminMutation = useAdminMutation();
+  const [value, setValue] = useState('');
+  const [show, setShow] = useState(false);
+
+  const open = !!target;
+  useEffect(() => {
+    if (target) {
+      setValue('');
+      setShow(false);
+    }
+  }, [target]);
+
+  async function handleSubmit() {
+    if (!target) return;
+    const trimmed = value.trim();
+    if (trimmed && trimmed.length < 6) return;
+    const res = await adminMutation.mutateAsync({
+      action: 'set_password',
+      userId: target.id,
+      password: trimmed || undefined,
+    });
+    if (res.ok && res.password) {
+      onChanged(displayHandle(target), res.password);
+      onClose();
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent dir="rtl" className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <KeyRound className="h-4 w-4 text-amber-600" />
+            שנה סיסמה
+          </DialogTitle>
+          <DialogDescription>
+            הסיסמה הקיימת תוחלף מיד. תופיע פעם אחת לאחר השמירה — העתק ושלח למשתמש.
+          </DialogDescription>
+        </DialogHeader>
+        {target && (
+          <div className="rounded bg-slate-50 border px-3 py-2 text-xs" dir="ltr">
+            <span className="text-slate-500">משתמש:</span>{' '}
+            <span className="font-mono font-semibold">{displayHandle(target)}</span>
+          </div>
+        )}
+        <div className="space-y-1.5">
+          <Label htmlFor="setpw-input" className="text-xs">סיסמה חדשה</Label>
+          <div className="flex gap-1.5">
+            <div className="relative flex-1">
+              <Input
+                id="setpw-input"
+                type={show ? 'text' : 'password'}
+                placeholder="השאר ריק להגרלת סיסמה אקראית"
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                dir="ltr"
+                className="h-9 font-mono pe-8"
+                autoComplete="new-password"
+              />
+              <button
+                type="button"
+                onClick={() => setShow((s) => !s)}
+                className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                tabIndex={-1}
+              >
+                {show ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setValue(generateClientPassword());
+                setShow(true);
+              }}
+              title="הגרל סיסמה אקראית"
+              className="h-9 px-2"
+            >
+              <RefreshCcw className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          {value.trim() && value.trim().length < 6 && (
+            <p className="text-xs text-red-600">סיסמה חייבת להיות לפחות 6 תווים.</p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>
+            ביטול
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={
+              adminMutation.isPending || (value.trim().length > 0 && value.trim().length < 6)
+            }
+          >
+            {adminMutation.isPending ? 'מעדכן...' : 'שמור סיסמה'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -535,7 +817,7 @@ function CreateUserDialog({ open, onOpenChange, onCreated }: CreateUserDialogPro
 }
 
 interface CredentialsDialogProps {
-  result: { email: string; password: string } | null;
+  result: { username: string; password: string; title?: string } | null;
   onClose: () => void;
 }
 
@@ -544,7 +826,7 @@ function CredentialsDialog({ result, onClose }: CredentialsDialogProps) {
 
   async function copyAll() {
     if (!result) return;
-    const text = `אימייל: ${result.email}\nסיסמה: ${result.password}`;
+    const text = `שם משתמש: ${result.username}\nסיסמה: ${result.password}`;
     await navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
@@ -556,17 +838,17 @@ function CredentialsDialog({ result, onClose }: CredentialsDialogProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-amber-700">
             <AlertCircle className="h-5 w-5" />
-            סיסמה זמנית
+            {result?.title ?? 'סיסמה זמנית'}
           </DialogTitle>
           <DialogDescription>
-            <strong>זה התצוגה היחידה של הסיסמה.</strong> העתק ושלח למשתמש מיידית. הוא יוכל לשנות אותה אחרי ההתחברות הראשונה.
+            <strong>זה התצוגה היחידה של הסיסמה.</strong> העתק ושלח למשתמש מיידית.
           </DialogDescription>
         </DialogHeader>
         {result && (
           <div className="rounded-lg border bg-amber-50/50 p-3 space-y-2 font-mono text-sm" dir="ltr">
             <div>
-              <span className="text-xs text-muted-foreground">Email:</span>
-              <div className="font-semibold">{result.email}</div>
+              <span className="text-xs text-muted-foreground">Username:</span>
+              <div className="font-semibold">{result.username}</div>
             </div>
             <div>
               <span className="text-xs text-muted-foreground">Password:</span>

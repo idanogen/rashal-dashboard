@@ -249,3 +249,122 @@ export function hasCityCoordinates(city: string): boolean {
 export function getAvailableCities(): string[] {
   return Object.keys(CITY_COORDINATES).sort();
 }
+
+// ─────────────────────────────────────────────────────────────────
+// מנוע geocoding אמיתי (Nominatim / OpenStreetMap)
+// כתובת → נקודה מדויקת, עם ולידציית מרחק מול מרכז-העיר, תור מווסת-קצב
+// ו-session cache. מכבד את מדיניות השימוש של OSM (בקשה אחת ~לשנייה).
+// ─────────────────────────────────────────────────────────────────
+
+export interface GeocodeResult {
+  lat: number;
+  lng: number;
+  displayName: string;
+}
+
+export interface GeocodeOptions {
+  /** עיר העצירה — משמשת לאימות שהתוצאה לא "ברחה" לעיר אחרת. */
+  city?: string;
+}
+
+const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
+const REQUEST_GAP_MS = 1100;
+const MAX_CITY_DISTANCE_KM = 25;
+
+/** תוצאה רחוקה ממרכז העיר → כנראה התאמה שגויה. עיר לא במאגר → אין במה לאמת, מאשרים. */
+function isWithinCity(result: GeocodeResult, city?: string): boolean {
+  if (!city) return true;
+  const center = getCityCoordinates(city);
+  if (!center) return true;
+  return calculateDistance(result, center) <= MAX_CITY_DISTANCE_KM;
+}
+
+const sessionCache = new Map<string, GeocodeResult | null>();
+let queueTail: Promise<void> = Promise.resolve();
+let lastRequestAt = 0;
+
+/** מריץ jobs בטור עם מרווח מינימלי ביניהם (rate limiting ל-Nominatim). */
+function enqueue<T>(job: () => Promise<T>): Promise<T> {
+  const run = queueTail.then(async () => {
+    const wait = lastRequestAt + REQUEST_GAP_MS - Date.now();
+    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    try {
+      return await job();
+    } finally {
+      lastRequestAt = Date.now();
+    }
+  });
+  queueTail = run.then(
+    () => undefined,
+    () => undefined
+  );
+  return run;
+}
+
+/** מחזיר 'transient' לכשל זמני (רשת/5xx) — לא נשמר ב-cache כדי שננסה שוב. */
+async function fetchGeocode(query: string): Promise<GeocodeResult | null | 'transient'> {
+  try {
+    const params = new URLSearchParams({
+      q: query,
+      format: 'json',
+      limit: '1',
+      countrycodes: 'il,ps', // כולל יו"ש (OSM מסווג תחת ps); בלי ", Israel"
+      'accept-language': 'he',
+    });
+    const res = await fetch(`${NOMINATIM_URL}?${params}`);
+    if (!res.ok) return 'transient';
+    const data = await res.json();
+    if (!Array.isArray(data) || data.length === 0) return null;
+    const result: GeocodeResult = {
+      lat: parseFloat(data[0].lat),
+      lng: parseFloat(data[0].lon),
+      displayName: data[0].display_name || query,
+    };
+    if (!Number.isFinite(result.lat) || !Number.isFinite(result.lng)) return null;
+    return result;
+  } catch {
+    return 'transient';
+  }
+}
+
+/**
+ * geocoding מלא לכתובת. מנסה את הכתובת המלאה, ואם נכשל — מסיר מילים מתחילתה
+ * (מספר בית / שם מתחם) ומנסה שוב. מאמת מרחק מול מרכז-העיר.
+ * @returns נקודה מדויקת או null (לא נמצא / רחוק מדי / כשל זמני).
+ */
+export async function geocodeAddress(
+  address: string,
+  opts: GeocodeOptions = {}
+): Promise<GeocodeResult | null> {
+  const trimmed = address.trim();
+  if (!trimmed) return null;
+  const { city } = opts;
+  const cacheKey = city ? `${trimmed}|${city.trim()}` : trimmed;
+  if (sessionCache.has(cacheKey)) return sessionCache.get(cacheKey)!;
+
+  const words = trimmed.split(/\s+/);
+  const candidates = [trimmed];
+  for (let drop = 1; drop <= 2 && words.length - drop >= 2; drop++) {
+    candidates.push(words.slice(drop).join(' '));
+  }
+
+  return enqueue(async () => {
+    if (sessionCache.has(cacheKey)) return sessionCache.get(cacheKey)!;
+    for (const candidate of candidates) {
+      const result = await fetchGeocode(candidate);
+      if (result === 'transient') return null; // כשל זמני — לא שומרים, ננסה שוב
+      if (result) {
+        if (isWithinCity(result, city)) {
+          sessionCache.set(cacheKey, result);
+          return result;
+        }
+        console.warn(`[geocode] rejected "${candidate}" — far from city "${city}"`);
+      }
+      if (candidate !== candidates[candidates.length - 1]) {
+        await new Promise((r) => setTimeout(r, REQUEST_GAP_MS));
+      }
+    }
+    sessionCache.set(cacheKey, null);
+    return null;
+  });
+}
