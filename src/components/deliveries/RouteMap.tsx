@@ -274,7 +274,9 @@ export function RouteMap({ stops, height = '500px' }: RouteMapProps) {
   }
 
   return (
-    <div className="relative">
+    // `isolate` keeps the map's z-[1000] legend/badges inside their own stacking
+    // context, so they can't paint over portal'd overlays (e.g. the chat Sheet).
+    <div className="relative isolate">
       <MapContainer
         ref={mapRef}
         center={allPositions[0] || defaultCenter}
