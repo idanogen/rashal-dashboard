@@ -1,4 +1,4 @@
-import type { DriverName } from './route';
+import type { AssigneeName } from './route';
 
 export type UserRole = 'admin' | 'dispatcher' | 'driver' | 'viewer';
 
@@ -20,8 +20,8 @@ export interface Profile {
   fullName?: string;
   role: UserRole;
   disabled: boolean;
-  /** When role='driver', links this user to one of the DRIVERS enum values. */
-  linkedDriver?: DriverName;
+  /** When role='driver', links this user to a driver_name enum value (delivery driver or service technician). */
+  linkedDriver?: AssigneeName;
   createdAt: string;
   updatedAt?: string;
 }

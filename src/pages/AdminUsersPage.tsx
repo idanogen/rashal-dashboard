@@ -20,8 +20,8 @@ import { toast } from 'sonner';
 import { useAllProfiles, useAdminMutation, useCurrentProfile } from '@/hooks/useProfile';
 import { ALLOWED_ROLES, ROLE_LABELS, USERNAME_PATTERN, type UserRole } from '@/types/profile';
 import { normalizeUsername } from '@/lib/username';
-import { DRIVERS, type DriverName } from '@/types/route';
-import { Truck } from 'lucide-react';
+import { ASSIGNEES, TECHNICIAN_ONLY, type AssigneeName } from '@/types/route';
+import { Truck, Wrench } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -92,19 +92,19 @@ export function AdminUsersPage() {
     if (res.ok) toast.success('תפקיד עודכן');
   }
 
-  async function handleSetLinkedDriver(userId: string, driver: DriverName | null) {
+  async function handleSetLinkedDriver(userId: string, driver: AssigneeName | null) {
     const res = await adminMutation.mutateAsync({ action: 'set_linked_driver', userId, linkedDriver: driver });
-    if (res.ok) toast.success(driver ? `נקשר לנהג: ${driver}` : 'בוטל הקישור לנהג');
+    if (res.ok) toast.success(driver ? `שויך ל: ${driver}` : 'בוטל השיוך');
   }
 
-  /** Drivers that aren't yet linked to an active user. */
+  /** Assignees (drivers + technicians) not yet linked to an active user. */
   const availableDrivers = useMemo(() => {
     const taken = new Set(
       (profiles ?? [])
         .filter((p) => p.linkedDriver && !p.disabled)
-        .map((p) => p.linkedDriver as DriverName)
+        .map((p) => p.linkedDriver as AssigneeName)
     );
-    return DRIVERS.filter((d) => !taken.has(d));
+    return ASSIGNEES.filter((d) => !taken.has(d));
   }, [profiles]);
 
   async function handleToggleDisabled(userId: string, currentlyDisabled: boolean) {
@@ -176,7 +176,7 @@ export function AdminUsersPage() {
                   <TableRow className="bg-muted/30">
                     <TableHead className="text-xs font-semibold">משתמש</TableHead>
                     <TableHead className="text-xs font-semibold">תפקיד</TableHead>
-                    <TableHead className="text-xs font-semibold">נהג מקושר</TableHead>
+                    <TableHead className="text-xs font-semibold">נהג / טכנאי מקושר</TableHead>
                     <TableHead className="text-xs font-semibold">סטטוס</TableHead>
                     <TableHead className="text-xs font-semibold">נוצר</TableHead>
                     <TableHead className="text-xs font-semibold text-center">פעולות</TableHead>
@@ -232,9 +232,9 @@ interface UserRowProps {
   profile: Profile;
   isSelf: boolean;
   busy: boolean;
-  availableDrivers: DriverName[];
+  availableDrivers: AssigneeName[];
   onChangeRole: (role: UserRole) => void;
-  onChangeLinkedDriver: (driver: DriverName | null) => void;
+  onChangeLinkedDriver: (driver: AssigneeName | null) => void;
   onToggleDisabled: () => void;
   onRename: () => void;
   onSetPassword: () => void;
@@ -310,14 +310,18 @@ function UserRow({
         {profile.role === 'driver' ? (
           <Select
             value={profile.linkedDriver ?? NONE_VALUE}
-            onValueChange={(v) => onChangeLinkedDriver(v === NONE_VALUE ? null : (v as DriverName))}
+            onValueChange={(v) => onChangeLinkedDriver(v === NONE_VALUE ? null : (v as AssigneeName))}
             disabled={busy}
           >
             <SelectTrigger className="h-8 w-44">
               <SelectValue>
                 {profile.linkedDriver ? (
                   <span className="inline-flex items-center gap-1 text-[11px]">
-                    <Truck className="h-3 w-3 text-emerald-600" />
+                    {TECHNICIAN_ONLY.has(profile.linkedDriver) ? (
+                      <Wrench className="h-3 w-3 text-orange-600" />
+                    ) : (
+                      <Truck className="h-3 w-3 text-emerald-600" />
+                    )}
                     {profile.linkedDriver}
                   </span>
                 ) : (
@@ -329,7 +333,14 @@ function UserRow({
               <SelectItem value={NONE_VALUE}>— לא מקושר —</SelectItem>
               {driverChoices.map((d) => (
                 <SelectItem key={d} value={d}>
-                  {d}
+                  <span className="inline-flex items-center gap-1.5">
+                    {TECHNICIAN_ONLY.has(d) ? (
+                      <Wrench className="h-3 w-3 text-orange-600" />
+                    ) : (
+                      <Truck className="h-3 w-3 text-emerald-600" />
+                    )}
+                    {d}
+                  </span>
                 </SelectItem>
               ))}
             </SelectContent>
@@ -412,7 +423,7 @@ function CreateUserDialog({ open, onOpenChange, onCreated }: CreateUserDialogPro
   const [showPassword, setShowPassword] = useState(false);
   const [fullName, setFullName] = useState('');
   const [role, setRole] = useState<UserRole>('viewer');
-  const [linkedDriver, setLinkedDriver] = useState<DriverName | ''>('');
+  const [linkedDriver, setLinkedDriver] = useState<AssigneeName | ''>('');
 
   const usernameOk = !username || USERNAME_PATTERN.test(normalizeUsername(username));
   const usernameTaken = useMemo(() => {
@@ -425,9 +436,9 @@ function CreateUserDialog({ open, onOpenChange, onCreated }: CreateUserDialogPro
     const taken = new Set(
       (profiles ?? [])
         .filter((p) => p.linkedDriver && !p.disabled)
-        .map((p) => p.linkedDriver as DriverName)
+        .map((p) => p.linkedDriver as AssigneeName)
     );
-    return DRIVERS.filter((d) => !taken.has(d));
+    return ASSIGNEES.filter((d) => !taken.has(d));
   }, [profiles]);
 
   function reset() {
@@ -583,28 +594,38 @@ function CreateUserDialog({ open, onOpenChange, onCreated }: CreateUserDialogPro
           {role === 'driver' && (
             <div className="space-y-1.5">
               <Label className="text-xs flex items-center gap-1">
-                <Truck className="h-3 w-3" /> איזה נהג? *
+                <Truck className="h-3 w-3" /> שיוך לנהג / טכנאי *
               </Label>
               {availableDrivers.length === 0 ? (
                 <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2">
-                  ⚠ כל הנהגים כבר מקושרים למשתמשים פעילים. השבת משתמש קיים כדי לשחרר נהג, או בחר תפקיד אחר.
+                  ⚠ כל הנהגים והטכנאים כבר מקושרים למשתמשים פעילים. השבת משתמש קיים כדי לשחרר שיוך, או בחר תפקיד אחר.
                 </p>
               ) : (
-                <Select value={linkedDriver} onValueChange={(v) => setLinkedDriver(v as DriverName)}>
+                <Select value={linkedDriver} onValueChange={(v) => setLinkedDriver(v as AssigneeName)}>
                   <SelectTrigger className="h-9">
-                    <SelectValue placeholder="-- בחר נהג --" />
+                    <SelectValue placeholder="-- בחר נהג / טכנאי --" />
                   </SelectTrigger>
                   <SelectContent>
                     {availableDrivers.map((d) => (
                       <SelectItem key={d} value={d}>
-                        {d}
+                        <span className="inline-flex items-center gap-1.5">
+                          {TECHNICIAN_ONLY.has(d) ? (
+                            <Wrench className="h-3 w-3 text-orange-600" />
+                          ) : (
+                            <Truck className="h-3 w-3 text-emerald-600" />
+                          )}
+                          {d}
+                          <span className="text-[10px] text-muted-foreground">
+                            {TECHNICIAN_ONLY.has(d) ? '(טכנאי)' : '(נהג)'}
+                          </span>
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               )}
               <p className="text-xs text-muted-foreground">
-                המשתמש יקושר לנהג הזה — הוא יוכל לראות ולעדכן רק את המסלולים שלו.
+                המשתמש יקושר לנהג/טכנאי הזה — הוא יראה ויעדכן רק את העצירות שלו.
               </p>
             </div>
           )}

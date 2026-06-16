@@ -9,6 +9,8 @@ export type RouteStatus = 'מאושר' | 'בביצוע' | 'הושלם' | 'בוט
 
 export const DRIVERS: DriverName[] = ['דוד', 'רודי', 'מוחמד', 'מוהנד'];
 export const TECHNICIANS: TechnicianName[] = ['אולג', 'ישראל', 'אבי', 'דוד'];
+/** כל ה-assignees לבחירה (נהגים + טכנאים) ללא כפילות — דוד מופיע פעם אחת. לקישור משתמש. */
+export const ASSIGNEES: AssigneeName[] = ['דוד', 'רודי', 'מוחמד', 'מוהנד', 'אולג', 'ישראל', 'אבי'];
 /** טכנאים שאינם נהגים — לניתוב משימות (task) למסך הנכון. דוד (נהג+טכנאי) משויך למשלוחים. */
 export const TECHNICIAN_ONLY = new Set<AssigneeName>(['אולג', 'ישראל', 'אבי']);
 

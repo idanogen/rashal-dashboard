@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 import type { Profile, UserRole } from '@/types/profile';
-import type { DriverName } from '@/types/route';
+import type { AssigneeName } from '@/types/route';
 
 type ProfileRow = {
   id: string;
@@ -9,7 +9,7 @@ type ProfileRow = {
   full_name: string | null;
   role: string;
   disabled: boolean;
-  linked_driver: DriverName | null;
+  linked_driver: AssigneeName | null;
   created_at: string;
   updated_at: string | null;
 };
@@ -72,12 +72,12 @@ export type AdminAction =
       password?: string;
       fullName?: string;
       role: UserRole;
-      linkedDriver?: DriverName;
+      linkedDriver?: AssigneeName;
     }
   | { action: 'delete'; userId: string }
   | { action: 'set_role'; userId: string; role: UserRole }
   | { action: 'set_username'; userId: string; username: string }
-  | { action: 'set_linked_driver'; userId: string; linkedDriver: DriverName | null }
+  | { action: 'set_linked_driver'; userId: string; linkedDriver: AssigneeName | null }
   | { action: 'set_disabled'; userId: string; disabled: boolean }
   | { action: 'set_password'; userId: string; password?: string };
 

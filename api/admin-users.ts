@@ -37,8 +37,12 @@ const USERNAME_PATTERN = /^[a-zA-Z0-9._א-ת-]{3,30}$/u;
 type AllowedRole = 'admin' | 'dispatcher' | 'driver' | 'viewer';
 const ALLOWED_ROLES: AllowedRole[] = ['admin', 'dispatcher', 'driver', 'viewer'];
 
-type DriverName = 'רודי דויד' | 'נהג חיצוני מועלם';
-const ALLOWED_DRIVERS: DriverName[] = ['רודי דויד', 'נהג חיצוני מועלם'];
+// Any value of the `driver_name` enum may be linked to a user. The enum holds
+// both delivery drivers and service technicians (a user with role='driver' gets
+// the field dashboard, and RLS filters their stops by the linked assignee).
+// MUST stay in sync with the driver_name enum in the DB and AssigneeName in src/types/route.ts.
+type DriverName = 'רודי' | 'מוחמד' | 'דוד' | 'מוהנד' | 'אולג' | 'ישראל' | 'אבי';
+const ALLOWED_DRIVERS: DriverName[] = ['רודי', 'מוחמד', 'דוד', 'מוהנד', 'אולג', 'ישראל', 'אבי'];
 
 interface AdminAction {
   action:
