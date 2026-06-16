@@ -29,6 +29,9 @@ import {
 } from 'lucide-react';
 import type { CalendarStop as DbCalendarStop } from '@/types/calendar-stop';
 import type { CalendarStop as UiCalendarStop } from '@/types/delivery';
+import { OrderChatSheet } from '@/components/OrderChatSheet';
+import { useCommentCounts } from '@/hooks/useTimeline';
+import type { ChatSourceKind } from '@/lib/timeline';
 
 function toLocalDateStr(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -317,6 +320,40 @@ function EmptyState({ message }: { message: string }) {
   );
 }
 
+/** Per-stop chat trigger, styled to match the mobile action row. Opens the
+ *  internal per-record chat sheet (order or service call) with a comment-count badge. */
+function StopChatButton({ stop, className = '' }: { stop: DbCalendarStop; className?: string }) {
+  const [open, setOpen] = useState(false);
+  const { data: commentCounts = {} } = useCommentCounts();
+  const chatId = stop.serviceCallId ?? stop.orderId ?? stop.id;
+  const kind: ChatSourceKind = stop.sourceType === 'service' ? 'service' : 'order';
+  const count = commentCounts[chatId] || 0;
+
+  return (
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setOpen(true)}
+        className={`relative h-11 gap-1 text-xs ${className}`}
+      >
+        <MessageCircle className="h-4 w-4 text-primary" />
+        צ'אט
+        {count > 0 && (
+          <span className="absolute -top-1.5 -end-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground shadow-sm">
+            {count}
+          </span>
+        )}
+      </Button>
+      <OrderChatSheet
+        order={{ id: chatId, customerName: stop.customerName, city: stop.city, kind }}
+        open={open}
+        onOpenChange={setOpen}
+      />
+    </>
+  );
+}
+
 interface DriverStopCardProps {
   stop: DbCalendarStop;
   index: number;
@@ -429,8 +466,8 @@ function DriverStopCard({ stop, index, onCoordinate, onResolve, resolving }: Dri
         )}
 
         {/* Action buttons */}
-        {!resolved && (
-          <div className="grid grid-cols-3 gap-2 pt-1">
+        {!resolved ? (
+          <div className="grid grid-cols-4 gap-2 pt-1">
             <Button
               variant="outline"
               size="sm"
@@ -460,6 +497,11 @@ function DriverStopCard({ stop, index, onCoordinate, onResolve, resolving }: Dri
               <X className="h-4 w-4" />
               לא בוצע
             </Button>
+            <StopChatButton stop={stop} />
+          </div>
+        ) : (
+          <div className="pt-1">
+            <StopChatButton stop={stop} className="w-full" />
           </div>
         )}
       </CardContent>
