@@ -1,8 +1,9 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Polyline, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import type { Order } from '@/types/order';
 import { geocodeOrderByCity } from '@/lib/geocoding';
+import { getRoadRoute, type RoadRoute } from '@/lib/directions';
 
 interface MapViewProps {
   /** רשימת הזמנות במסלול */
@@ -99,6 +100,22 @@ export function MapView({ route, currentIndex, completedIds }: MapViewProps) {
     ]) as [number, number][];
   }, [geocodedRoute]);
 
+  // מסלול לפי כבישים מהשירות המרכזי. null עד שנטען / כשלא זמין → fallback לקו ישר.
+  const [roadRoute, setRoadRoute] = useState<RoadRoute | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (polylinePositions.length < 2) {
+      setRoadRoute(null);
+      return;
+    }
+    getRoadRoute(polylinePositions).then((r) => {
+      if (!cancelled) setRoadRoute(r);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [polylinePositions]);
+
   // אם אין נקודות עם קואורדינטות - הצג הודעה
   if (geocodedRoute.length === 0) {
     return (
@@ -112,6 +129,7 @@ export function MapView({ route, currentIndex, completedIds }: MapViewProps) {
   }
 
   return (
+    <div className="relative h-full w-full">
     <MapContainer
       bounds={bounds}
       boundsOptions={{ padding: [50, 50] }}
@@ -125,14 +143,19 @@ export function MapView({ route, currentIndex, completedIds }: MapViewProps) {
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
 
-      {/* קו מחבר בין כל הנקודות */}
-      {polylinePositions.length > 1 && (
-        <Polyline
-          positions={polylinePositions}
-          color="#3b82f6"
-          weight={3}
-          opacity={0.7}
-        />
+      {/* קו מחבר — מסלול לפי כבישים אם זמין, אחרת קו ישר מקווקו (fallback) */}
+      {roadRoute && roadRoute.path.length > 1 ? (
+        <Polyline positions={roadRoute.path} color="#3b82f6" weight={4} opacity={0.8} />
+      ) : (
+        polylinePositions.length > 1 && (
+          <Polyline
+            positions={polylinePositions}
+            color="#3b82f6"
+            weight={3}
+            opacity={0.6}
+            dashArray="6 8"
+          />
+        )
       )}
 
       {/* Markers ממוספרים */}
@@ -174,5 +197,13 @@ export function MapView({ route, currentIndex, completedIds }: MapViewProps) {
         );
       })}
     </MapContainer>
+
+      {/* תווית מרחק/זמן (רק כשיש מסלול כבישים אמיתי) */}
+      {roadRoute && (
+        <div className="absolute top-3 left-3 z-[1000] rounded-full bg-background/95 px-3 py-1 text-xs font-semibold shadow-lg backdrop-blur">
+          {roadRoute.distanceKm.toFixed(1)} ק״מ · {Math.round(roadRoute.durationMin)} דק׳
+        </div>
+      )}
+    </div>
   );
 }

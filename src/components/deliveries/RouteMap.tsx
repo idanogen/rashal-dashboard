@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   MapContainer,
   TileLayer,
@@ -14,6 +14,7 @@ import { Card } from '@/components/ui/card';
 import { Package, MapPin, Wrench, ClipboardList, Warehouse } from 'lucide-react';
 import { WAREHOUSE_LOCATION } from '@/lib/maps';
 import { getCityCoordinates } from '@/lib/geocoding';
+import { getRoadRoute, type RoadRoute } from '@/lib/directions';
 
 // Fix Leaflet default marker icon issue
 delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
@@ -259,6 +260,22 @@ export function RouteMap({ stops, height = '500px' }: RouteMapProps) {
     ];
   }, [stopsWithCoords, positionsById]);
 
+  // מסלול לפי כבישים מהשירות המרכזי. null עד שנטען / כשלא זמין → fallback לקו ישר.
+  const [roadRoute, setRoadRoute] = useState<RoadRoute | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (routePath.length < 2) {
+      setRoadRoute(null);
+      return;
+    }
+    getRoadRoute(routePath).then((r) => {
+      if (!cancelled) setRoadRoute(r);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [routePath]);
+
   const defaultCenter: [number, number] = [32.0853, 34.7818]; // Tel Aviv
 
   if (stopsWithCoords.length === 0) {
@@ -291,12 +308,19 @@ export function RouteMap({ stops, height = '500px' }: RouteMapProps) {
 
         <AutoFitBounds positions={allPositions} />
 
-        {/* Polyline — warehouse → stops → warehouse */}
-        {routePath.length > 1 && (
+        {/* Polyline — מסלול לפי כבישים אם זמין, אחרת קו ישר מקווקו (fallback) */}
+        {roadRoute && roadRoute.path.length > 1 ? (
           <Polyline
-            positions={routePath}
-            pathOptions={{ color: '#3b82f6', weight: 4, opacity: 0.7 }}
+            positions={roadRoute.path}
+            pathOptions={{ color: '#3b82f6', weight: 4, opacity: 0.8 }}
           />
+        ) : (
+          routePath.length > 1 && (
+            <Polyline
+              positions={routePath}
+              pathOptions={{ color: '#3b82f6', weight: 4, opacity: 0.6, dashArray: '6 8' }}
+            />
+          )
         )}
 
         {/* Warehouse marker */}
@@ -427,6 +451,13 @@ export function RouteMap({ stops, height = '500px' }: RouteMapProps) {
       <div className="absolute top-4 right-4 z-[1000] rounded-full bg-primary px-3 py-1 text-sm font-semibold text-primary-foreground shadow-lg">
         {stopsWithCoords.length} יעדים
       </div>
+
+      {/* Road-route distance / time (only when a real road route is available) */}
+      {roadRoute && (
+        <div className="absolute top-4 left-4 z-[1000] rounded-full bg-background/95 px-3 py-1 text-xs font-semibold shadow-lg backdrop-blur">
+          {roadRoute.distanceKm.toFixed(1)} ק״מ · {Math.round(roadRoute.durationMin)} דק׳
+        </div>
+      )}
 
       {/* Unlocated stops badge */}
       {unlocatedStops.length > 0 && (
