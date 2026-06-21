@@ -251,39 +251,38 @@ export function getAvailableCities(): string[] {
 }
 
 // ─────────────────────────────────────────────────────────────────
-// מנוע geocoding אמיתי (Nominatim / OpenStreetMap)
-// כתובת → נקודה מדויקת, עם ולידציית מרחק מול מרכז-העיר, תור מווסת-קצב
-// ו-session cache. מכבד את מדיניות השימוש של OSM (בקשה אחת ~לשנייה).
+// מנוע geocoding דרך שירות המפות המרכזי (ogen-geo-service)
+// כתובת → נקודה מדויקת (Google + אימות עיר מול מסד הדואר).
+// השירות מחזיר פין מדויק או null (משוער); הקורא נופל אז למרכז העיר.
+// תור סדרתי קל (~350ms) + session cache. תשובת 503/502 לא נשמרת — ננסה שוב.
+//
+// החתימה וצורת הערך המוחזר זהות לגרסת Nominatim הקודמת —
+// אף קורא של geocodeAddress לא צריך להשתנות.
 // ─────────────────────────────────────────────────────────────────
 
 export interface GeocodeResult {
   lat: number;
   lng: number;
   displayName: string;
+  /** מקור הפין מהשירות המרכזי. אופציונלי — לא נדרש ע"י הקוראים. */
+  source?: 'google' | 'nominatim';
 }
 
 export interface GeocodeOptions {
-  /** עיר העצירה — משמשת לאימות שהתוצאה לא "ברחה" לעיר אחרת. */
+  /** עיר העצירה — מועברת לשירות לאימות שהתוצאה לא "ברחה" לעיר אחרת. */
   city?: string;
 }
 
-const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
-const REQUEST_GAP_MS = 1100;
-const MAX_CITY_DISTANCE_KM = 25;
-
-/** תוצאה רחוקה ממרכז העיר → כנראה התאמה שגויה. עיר לא במאגר → אין במה לאמת, מאשרים. */
-function isWithinCity(result: GeocodeResult, city?: string): boolean {
-  if (!city) return true;
-  const center = getCityCoordinates(city);
-  if (!center) return true;
-  return calculateDistance(result, center) <= MAX_CITY_DISTANCE_KM;
-}
+/** כתובת השירות המרכזי. נקראת מ-import.meta.env (לא סוד — רק URL). */
+const BASE = (import.meta.env.VITE_GEO_SERVICE_URL as string | undefined)?.replace(/\/$/, '') || '';
+const REQUEST_GAP_MS = 350;
 
 const sessionCache = new Map<string, GeocodeResult | null>();
 let queueTail: Promise<void> = Promise.resolve();
 let lastRequestAt = 0;
+let warnedNoBase = false;
 
-/** מריץ jobs בטור עם מרווח מינימלי ביניהם (rate limiting ל-Nominatim). */
+/** מריץ jobs בטור עם מרווח מינימלי ביניהם (תור סדרתי קל מול השירות). */
 function enqueue<T>(job: () => Promise<T>): Promise<T> {
   const run = queueTail.then(async () => {
     const wait = lastRequestAt + REQUEST_GAP_MS - Date.now();
@@ -301,36 +300,44 @@ function enqueue<T>(job: () => Promise<T>): Promise<T> {
   return run;
 }
 
-/** מחזיר 'transient' לכשל זמני (רשת/5xx) — לא נשמר ב-cache כדי שננסה שוב. */
-async function fetchGeocode(query: string): Promise<GeocodeResult | null | 'transient'> {
+/**
+ * פונה לשירות המרכזי. מחזיר:
+ *  - GeocodeResult  → פין מדויק
+ *  - null           → לא נמצא / משוער (הקורא ייפול למרכז העיר)
+ *  - 'transient'    → כשל זמני (503/502/רשת) — לא לשמור ב-cache, ננסה שוב
+ */
+async function fetchGeocode(
+  address: string,
+  city?: string
+): Promise<GeocodeResult | null | 'transient'> {
   try {
-    const params = new URLSearchParams({
-      q: query,
-      format: 'json',
-      limit: '1',
-      countrycodes: 'il,ps', // כולל יו"ש (OSM מסווג תחת ps); בלי ", Israel"
-      'accept-language': 'he',
-    });
-    const res = await fetch(`${NOMINATIM_URL}?${params}`);
+    const u = new URL(`${BASE}/api/geocode`);
+    u.searchParams.set('address', address);
+    if (city) u.searchParams.set('city', city);
+    const res = await fetch(u.toString());
+    if (res.status === 503 || res.status === 502) return 'transient';
     if (!res.ok) return 'transient';
     const data = await res.json();
-    if (!Array.isArray(data) || data.length === 0) return null;
-    const result: GeocodeResult = {
-      lat: parseFloat(data[0].lat),
-      lng: parseFloat(data[0].lon),
-      displayName: data[0].display_name || query,
+    const r = data?.result;
+    if (!r) return null; // לא נמצא / משוער
+    const lat = Number(r.lat);
+    const lng = Number(r.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return {
+      lat,
+      lng,
+      displayName: r.displayName || address,
+      source: r.source,
     };
-    if (!Number.isFinite(result.lat) || !Number.isFinite(result.lng)) return null;
-    return result;
   } catch {
-    return 'transient';
+    return 'transient'; // כשל רשת — ננסה שוב
   }
 }
 
 /**
- * geocoding מלא לכתובת. מנסה את הכתובת המלאה, ואם נכשל — מסיר מילים מתחילתה
- * (מספר בית / שם מתחם) ומנסה שוב. מאמת מרחק מול מרכז-העיר.
- * @returns נקודה מדויקת או null (לא נמצא / רחוק מדי / כשל זמני).
+ * geocoding מלא לכתובת דרך שירות המפות המרכזי.
+ * תמיד מעביר את העיר לשירות (geocodeAddress(address, { city })).
+ * @returns נקודה מדויקת או null (לא נמצא / משוער / כשל זמני).
  */
 export async function geocodeAddress(
   address: string,
@@ -339,32 +346,23 @@ export async function geocodeAddress(
   const trimmed = address.trim();
   if (!trimmed) return null;
   const { city } = opts;
+
+  if (!BASE) {
+    if (!warnedNoBase) {
+      console.warn('[geocode] VITE_GEO_SERVICE_URL לא מוגדר — נופלים למרכז העיר');
+      warnedNoBase = true;
+    }
+    return null;
+  }
+
   const cacheKey = city ? `${trimmed}|${city.trim()}` : trimmed;
   if (sessionCache.has(cacheKey)) return sessionCache.get(cacheKey)!;
 
-  const words = trimmed.split(/\s+/);
-  const candidates = [trimmed];
-  for (let drop = 1; drop <= 2 && words.length - drop >= 2; drop++) {
-    candidates.push(words.slice(drop).join(' '));
-  }
-
   return enqueue(async () => {
     if (sessionCache.has(cacheKey)) return sessionCache.get(cacheKey)!;
-    for (const candidate of candidates) {
-      const result = await fetchGeocode(candidate);
-      if (result === 'transient') return null; // כשל זמני — לא שומרים, ננסה שוב
-      if (result) {
-        if (isWithinCity(result, city)) {
-          sessionCache.set(cacheKey, result);
-          return result;
-        }
-        console.warn(`[geocode] rejected "${candidate}" — far from city "${city}"`);
-      }
-      if (candidate !== candidates[candidates.length - 1]) {
-        await new Promise((r) => setTimeout(r, REQUEST_GAP_MS));
-      }
-    }
-    sessionCache.set(cacheKey, null);
-    return null;
+    const result = await fetchGeocode(trimmed, city);
+    if (result === 'transient') return null; // כשל זמני — לא שומרים, ננסה שוב
+    sessionCache.set(cacheKey, result); // result מדויק או null (משוער) — שניהם נשמרים
+    return result;
   });
 }
