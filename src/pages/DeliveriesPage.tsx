@@ -586,6 +586,7 @@ export function DeliveriesPage() {
           pendingScheduleIds={pendingScheduleIds}
           groupSize={ordersGroupSize}
           returnedIds={returnedOrderIds}
+          handledOrders={[...scheduledOrders, ...deliveredOrders]}
         />
 
         <DeliveryCalendar

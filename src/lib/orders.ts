@@ -4,6 +4,7 @@ import { supabase } from './supabase';
 type OrderRow = {
   id: string;
   customer_name: string;
+  customer_number: string | null;
   phone: string | null;
   customer_status: Order['customerStatus'] | null;
   status: Order['status'] | null;
@@ -27,6 +28,7 @@ function rowToOrder(row: OrderRow): Order {
   return {
     id: row.id,
     customerName: row.customer_name,
+    customerNumber: row.customer_number ?? undefined,
     phone: row.phone ?? undefined,
     customerStatus: row.customer_status ?? undefined,
     status: row.status ?? undefined,
@@ -50,6 +52,7 @@ function rowToOrder(row: OrderRow): Order {
 function orderFieldsToRow(fields: Partial<Omit<Order, 'id'>>): Record<string, unknown> {
   const row: Record<string, unknown> = {};
   if ('customerName' in fields) row.customer_name = fields.customerName;
+  if ('customerNumber' in fields) row.customer_number = fields.customerNumber;
   if ('phone' in fields) row.phone = fields.phone;
   if ('customerStatus' in fields) row.customer_status = fields.customerStatus;
   if ('status' in fields) row.status = fields.status;

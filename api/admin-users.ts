@@ -154,7 +154,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     switch (body.action) {
       case 'create': {
         const v = validateUsername(body.username);
-        if (!v.ok) return res.status(400).json({ ok: false, error: v.error });
+        if ('error' in v) return res.status(400).json({ ok: false, error: v.error });
         const username = v.value;
         if (await usernameTaken(username)) {
           return res.status(409).json({ ok: false, error: `שם המשתמש ${username} כבר תפוס` });
@@ -205,7 +205,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case 'set_username': {
         if (!body.userId) return res.status(400).json({ ok: false, error: 'missing userId' });
         const v = validateUsername(body.username);
-        if (!v.ok) return res.status(400).json({ ok: false, error: v.error });
+        if ('error' in v) return res.status(400).json({ ok: false, error: v.error });
         const username = v.value;
         if (await usernameTaken(username, body.userId)) {
           return res.status(409).json({ ok: false, error: `שם המשתמש ${username} כבר תפוס` });

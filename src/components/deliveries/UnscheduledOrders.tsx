@@ -3,6 +3,7 @@ import type { Order } from '@/types/order';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
@@ -26,6 +27,7 @@ import {
   CalendarDays,
   CheckSquare,
   Square,
+  Search,
 } from 'lucide-react';
 import { useCallback } from 'react';
 import { ZoneFilter } from './ZoneFilter';
@@ -162,6 +164,11 @@ function DraggableOrderCard({
                 </span>
               )}
             </p>
+            {order.customerNumber && (
+              <p className="mt-0.5 text-[11px] text-muted-foreground" dir="ltr">
+                מס' לקוח: {order.customerNumber}
+              </p>
+            )}
             {order.phone && (
               <div className="mt-1 flex items-center gap-1">
                 <Phone className="h-3 w-3 text-muted-foreground" />
@@ -217,6 +224,8 @@ interface UnscheduledOrdersProps {
   groupSize?: Map<string, number>;
   /** orderIds that came back from the route (a not_completed stop exists). */
   returnedIds?: Set<string>;
+  /** הזמנות שכבר טופלו (תואמה אספקה / סופק) — לחיווי "כבר משובץ" כשחיפוש ריק בממתינים. */
+  handledOrders?: Order[];
 }
 
 export function UnscheduledOrders({
@@ -233,6 +242,7 @@ export function UnscheduledOrders({
   onBuildRoute,
   groupSize,
   returnedIds,
+  handledOrders,
 }: UnscheduledOrdersProps) {
   // Split off "returned from route" items into their own highlighted section;
   // the rest flow through the normal zone/group/select machinery unchanged.
@@ -245,6 +255,7 @@ export function UnscheduledOrders({
     [allOrders, returnedIds]
   );
   const [selectedZones, setSelectedZones] = useState<string[]>([]);
+  const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState<'all' | 'grouped'>('all');
   const [excludedOrderIds, setExcludedOrderIds] = useState<Set<string>>(
     new Set()
@@ -290,14 +301,36 @@ export function UnscheduledOrders({
     });
   };
 
-  // סינון לפי אזורים נבחרים
-  const filteredOrders =
-    selectedZones.length > 0
-      ? orders.filter((o) => {
-          const zone = orderZoneMap.get(o.id);
-          return zone && selectedZones.includes(zone);
-        })
-      : orders;
+  // סינון לפי אזורים נבחרים + חיפוש חופשי (שם לקוח / מספר לקוח / טלפון)
+  const filteredOrders = useMemo(() => {
+    let list =
+      selectedZones.length > 0
+        ? orders.filter((o) => {
+            const zone = orderZoneMap.get(o.id);
+            return zone && selectedZones.includes(zone);
+          })
+        : orders;
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter((o) =>
+        [o.customerName, o.customerNumber, o.phone]
+          .filter(Boolean)
+          .some((v) => String(v).toLowerCase().includes(q))
+      );
+    }
+    return list;
+  }, [orders, orderZoneMap, selectedZones, search]);
+
+  // כשהחיפוש לא מחזיר ממתינים — נחפש בהזמנות שכבר טופלו, להציג "כבר משובץ/סופק".
+  const handledMatches = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q || filteredOrders.length > 0 || !handledOrders) return [];
+    return handledOrders.filter((o) =>
+      [o.customerName, o.customerNumber, o.phone]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(q))
+    );
+  }, [search, filteredOrders.length, handledOrders]);
 
   // הזמנות פעילות (אחרי הסרת excluded)
   const activeOrders = filteredOrders.filter(
@@ -450,6 +483,24 @@ export function UnscheduledOrders({
               )}
             </div>
             <div className="flex items-center gap-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="חיפוש: שם / מספר לקוח / טלפון"
+                  className="h-8 w-[230px] pr-8 text-xs"
+                />
+                {search && (
+                  <button
+                    onClick={() => setSearch('')}
+                    className="absolute left-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+                    title="נקה חיפוש"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
               <Select
                 value={viewMode}
                 onValueChange={(v) => setViewMode(v as 'all' | 'grouped')}
@@ -476,6 +527,36 @@ export function UnscheduledOrders({
 
         {/* Content */}
         {ordersCollapsed ? null : viewMode === 'all' ? (
+          filteredOrders.length === 0 ? (
+            <div className="p-6 text-center">
+              <p className="text-sm text-muted-foreground">
+                לא נמצאו הזמנות ממתינות התואמות לחיפוש
+              </p>
+              {handledMatches.length > 0 && (
+                <div className="mx-auto mt-3 max-w-md rounded-lg border border-blue-200 bg-blue-50/60 p-3 text-right dark:border-blue-900 dark:bg-blue-950/10">
+                  <p className="mb-2 text-xs font-semibold text-blue-700 dark:text-blue-300">
+                    לקוחות תואמים שכבר טופלו ({handledMatches.length}):
+                  </p>
+                  <ul className="space-y-1">
+                    {handledMatches.map((o) => (
+                      <li
+                        key={o.id}
+                        className="flex items-center justify-between gap-2 text-xs"
+                      >
+                        <span className="truncate font-medium">
+                          {o.customerName}
+                          {o.customerNumber ? ` · ${o.customerNumber}` : ''}
+                        </span>
+                        <span className="flex-shrink-0 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                          {o.orderStatus}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          ) : (
           <div className="grid max-h-[500px] grid-cols-1 gap-3 overflow-y-auto p-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {filteredOrders.map((order) => (
               <div key={order.id} className="group">
@@ -493,6 +574,7 @@ export function UnscheduledOrders({
               </div>
             ))}
           </div>
+          )
         ) : (
           <div className="max-h-[600px] space-y-2 overflow-y-auto p-4">
             <div className="mb-3 flex justify-end">

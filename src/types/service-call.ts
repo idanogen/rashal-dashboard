@@ -3,6 +3,8 @@ export type ServiceCallStatus = 'קריאה חדשה' | 'תואם ביקור' | 
 export interface ServiceCall {
   id: string;
   customerName: string;
+  /** מספר לקוח מפריוריטי (CUSTNAME). נמשך דרך Make. */
+  customerNumber?: string;
   phone?: string;
   customerStatus?: 'לקוח חדש' | 'לקוח קיים';
   healthFund?: string;

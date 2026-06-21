@@ -4,6 +4,7 @@ import { supabase } from './supabase';
 type ServiceCallRow = {
   id: string;
   customer_name: string;
+  customer_number: string | null;
   phone: string | null;
   customer_status: ServiceCall['customerStatus'] | null;
   health_fund: string | null;
@@ -19,6 +20,7 @@ function rowToServiceCall(row: ServiceCallRow): ServiceCall {
   return {
     id: row.id,
     customerName: row.customer_name,
+    customerNumber: row.customer_number ?? undefined,
     phone: row.phone ?? undefined,
     customerStatus: row.customer_status ?? undefined,
     healthFund: row.health_fund ?? undefined,
@@ -34,6 +36,7 @@ function rowToServiceCall(row: ServiceCallRow): ServiceCall {
 function fieldsToRow(fields: Partial<Omit<ServiceCall, 'id'>>): Record<string, unknown> {
   const row: Record<string, unknown> = {};
   if ('customerName' in fields) row.customer_name = fields.customerName;
+  if ('customerNumber' in fields) row.customer_number = fields.customerNumber;
   if ('phone' in fields) row.phone = fields.phone;
   if ('customerStatus' in fields) row.customer_status = fields.customerStatus;
   if ('healthFund' in fields) row.health_fund = fields.healthFund;

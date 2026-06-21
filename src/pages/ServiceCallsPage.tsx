@@ -583,6 +583,7 @@ export function ServiceCallsPage() {
               onBulkSchedule={handleBulkSchedule}
               pendingScheduleIds={pendingScheduleIds}
               returnedIds={returnedCallIds}
+              handledCalls={[...scheduledCalls, ...completedCalls]}
             />
 
             <DeliveryCalendar

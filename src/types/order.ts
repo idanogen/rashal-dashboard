@@ -14,6 +14,8 @@ export type CustomerReplyStatus = 'ממתין' | 'מתאים' | 'לא מתאים
 export interface Order {
   id: string;
   customerName: string;
+  /** מספר לקוח מפריוריטי (CUSTNAME). נמשך דרך Make. */
+  customerNumber?: string;
   phone?: string;
   customerStatus?: 'לקוח חדש' | 'לקוח קיים';
   status?: 'Todo' | 'In progress' | 'Done';
