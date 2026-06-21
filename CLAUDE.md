@@ -392,6 +392,20 @@ interface Zone {
 
 ## עדכונים אחרונים
 
+### 21/06/2026 — חיפוש לפי מספר לקוח + מעבר geocoding לשירות מרכזי ⭐⭐⭐
+
+#### A) חיפוש ברשימות הממתינים (משלוחים + קריאות שירות)
+- נוספה עמודה `customer_number text` ל-`orders` ו-`service_calls` (+ index). מופתה ב-types/lib. **פתוח:** מיפוי Make מפריוריטי (`CUSTNAME`) טרם נעשה — עד אז חיפוש לפי מספר לקוח לא יחזיר תוצאות.
+- שדה חיפוש ב-`UnscheduledOrders` / `UnscheduledServiceCalls`: שם לקוח / מספר לקוח / טלפון, משולב עם סינון אזורים, בשתי התצוגות. מספר הלקוח מוצג על הכרטיס.
+- כשחיפוש מחזיר 0 בממתינים אך השם קיים בהזמנות/קריאות שכבר שובצו/סופקו → תיבת "לקוחות תואמים שכבר טופלו" עם הסטטוס (props `handledOrders`/`handledCalls` מהדף).
+- תיקון 2 שגיאות TS ב-`api/admin-users.ts` (narrowing דרך `'error' in v` — הבילד של פונקציות Vercel רץ ללא `strict`).
+
+#### B) geocoding דרך שירות המפות המרכזי (במקום Nominatim)
+- `src/lib/geocoding.ts` — `geocodeAddress(address,{city})` פונה עכשיו ל-`VITE_GEO_SERVICE_URL/api/geocode` (`https://ogen-geo-service.vercel.app`, Google + אימות עיר מול מסד הדואר). **אותה חתימה וצורת ערך** (`GeocodeResult|null`) — אף קורא לא השתנה (קורא יחיד: `geocodeStopAddress` ב-calendar-stops.ts).
+- חוזה: `200 {result:{lat,lng,displayName,source}}` פין מדויק · `200 {result:null}` משוער → נופל למרכז העיר דרך read-path הקיים (`rowToStop` → `coordinatesSource='city'`, ה-confidence indicator נשמר) · `503/502` → transient, **לא נשמר ב-cache**.
+- תור סדרתי ~350ms + session cache. `CITY_COORDINATES` נשאר כ-fallback. רכיבי המפה לא נגעו (לא קוראים ל-geocode ישירות).
+- **סדר פריסה שבוצע:** קודם env var ב-Vercel (`VITE_GEO_SERVICE_URL`, build-time inline) → deploy → אימות שה-bundle מכיל את ה-URL ו-0 אזכורי nominatim → רק אז אופסו 31 עצירות פעילות (planned/in_progress) עם פין: `geocoded_lat/lng/at/address=NULL` כדי לכפות geocoding מחדש דרך המנוע החדש (backfill מטפל רק ב-active, לכן completed/cancelled לא אופסו).
+
 ### 15/06/2026 (ערב) — צוות אמיתי (נהגים+טכנאים) + טוסטים מעוצבים ⭐⭐⭐
 
 #### A) נהגים וטכנאים אמיתיים — השלמת הפרדת המסכים
