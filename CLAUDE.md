@@ -406,6 +406,11 @@ interface Zone {
 - תור סדרתי ~350ms + session cache. `CITY_COORDINATES` נשאר כ-fallback. רכיבי המפה לא נגעו (לא קוראים ל-geocode ישירות).
 - **סדר פריסה שבוצע:** קודם env var ב-Vercel (`VITE_GEO_SERVICE_URL`, build-time inline) → deploy → אימות שה-bundle מכיל את ה-URL ו-0 אזכורי nominatim → רק אז אופסו 31 עצירות פעילות (planned/in_progress) עם פין: `geocoded_lat/lng/at/address=NULL` כדי לכפות geocoding מחדש דרך המנוע החדש (backfill מטפל רק ב-active, לכן completed/cancelled לא אופסו).
 
+#### C) קו מסלול עוקב אחרי כבישים (במקום קו ישר)
+- `src/lib/directions.ts` חדש — `getRoadRoute(points)` פונה ל-`VITE_GEO_SERVICE_URL/api/directions` (אותו שירות מרכזי) ומחזיר `{path,distanceKm,durationMin,legs}` או `null`. cache לפי מחרוזת הנקודות.
+- `RouteMap` ו-`MapView`: `state roadRoute` + `useEffect` על סדר העצירות → `<Polyline>` משתמש ב-`roadRoute.path` (עוקב כבישים) אם קיים, אחרת **fallback לקו ישר מקווקו** (`dashArray`) — המפה לא נשברת כשהשירות לא זמין. תווית "X ק״מ · Y דק׳" מוצגת כשיש מסלול אמיתי.
+- סדר העצירות נשמר (origin→stops→dest), בלי `optimize`. `DayMapDialog` יורש דרך `RouteMap`. ה-geocoding לא נגע.
+
 ### 15/06/2026 (ערב) — צוות אמיתי (נהגים+טכנאים) + טוסטים מעוצבים ⭐⭐⭐
 
 #### A) נהגים וטכנאים אמיתיים — השלמת הפרדת המסכים
