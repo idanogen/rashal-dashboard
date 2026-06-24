@@ -8,14 +8,14 @@ import {
 import { PackageCheck, GraduationCap, Ban } from 'lucide-react';
 
 /** תוצאות אספקה אפשריות — חובה לבחור אחת לפני סימון "סופק" (משלוחים בלבד). */
-export const DELIVERY_OUTCOMES = ['בוצע השבה', 'בוצע הדרכה', 'אין צורך'] as const;
+export const DELIVERY_OUTCOMES = ['בוצע הושבה', 'בוצע הדרכה', 'אין צורך'] as const;
 export type DeliveryOutcome = (typeof DELIVERY_OUTCOMES)[number];
 
 const OPTION_CONFIG: Record<
   DeliveryOutcome,
   { Icon: typeof PackageCheck; className: string }
 > = {
-  'בוצע השבה': {
+  'בוצע הושבה': {
     Icon: PackageCheck,
     className: 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100',
   },
