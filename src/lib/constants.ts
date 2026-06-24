@@ -4,6 +4,7 @@ export const ORDER_STATUS_OPTIONS = [
   { value: 'תואמה אספקה', label: 'תואמה אספקה', color: 'purple' },
   { value: 'אין במלאי', label: 'אין במלאי', color: 'amber' },
   { value: 'סופק', label: 'סופק', color: 'green' },
+  { value: 'בוטל', label: 'בוטל', color: 'red' },
 ] as const;
 
 export const TASK_STATUS_OPTIONS = [

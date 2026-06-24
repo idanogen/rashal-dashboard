@@ -37,6 +37,8 @@ import {
   type DuplicateConflict,
 } from '@/components/deliveries/DuplicateScheduleWarningDialog';
 import { findActiveDuplicateStops } from '@/lib/calendar-stops';
+import { NotCompletedReasonDialog } from '@/components/NotCompletedReasonDialog';
+import { useActivityLogger } from '@/hooks/useActivityLogger';
 import { showScheduleToast } from '@/lib/scheduleToast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -95,6 +97,10 @@ export function ServiceCallsPage() {
   const resolveStop = useResolveStop();
   const reorderStops = useReorderStops();
   const rescheduleStopMut = useRescheduleStop();
+  const [notCompletedStop, setNotCompletedStop] = useState<
+    (typeof calendarStops)[number] | null
+  >(null);
+  const log = useActivityLogger();
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -465,6 +471,17 @@ export function ServiceCallsPage() {
   ) => {
     const stop = calendarStops.find((s) => s.id === stopId);
     if (!stop) return;
+    // "לא בוצע" → פותח פופאפ לרישום סיבה לפני הסימון
+    if (status === 'not_completed') {
+      setNotCompletedStop(stop);
+      return;
+    }
+    log('stop_completed', {
+      entityType: 'calendar_stop',
+      entityId: stop.id,
+      sourceType: stop.sourceType,
+      customerName: stop.customerName,
+    });
     try {
       await resolveStop.mutateAsync({ stop, status });
     } catch (err) {
@@ -651,6 +668,30 @@ export function ServiceCallsPage() {
           );
         })()}
       </DragOverlay>
+
+      {/* "לא בוצע" — רישום סיבה */}
+      <NotCompletedReasonDialog
+        open={!!notCompletedStop}
+        customerName={notCompletedStop?.customerName}
+        submitting={resolveStop.isPending}
+        onOpenChange={(o) => {
+          if (!o) setNotCompletedStop(null);
+        }}
+        onConfirm={(reason) => {
+          if (!notCompletedStop) return;
+          log('stop_not_completed', {
+            entityType: 'calendar_stop',
+            entityId: notCompletedStop.id,
+            sourceType: notCompletedStop.sourceType,
+            customerName: notCompletedStop.customerName,
+            metadata: { reason },
+          });
+          resolveStop.mutate(
+            { stop: notCompletedStop, status: 'not_completed', notes: reason },
+            { onSuccess: () => setNotCompletedStop(null) }
+          );
+        }}
+      />
 
       <DuplicateScheduleWarningDialog
         open={duplicateState !== null}

@@ -1,7 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useCalendarStops } from '@/hooks/useCalendarStops';
 import { useResolveStop } from '@/hooks/useResolveStop';
+import { useArriveStop } from '@/hooks/useArriveStop';
 import { useCurrentProfile } from '@/hooks/useProfile';
+import { useActivityLogger } from '@/hooks/useActivityLogger';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -30,6 +32,8 @@ import {
 import type { CalendarStop as DbCalendarStop } from '@/types/calendar-stop';
 import type { CalendarStop as UiCalendarStop } from '@/types/delivery';
 import { OrderChatSheet } from '@/components/OrderChatSheet';
+import { NotCompletedReasonDialog } from '@/components/NotCompletedReasonDialog';
+import { DeliveryOutcomeDialog } from '@/components/DeliveryOutcomeDialog';
 import { useCommentCounts } from '@/hooks/useTimeline';
 import type { ChatSourceKind } from '@/lib/timeline';
 
@@ -79,8 +83,47 @@ export function DriverDashboardPage() {
   const { data: profile } = useCurrentProfile();
   const { data: allStops, isLoading } = useCalendarStops();
   const resolveStop = useResolveStop();
+  const arriveStop = useArriveStop();
+  const log = useActivityLogger();
   const [coordinationStop, setCoordinationStop] = useState<UiCalendarStop | null>(null);
+  const [notCompletedStop, setNotCompletedStop] = useState<DbCalendarStop | null>(null);
   const [showMap, setShowMap] = useState(true);
+
+  /** הקשר אירוע אחיד לעצירה — לדוחות. */
+  const stopCtx = (stop: DbCalendarStop) => ({
+    entityType: 'calendar_stop' as const,
+    entityId: stop.id,
+    sourceType: stop.sourceType,
+    customerName: stop.customerName,
+  });
+
+  // "לא בוצע" → פותח פופאפ לרישום סיבה; "סופק" → סימון מיידי (עם תוצאת אספקה אם משלוח).
+  const handleResolve = (
+    stop: DbCalendarStop,
+    status: 'completed' | 'not_completed',
+    notes?: string
+  ) => {
+    if (status === 'not_completed') {
+      setNotCompletedStop(stop);
+    } else {
+      log('stop_completed', {
+        ...stopCtx(stop),
+        ...(notes ? { metadata: { deliveryOutcome: notes } } : {}),
+      });
+      resolveStop.mutate({ stop, status, notes });
+    }
+  };
+
+  const handleCoordinate = (stop: DbCalendarStop) => {
+    log('coordinate_open', stopCtx(stop));
+    setCoordinationStop(toUiStop(stop));
+  };
+
+  // "הגעה" — מסמן שהנהג בנקודה (status → in_progress) + רישום ללוג.
+  const handleArrive = (stop: DbCalendarStop) => {
+    log('arrival', stopCtx(stop));
+    arriveStop.mutate(stop.id);
+  };
 
   const today = toLocalDateStr(new Date());
   const tomorrow = toLocalDateStr(new Date(Date.now() + 86_400_000));
@@ -217,6 +260,7 @@ export function DriverDashboardPage() {
                     href={nextWazeUrl}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={() => nextStop && log('navigate', stopCtx(nextStop))}
                     className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm active:bg-blue-700"
                   >
                     <Navigation className="h-4 w-4" />
@@ -244,8 +288,9 @@ export function DriverDashboardPage() {
                 key={stop.id}
                 stop={stop}
                 index={idx + 1}
-                onCoordinate={() => setCoordinationStop(toUiStop(stop))}
-                onResolve={(status) => resolveStop.mutate({ stop, status })}
+                onCoordinate={() => handleCoordinate(stop)}
+                onArrive={() => handleArrive(stop)}
+                onResolve={(status, notes) => handleResolve(stop, status, notes)}
                 resolving={resolveStop.isPending}
               />
             ))
@@ -261,8 +306,9 @@ export function DriverDashboardPage() {
                 key={stop.id}
                 stop={stop}
                 index={idx + 1}
-                onCoordinate={() => setCoordinationStop(toUiStop(stop))}
-                onResolve={(status) => resolveStop.mutate({ stop, status })}
+                onCoordinate={() => handleCoordinate(stop)}
+                onArrive={() => handleArrive(stop)}
+                onResolve={(status, notes) => handleResolve(stop, status, notes)}
                 resolving={resolveStop.isPending}
               />
             ))
@@ -287,8 +333,9 @@ export function DriverDashboardPage() {
                     key={stop.id}
                     stop={stop}
                     index={idx + 1}
-                    onCoordinate={() => setCoordinationStop(toUiStop(stop))}
-                    onResolve={(status) => resolveStop.mutate({ stop, status })}
+                    onCoordinate={() => handleCoordinate(stop)}
+                    onArrive={() => handleArrive(stop)}
+                    onResolve={(status, notes) => handleResolve(stop, status, notes)}
                     resolving={resolveStop.isPending}
                   />
                 ))}
@@ -303,6 +350,26 @@ export function DriverDashboardPage() {
         open={!!coordinationStop}
         onOpenChange={(open) => {
           if (!open) setCoordinationStop(null);
+        }}
+      />
+
+      <NotCompletedReasonDialog
+        open={!!notCompletedStop}
+        customerName={notCompletedStop?.customerName}
+        submitting={resolveStop.isPending}
+        onOpenChange={(open) => {
+          if (!open) setNotCompletedStop(null);
+        }}
+        onConfirm={(reason) => {
+          if (!notCompletedStop) return;
+          log('stop_not_completed', {
+            ...stopCtx(notCompletedStop),
+            metadata: { reason },
+          });
+          resolveStop.mutate(
+            { stop: notCompletedStop, status: 'not_completed', notes: reason },
+            { onSuccess: () => setNotCompletedStop(null) }
+          );
         }}
       />
     </div>
@@ -358,12 +425,47 @@ interface DriverStopCardProps {
   stop: DbCalendarStop;
   index: number;
   onCoordinate: () => void;
-  onResolve: (status: 'completed' | 'not_completed') => void;
+  onArrive: () => void;
+  onResolve: (status: 'completed' | 'not_completed', notes?: string) => void;
   resolving: boolean;
 }
 
-function DriverStopCard({ stop, index, onCoordinate, onResolve, resolving }: DriverStopCardProps) {
+/** משך חלון ה"חשיבה" בין הגעה לסופק (מונע לחיצות רצופות). */
+const ARRIVAL_THINK_MS = 10_000;
+
+function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve, resolving }: DriverStopCardProps) {
+  const log = useActivityLogger();
+  const logStop = (action: string) =>
+    log(action, {
+      entityType: 'calendar_stop',
+      entityId: stop.id,
+      sourceType: stop.sourceType,
+      customerName: stop.customerName,
+    });
   const resolved = isResolved(stop.status);
+
+  // חלון חשיבה של 10ש' אחרי לחיצה על "הגעה" — נועל את כל הכפתורים.
+  const [thinking, setThinking] = useState(false);
+  const [arrivedLocal, setArrivedLocal] = useState(false);
+  // משלוח בלבד: בחירת תוצאת אספקה לפני סימון "סופק".
+  const [outcomeOpen, setOutcomeOpen] = useState(false);
+  const isDelivery = stop.sourceType === 'delivery';
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+  }, []);
+
+  // הנהג סימן הגעה → ה-stop ב-in_progress (נשמר ב-DB ושורד רענון);
+  // arrivedLocal מגבה את התצוגה אם ה-refetch מתעכב.
+  const hasArrived = stop.status === 'in_progress' || arrivedLocal;
+
+  const handleArriveClick = () => {
+    if (thinking) return;
+    setThinking(true);
+    setArrivedLocal(true);
+    onArrive();
+    timerRef.current = setTimeout(() => setThinking(false), ARRIVAL_THINK_MS);
+  };
   const isCustomerConfirmed = stop.coordinationStatus === 'customer_confirmed';
   const isCustomerRejected = stop.coordinationStatus === 'customer_rejected';
   const src = SOURCE_CONFIG[stop.sourceType] ?? SOURCE_CONFIG.delivery;
@@ -386,6 +488,7 @@ function DriverStopCard({ stop, index, onCoordinate, onResolve, resolving }: Dri
           : 'bg-card';
 
   return (
+    <>
     <Card className={`${bgClass} transition-all`}>
       <CardContent className="p-4 space-y-3">
         {/* Top row: stop number + source + name */}
@@ -426,6 +529,7 @@ function DriverStopCard({ stop, index, onCoordinate, onResolve, resolving }: Dri
             href={wazeUrl ?? '#'}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => logStop('navigate')}
             className="flex items-center gap-2 text-sm text-blue-700 hover:underline"
           >
             <MapPin className="h-4 w-4 flex-shrink-0" />
@@ -450,6 +554,7 @@ function DriverStopCard({ stop, index, onCoordinate, onResolve, resolving }: Dri
         {stop.phone && (
           <a
             href={telUrl ?? '#'}
+            onClick={() => logStop('call')}
             className="flex items-center gap-2 text-sm text-emerald-700 hover:underline font-medium"
             dir="ltr"
           >
@@ -466,27 +571,55 @@ function DriverStopCard({ stop, index, onCoordinate, onResolve, resolving }: Dri
         )}
 
         {/* Action buttons */}
-        {!resolved ? (
+        {thinking ? (
+          /* חלון חשיבה — 10 שניות, הכל נעול */
+          <div className="pt-1">
+            <div className="flex h-11 items-center justify-center gap-2 rounded-md bg-blue-50 text-sm font-medium text-blue-700">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              רושם הגעה…
+            </div>
+          </div>
+        ) : !resolved ? (
           <div className="grid grid-cols-4 gap-2 pt-1">
             <Button
               variant="outline"
               size="sm"
               onClick={onCoordinate}
+              disabled={resolving}
               className="h-11 gap-1 text-xs"
             >
               <MessageCircle className="h-4 w-4 text-emerald-600" />
               תיאום
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onResolve('completed')}
-              disabled={resolving}
-              className="h-11 gap-1 text-xs bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100"
-            >
-              <Check className="h-4 w-4" />
-              בוצע
-            </Button>
+            {hasArrived ? (
+              /* שלב 2 — אחרי הגעה: "סופק" בצבע שונה (ירוק) */
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  // משלוח → חובה לבחור תוצאת אספקה; אחרת סימון מיידי.
+                  if (isDelivery) setOutcomeOpen(true);
+                  else onResolve('completed');
+                }}
+                disabled={resolving}
+                className="h-11 gap-1 text-xs bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700"
+              >
+                <Check className="h-4 w-4" />
+                סופק
+              </Button>
+            ) : (
+              /* שלב 1 — "הגעה" (כחול) */
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleArriveClick}
+                disabled={resolving}
+                className="h-11 gap-1 text-xs bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+              >
+                <MapPin className="h-4 w-4" />
+                הגעה
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -506,5 +639,18 @@ function DriverStopCard({ stop, index, onCoordinate, onResolve, resolving }: Dri
         )}
       </CardContent>
     </Card>
+
+    {/* משלוח בלבד — בחירת תוצאת אספקה לפני "סופק" */}
+    <DeliveryOutcomeDialog
+      open={outcomeOpen}
+      customerName={stop.customerName}
+      submitting={resolving}
+      onOpenChange={setOutcomeOpen}
+      onSelect={(outcome) => {
+        setOutcomeOpen(false);
+        onResolve('completed', outcome);
+      }}
+    />
+    </>
   );
 }

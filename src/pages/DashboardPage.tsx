@@ -5,6 +5,7 @@ import { useOrderStats } from '@/hooks/useOrderStats';
 import { useZonedServiceCalls } from '@/hooks/useZonedServiceCalls';
 import { useCalendarStops } from '@/hooks/useCalendarStops';
 import { ReturnedFromRouteSection } from '@/components/dashboard/ReturnedFromRouteSection';
+import { ReturnedServiceCallsSection } from '@/components/dashboard/ReturnedServiceCallsSection';
 import { DedupToggle } from '@/components/dashboard/DedupToggle';
 import { StaleOrdersAlert } from '@/components/dashboard/StaleOrdersAlert';
 import { StatsCards } from '@/components/dashboard/StatsCards';
@@ -53,6 +54,18 @@ export function DashboardPage() {
       (o) => returnedIds.has(o.id) && o.orderStatus === 'ממתין לתאום'
     );
   }, [calendarStops, orders]);
+
+  // קריאות שירות שחזרו מהקו — קיים stop "לא בוצע", והקריאה חזרה ל"קריאה חדשה".
+  const returnedCalls = useMemo(() => {
+    const returnedIds = new Set(
+      calendarStops
+        .filter((s) => s.status === 'not_completed' && s.sourceType === 'service' && s.serviceCallId)
+        .map((s) => s.serviceCallId as string)
+    );
+    return (allCalls ?? []).filter(
+      (c) => returnedIds.has(c.id) && c.serviceCallStatus === 'קריאה חדשה'
+    );
+  }, [calendarStops, allCalls]);
 
   const [filters, setFilters] = useState<OrderFiltersState>({
     search: '',
@@ -160,6 +173,7 @@ export function DashboardPage() {
 
         {/* Service Calls Tab */}
         <TabsContent value="service-calls" className="space-y-6">
+          <ReturnedServiceCallsSection calls={returnedCalls} />
           <ServiceCallStatsCards
             pending={pendingCalls.length}
             scheduled={scheduledCalls.length}

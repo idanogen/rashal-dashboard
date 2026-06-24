@@ -1,8 +1,11 @@
 import { useState } from 'react';
-import { Undo2, MapPin } from 'lucide-react';
+import { Undo2, MapPin, X } from 'lucide-react';
 import type { Order } from '@/types/order';
 import { OrderChatButton } from '@/components/OrderChatButton';
 import { OrderDetailDialog } from '@/components/orders/OrderDetailDialog';
+import { DoubleConfirmDialog } from '@/components/DoubleConfirmDialog';
+import { useUpdateOrder } from '@/hooks/useUpdateOrder';
+import { useActivityLogger } from '@/hooks/useActivityLogger';
 
 interface ReturnedFromRouteSectionProps {
   /** Orders that came back from the route (a not_completed stop exists). */
@@ -12,11 +15,29 @@ interface ReturnedFromRouteSectionProps {
 /**
  * Highlighted "returned from route" banner for the dashboard — orders that were
  * marked "לא בוצע" and bounced back to pending. Clicking a card opens its detail.
+ * Each card has a "ביטול" action (double-confirm) for orders that are no longer relevant.
  */
 export function ReturnedFromRouteSection({ orders }: ReturnedFromRouteSectionProps) {
   const [selected, setSelected] = useState<Order | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<Order | null>(null);
+  const updateOrder = useUpdateOrder();
+  const log = useActivityLogger();
 
   if (orders.length === 0) return null;
+
+  const handleCancel = () => {
+    if (!cancelTarget) return;
+    const order = cancelTarget;
+    log('order_cancelled', {
+      entityType: 'order',
+      entityId: order.id,
+      customerName: order.customerName,
+    });
+    updateOrder.mutate(
+      { id: order.id, fields: { orderStatus: 'בוטל' } },
+      { onSuccess: () => setCancelTarget(null) }
+    );
+  };
 
   return (
     <div className="rounded-lg border border-red-300 bg-red-50/60 p-3 shadow-sm dark:border-red-900 dark:bg-red-950/10">
@@ -49,8 +70,15 @@ export function ReturnedFromRouteSection({ orders }: ReturnedFromRouteSectionPro
                 </p>
               )}
             </div>
-            <div onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
               <OrderChatButton order={order} />
+              <button
+                onClick={() => setCancelTarget(order)}
+                title="בטל הזמנה (לא רלוונטית)"
+                className="flex h-7 w-7 items-center justify-center rounded-md text-red-600 transition-colors hover:bg-red-100 dark:hover:bg-red-950/40"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
           </div>
         ))}
@@ -60,6 +88,18 @@ export function ReturnedFromRouteSection({ orders }: ReturnedFromRouteSectionPro
         order={selected}
         open={!!selected}
         onClose={() => setSelected(null)}
+      />
+
+      <DoubleConfirmDialog
+        open={!!cancelTarget}
+        onOpenChange={(o) => {
+          if (!o) setCancelTarget(null);
+        }}
+        itemName={cancelTarget?.customerName}
+        message="האם לבטל את ההזמנה? היא תסומן כבוטלה ותוסר מהרשימות הפעילות."
+        confirmLabel="כן, בטל הזמנה"
+        submitting={updateOrder.isPending}
+        onConfirm={handleCancel}
       />
     </div>
   );

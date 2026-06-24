@@ -15,6 +15,7 @@ import { MessageCircle, Phone, Calendar, Clock, MapPin, User, CheckCircle2 } fro
 import type { CalendarStop } from '@/types/delivery';
 import { useSendReminder } from '@/hooks/useWhatsAppSend';
 import { useUpdateStopCoordination } from '@/hooks/useUpdateStopCoordination';
+import { useActivityLogger } from '@/hooks/useActivityLogger';
 import { useAuth } from '@/lib/auth-context';
 import { getTemplate, isPlaceholderTemplate } from '@/lib/heyy/templates';
 import { isDemoMode } from '@/lib/heyy/client';
@@ -41,6 +42,19 @@ export function ScheduleCoordinationDialog({ stop, open, onOpenChange }: Schedul
   const { user } = useAuth();
   const sendReminder = useSendReminder();
   const updateCoord = useUpdateStopCoordination();
+  const log = useActivityLogger();
+
+  /** הקשר אירוע תיאום ללוג — מי/על מי/באיזו דרך (למנהל). */
+  const logCoordination = (action: string, method: string) => {
+    if (!stop) return;
+    log(action, {
+      entityType: 'calendar_stop',
+      entityId: stop.stopId,
+      sourceType: stop.sourceType,
+      customerName: stop.customerName,
+      metadata: { method, timeStart, timeEnd, note: note || undefined },
+    });
+  };
 
   const [timeStart, setTimeStart] = useState('09:00');
   const [timeEnd, setTimeEnd] = useState('13:00');
@@ -103,6 +117,7 @@ export function ScheduleCoordinationDialog({ stop, open, onOpenChange }: Schedul
           coordinationNeedsCancel: false,
         },
       });
+      logCoordination('coordinate_whatsapp', 'whatsapp');
       onOpenChange(false);
     }
   }
@@ -121,6 +136,7 @@ export function ScheduleCoordinationDialog({ stop, open, onOpenChange }: Schedul
         coordinationNeedsCancel: false,
       },
     });
+    logCoordination('coordinate_phone', 'phone');
     onOpenChange(false);
   }
 
@@ -135,6 +151,7 @@ export function ScheduleCoordinationDialog({ stop, open, onOpenChange }: Schedul
         coordinationNeedsCancel: false,
       },
     });
+    logCoordination('coordinate_clear', 'clear');
     onOpenChange(false);
   }
 

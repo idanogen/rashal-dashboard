@@ -19,7 +19,7 @@ export interface Order {
   phone?: string;
   customerStatus?: 'לקוח חדש' | 'לקוח קיים';
   status?: 'Todo' | 'In progress' | 'Done';
-  orderStatus?: 'ממתין לליקוט' | 'ממתין לתאום' | 'תואמה אספקה' | 'אין במלאי' | 'סופק';
+  orderStatus?: 'ממתין לליקוט' | 'ממתין לתאום' | 'תואמה אספקה' | 'אין במלאי' | 'סופק' | 'בוטל';
   healthFund?: string;
   openedBy?: string;
   fax?: string;
