@@ -12,6 +12,15 @@ type ServiceCallRow = {
   address: string | null;
   city: string | null;
   service_call_status: ServiceCallStatus | null;
+  device_serial: string | null;
+  device_name: string | null;
+  device_desc: string | null;
+  warranty_until: string | null;
+  install_date: string | null;
+  fault_desc: string | null;
+  symptom_desc: string | null;
+  call_type: string | null;
+  service_type: string | null;
   duplicate_of: string | null;
   created_at: string;
 };
@@ -28,6 +37,15 @@ function rowToServiceCall(row: ServiceCallRow): ServiceCall {
     address: row.address ?? undefined,
     city: row.city ?? undefined,
     serviceCallStatus: row.service_call_status ?? undefined,
+    deviceSerial: row.device_serial ?? undefined,
+    deviceName: row.device_name ?? undefined,
+    deviceDesc: row.device_desc ?? undefined,
+    warrantyUntil: row.warranty_until ?? undefined,
+    installDate: row.install_date ?? undefined,
+    faultDesc: row.fault_desc ?? undefined,
+    symptomDesc: row.symptom_desc ?? undefined,
+    callType: row.call_type ?? undefined,
+    serviceType: row.service_type ?? undefined,
     duplicateOf: row.duplicate_of ?? undefined,
     created: row.created_at,
   };

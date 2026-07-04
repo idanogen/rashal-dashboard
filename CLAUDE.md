@@ -902,4 +902,4 @@ export interface CalendarStop {
 הפרויקט נוגע ב-Priority ERP → רוני בצוות כאן בכל סשן (סקיל גלובלי `roni-priority`).
 - **לפני כיוון/שינוי שנוגע בפריוריטי** → היוועץ בבית הידע: `~/Idan-HQ/knowledge/priority/`
 - **כל לקח חדש על פריוריטי** → חזרה לבית הידע (learnings.md / clients.md / projects-map.md)
-- **הקשר הפרויקט:** מיפוי CUSTNAME→customer_number לחיפוש לקוח · mapping ב-make עדיין TODO
+- **הקשר הפרויקט:** מעבר סנכרון מ-webhook ל-OData-Pull — תוכנית מאושרת ב-`docs/SYNC-PULL-PLAN.md` (03/07). חוסם: גישה לחשבון ה-Make החיצוני של רשל. המעבר פותר גם את customer_number (CUSTNAME מגיע ב-pull).

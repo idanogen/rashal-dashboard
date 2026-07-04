@@ -15,6 +15,7 @@ type OrderRow = {
   address: string | null;
   city: string | null;
   agent: string | null;
+  items: Order['items'] | null;
   duplicate_of: string | null;
   scheduled_reminder_at: string | null;
   customer_reply_status: Order['customerReplyStatus'] | null;
@@ -39,6 +40,7 @@ function rowToOrder(row: OrderRow): Order {
     address: row.address ?? undefined,
     city: row.city ?? undefined,
     agent: row.agent ?? undefined,
+    items: row.items ?? undefined,
     duplicateOf: row.duplicate_of ?? undefined,
     scheduledReminderAt: row.scheduled_reminder_at ?? undefined,
     customerReplyStatus: row.customer_reply_status ?? undefined,

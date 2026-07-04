@@ -11,6 +11,13 @@ export interface OrderDocument {
 
 export type CustomerReplyStatus = 'ממתין' | 'מתאים' | 'לא מתאים' | 'בקשת שינוי';
 
+export interface OrderItem {
+  part: string | null;
+  desc: string | null;
+  qty: number | null;
+  serial: string | null;
+}
+
 export interface Order {
   id: string;
   customerName: string;
@@ -27,6 +34,8 @@ export interface Order {
   city?: string;
   agent?: string;
   documents?: OrderDocument[];
+  /** פירוט הפריטים לאספקה מפריוריטי (עמי #2) — ORDERITEMS_SUBFORM. */
+  items?: OrderItem[];
   /** If set, this row is a Priority dupe of the referenced head row. */
   duplicateOf?: string;
   /** When the user scheduled a manual WhatsApp reminder for this order. */

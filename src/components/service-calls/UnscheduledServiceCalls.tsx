@@ -1,3 +1,4 @@
+import { CustomerHistoryButton } from '@/components/CustomerHistoryButton';
 import { useState, useMemo } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import type { ServiceCall } from '@/types/service-call';
@@ -162,6 +163,23 @@ function ServiceCallCard({
                 מס' לקוח: {call.customerNumber}
               </p>
             )}
+            {(call.faultDesc || call.symptomDesc) && (
+              <p className="mt-0.5 text-[11px] font-medium text-amber-800">
+                תקלה: {call.faultDesc ?? call.symptomDesc}
+                {call.faultDesc && call.symptomDesc ? ` · ${call.symptomDesc}` : ''}
+              </p>
+            )}
+            {(call.deviceName || call.deviceSerial) && (
+              <p
+                className="mt-0.5 text-[11px] text-muted-foreground"
+                title={call.deviceDesc ?? undefined}
+              >
+                מכשיר: <bdi>{call.deviceName ?? '—'}</bdi>
+                {call.deviceSerial && (
+                  <> · סריאלי <bdi>{call.deviceSerial}</bdi></>
+                )}
+              </p>
+            )}
             {call.phone && (
               <div className="mt-1 flex items-center gap-1">
                 <Phone className="h-3 w-3 text-muted-foreground" />
@@ -177,12 +195,21 @@ function ServiceCallCard({
               </div>
             )}
           </div>
-          {days !== null && (
-            <Badge variant="outline" className={`text-xs ${daysColor}`}>
-              <Clock className="ml-1 h-3 w-3" />
-              {days}d
-            </Badge>
-          )}
+          <div className="flex flex-col items-end gap-1">
+            {days !== null && (
+              <Badge variant="outline" className={`text-xs ${daysColor}`}>
+                <Clock className="ml-1 h-3 w-3" />
+                {days}d
+              </Badge>
+            )}
+            <CustomerHistoryButton
+              customer={{
+                currentId: call.id,
+                customerNumber: call.customerNumber,
+                customerName: call.customerName,
+              }}
+            />
+          </div>
         </div>
         {call.city && (
           <div className="flex items-center gap-1 border-t pt-2 text-xs text-muted-foreground">

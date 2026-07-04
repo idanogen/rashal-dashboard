@@ -1,3 +1,4 @@
+import { CustomerHistoryButton } from '@/components/CustomerHistoryButton';
 import { useState, useMemo } from 'react';
 import type { Order } from '@/types/order';
 import { Card, CardContent } from '@/components/ui/card';
@@ -169,6 +170,20 @@ function DraggableOrderCard({
                 מס' לקוח: {order.customerNumber}
               </p>
             )}
+            {order.items && order.items.length > 0 && (
+              <p
+                className="mt-0.5 text-[11px] text-muted-foreground"
+                title={order.items
+                  .map((it) => `${it.desc ?? it.part ?? ''}${it.qty && it.qty !== 1 ? ` ×${it.qty}` : ''}`)
+                  .join('\n')}
+              >
+                ציוד: <bdi>{order.items[0].desc ?? order.items[0].part}</bdi>
+                {order.items[0].qty && order.items[0].qty !== 1 ? ` ×${order.items[0].qty}` : ''}
+                {order.items.length > 1 && (
+                  <span className="font-medium"> (+{order.items.length - 1} פריטים)</span>
+                )}
+              </p>
+            )}
             {order.phone && (
               <div className="mt-1 flex items-center gap-1">
                 <Phone className="h-3 w-3 text-muted-foreground" />
@@ -184,12 +199,21 @@ function DraggableOrderCard({
               </div>
             )}
           </div>
-          {days !== null && (
-            <Badge variant="outline" className={`text-xs ${daysColor}`}>
-              <Clock className="ml-1 h-3 w-3" />
-              {days}d
-            </Badge>
-          )}
+          <div className="flex flex-col items-end gap-1">
+            {days !== null && (
+              <Badge variant="outline" className={`text-xs ${daysColor}`}>
+                <Clock className="ml-1 h-3 w-3" />
+                {days}d
+              </Badge>
+            )}
+            <CustomerHistoryButton
+              customer={{
+                currentId: order.id,
+                customerNumber: order.customerNumber,
+                customerName: order.customerName,
+              }}
+            />
+          </div>
         </div>
         <div className="flex items-center gap-1 border-t pt-2 text-xs text-muted-foreground">
           <MapPin className="h-3 w-3 flex-shrink-0" />

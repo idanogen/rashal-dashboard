@@ -25,7 +25,7 @@ import { TaskDialog } from '@/components/deliveries/TaskDialog';
 import { DayMapDialog } from '@/components/deliveries/DayMapDialog';
 import { Loader2, AlertCircle } from 'lucide-react';
 import type { Order } from '@/types/order';
-import { TECHNICIAN_ONLY, type AssigneeName } from '@/types/route';
+import { TECHNICIAN_ONLY, type AssigneeName, ASSIGNEES } from '@/types/route';
 import type { CalendarDelivery } from '@/types/delivery';
 import { toast } from 'sonner';
 import {
@@ -711,6 +711,7 @@ export function DeliveriesPage() {
 
       {/* Driver Selector — quick pick after drag / date pick */}
       <DriverSelector
+        assignees={ASSIGNEES}
         open={driverPickerOpen}
         onClose={() => {
           setDriverPickerOpen(false);
@@ -733,6 +734,7 @@ export function DeliveriesPage() {
 
       {/* Reschedule driver picker (drag existing stop to another day) */}
       <DriverSelector
+        assignees={ASSIGNEES}
         open={!!pendingReschedule}
         onClose={() => setPendingReschedule(null)}
         onSelectDriver={handleRescheduleDriverSelected}

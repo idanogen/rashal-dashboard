@@ -10,6 +10,7 @@ import {
   type ChatSourceRef,
 } from '@/lib/timeline';
 import type { TimelineEvent } from '@/types/timeline';
+import { compressImages } from '@/lib/image-compress';
 
 /** Timeline events for one source (order/service). Fetches only while `enabled`. */
 export function useTimeline(source: ChatSourceRef | undefined, enabled = true) {
@@ -86,8 +87,10 @@ export function useUploadFiles(source: ChatSourceRef) {
   const { userId, userName } = useChatAuthor();
 
   return useMutation({
-    mutationFn: async ({ files }: { files: File[] }) => {
+    mutationFn: async ({ files: rawFiles }: { files: File[] }) => {
       const id = `event-${Date.now()}`;
+      // דחיסת תמונות לפני העלאה — חוסך מקום בשרת ובדחיפה לפריוריטי
+      const files = await compressImages(rawFiles);
       const localImageUrls = files
         .filter((f) => f.type.startsWith('image/'))
         .map((f) => URL.createObjectURL(f));
