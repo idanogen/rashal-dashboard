@@ -1,4 +1,5 @@
 import { CustomerHistoryButton } from '@/components/CustomerHistoryButton';
+import { ServiceCallDetailDialog } from '@/components/service-calls/ServiceCallDetailDialog';
 import { useState, useMemo } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import type { ServiceCall } from '@/types/service-call';
@@ -30,6 +31,7 @@ import {
   CalendarDays,
   GripVertical,
   Search,
+  Info,
 } from 'lucide-react';
 import { ZoneFilter } from '@/components/deliveries/ZoneFilter';
 import { getZoneById, ZONES } from '@/types/zone';
@@ -63,6 +65,7 @@ function ServiceCallCard({
 }: ServiceCallCardProps) {
   const days = getDaysSinceCreated(call.created);
   const daysColor = getDaysColor(days);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `servicecall-${call.id}`,
@@ -202,15 +205,36 @@ function ServiceCallCard({
                 {days}d
               </Badge>
             )}
-            <CustomerHistoryButton
-              customer={{
-                currentId: call.id,
-                customerNumber: call.customerNumber,
-                customerName: call.customerName,
-              }}
-            />
+            <div className="flex items-center gap-1">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  setDetailOpen(true);
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="inline-flex h-7 items-center gap-1 rounded-lg bg-primary/10 px-2 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20"
+                title="פרטי הקריאה המלאים"
+              >
+                <Info className="h-3.5 w-3.5" />
+                פרטים
+              </button>
+              <CustomerHistoryButton
+                customer={{
+                  currentId: call.id,
+                  customerNumber: call.customerNumber,
+                  customerName: call.customerName,
+                }}
+              />
+            </div>
           </div>
         </div>
+
+        <ServiceCallDetailDialog
+          call={call}
+          open={detailOpen}
+          onClose={() => setDetailOpen(false)}
+        />
         {call.city && (
           <div className="flex items-center gap-1 border-t pt-2 text-xs text-muted-foreground">
             <MapPin className="h-3 w-3 flex-shrink-0" />
