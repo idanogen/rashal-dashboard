@@ -6,7 +6,7 @@ import {
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Phone, MapPin, FileText, User, Building2, Calendar, Clock } from 'lucide-react';
+import { Phone, MapPin, FileText, User, Building2, Calendar, Package } from 'lucide-react';
 import type { Order } from '@/types/order';
 import { OrderStatusBadge } from './OrderStatusBadge';
 import { StatusDropdown } from './StatusDropdown';
@@ -154,6 +154,45 @@ export function OrderDetailDialog({ order, open, onClose }: OrderDetailDialogPro
               </InfoRow>
             )}
           </div>
+
+          {/* Equipment / Items (עמי #2 — ציוד להזמנה) */}
+          {order.items && order.items.length > 0 && (
+            <div>
+              <label className="mb-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <Package className="h-3.5 w-3.5" />
+                ציוד להזמנה ({order.items.length})
+              </label>
+              <div className="overflow-hidden rounded-lg border">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-muted/50 text-xs text-muted-foreground">
+                      <th className="p-2 text-start font-medium">פריט</th>
+                      <th className="p-2 text-start font-medium">מק״ט</th>
+                      <th className="p-2 text-center font-medium">כמות</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {order.items.map((item, i) => (
+                      <tr key={i} className="border-t">
+                        <td className="p-2">
+                          {item.desc ?? item.part ?? '—'}
+                          {item.serial && (
+                            <span className="ms-1 text-xs text-muted-foreground" dir="ltr">
+                              ({item.serial})
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-2 text-muted-foreground" dir="ltr">
+                          {item.part ?? '—'}
+                        </td>
+                        <td className="p-2 text-center font-medium">{item.qty ?? 1}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* Documents */}
           {order.documents && order.documents.length > 0 && (

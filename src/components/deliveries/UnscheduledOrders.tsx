@@ -1,4 +1,5 @@
 import { CustomerHistoryButton } from '@/components/CustomerHistoryButton';
+import { OrderDetailDialog } from '@/components/orders/OrderDetailDialog';
 import { useState, useMemo } from 'react';
 import type { Order } from '@/types/order';
 import { Card, CardContent } from '@/components/ui/card';
@@ -29,6 +30,7 @@ import {
   CheckSquare,
   Square,
   Search,
+  Info,
 } from 'lucide-react';
 import { useCallback } from 'react';
 import { ZoneFilter } from './ZoneFilter';
@@ -66,6 +68,7 @@ function DraggableOrderCard({
 }: OrderCardProps) {
   const days = getDaysSinceCreated(order.created);
   const daysColor = getDaysColor(days);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `order-${order.id}`,
@@ -206,13 +209,28 @@ function DraggableOrderCard({
                 {days}d
               </Badge>
             )}
-            <CustomerHistoryButton
-              customer={{
-                currentId: order.id,
-                customerNumber: order.customerNumber,
-                customerName: order.customerName,
-              }}
-            />
+            <div className="flex items-center gap-1">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  setDetailOpen(true);
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="inline-flex h-7 items-center gap-1 rounded-lg bg-primary/10 px-2 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20"
+                title="פרטי ההזמנה המלאים"
+              >
+                <Info className="h-3.5 w-3.5" />
+                פרטים
+              </button>
+              <CustomerHistoryButton
+                customer={{
+                  currentId: order.id,
+                  customerNumber: order.customerNumber,
+                  customerName: order.customerName,
+                }}
+              />
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-1 border-t pt-2 text-xs text-muted-foreground">
@@ -222,6 +240,12 @@ function DraggableOrderCard({
             {order.city ? `, ${order.city}` : ''}
           </span>
         </div>
+
+        <OrderDetailDialog
+          order={order}
+          open={detailOpen}
+          onClose={() => setDetailOpen(false)}
+        />
       </CardContent>
     </Card>
   );
