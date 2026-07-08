@@ -1,29 +1,14 @@
 import { useMemo, useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import type { Pickup } from '@/types/pickup';
-import { getZoneForCity, getZoneById, ZONES } from '@/types/zone';
+import { getZoneForCity } from '@/types/zone';
+import { ZoneFilter } from '@/components/deliveries/ZoneFilter';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import {
-  CalendarDays,
-  CheckCircle2,
-  ChevronDown,
-  ChevronLeft,
-  ChevronsUpDown,
-  GripVertical,
-  Search,
-  Undo2,
-} from 'lucide-react';
+import { CalendarDays, CheckCircle2, GripVertical, Search, Undo2 } from 'lucide-react';
 
 interface UnscheduledPickupsProps {
   pickups: Pickup[];
@@ -133,10 +118,17 @@ export function UnscheduledPickups({
   onShowDetails,
 }: UnscheduledPickupsProps) {
   const [search, setSearch] = useState('');
-  const [viewMode, setViewMode] = useState<'grouped' | 'all'>('grouped');
-  const [expandedZones, setExpandedZones] = useState<Set<string>>(new Set());
+  const [selectedZones, setSelectedZones] = useState<string[]>([]);
 
-  const filtered = useMemo(() => {
+  // zoneId per pickup (by city) — computed once.
+  const zoneById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of pickups) m.set(p.id, getZoneForCity(p.city) || 'unassigned');
+    return m;
+  }, [pickups]);
+
+  // search filter
+  const searched = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return pickups;
     return pickups.filter((p) =>
@@ -146,54 +138,29 @@ export function UnscheduledPickups({
     );
   }, [pickups, search]);
 
-  // קיבוץ לפי אזור גיאוגרפי (לפי העיר), ממוין צפון→דרום, "ללא אזור" בסוף.
-  const groupedByZone = useMemo(() => {
-    const map = new Map<string, Pickup[]>();
-    for (const p of filtered) {
-      const zoneId = getZoneForCity(p.city) || 'unassigned';
-      const g = map.get(zoneId) || [];
-      g.push(p);
-      map.set(zoneId, g);
+  // counts per zone (from search-filtered set) for the ZoneFilter chips
+  const countByZone = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of searched) {
+      const z = zoneById.get(p.id) || 'unassigned';
+      m.set(z, (m.get(z) || 0) + 1);
     }
-    const zoneOrder = ZONES.map((z) => z.id);
-    const sorted = new Map<string, Pickup[]>();
-    Array.from(map.entries())
-      .sort(([a], [b]) => {
-        const ia = a === 'unassigned' ? Infinity : (zoneOrder.indexOf(a) === -1 ? Infinity : zoneOrder.indexOf(a));
-        const ib = b === 'unassigned' ? Infinity : (zoneOrder.indexOf(b) === -1 ? Infinity : zoneOrder.indexOf(b));
-        return ia - ib;
-      })
-      .forEach(([k, v]) => sorted.set(k, v));
-    return sorted;
-  }, [filtered]);
+    return m;
+  }, [searched, zoneById]);
 
-  const toggleZone = (zoneId: string) => {
-    setExpandedZones((prev) => {
-      const next = new Set(prev);
-      next.has(zoneId) ? next.delete(zoneId) : next.add(zoneId);
-      return next;
-    });
-  };
+  // visible = search + selected zones (none selected → all)
+  const visible = useMemo(() => {
+    if (selectedZones.length === 0) return searched;
+    return searched.filter((p) => selectedZones.includes(zoneById.get(p.id) || 'unassigned'));
+  }, [searched, selectedZones, zoneById]);
 
-  const allZoneIds = Array.from(groupedByZone.keys());
-  const allExpanded = allZoneIds.length > 0 && allZoneIds.every((id) => expandedZones.has(id));
-  const toggleAllZones = () =>
-    setExpandedZones(allExpanded ? new Set() : new Set(allZoneIds));
+  const toggleZone = (zoneId: string) =>
+    setSelectedZones((prev) =>
+      prev.includes(zoneId) ? prev.filter((id) => id !== zoneId) : [...prev, zoneId]
+    );
 
   const allVisibleSelected =
-    filtered.length > 0 && filtered.every((p) => selectedIds.has(p.id));
-
-  const renderCard = (p: Pickup) => (
-    <PickupCard
-      key={p.id}
-      pickup={p}
-      selected={selectedIds.has(p.id)}
-      onToggleSelect={onToggleSelect}
-      isPending={pendingScheduleIds.has(p.id)}
-      isReturned={returnedIds?.has(p.id) ?? false}
-      onShowDetails={onShowDetails}
-    />
-  );
+    visible.length > 0 && visible.every((p) => selectedIds.has(p.id));
 
   return (
     <div className="space-y-3">
@@ -208,108 +175,56 @@ export function UnscheduledPickups({
             className="pe-9"
           />
         </div>
-        <Select value={viewMode} onValueChange={(v) => setViewMode(v as 'grouped' | 'all')}>
-          <SelectTrigger className="h-9 w-[150px] text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="grouped">קיבוץ לפי אזור</SelectItem>
-            <SelectItem value="all">תצוגה רגילה</SelectItem>
-          </SelectContent>
-        </Select>
-        {filtered.length > 0 && (
+        {visible.length > 0 && (
           <Button
             variant="outline"
             size="sm"
             onClick={() =>
-              allVisibleSelected ? onClearSelection() : onSelectAll(filtered.map((p) => p.id))
+              allVisibleSelected ? onClearSelection() : onSelectAll(visible.map((p) => p.id))
             }
           >
             <CheckCircle2 className="h-4 w-4" />
-            {allVisibleSelected ? 'נקה בחירה' : 'בחר הכל'}
+            {allVisibleSelected ? 'נקה בחירה' : `בחר ${visible.length}`}
           </Button>
         )}
       </div>
 
-      {filtered.length === 0 ? (
+      {/* Zone filter chips (by region, with counts) */}
+      <ZoneFilter
+        selectedZones={selectedZones}
+        onZoneToggle={toggleZone}
+        onClearAll={() => setSelectedZones([])}
+        orderCountByZone={countByZone}
+      />
+
+      {/* Cards */}
+      {visible.length === 0 ? (
         <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-          אין איסופים ממתינים
-        </div>
-      ) : viewMode === 'all' ? (
-        // ── תצוגה רגילה — רשת בתוך מיכל גלילה תחום (הדף לא גדל) ──
-        <div className="grid max-h-[560px] gap-2 overflow-y-auto rounded-xl border bg-muted/20 p-2 sm:grid-cols-2 lg:grid-cols-3">
-          {filtered.map(renderCard)}
+          {searched.length === 0 ? 'אין איסופים ממתינים' : 'אין איסופים באזורים שנבחרו'}
         </div>
       ) : (
-        // ── קיבוץ לפי אזור — כל אזור מתקפל, בתוך מיכל גלילה תחום ──
-        <div className="max-h-[560px] space-y-2 overflow-y-auto rounded-xl border bg-muted/20 p-2">
-          <div className="flex items-center justify-between px-1">
-            <span className="text-xs text-muted-foreground">
-              {allZoneIds.length} אזורים · {filtered.length} איסופים
+        <>
+          <div className="flex items-center justify-between px-1 text-xs text-muted-foreground">
+            <span>
+              {selectedZones.length > 0
+                ? `מציג ${visible.length} מתוך ${searched.length}`
+                : `${visible.length} איסופים · בחר אזור לצמצום`}
             </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={toggleAllZones}
-              className="h-7 gap-1 text-xs text-muted-foreground"
-            >
-              <ChevronsUpDown className="h-3.5 w-3.5" />
-              {allExpanded ? 'סגור הכל' : 'פתח הכל'}
-            </Button>
           </div>
-          {Array.from(groupedByZone.entries()).map(([zoneId, zonePickups]) => {
-            const zone = getZoneById(zoneId);
-            const isExpanded = expandedZones.has(zoneId);
-            const selectedInZone = zonePickups.filter((p) => selectedIds.has(p.id)).length;
-            return (
-              <div key={zoneId} className="overflow-hidden rounded-lg border bg-card">
-                <button
-                  type="button"
-                  onClick={() => toggleZone(zoneId)}
-                  className={cn(
-                    'flex w-full items-center gap-2 px-3 py-2.5 text-start transition-colors hover:bg-muted/50',
-                    isExpanded && 'border-b bg-muted/30'
-                  )}
-                >
-                  {isExpanded ? (
-                    <ChevronDown className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-                  ) : (
-                    <ChevronLeft className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
-                  )}
-                  {zone?.color && (
-                    <span className={cn('h-3 w-3 flex-shrink-0 rounded-full', zone.color)} />
-                  )}
-                  <span className="font-semibold">{zone?.name || 'ללא אזור'}</span>
-                  <Badge variant="secondary" className="text-xs">{zonePickups.length}</Badge>
-                  {selectedInZone > 0 && (
-                    <Badge className="bg-teal-500 text-xs">{selectedInZone} נבחרו</Badge>
-                  )}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const ids = zonePickups.map((p) => p.id);
-                      const allSel = ids.every((id) => selectedIds.has(id));
-                      onSelectAll(
-                        allSel
-                          ? [...selectedIds].filter((id) => !ids.includes(id))
-                          : [...new Set([...selectedIds, ...ids])]
-                      );
-                    }}
-                    className="ms-auto text-[11px] font-medium text-teal-700 hover:underline"
-                  >
-                    בחר אזור
-                  </button>
-                </button>
-                {isExpanded && (
-                  <div className="grid gap-2 p-2 sm:grid-cols-2">
-                    {zonePickups.map(renderCard)}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+          <div className="grid max-h-[560px] gap-2 overflow-y-auto rounded-xl border bg-muted/20 p-2 sm:grid-cols-2 lg:grid-cols-3">
+            {visible.map((p) => (
+              <PickupCard
+                key={p.id}
+                pickup={p}
+                selected={selectedIds.has(p.id)}
+                onToggleSelect={onToggleSelect}
+                isPending={pendingScheduleIds.has(p.id)}
+                isReturned={returnedIds?.has(p.id) ?? false}
+                onShowDetails={onShowDetails}
+              />
+            ))}
+          </div>
+        </>
       )}
 
       {selectedIds.size > 0 && (
