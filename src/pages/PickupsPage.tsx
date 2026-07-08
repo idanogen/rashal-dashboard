@@ -90,7 +90,12 @@ export function PickupsPage() {
   const pendingPickups = useMemo(
     () =>
       pickups.filter(
-        (p) => !p.duplicateOf && (p.pickupStatus ?? 'ממתין לתאום') === 'ממתין לתאום'
+        (p) =>
+          !p.duplicateOf &&
+          (p.pickupStatus ?? 'ממתין לתאום') === 'ממתין לתאום' &&
+          // רשת ביטחון: איסוף שכבר נאסף/בוטל בפריוריטי לא מופיע בממתינים
+          p.priorityStatus !== 'סופית' &&
+          p.priorityStatus !== 'מבוטלת'
       ),
     [pickups]
   );
@@ -99,9 +104,10 @@ export function PickupsPage() {
     () => calendarStops.filter((s) => s.sourceType === 'pickup' && (s.status === 'planned' || s.status === 'in_progress')).length,
     [calendarStops]
   );
+  // "נאסף" = איסופים שסומנו כנאספו (רובם ישירות מפריוריטי בסטטוס סופית).
   const completedCount = useMemo(
-    () => calendarStops.filter((s) => s.sourceType === 'pickup' && s.status === 'completed').length,
-    [calendarStops]
+    () => pickups.filter((p) => p.pickupStatus === 'נאסף').length,
+    [pickups]
   );
 
   const returnedIds = useMemo(

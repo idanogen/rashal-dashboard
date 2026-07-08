@@ -453,6 +453,17 @@ function pickupContact(r: Row): { phone: string | null; address: string | null; 
   };
 }
 
+// STATDES → app pickup_status. Priority is authoritative for the terminal states
+// (collected / cancelled); the open flow (ממתין↔תואם איסוף) stays app-owned.
+//   סופית  = collected → 'נאסף'
+//   מבוטלת = cancelled → 'בוטל'
+//   טיוטא  = still open → null (don't touch app status on update)
+function pickupStatusFromPriority(statdes: string | null): string | null {
+  if (statdes === 'סופית') return 'נאסף';
+  if (statdes === 'מבוטלת') return 'בוטל';
+  return null;
+}
+
 async function upsertPickups(rows: Row[]) {
   const stats = await runAdoption(rows, {
     table: 'pickups',
@@ -481,7 +492,9 @@ async function upsertPickups(rows: Row[]) {
         total_price: num(r.TOTPRICE),
         lines: mapPickupLines(r),
         priority_udate: s(r.UDATE),
-        // pickup_status omitted → DB default 'ממתין לתאום' (app-owned)
+        // initial operational status derived from Priority (סופית→נאסף etc.),
+        // open drafts start as 'ממתין לתאום'.
+        pickup_status: pickupStatusFromPriority(s(r.STATDES)) ?? 'ממתין לתאום',
       };
     },
     updateRow: (r) => {
@@ -501,6 +514,9 @@ async function upsertPickups(rows: Row[]) {
       const tq = num(r.TOTQUANT); if (tq != null) u.total_qty = tq;
       const tp = num(r.TOTPRICE); if (tp != null) u.total_price = tp;
       const lines = mapPickupLines(r); if (lines) u.lines = lines;
+      // Priority pushes terminal states only (collected/cancelled); the open
+      // ממתין↔תואם-איסוף flow stays app-owned and is left untouched here.
+      const ps = pickupStatusFromPriority(s(r.STATDES)); if (ps) u.pickup_status = ps;
       return u;
     },
     adoptRow: (r) => ({
