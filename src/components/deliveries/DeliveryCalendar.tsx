@@ -41,6 +41,15 @@ import { OrderChatButton } from '@/components/OrderChatButton';
 const toLocalDateStr = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
+// מטא-דאטה לכל סוג עצירה — אייקון, צבע, פס-צד, ותווית. משמש גם את הכרטיס וגם את המקרא.
+const SOURCE_META = {
+  delivery: { Icon: Package, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-s-blue-500', dot: 'bg-blue-500', label: 'משלוח' },
+  service: { Icon: Wrench, color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-s-orange-500', dot: 'bg-orange-500', label: 'שירות' },
+  pickup: { Icon: Undo2, color: 'text-teal-600', bg: 'bg-teal-50', border: 'border-s-teal-500', dot: 'bg-teal-500', label: 'איסוף' },
+  task: { Icon: ClipboardList, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-s-amber-500', dot: 'bg-amber-500', label: 'משימה' },
+} as const;
+const SOURCE_ORDER = ['delivery', 'service', 'pickup', 'task'] as const;
+
 interface DeliveryCalendarProps {
   deliveries: CalendarDelivery[];
   /** Called with the calendar_stops.id to remove (single source of truth) */
@@ -64,7 +73,6 @@ interface StopCardProps {
 }
 
 function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate }: StopCardProps) {
-  const config = assigneeStyle(delivery.driver);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const prevCoordRef = useRef<typeof stop.coordinationStatus>(stop.coordinationStatus);
 
@@ -117,14 +125,8 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate }: StopCar
     opacity: isDragging ? 0.4 : 1,
   };
 
-  // אייקון + צבע לפי סוג מקור
-  const sourceConfig = {
-    delivery: { Icon: Package, color: 'text-blue-600', bg: 'bg-blue-50', label: 'משלוח' },
-    service: { Icon: Wrench, color: 'text-orange-600', bg: 'bg-orange-50', label: 'שירות' },
-    task: { Icon: ClipboardList, color: 'text-amber-600', bg: 'bg-amber-50', label: 'משימה' },
-    pickup: { Icon: Undo2, color: 'text-teal-600', bg: 'bg-teal-50', label: 'איסוף' },
-  } as const;
-  const src = sourceConfig[stop.sourceType] ?? sourceConfig.delivery;
+  // אייקון + צבע + פס-צד לפי סוג מקור
+  const src = SOURCE_META[stop.sourceType] ?? SOURCE_META.delivery;
   const SrcIcon = src.Icon;
 
   // רקע לפי סטטוס
@@ -158,7 +160,7 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate }: StopCar
       ref={setRefs}
       style={sortableStyle}
       className={`
-        group relative rounded-lg border-s-[4px] ${config.borderColor} border ${statusBg}
+        group relative rounded-lg border-s-[5px] ${src.border} border ${statusBg}
         p-3 transition-all duration-300 hover:shadow-md
         ${needsCancel ? 'ring-2 ring-amber-500/80 bg-amber-50/70 dark:bg-amber-900/25' : ''}
         ${isCustomerConfirmed && !needsCancel ? 'shadow-md shadow-emerald-200/50' : ''}
@@ -184,10 +186,11 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate }: StopCar
         <div className="flex items-center gap-2 min-w-0">
           <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40 flex-shrink-0" />
           <span
-            className={`flex h-6 w-6 items-center justify-center rounded-md ${src.bg} ${src.color} flex-shrink-0`}
+            className={`inline-flex h-6 items-center gap-1 rounded-md ${src.bg} ${src.color} px-1.5 flex-shrink-0`}
             title={src.label}
           >
             <SrcIcon className="h-3.5 w-3.5" />
+            <span className="text-[11px] font-bold leading-none">{src.label}</span>
           </span>
           <span className={`font-semibold text-sm truncate ${nameClass}`}>
             {stop.customerName}
@@ -526,6 +529,24 @@ export function DeliveryCalendar({
             </Button>
           </div>
         </div>
+      </div>
+
+      {/* מקרא — סוגי העצירות ביומן */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border bg-muted/30 px-3 py-2">
+        <span className="text-xs font-bold text-muted-foreground">מקרא</span>
+        {SOURCE_ORDER.map((t) => {
+          const m = SOURCE_META[t];
+          const Icon = m.Icon;
+          return (
+            <span key={t} className="inline-flex items-center gap-1.5">
+              <span className={`h-4 w-1.5 rounded-full ${m.dot}`} />
+              <span className={`inline-flex h-5 w-5 items-center justify-center rounded ${m.bg} ${m.color}`}>
+                <Icon className="h-3 w-3" />
+              </span>
+              <span className="text-xs font-medium">{m.label}</span>
+            </span>
+          );
+        })}
       </div>
 
       {/* Week Grid */}
