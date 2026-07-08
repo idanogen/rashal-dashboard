@@ -24,6 +24,7 @@ import {
   Phone,
   Package,
   Wrench,
+  Undo2,
   ClipboardList,
   Plus,
   Check,
@@ -121,8 +122,9 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate }: StopCar
     delivery: { Icon: Package, color: 'text-blue-600', bg: 'bg-blue-50', label: 'משלוח' },
     service: { Icon: Wrench, color: 'text-orange-600', bg: 'bg-orange-50', label: 'שירות' },
     task: { Icon: ClipboardList, color: 'text-amber-600', bg: 'bg-amber-50', label: 'משימה' },
+    pickup: { Icon: Undo2, color: 'text-teal-600', bg: 'bg-teal-50', label: 'איסוף' },
   } as const;
-  const src = sourceConfig[stop.sourceType];
+  const src = sourceConfig[stop.sourceType] ?? sourceConfig.delivery;
   const SrcIcon = src.Icon;
 
   // רקע לפי סטטוס

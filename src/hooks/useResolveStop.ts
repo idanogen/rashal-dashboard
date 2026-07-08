@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { resolveStop } from '@/lib/calendar-stops';
 import { updateOrder } from '@/lib/orders';
 import { updateServiceCall } from '@/lib/service-calls';
+import { updatePickup } from '@/lib/pickups';
 import type { CalendarStop } from '@/types/calendar-stop';
 import { toast } from 'sonner';
 
@@ -34,6 +35,8 @@ export function useResolveStop() {
           await updateServiceCall(stop.serviceCallId, {
             serviceCallStatus: 'בוצע',
           });
+        } else if (stop.sourceType === 'pickup' && stop.pickupId) {
+          await updatePickup(stop.pickupId, { pickupStatus: 'נאסף' });
         }
       } else {
         // not_completed — חזרה לממתינים
@@ -43,6 +46,8 @@ export function useResolveStop() {
           await updateServiceCall(stop.serviceCallId, {
             serviceCallStatus: 'קריאה חדשה',
           });
+        } else if (stop.sourceType === 'pickup' && stop.pickupId) {
+          await updatePickup(stop.pickupId, { pickupStatus: 'ממתין לתאום' });
         }
       }
 
@@ -52,6 +57,7 @@ export function useResolveStop() {
       queryClient.invalidateQueries({ queryKey: ['calendarStops'] });
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       queryClient.invalidateQueries({ queryKey: ['serviceCalls'] });
+      queryClient.invalidateQueries({ queryKey: ['pickups'] });
       toast.success(
         variables.status === 'completed' ? 'סומן כבוצע' : 'סומן כלא בוצע'
       );

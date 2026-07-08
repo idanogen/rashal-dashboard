@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { deleteStop } from '@/lib/calendar-stops';
 import { updateOrder } from '@/lib/orders';
 import { updateServiceCall } from '@/lib/service-calls';
+import { updatePickup } from '@/lib/pickups';
 import type { CalendarStop } from '@/types/calendar-stop';
 import { toast } from 'sonner';
 
@@ -24,12 +25,15 @@ export function useDeleteStop() {
         await updateServiceCall(stop.serviceCallId, {
           serviceCallStatus: 'קריאה חדשה',
         });
+      } else if (stop.sourceType === 'pickup' && stop.pickupId) {
+        await updatePickup(stop.pickupId, { pickupStatus: 'ממתין לתאום' });
       }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['calendarStops'] });
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       queryClient.invalidateQueries({ queryKey: ['serviceCalls'] });
+      queryClient.invalidateQueries({ queryKey: ['pickups'] });
       toast.success('העצירה הוסרה מהיומן');
     },
     onError: (err) => {

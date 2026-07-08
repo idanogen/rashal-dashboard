@@ -37,6 +37,11 @@ export function useRealtimeSync() {
         { event: '*', schema: 'public', table: 'calendar_stops' },
         () => queryClient.invalidateQueries({ queryKey: ['calendarStops'] })
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pickups' },
+        () => queryClient.invalidateQueries({ queryKey: ['pickups'] })
+      )
       .subscribe();
 
     return () => {

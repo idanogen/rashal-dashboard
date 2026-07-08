@@ -1,6 +1,6 @@
 import type { AssigneeName } from './route';
 
-export type StopSourceType = 'delivery' | 'service' | 'task';
+export type StopSourceType = 'delivery' | 'service' | 'task' | 'pickup';
 
 export type StopStatus =
   | 'planned'
@@ -33,6 +33,7 @@ export interface CalendarStop {
   sourceType: StopSourceType;
   orderId?: string;
   serviceCallId?: string;
+  pickupId?: string;
 
   // Cached stop data
   customerName: string;
@@ -75,6 +76,7 @@ export const STOP_SOURCE_LABELS: Record<StopSourceType, string> = {
   delivery: 'משלוח',
   service: 'שירות',
   task: 'משימה',
+  pickup: 'איסוף',
 };
 
 export const STOP_STATUS_LABELS: Record<StopStatus, string> = {
@@ -93,6 +95,7 @@ export interface ScheduleStopInput {
   sourceType: StopSourceType;
   orderId?: string;
   serviceCallId?: string;
+  pickupId?: string;
   customerName: string;
   address?: string;
   city?: string;

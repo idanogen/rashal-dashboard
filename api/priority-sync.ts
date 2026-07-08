@@ -8,6 +8,7 @@ import { supabaseAdmin } from './_lib/supabase-admin.js';
 //   POST /api/priority-sync?kind=orders      → upsert ORDERS rows (adoption logic)
 //   POST /api/priority-sync?kind=service_calls → upsert DOCUMENTS_Q rows
 //   POST /api/priority-sync?kind=customers   → upsert CUSTOMERS rows into cache
+//   POST /api/priority-sync?kind=pickups     → upsert DOCUMENTS_N rows (+ lines/contact)
 //
 // Auth: header `x-sync-secret` must equal env PRIORITY_SYNC_SECRET.
 //
@@ -26,6 +27,11 @@ const s = (v: unknown): string | null => {
   if (v === null || v === undefined) return null;
   const t = String(v).trim();
   return t.length ? t : null;
+};
+const num = (v: unknown): number | null => {
+  if (v === null || v === undefined || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
 };
 
 // OData DateTimeOffset formatter: 2026-07-04T06:00:00Z (no millis, no quotes)
@@ -63,18 +69,21 @@ function maxDate(rows: Row[], field: string): string | null {
 async function handleGet(res: VercelResponse) {
   // Overlap windows: ORDERS.STATUSDATE has DAY granularity → look back a full
   // extra day. DOCUMENTS_Q.STATUSDATE has minute granularity → 15 min is plenty.
-  const [orders, calls, customers] = await Promise.all([
+  const [orders, calls, customers, pickups] = await Promise.all([
     getWatermark('orders', 3),
     getWatermark('service_calls', 3),
     getWatermark('customers', 90), // retention rule: 90-day window
+    getWatermark('pickups', 90),
   ]);
   orders.setUTCHours(orders.getUTCHours() - 25);
   calls.setUTCMinutes(calls.getUTCMinutes() - 15);
   customers.setUTCMinutes(customers.getUTCMinutes() - 15);
+  pickups.setUTCMinutes(pickups.getUTCMinutes() - 15); // DOCUMENTS_N.UDATE has minute granularity
   return res.status(200).json({
     orders_since: odataTs(orders),
     calls_since: odataTs(calls),
     customers_since: odataTs(customers),
+    pickups_since: odataTs(pickups),
   });
 }
 
@@ -125,8 +134,8 @@ async function upsertCustomers(rows: Row[]) {
 //   3. no match                 → INSERT
 // ---------------------------------------------------------------------------
 interface AdoptConfig {
-  table: 'orders' | 'service_calls';
-  keyCol: 'priority_order_id' | 'priority_call_id';
+  table: 'orders' | 'service_calls' | 'pickups';
+  keyCol: 'priority_order_id' | 'priority_call_id' | 'priority_pickup_id';
   naturalKey: (r: Row) => string | null;
   docDate: (r: Row) => string | null;       // Priority-side creation date
   insertRow: (r: Row) => Row;               // full row for INSERT
@@ -414,6 +423,98 @@ async function upsertServiceCalls(rows: Row[]) {
 }
 
 // ---------------------------------------------------------------------------
+// pickups ← DOCUMENTS_N (+ TRANSORDER_N_SUBFORM lines, DOCUMENTS_DCONT_SUBFORM address)
+// ---------------------------------------------------------------------------
+// TRANSORDER_N_SUBFORM → lines jsonb
+function mapPickupLines(r: Row): Row[] | null {
+  const sub = r.TRANSORDER_N_SUBFORM;
+  if (!Array.isArray(sub) || !sub.length) return null;
+  return (sub as Row[]).map((l) => ({
+    trans: num(l.TRANS),
+    kline: num(l.KLINE),
+    part: s(l.PARTNAME),
+    desc: s(l.PDES),
+    qty: num(l.TQUANT),
+    unit: s(l.TUNITNAME),
+    barcode: s(l.BARCODE),
+    sourceOrder: s(l.ORDNAME),
+    returnReason: s(l.RETREASONDES),
+  }));
+}
+
+// DOCUMENTS_DCONT_SUBFORM → phone / address / city (per-document contact)
+function pickupContact(r: Row): { phone: string | null; address: string | null; city: string | null } {
+  const raw = r.DOCUMENTS_DCONT_SUBFORM;
+  const c = (Array.isArray(raw) ? raw[0] : raw) as Row | undefined;
+  return {
+    phone: s(c?.PHONE),
+    address: s(c?.ADRS),
+    city: s(c?.STATE),
+  };
+}
+
+async function upsertPickups(rows: Row[]) {
+  const stats = await runAdoption(rows, {
+    table: 'pickups',
+    keyCol: 'priority_pickup_id',
+    naturalKey: (r) => s(r.DOCNO),
+    docDate: (r) => s(r.CURDATE),
+    insertRow: (r) => {
+      const c = pickupContact(r);
+      return {
+        priority_pickup_id: s(r.DOCNO),
+        priority_doc: num(r.DOC),
+        customer_number: s(r.CUSTNAME),
+        customer_name: s(r.CDES) ?? s(r.CUSTNAME) ?? '—',
+        phone: c.phone,
+        address: c.address,
+        city: c.city,
+        priority_status: s(r.STATDES),
+        pickup_date: s(r.CURDATE),
+        source_order: s(r.ORDNAME),
+        delivery_note: s(r.ODOCNO),
+        reference: s(r.REFERENCE),
+        to_warehouse: s(r.TOWARHSDES),
+        agent: s(r.AGENTNAME),
+        opened_by: s(r.OWNERLOGIN),
+        total_qty: num(r.TOTQUANT),
+        total_price: num(r.TOTPRICE),
+        lines: mapPickupLines(r),
+        priority_udate: s(r.UDATE),
+        // pickup_status omitted → DB default 'ממתין לתאום' (app-owned)
+      };
+    },
+    updateRow: (r) => {
+      const c = pickupContact(r);
+      const u: Row = {
+        customer_number: s(r.CUSTNAME),
+        priority_status: s(r.STATDES),
+        priority_udate: s(r.UDATE),
+      };
+      const name = s(r.CDES); if (name) u.customer_name = name;
+      if (c.phone) u.phone = c.phone;
+      if (c.address) u.address = c.address;
+      if (c.city) u.city = c.city;
+      const so = s(r.ORDNAME); if (so) u.source_order = so;
+      const dn = s(r.ODOCNO); if (dn) u.delivery_note = dn;
+      const tw = s(r.TOWARHSDES); if (tw) u.to_warehouse = tw;
+      const tq = num(r.TOTQUANT); if (tq != null) u.total_qty = tq;
+      const tp = num(r.TOTPRICE); if (tp != null) u.total_price = tp;
+      const lines = mapPickupLines(r); if (lines) u.lines = lines;
+      return u;
+    },
+    adoptRow: (r) => ({
+      priority_pickup_id: s(r.DOCNO),
+      customer_number: s(r.CUSTNAME),
+    }),
+  });
+
+  const wm = maxDate(rows, 'UDATE');
+  if (wm) await setWatermark('pickups', wm);
+  return { ...stats, watermark: wm };
+}
+
+// ---------------------------------------------------------------------------
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!SECRET) return res.status(500).json({ error: 'PRIORITY_SYNC_SECRET not configured' });
   if (req.headers['x-sync-secret'] !== SECRET) {
@@ -432,6 +533,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (kind === 'customers') return res.status(200).json(await upsertCustomers(rows));
       if (kind === 'orders') return res.status(200).json(await upsertOrders(rows));
       if (kind === 'service_calls') return res.status(200).json(await upsertServiceCalls(rows));
+      if (kind === 'pickups') return res.status(200).json(await upsertPickups(rows));
       return res.status(400).json({ error: `unknown kind: ${kind}` });
     }
 

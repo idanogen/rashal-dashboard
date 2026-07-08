@@ -97,6 +97,19 @@ export function AppHeader() {
               קריאות שירות
             </NavLink>
             <NavLink
+              to="/pickups"
+              className={({ isActive }) =>
+                cn(
+                  'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                  isActive
+                    ? 'bg-teal-50 text-teal-700'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                )
+              }
+            >
+              איסופים
+            </NavLink>
+            <NavLink
               to="/inspections"
               className={({ isActive }) =>
                 cn(

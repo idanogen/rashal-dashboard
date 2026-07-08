@@ -214,8 +214,9 @@ export function DeliveriesPage() {
     const groups = new Map<string, CalendarDelivery>();
     for (const s of calendarStops) {
       if (s.status === 'cancelled') continue;
-      // מסך המשלוחים: משלוחים + משימות של נהגים. לא קריאות שירות, ולא משימות של טכנאי-בלבד.
+      // מסך המשלוחים: משלוחים + משימות של נהגים. לא קריאות שירות, לא איסופים, ולא משימות של טכנאי-בלבד.
       if (s.sourceType === 'service') continue;
+      if (s.sourceType === 'pickup') continue;
       if (s.sourceType === 'task' && TECHNICIAN_ONLY.has(s.driver)) continue;
       const key = `${s.deliveryDate}__${s.driver}`;
       let group = groups.get(key);

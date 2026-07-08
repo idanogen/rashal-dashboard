@@ -7,6 +7,7 @@ import { DashboardPage } from '@/pages/DashboardPage';
 import { DeliveriesPage } from '@/pages/DeliveriesPage';
 import { ServiceCallsPage } from '@/pages/ServiceCallsPage';
 import { InspectionsPage } from '@/pages/InspectionsPage';
+import { PickupsPage } from '@/pages/PickupsPage';
 import { RouteNavigationPage } from '@/pages/RouteNavigationPage';
 import { WhatsAppPage } from '@/pages/WhatsAppPage';
 import { AdminUsersPage } from '@/pages/AdminUsersPage';
@@ -75,6 +76,7 @@ function App() {
                         <Route path="/" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><DashboardPage /></RoleBasedRoute>} />
                         <Route path="/routes" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><DeliveriesPage /></RoleBasedRoute>} />
                         <Route path="/service-calls" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><ServiceCallsPage /></RoleBasedRoute>} />
+                        <Route path="/pickups" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><PickupsPage /></RoleBasedRoute>} />
                         <Route path="/inspections" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><InspectionsPage /></RoleBasedRoute>} />
                         <Route path="/whatsapp" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><WhatsAppPage /></RoleBasedRoute>} />
                         <Route
