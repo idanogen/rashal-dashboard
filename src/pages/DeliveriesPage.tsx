@@ -25,7 +25,8 @@ import { TaskDialog } from '@/components/deliveries/TaskDialog';
 import { DayMapDialog } from '@/components/deliveries/DayMapDialog';
 import { Loader2, AlertCircle } from 'lucide-react';
 import type { Order } from '@/types/order';
-import { TECHNICIAN_ONLY, type AssigneeName, ASSIGNEES } from '@/types/route';
+import { type AssigneeName, ASSIGNEES } from '@/types/route';
+import { buildCalendarDeliveries } from '@/lib/calendar-view';
 import type { CalendarDelivery } from '@/types/delivery';
 import { toast } from 'sonner';
 import {
@@ -145,7 +146,7 @@ export function DeliveriesPage() {
     if (!s) return null;
     return {
       stopId: s.id,
-      sourceId: s.orderId ?? s.serviceCallId ?? s.id,
+      sourceId: s.orderId ?? s.serviceCallId ?? s.pickupId ?? s.id,
       sourceType: s.sourceType,
       deliveryDate: s.deliveryDate,
       driver: s.driver as AssigneeName,
@@ -208,53 +209,12 @@ export function DeliveriesPage() {
     [calendarStops]
   );
 
-  // Calendar deliveries — מקובצים מ-calendar_stops (מקור האמת החדש).
-  // מציג את כל הסוגים (משלוחים + שירות + משימות).
-  const calendarDeliveries: CalendarDelivery[] = useMemo(() => {
-    const groups = new Map<string, CalendarDelivery>();
-    for (const s of calendarStops) {
-      if (s.status === 'cancelled') continue;
-      // מסך המשלוחים: משלוחים + משימות של נהגים. לא קריאות שירות, לא איסופים, ולא משימות של טכנאי-בלבד.
-      if (s.sourceType === 'service') continue;
-      if (s.sourceType === 'pickup') continue;
-      if (s.sourceType === 'task' && TECHNICIAN_ONLY.has(s.driver)) continue;
-      const key = `${s.deliveryDate}__${s.driver}`;
-      let group = groups.get(key);
-      if (!group) {
-        group = {
-          id: key,
-          date: s.deliveryDate,
-          driver: s.driver as AssigneeName,
-          stops: [],
-        };
-        groups.set(key, group);
-      }
-      group.stops.push({
-        stopId: s.id,
-        sourceId: s.orderId ?? s.serviceCallId ?? s.id,
-        sourceType: s.sourceType,
-        status: s.status,
-        deliveryDate: s.deliveryDate,
-        driver: s.driver as AssigneeName,
-        customerName: s.customerName,
-        address: s.address,
-        city: s.city,
-        phone: s.phone,
-        coordinates: s.coordinates,
-        coordinatesSource: s.coordinatesSource,
-        coordinationStatus: s.coordinationStatus,
-        coordinationMethod: s.coordinationMethod,
-        coordinatedAt: s.coordinatedAt,
-        timeWindowStart: s.timeWindowStart,
-        timeWindowEnd: s.timeWindowEnd,
-        coordinationNeedsCancel: s.coordinationNeedsCancel,
-        scheduledBy: s.scheduledBy,
-        rescheduledBy: s.rescheduledBy,
-        rescheduledAt: s.rescheduledAt,
-      });
-    }
-    return Array.from(groups.values());
-  }, [calendarStops]);
+  // יומן מאוחד — כל הסוגים יחד (משלוחים + שירות + איסופים + משימות),
+  // כדי שהיומן התחתון יראה את כל הקווים בכל המסכים.
+  const calendarDeliveries: CalendarDelivery[] = useMemo(
+    () => buildCalendarDeliveries(calendarStops),
+    [calendarStops]
+  );
 
   // ─── Selection ──────────────────────────────────────────
   const handleToggleSelect = useCallback((orderId: string) => {
