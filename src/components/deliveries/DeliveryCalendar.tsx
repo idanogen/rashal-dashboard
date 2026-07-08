@@ -376,6 +376,14 @@ export function DeliveryCalendar({
 }: DeliveryCalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [coordinationStop, setCoordinationStop] = useState<CalendarStop | null>(null);
+  // קבוצות נהג מקופלות ביומן (key = delivery.id = "date__driver")
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const toggleGroup = (id: string) =>
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
 
   const dayNames = [
     'ראשון',
@@ -655,13 +663,22 @@ export function DeliveryCalendar({
                       if (tb) return 1;
                       return 0;
                     });
+                    const isCollapsed = collapsedGroups.has(delivery.id);
                     return (
                       <div key={delivery.id} className="space-y-1.5">
-                        {/* Driver subheader */}
-                        <div
-                          className={`flex items-center justify-between rounded-md px-2 py-1 ${driverCfg.color}`}
+                        {/* Driver subheader — לחיצה מקפלת/פותחת את כל העצירות שתחתיו */}
+                        <button
+                          type="button"
+                          onClick={() => toggleGroup(delivery.id)}
+                          className={`flex w-full items-center justify-between rounded-md px-2 py-1 transition hover:brightness-95 ${driverCfg.color}`}
+                          title={isCollapsed ? 'הצג עצירות' : 'קפל עצירות'}
                         >
                           <div className="flex items-center gap-1.5 min-w-0">
+                            {isCollapsed ? (
+                              <ChevronLeft className="h-3 w-3 flex-shrink-0" />
+                            ) : (
+                              <ChevronDown className="h-3 w-3 flex-shrink-0" />
+                            )}
                             <Truck className="h-3 w-3 flex-shrink-0" />
                             <span className="text-[11px] font-semibold truncate">
                               {driverCfg.label}
@@ -670,23 +687,25 @@ export function DeliveryCalendar({
                           <span className="text-[10px] font-bold opacity-80">
                             {delivery.stops.length}
                           </span>
-                        </div>
+                        </button>
                         {/* Stops for this driver — sorted by coordination time */}
-                        <SortableContext
-                          items={sortedStops.map((s) => s.stopId)}
-                          strategy={verticalListSortingStrategy}
-                        >
-                          {sortedStops.map((stop) => (
-                            <StopCard
-                              key={stop.stopId}
-                              stop={stop}
-                              delivery={delivery}
-                              onRemove={onRemoveOrder}
-                              onResolve={onResolveStop}
-                              onCoordinate={setCoordinationStop}
-                            />
-                          ))}
-                        </SortableContext>
+                        {!isCollapsed && (
+                          <SortableContext
+                            items={sortedStops.map((s) => s.stopId)}
+                            strategy={verticalListSortingStrategy}
+                          >
+                            {sortedStops.map((stop) => (
+                              <StopCard
+                                key={stop.stopId}
+                                stop={stop}
+                                delivery={delivery}
+                                onRemove={onRemoveOrder}
+                                onResolve={onResolveStop}
+                                onCoordinate={setCoordinationStop}
+                              />
+                            ))}
+                          </SortableContext>
+                        )}
                       </div>
                     );
                   })
