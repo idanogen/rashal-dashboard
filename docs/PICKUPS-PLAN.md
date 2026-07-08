@@ -1,7 +1,7 @@
 # תוכנית יישום: מסך "איסופים" (Priority `DOCUMENTS_N` + `TRANSORDER_N`)
 
 > נכתב: 08/07/2026 · רוני (מומחה Priority) + עידן
-> סטטוס: **🟢 קוד מלא נבנה (08/07) — DB חי, שכבת נתונים, endpoint, ומסך `/pickups` מלא. build עובר. נותר: פריסה + תרחיש Make.**
+> סטטוס: **🟢 חי בפרודקשן (08/07) — נפרס ל-Vercel, תרחיש Make פעיל, 652 איסופים נמשכו. הושלם.**
 > נשען על: [`SYNC-PULL-PLAN.md`](./SYNC-PULL-PLAN.md) (תשתית ה-pull החיה) · בית הידע של רוני
 
 ---
@@ -162,9 +162,14 @@ CREATE UNIQUE INDEX pickups_priority_id_key ON public.pickups (priority_pickup_i
 6. ✅ **UI** — `pages/PickupsPage.tsx` + `components/pickups/{UnscheduledPickups,PickupDetailDialog}` + לינק "איסופים" + route `/pickups` + אייקון `Undo2` טורקיז ביומן/מפה/דשבורד-נהג. `build` עובר נקי.
 7. ✅ 3 איסופים אמיתיים הוזנו לטבלה (RT2601396/5/4) — המסך מדגים מיד.
 
-### נותר (דורש אישור — פעולות פרודקשן/קרדיטים)
-- **פריסה ל-Vercel** — כדי שה-endpoint יגיש `kind=pickups`.
-- **תרחיש Make** — שכפול תרחיש ה-pull הקיים + הוספת `GET DOCUMENTS_N?$expand=...` + `POST kind=pickups`, backfill, והחלטת תדירות (מודעות לתקציב הקרדיטים).
+### פריסה (08/07) ✅ הושלם
+- ✅ **Vercel** — commit `9271242` נפרס לפרודקשן (`rashal-dashboard.vercel.app`), READY.
+- ✅ **תרחיש Make** — `OGEN - rashal-pickups-pull` (9496655), שכפול של תרחיש ה-pull + צמצום ל-3 מודולים (watermark → `GET DOCUMENTS_N` עם `$expand` → `POST kind=pickups`). פעיל, **כל 30 דק' א'-ה' 07:00-18:00** (interval 1800 — חסכוני, תרחיש נפרד כדי לא לסכן את ה-pull הקריטי).
+- ✅ **backfill** — 652 איסופים נמשכו (621 עם שורות, 646 עם עיר). watermark ב-`UDATE` פעיל, דלתא נקייה.
+
+### מעקב / פתוח
+- לעקוב אחרי צריכת קרדיטים ב-Make בשבוע הראשון (התרחיש הנפרד מוסיף ~3 קרדיטים/ריצה).
+- אם צריך סופ"ש — להוסיף תרחיש weekend (כרגע ימי חול בלבד; לאיסופים לרוב מספיק).
 
 ---
 
