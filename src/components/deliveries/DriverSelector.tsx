@@ -5,7 +5,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { DRIVERS, type AssigneeName } from '@/types/route';
+import { ASSIGNEES, type AssigneeName } from '@/types/route';
 import { Truck, Package } from 'lucide-react';
 
 interface DriverSelectorProps {
@@ -26,8 +26,8 @@ export function DriverSelector({
   onSelectDriver,
   orderInfo,
   customerName,
-  assignees = DRIVERS,
-  title = 'בחר נהג למשלוח',
+  assignees = ASSIGNEES,
+  title = 'בחר עובד',
 }: DriverSelectorProps) {
   return (
     <Dialog open={open} onOpenChange={onClose}>

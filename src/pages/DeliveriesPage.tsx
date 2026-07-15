@@ -20,6 +20,7 @@ import { showScheduleToast } from '@/lib/scheduleToast';
 import { DeliveryCalendar } from '@/components/deliveries/DeliveryCalendar';
 import { DriverSelector } from '@/components/deliveries/DriverSelector';
 import { useRescheduleStop, type RescheduleStopRef } from '@/hooks/useRescheduleStop';
+import { useMoveStop } from '@/hooks/useMoveStop';
 import { DatePickerDialog } from '@/components/deliveries/DatePickerDialog';
 import { TaskDialog } from '@/components/deliveries/TaskDialog';
 import { DayMapDialog } from '@/components/deliveries/DayMapDialog';
@@ -102,9 +103,33 @@ export function DeliveriesPage() {
   const resolveStop = useResolveStop();
   const reorderStops = useReorderStops();
   const rescheduleStopMut = useRescheduleStop();
+  const moveStop = useMoveStop();
   const [notCompletedStop, setNotCompletedStop] = useState<
     (typeof calendarStops)[number] | null
   >(null);
+  // "העבר ליום אחר" — עצירה שלא בוצעה: בורר תאריך → בורר עובד → useMoveStop
+  const [movingStop, setMovingStop] = useState<
+    (typeof calendarStops)[number] | null
+  >(null);
+  const [pendingMove, setPendingMove] = useState<{
+    stop: (typeof calendarStops)[number];
+    newDate: string;
+  } | null>(null);
+
+  const handleMoveDateSelected = (date: string) => {
+    if (!movingStop) return;
+    setPendingMove({ stop: movingStop, newDate: date });
+    setMovingStop(null);
+  };
+  const handleMoveDriverSelected = (driver: AssigneeName) => {
+    if (!pendingMove) return;
+    moveStop.mutate({
+      stop: pendingMove.stop,
+      newDate: pendingMove.newDate,
+      newDriver: driver,
+    });
+    setPendingMove(null);
+  };
   const log = useActivityLogger();
 
   const sensors = useSensors(
@@ -573,6 +598,10 @@ export function DeliveriesPage() {
           onAddTask={(date) => setTaskDialogDate(date)}
           onResolveStop={handleResolveStop}
           onViewDayMap={(date) => setMapDialogDate(date)}
+          onMoveStop={(stopId) => {
+            const s = calendarStops.find((cs) => cs.id === stopId);
+            if (s) setMovingStop(s);
+          }}
         />
       </div>
 
@@ -712,6 +741,29 @@ export function DeliveriesPage() {
         onClose={() => setDatePickerOpen(false)}
         onDateSelected={handleDateSelected}
         orderCount={selectedOrderIds.size}
+      />
+
+      {/* Move-to-another-day — date picker for a not_completed stop */}
+      <DatePickerDialog
+        open={!!movingStop}
+        onClose={() => setMovingStop(null)}
+        onDateSelected={handleMoveDateSelected}
+        orderCount={1}
+      />
+
+      {/* Move-to-another-day — worker picker */}
+      <DriverSelector
+        assignees={ASSIGNEES}
+        title="העבר ליום אחר — בחר עובד"
+        open={!!pendingMove}
+        onClose={() => setPendingMove(null)}
+        onSelectDriver={handleMoveDriverSelected}
+        orderInfo={
+          pendingMove
+            ? `העברה ל-${new Date(pendingMove.newDate + 'T00:00:00').toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' })}`
+            : undefined
+        }
+        customerName={pendingMove?.stop.customerName}
       />
 
       {/* Task Dialog — free-standing driver task */}

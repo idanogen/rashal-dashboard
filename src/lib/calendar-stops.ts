@@ -316,6 +316,43 @@ export async function rescheduleStop(
   return stop;
 }
 
+/**
+ * העברת עצירה שלא בוצעה (not_completed) ליום אחר — "החייאה" לשיבוץ פעיל.
+ * שונה מ-rescheduleStop: מאפס את הסטטוס ל-planned + מנקה completed_at,
+ * כדי שהעצירה תחזור להיות פעילה על היום החדש.
+ */
+export async function moveStopToNewDay(
+  stopId: string,
+  opts: { newDate: string; newDriver: CalendarStop['driver']; movedBy?: string }
+): Promise<CalendarStop> {
+  const { data: existing, error: seqErr } = await supabase
+    .from('calendar_stops')
+    .select('sequence')
+    .eq('delivery_date', opts.newDate)
+    .eq('driver', opts.newDriver)
+    .order('sequence', { ascending: false })
+    .limit(1);
+  if (seqErr) throw new Error(`moveStopToNewDay (sequence): ${seqErr.message}`);
+  const sequence = ((existing?.[0]?.sequence as number) ?? -1) + 1;
+
+  const { data, error } = await supabase
+    .from('calendar_stops')
+    .update({
+      delivery_date: opts.newDate,
+      driver: opts.newDriver,
+      sequence,
+      status: 'planned',
+      completed_at: null,
+      rescheduled_by: opts.movedBy ?? null,
+      rescheduled_at: new Date().toISOString(),
+    })
+    .eq('id', stopId)
+    .select()
+    .single();
+  if (error) throw new Error(`moveStopToNewDay: ${error.message}`);
+  return rowToStop(data as CalendarStopRow);
+}
+
 export async function updateStop(
   id: string,
   fields: Partial<CalendarStop>

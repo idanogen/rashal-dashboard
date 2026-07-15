@@ -59,6 +59,8 @@ interface DeliveryCalendarProps {
   onAddTask?: (dateStr: string) => void;
   /** Called to mark a stop as completed / not_completed */
   onResolveStop?: (stopId: string, status: 'completed' | 'not_completed') => void;
+  /** Called to move a resolved (not_completed) stop to another day — opens date+worker picker */
+  onMoveStop?: (stopId: string) => void;
   /** Called when user clicks "map" on a day to see the full day's route */
   onViewDayMap?: (dateStr: string) => void;
 }
@@ -71,9 +73,10 @@ interface StopCardProps {
   onRemove?: (stopId: string) => void;
   onResolve?: (stopId: string, status: 'completed' | 'not_completed') => void;
   onCoordinate?: (stop: CalendarStop) => void;
+  onMoveStop?: (stopId: string) => void;
 }
 
-function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate }: StopCardProps) {
+function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate, onMoveStop }: StopCardProps) {
   const cardRef = useRef<HTMLDivElement | null>(null);
   const prevCoordRef = useRef<typeof stop.coordinationStatus>(stop.coordinationStatus);
 
@@ -325,6 +328,24 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate }: StopCar
           )}
         </div>
       )}
+
+      {/* עצירה שלא בוצעה — אפשר להעביר ליום אחר (נעולה לגרירה) */}
+      {stop.status === 'not_completed' && onMoveStop && (
+        <div className="mt-2.5 pt-2 border-t border-border/40">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onMoveStop(stop.stopId);
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="w-full flex items-center justify-center gap-1 rounded-md bg-blue-500/10 px-2 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-500/20 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 transition-colors"
+            title="העבר את הקריאה ליום אחר"
+          >
+            <Calendar className="h-3.5 w-3.5" />
+            העבר ליום אחר
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -374,6 +395,7 @@ export function DeliveryCalendar({
   onAddTask,
   onResolveStop,
   onViewDayMap,
+  onMoveStop,
 }: DeliveryCalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [coordinationStop, setCoordinationStop] = useState<CalendarStop | null>(null);
@@ -703,6 +725,7 @@ export function DeliveryCalendar({
                                 onRemove={onRemoveOrder}
                                 onResolve={onResolveStop}
                                 onCoordinate={setCoordinationStop}
+                                onMoveStop={onMoveStop}
                               />
                             ))}
                           </SortableContext>

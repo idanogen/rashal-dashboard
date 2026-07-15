@@ -161,6 +161,28 @@ export function DriverDashboardPage() {
     return result.sort((a, b) => a.date.localeCompare(b.date));
   }, [stopsByDate, today, tomorrow]);
 
+  // היסטוריית 7 הימים האחרונים (מאתמול אחורה), מהיום החדש לישן.
+  const historyStops = useMemo(() => {
+    const weekAgo = toLocalDateStr(new Date(Date.now() - 7 * 86_400_000));
+    const result: { date: string; stops: DbCalendarStop[] }[] = [];
+    for (const [date, stops] of stopsByDate.entries()) {
+      if (date >= weekAgo && date < today) {
+        result.push({ date, stops });
+      }
+    }
+    return result.sort((a, b) => b.date.localeCompare(a.date));
+  }, [stopsByDate, today]);
+
+  const historyCompleted = historyStops.reduce(
+    (sum, d) => sum + d.stops.filter((s) => s.status === 'completed').length,
+    0
+  );
+  const historyNotCompleted = historyStops.reduce(
+    (sum, d) => sum + d.stops.filter((s) => s.status === 'not_completed').length,
+    0
+  );
+  const historyTotal = historyStops.reduce((sum, d) => sum + d.stops.length, 0);
+
   const todayCompleted = todayStops.filter((s) => isResolved(s.status)).length;
   const todayRemaining = todayStops.length - todayCompleted;
 
@@ -248,6 +270,14 @@ export function DriverDashboardPage() {
             {weekStops.length > 0 && (
               <Badge variant="outline" className="ms-1.5 h-5 px-1.5 text-[10px]">
                 {weekStops.reduce((sum, d) => sum + d.stops.length, 0)}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="history" className="flex-1">
+            היסטוריה
+            {historyTotal > 0 && (
+              <Badge variant="outline" className="ms-1.5 h-5 px-1.5 text-[10px]">
+                {historyTotal}
               </Badge>
             )}
           </TabsTrigger>
@@ -343,6 +373,59 @@ export function DriverDashboardPage() {
                 ))}
               </div>
             ))
+          )}
+        </TabsContent>
+
+        <TabsContent value="history" className="space-y-4">
+          {historyStops.length === 0 ? (
+            <EmptyState message="אין היסטוריה מהשבוע האחרון" />
+          ) : (
+            <>
+              {/* סיכום שבועי — סופקו / לא בוצעו */}
+              <div className="grid grid-cols-3 gap-2">
+                <Card className="border-emerald-200 bg-emerald-50/60">
+                  <CardContent className="p-3 text-center">
+                    <p className="text-2xl font-bold text-emerald-700">{historyCompleted}</p>
+                    <p className="text-[11px] text-muted-foreground">סופקו</p>
+                  </CardContent>
+                </Card>
+                <Card className="border-red-200 bg-red-50/60">
+                  <CardContent className="p-3 text-center">
+                    <p className="text-2xl font-bold text-red-700">{historyNotCompleted}</p>
+                    <p className="text-[11px] text-muted-foreground">לא בוצעו</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-3 text-center">
+                    <p className="text-2xl font-bold">{historyTotal}</p>
+                    <p className="text-[11px] text-muted-foreground">סה״כ עצירות</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {historyStops.map((day) => (
+                <div key={day.date} className="space-y-2">
+                  <div className="flex items-center gap-2 px-1">
+                    <CalendarClock className="h-4 w-4 text-muted-foreground" />
+                    <h3 className="text-sm font-semibold">{dayLabel(day.date)}</h3>
+                    <Badge variant="outline" className="text-[10px]">
+                      {day.stops.length} עצירות
+                    </Badge>
+                  </div>
+                  {day.stops.map((stop, idx) => (
+                    <DriverStopCard
+                      key={stop.id}
+                      stop={stop}
+                      index={idx + 1}
+                      onCoordinate={() => handleCoordinate(stop)}
+                      onArrive={() => handleArrive(stop)}
+                      onResolve={(status, notes) => handleResolve(stop, status, notes)}
+                      resolving={resolveStop.isPending}
+                    />
+                  ))}
+                </div>
+              ))}
+            </>
           )}
         </TabsContent>
       </Tabs>

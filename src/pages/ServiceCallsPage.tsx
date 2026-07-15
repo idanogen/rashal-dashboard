@@ -28,6 +28,7 @@ import { UnscheduledServiceCalls } from '@/components/service-calls/UnscheduledS
 import { DeliveryCalendar } from '@/components/deliveries/DeliveryCalendar';
 import { DriverSelector } from '@/components/deliveries/DriverSelector';
 import { useRescheduleStop, type RescheduleStopRef } from '@/hooks/useRescheduleStop';
+import { useMoveStop } from '@/hooks/useMoveStop';
 import { TaskDialog } from '@/components/deliveries/TaskDialog';
 import { DayMapDialog } from '@/components/deliveries/DayMapDialog';
 import { DatePickerDialog } from '@/components/deliveries/DatePickerDialog';
@@ -44,7 +45,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, AlertCircle, Wrench, CalendarDays } from 'lucide-react';
 import type { ServiceCall } from '@/types/service-call';
-import { TECHNICIANS, type AssigneeName } from '@/types/route';
+import { ASSIGNEES, type AssigneeName } from '@/types/route';
 import { buildCalendarDeliveries } from '@/lib/calendar-view';
 import type { CalendarDelivery } from '@/types/delivery';
 import { toast } from 'sonner';
@@ -98,9 +99,37 @@ export function ServiceCallsPage() {
   const resolveStop = useResolveStop();
   const reorderStops = useReorderStops();
   const rescheduleStopMut = useRescheduleStop();
+  const moveStop = useMoveStop();
   const [notCompletedStop, setNotCompletedStop] = useState<
     (typeof calendarStops)[number] | null
   >(null);
+  // "העבר ליום אחר" — עצירה שלא בוצעה: בורר תאריך → בורר עובד → useMoveStop
+  const [movingStop, setMovingStop] = useState<
+    (typeof calendarStops)[number] | null
+  >(null);
+  const [pendingMove, setPendingMove] = useState<{
+    stop: (typeof calendarStops)[number];
+    newDate: string;
+  } | null>(null);
+
+  const handleMoveDateSelected = (date: string) => {
+    if (!movingStop) return;
+    setPendingMove({ stop: movingStop, newDate: date });
+    setMovingStop(null);
+  };
+  const handleMoveDriverSelected = (driver: AssigneeName) => {
+    if (!pendingMove) return;
+    moveStop.mutate({
+      stop: pendingMove.stop,
+      newDate: pendingMove.newDate,
+      newDriver: driver,
+    });
+    setPendingMove(null);
+  };
+  const handleMoveStop = (stopId: string) => {
+    const s = calendarStops.find((cs) => cs.id === stopId);
+    if (s) setMovingStop(s);
+  };
   const log = useActivityLogger();
 
   const sensors = useSensors(
@@ -571,6 +600,7 @@ export function ServiceCallsPage() {
               onAddTask={(date) => setTaskDialogDate(date)}
               onResolveStop={handleResolveStop}
               onViewDayMap={(date) => setMapDialogDate(date)}
+              onMoveStop={handleMoveStop}
             />
           </TabsContent>
 
@@ -581,6 +611,7 @@ export function ServiceCallsPage() {
               onAddTask={(date) => setTaskDialogDate(date)}
               onResolveStop={handleResolveStop}
               onViewDayMap={(date) => setMapDialogDate(date)}
+              onMoveStop={handleMoveStop}
             />
           </TabsContent>
         </Tabs>
@@ -685,9 +716,32 @@ export function ServiceCallsPage() {
         orderCount={selectedCallIds.size}
       />
 
+      {/* Move-to-another-day — date picker for a not_completed stop */}
+      <DatePickerDialog
+        open={!!movingStop}
+        onClose={() => setMovingStop(null)}
+        onDateSelected={handleMoveDateSelected}
+        orderCount={1}
+      />
+
+      {/* Move-to-another-day — worker picker */}
       <DriverSelector
-        assignees={TECHNICIANS}
-        title="בחר טכנאי"
+        assignees={ASSIGNEES}
+        title="העבר ליום אחר — בחר עובד"
+        open={!!pendingMove}
+        onClose={() => setPendingMove(null)}
+        onSelectDriver={handleMoveDriverSelected}
+        orderInfo={
+          pendingMove
+            ? `העברה ל-${new Date(pendingMove.newDate + 'T00:00:00').toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' })}`
+            : undefined
+        }
+        customerName={pendingMove?.stop.customerName}
+      />
+
+      <DriverSelector
+        assignees={ASSIGNEES}
+        title="בחר עובד"
         open={driverPickerOpen}
         onClose={() => {
           setDriverPickerOpen(false);
@@ -710,8 +764,8 @@ export function ServiceCallsPage() {
 
       {/* Reschedule driver picker (drag existing service stop to another day) */}
       <DriverSelector
-        assignees={TECHNICIANS}
-        title="בחר טכנאי"
+        assignees={ASSIGNEES}
+        title="בחר עובד"
         open={!!pendingReschedule}
         onClose={() => setPendingReschedule(null)}
         onSelectDriver={handleRescheduleDriverSelected}
@@ -726,7 +780,7 @@ export function ServiceCallsPage() {
         open={taskDialogDate !== null}
         onClose={() => setTaskDialogDate(null)}
         date={taskDialogDate}
-        assignees={TECHNICIANS}
+        assignees={ASSIGNEES}
         assigneeLabel="טכנאי"
         onSubmit={handleCreateTask}
       />

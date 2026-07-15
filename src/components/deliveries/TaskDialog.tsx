@@ -9,7 +9,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { DRIVERS, type AssigneeName } from '@/types/route';
+import { ASSIGNEES, type AssigneeName } from '@/types/route';
 import { ClipboardList } from 'lucide-react';
 
 interface TaskDialogProps {
@@ -34,8 +34,8 @@ export function TaskDialog({
   open,
   onClose,
   date,
-  assignees = DRIVERS,
-  assigneeLabel = 'נהג',
+  assignees = ASSIGNEES,
+  assigneeLabel = 'עובד',
   onSubmit,
 }: TaskDialogProps) {
   const [driver, setDriver] = useState<AssigneeName>(assignees[0]);

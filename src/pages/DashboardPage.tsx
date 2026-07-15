@@ -15,6 +15,7 @@ import { HealthFundChart } from '@/components/dashboard/HealthFundChart';
 import { DailyServiceCallsChart } from '@/components/dashboard/DailyServiceCallsChart';
 import { ServiceCallHealthFundChart } from '@/components/dashboard/ServiceCallHealthFundChart';
 import { ServiceCallsTable } from '@/components/dashboard/ServiceCallsTable';
+import { ScheduledOverview } from '@/components/dashboard/ScheduledOverview';
 import { OrderFilters, type OrderFiltersState } from '@/components/orders/OrderFilters';
 import { OrdersTable } from '@/components/orders/OrdersTable';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -147,6 +148,10 @@ export function DashboardPage() {
             <span>🔧</span>
             קריאות שירות
           </TabsTrigger>
+          <TabsTrigger value="scheduled" className="gap-1.5">
+            <span>📅</span>
+            יומן מאוחד
+          </TabsTrigger>
         </TabsList>
 
         {/* Orders Tab */}
@@ -195,6 +200,11 @@ export function DashboardPage() {
               <ServiceCallsTable calls={allCalls} groupSize={callsGroupSize} />
             </div>
           )}
+        </TabsContent>
+
+        {/* Unified scheduled view — all types + all assignees, today onward */}
+        <TabsContent value="scheduled" className="space-y-6">
+          <ScheduledOverview />
         </TabsContent>
       </Tabs>
     </div>

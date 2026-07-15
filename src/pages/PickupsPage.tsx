@@ -38,7 +38,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Loader2, AlertCircle, Undo2, CalendarDays } from 'lucide-react';
 import type { Pickup } from '@/types/pickup';
-import { DRIVERS, type AssigneeName } from '@/types/route';
+import { ASSIGNEES, type AssigneeName } from '@/types/route';
 import type { CalendarDelivery } from '@/types/delivery';
 import { buildCalendarDeliveries } from '@/lib/calendar-view';
 import { toast } from 'sonner';
@@ -511,8 +511,8 @@ export function PickupsPage() {
       />
 
       <DriverSelector
-        assignees={DRIVERS}
-        title="בחר נהג לאיסוף"
+        assignees={ASSIGNEES}
+        title="בחר עובד לאיסוף"
         open={driverPickerOpen}
         onClose={() => {
           setDriverPickerOpen(false);
@@ -534,8 +534,8 @@ export function PickupsPage() {
       />
 
       <DriverSelector
-        assignees={DRIVERS}
-        title="בחר נהג לאיסוף"
+        assignees={ASSIGNEES}
+        title="בחר עובד לאיסוף"
         open={!!pendingReschedule}
         onClose={() => setPendingReschedule(null)}
         onSelectDriver={handleRescheduleDriverSelected}
