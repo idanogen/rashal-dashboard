@@ -1,8 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { resolveStop } from '@/lib/calendar-stops';
-import { updateOrder } from '@/lib/orders';
-import { updateServiceCall } from '@/lib/service-calls';
-import { updatePickup } from '@/lib/pickups';
+import { setSourceState } from '@/lib/stop-source-sync';
 import type { CalendarStop } from '@/types/calendar-stop';
 import { toast } from 'sonner';
 
@@ -26,29 +24,21 @@ export function useResolveStop() {
 
   return useMutation({
     mutationFn: async ({ stop, status, notes }: ResolveStopParams) => {
-      const updated = await resolveStop(stop.id, status, notes);
+      // מקדימים את עדכון המקור (הפיך) לפני עדכון העצירה. אם עדכון העצירה
+      // נכשל — מחזירים את המקור למצב המשובץ, כדי שלא ייווצר פער בין
+      // סטטוס העצירה לסטטוס המקור.
+      await setSourceState(stop, status === 'completed' ? 'done' : 'waiting');
 
-      if (status === 'completed') {
-        if (stop.sourceType === 'delivery' && stop.orderId) {
-          await updateOrder(stop.orderId, { orderStatus: 'סופק' });
-        } else if (stop.sourceType === 'service' && stop.serviceCallId) {
-          await updateServiceCall(stop.serviceCallId, {
-            serviceCallStatus: 'בוצע',
-          });
-        } else if (stop.sourceType === 'pickup' && stop.pickupId) {
-          await updatePickup(stop.pickupId, { pickupStatus: 'נאסף' });
+      let updated;
+      try {
+        updated = await resolveStop(stop.id, status, notes);
+      } catch (err) {
+        try {
+          await setSourceState(stop, 'scheduled');
+        } catch (rollbackErr) {
+          console.error('[resolveStop] rollback (restore source) failed:', rollbackErr);
         }
-      } else {
-        // not_completed — חזרה לממתינים
-        if (stop.sourceType === 'delivery' && stop.orderId) {
-          await updateOrder(stop.orderId, { orderStatus: 'ממתין לתאום' });
-        } else if (stop.sourceType === 'service' && stop.serviceCallId) {
-          await updateServiceCall(stop.serviceCallId, {
-            serviceCallStatus: 'קריאה חדשה',
-          });
-        } else if (stop.sourceType === 'pickup' && stop.pickupId) {
-          await updatePickup(stop.pickupId, { pickupStatus: 'ממתין לתאום' });
-        }
+        throw err;
       }
 
       return updated;

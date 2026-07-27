@@ -1,8 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { moveStopToNewDay } from '@/lib/calendar-stops';
-import { updateOrder } from '@/lib/orders';
-import { updateServiceCall } from '@/lib/service-calls';
-import { updatePickup } from '@/lib/pickups';
+import { setSourceState } from '@/lib/stop-source-sync';
 import type { CalendarStop } from '@/types/calendar-stop';
 import { useChatAuthor } from '@/hooks/useTimeline';
 import { toast } from 'sonner';
@@ -25,20 +23,25 @@ export function useMoveStop() {
 
   return useMutation({
     mutationFn: async ({ stop, newDate, newDriver }: MoveStopParams) => {
-      const moved = await moveStopToNewDay(stop.id, {
-        newDate,
-        newDriver,
-        movedBy: userName,
-      });
+      // מקדימים את עדכון המקור (הפיך) לפני הזזת העצירה. אם ההזזה נכשלת
+      // (למשל חסם כפילות) — מחזירים את המקור לממתינים, כדי שלא יישאר
+      // מקור "משובץ" בלי עצירה פעילה.
+      await setSourceState(stop, 'scheduled');
 
-      if (stop.sourceType === 'delivery' && stop.orderId) {
-        await updateOrder(stop.orderId, { orderStatus: 'תואמה אספקה' });
-      } else if (stop.sourceType === 'service' && stop.serviceCallId) {
-        await updateServiceCall(stop.serviceCallId, {
-          serviceCallStatus: 'תואם ביקור',
+      let moved;
+      try {
+        moved = await moveStopToNewDay(stop.id, {
+          newDate,
+          newDriver,
+          movedBy: userName,
         });
-      } else if (stop.sourceType === 'pickup' && stop.pickupId) {
-        await updatePickup(stop.pickupId, { pickupStatus: 'תואם איסוף' });
+      } catch (err) {
+        try {
+          await setSourceState(stop, 'waiting');
+        } catch (rollbackErr) {
+          console.error('[moveStop] rollback (restore source) failed:', rollbackErr);
+        }
+        throw err;
       }
 
       return moved;

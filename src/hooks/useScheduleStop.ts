@@ -1,8 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { createStop, geocodeStopAddress } from '@/lib/calendar-stops';
-import { updateOrder } from '@/lib/orders';
-import { updateServiceCall } from '@/lib/service-calls';
-import { updatePickup } from '@/lib/pickups';
+import { createStop, deleteStop, geocodeStopAddress } from '@/lib/calendar-stops';
+import { setSourceState } from '@/lib/stop-source-sync';
 import type { ScheduleStopInput } from '@/types/calendar-stop';
 import { useChatAuthor } from '@/hooks/useTimeline';
 import { toast } from 'sonner';
@@ -22,14 +20,17 @@ export function useScheduleStop() {
     mutationFn: async (input: ScheduleStopInput) => {
       const stop = await createStop({ scheduledBy: userName, ...input });
 
-      if (input.sourceType === 'delivery' && input.orderId) {
-        await updateOrder(input.orderId, { orderStatus: 'תואמה אספקה' });
-      } else if (input.sourceType === 'service' && input.serviceCallId) {
-        await updateServiceCall(input.serviceCallId, {
-          serviceCallStatus: 'תואם ביקור',
-        });
-      } else if (input.sourceType === 'pickup' && input.pickupId) {
-        await updatePickup(input.pickupId, { pickupStatus: 'תואם איסוף' });
+      // עדכון סטטוס המקור. אם הוא נכשל — מוחקים את העצירה שנוצרה, אחרת
+      // נשארת עצירה יתומה שחוסמת כל ניסיון שיבוץ חוזר (chk הכפילויות).
+      try {
+        await setSourceState(input, 'scheduled');
+      } catch (err) {
+        try {
+          await deleteStop(stop.id);
+        } catch (rollbackErr) {
+          console.error('[scheduleStop] rollback (deleteStop) failed:', rollbackErr);
+        }
+        throw err;
       }
 
       // geocoding מדויק לכתובת — fire-and-forget, לא חוסם את השיבוץ.

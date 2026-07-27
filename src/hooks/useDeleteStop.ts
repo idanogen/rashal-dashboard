@@ -1,8 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { deleteStop } from '@/lib/calendar-stops';
-import { updateOrder } from '@/lib/orders';
-import { updateServiceCall } from '@/lib/service-calls';
-import { updatePickup } from '@/lib/pickups';
+import { setSourceState } from '@/lib/stop-source-sync';
 import type { CalendarStop } from '@/types/calendar-stop';
 import { toast } from 'sonner';
 
@@ -17,16 +15,20 @@ export function useDeleteStop() {
 
   return useMutation({
     mutationFn: async (stop: CalendarStop) => {
-      await deleteStop(stop.id);
+      // מקדימים את עדכון המקור (הפיך) לפני המחיקה (הרסנית). אם המחיקה
+      // נכשלת — מחזירים את המקור למצב המשובץ, כדי שלא יישאר מקור בממתינים
+      // עם עצירה פעילה (מצב שחוסם שיבוץ חוזר).
+      await setSourceState(stop, 'waiting');
 
-      if (stop.sourceType === 'delivery' && stop.orderId) {
-        await updateOrder(stop.orderId, { orderStatus: 'ממתין לתאום' });
-      } else if (stop.sourceType === 'service' && stop.serviceCallId) {
-        await updateServiceCall(stop.serviceCallId, {
-          serviceCallStatus: 'קריאה חדשה',
-        });
-      } else if (stop.sourceType === 'pickup' && stop.pickupId) {
-        await updatePickup(stop.pickupId, { pickupStatus: 'ממתין לתאום' });
+      try {
+        await deleteStop(stop.id);
+      } catch (err) {
+        try {
+          await setSourceState(stop, 'scheduled');
+        } catch (rollbackErr) {
+          console.error('[deleteStop] rollback (restore source) failed:', rollbackErr);
+        }
+        throw err;
       }
     },
     onSuccess: () => {
