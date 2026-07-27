@@ -188,16 +188,15 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate, onMoveSto
       )}
       {/* Top row: source icon + customer name + driver badge + action buttons */}
       <div className={`flex items-center justify-between gap-1.5 mb-1.5 ${isCustomerConfirmed || needsCancel ? 'mt-3' : ''}`}>
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
           <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40 flex-shrink-0" />
           <span
-            className={`inline-flex h-6 items-center gap-1 rounded-md ${src.bg} ${src.color} px-1.5 flex-shrink-0`}
+            className={`inline-flex h-6 w-6 items-center justify-center rounded-md ${src.bg} ${src.color} flex-shrink-0`}
             title={src.label}
           >
             <SrcIcon className="h-3.5 w-3.5" />
-            <span className="text-[11px] font-bold leading-none">{src.label}</span>
           </span>
-          <span className={`font-semibold text-sm truncate ${nameClass}`}>
+          <span className={`font-semibold text-sm truncate flex-1 min-w-0 ${nameClass}`} title={stop.customerName}>
             {stop.customerName}
           </span>
           {stop.status === 'completed' && (
