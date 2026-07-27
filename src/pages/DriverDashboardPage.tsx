@@ -616,7 +616,7 @@ function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve, resolv
               <span className={`flex h-5 w-5 items-center justify-center rounded ${src.bg} ${src.color}`}>
                 <SrcIcon className="h-3 w-3" />
               </span>
-              <h2 className={`text-base font-bold leading-tight ${stop.status === 'not_completed' ? 'line-through text-muted-foreground' : ''}`}>
+              <h2 className={`text-base font-bold leading-tight ${stop.status === 'not_completed' ? 'text-muted-foreground' : ''}`}>
                 {stop.customerName}
               </h2>
               {stop.status === 'completed' && (

@@ -149,9 +149,11 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate, onMoveSto
           : isCustomerRejected
             ? 'bg-red-50/70 ring-1 ring-red-300/60 dark:bg-red-900/30'
             : 'bg-background/60';
+  // "לא בוצע" מסומן כבר ע"י ה-X האדום והרקע הוורוד — בלי קו חוצה על השם,
+  // כדי שהשם יישאר קריא.
   const nameClass =
     stop.status === 'not_completed'
-      ? 'line-through text-muted-foreground'
+      ? 'text-muted-foreground'
       : '';
 
   // Combine the sortable ref + our own ref (for confetti positioning)
