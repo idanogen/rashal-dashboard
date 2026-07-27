@@ -187,8 +187,8 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate, onMoveSto
         )
       )}
       {/* Top row: source icon + customer name + driver badge + action buttons */}
-      <div className={`flex items-center justify-between gap-1.5 mb-1.5 ${isCustomerConfirmed || needsCancel ? 'mt-3' : ''}`}>
-        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+      <div className={`flex items-center justify-between gap-1.5 ${isCustomerConfirmed || needsCancel ? 'mt-3' : ''}`}>
+        <div className="flex items-center gap-1.5 min-w-0">
           <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40 flex-shrink-0" />
           <span
             className={`inline-flex h-6 w-6 items-center justify-center rounded-md ${src.bg} ${src.color} flex-shrink-0`}
@@ -196,15 +196,6 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate, onMoveSto
           >
             <SrcIcon className="h-3.5 w-3.5" />
           </span>
-          <span className={`font-semibold text-sm truncate flex-1 min-w-0 ${nameClass}`} title={stop.customerName}>
-            {stop.customerName}
-          </span>
-          {stop.status === 'completed' && (
-            <Check className="h-4 w-4 text-emerald-600 flex-shrink-0" aria-label="בוצע" />
-          )}
-          {stop.status === 'not_completed' && (
-            <X className="h-4 w-4 text-red-600 flex-shrink-0" aria-label="לא בוצע" />
-          )}
         </div>
         <div className="flex items-center gap-0.5 flex-shrink-0">
           {(() => {
@@ -238,6 +229,22 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate, onMoveSto
             </button>
           )}
         </div>
+      </div>
+
+      {/* שם הלקוח — שורה נפרדת ברוחב מלא, כדי שלא יידחס ע"י התג/הפעולות */}
+      <div className="flex items-center gap-1.5 min-w-0 mt-1 mb-1.5">
+        <span
+          className={`font-semibold text-sm truncate min-w-0 ${nameClass}`}
+          title={stop.customerName}
+        >
+          {stop.customerName}
+        </span>
+        {stop.status === 'completed' && (
+          <Check className="h-4 w-4 text-emerald-600 flex-shrink-0" aria-label="בוצע" />
+        )}
+        {stop.status === 'not_completed' && (
+          <X className="h-4 w-4 text-red-600 flex-shrink-0" aria-label="לא בוצע" />
+        )}
       </div>
 
       {/* Address */}
