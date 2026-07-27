@@ -122,10 +122,16 @@ export function DriverDashboardPage() {
     setCoordinationStop(toUiStop(stop));
   };
 
+  // נעילת כפתורים רק לכרטיס שנמצא כרגע בעדכון — לא לכל הכרטיסים.
+  // react-query חושף את ה-variables של המוטציה הפעילה, כך שנזהה בדיוק מי.
+  const isResolvingStop = (id: string) =>
+    resolveStop.isPending && resolveStop.variables?.stop.id === id;
+
   // "הגעה" — מסמן שהנהג בנקודה (status → in_progress) + רישום ללוג.
+  // מחזיר את ה-promise כדי שהכרטיס יוכל לאפס את החיווי אם הכתיבה נכשלה.
   const handleArrive = (stop: DbCalendarStop) => {
     log('arrival', stopCtx(stop));
-    arriveStop.mutate(stop.id);
+    return arriveStop.mutateAsync(stop.id);
   };
 
   const today = toLocalDateStr(new Date());
@@ -184,8 +190,12 @@ export function DriverDashboardPage() {
   );
   const historyTotal = historyStops.reduce((sum, d) => sum + d.stops.length, 0);
 
-  const todayCompleted = todayStops.filter((s) => isResolved(s.status)).length;
-  const todayRemaining = todayStops.length - todayCompleted;
+  // "בוצעו" = רק עצירות שסופקו בפועל (לא כולל "לא בוצע"/מבוטל).
+  // "נותרו" = עצירות שעדיין לפעולה (planned/in_progress); "לא בוצע" אינו נספר באף אחד.
+  const todayCompleted = todayStops.filter((s) => s.status === 'completed').length;
+  const todayRemaining = todayStops.filter(
+    (s) => s.status === 'planned' || s.status === 'in_progress'
+  ).length;
 
   // UI-shaped stops for the map; next unresolved stop for the "navigate" button.
   const todayUiStops = useMemo(() => todayStops.map(toUiStop), [todayStops]);
@@ -324,7 +334,7 @@ export function DriverDashboardPage() {
                 onCoordinate={() => handleCoordinate(stop)}
                 onArrive={() => handleArrive(stop)}
                 onResolve={(status, notes) => handleResolve(stop, status, notes)}
-                resolving={resolveStop.isPending}
+                resolving={isResolvingStop(stop.id)}
               />
             ))
           )}
@@ -342,7 +352,7 @@ export function DriverDashboardPage() {
                 onCoordinate={() => handleCoordinate(stop)}
                 onArrive={() => handleArrive(stop)}
                 onResolve={(status, notes) => handleResolve(stop, status, notes)}
-                resolving={resolveStop.isPending}
+                resolving={isResolvingStop(stop.id)}
               />
             ))
           )}
@@ -369,7 +379,7 @@ export function DriverDashboardPage() {
                     onCoordinate={() => handleCoordinate(stop)}
                     onArrive={() => handleArrive(stop)}
                     onResolve={(status, notes) => handleResolve(stop, status, notes)}
-                    resolving={resolveStop.isPending}
+                    resolving={isResolvingStop(stop.id)}
                   />
                 ))}
               </div>
@@ -421,7 +431,7 @@ export function DriverDashboardPage() {
                       onCoordinate={() => handleCoordinate(stop)}
                       onArrive={() => handleArrive(stop)}
                       onResolve={(status, notes) => handleResolve(stop, status, notes)}
-                      resolving={resolveStop.isPending}
+                      resolving={isResolvingStop(stop.id)}
                     />
                   ))}
                 </div>
@@ -511,7 +521,7 @@ interface DriverStopCardProps {
   stop: DbCalendarStop;
   index: number;
   onCoordinate: () => void;
-  onArrive: () => void;
+  onArrive: () => Promise<unknown> | void;
   onResolve: (status: 'completed' | 'not_completed', notes?: string) => void;
   resolving: boolean;
 }
@@ -549,7 +559,13 @@ function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve, resolv
     if (thinking) return;
     setThinking(true);
     setArrivedLocal(true);
-    onArrive();
+    // אם הכתיבה נכשלה — מבטלים את החיווי המקומי כדי שהכרטיס לא יתקדם
+    // ל"סופק" על סמך הגעה שלא נשמרה ב-DB.
+    Promise.resolve(onArrive()).catch(() => {
+      setArrivedLocal(false);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      setThinking(false);
+    });
     timerRef.current = setTimeout(() => setThinking(false), ARRIVAL_THINK_MS);
   };
   const isCustomerConfirmed = stop.coordinationStatus === 'customer_confirmed';
