@@ -123,13 +123,13 @@ export function DashboardPage() {
                   {waitingCount} הזמנות ממתינות לתיאום משלוח
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  עבור לדף משלוחים כדי לסנן לפי אזור ולבנות מסלול
+                  עבור למסך הסדרן כדי לסנן לפי אזור ולשבץ ביומן
                 </p>
               </div>
             </div>
-            <Link to="/routes">
+            <Link to="/dispatch?tab=deliveries">
               <Button variant="default" className="gap-2">
-                למשלוחים
+                למסך הסדרן
                 <ArrowLeft className="h-4 w-4" />
               </Button>
             </Link>

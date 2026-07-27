@@ -34,6 +34,7 @@ import {
   Info,
 } from 'lucide-react';
 import { ZoneFilter } from '@/components/deliveries/ZoneFilter';
+import { usePersistedCollapse } from '@/hooks/usePersistedCollapse';
 import { getZoneById, ZONES } from '@/types/zone';
 import { getDaysSinceCreated, getDaysColor, cn } from '@/lib/utils';
 
@@ -294,6 +295,15 @@ export function UnscheduledServiceCalls({
   const [viewMode, setViewMode] = useState<'all' | 'grouped'>('all');
   const [excludedCallIds, setExcludedCallIds] = useState<Set<string>>(new Set());
   const [expandedZones, setExpandedZones] = useState<Set<string>>(new Set());
+  const [zoneFilterCollapsed, toggleZoneFilterCollapsed] = usePersistedCollapse(
+    'collapse:calls-zone-filter'
+  );
+  const [callsCollapsed, toggleCallsCollapsed] = usePersistedCollapse(
+    'collapse:calls-list'
+  );
+  const [returnedCollapsed, toggleReturnedCollapsed] = usePersistedCollapse(
+    'collapse:calls-returned'
+  );
 
   const handleZoneToggle = (zoneId: string) => {
     setSelectedZones((prev) =>
@@ -420,26 +430,36 @@ export function UnscheduledServiceCalls({
       {/* Returned from route — highlighted section */}
       {returnedCalls.length > 0 && (
         <div className="rounded-lg border border-red-300 bg-red-50/60 p-3 shadow-sm dark:border-red-900 dark:bg-red-950/10">
-          <div className="mb-2 flex items-center gap-2">
+          <div className={cn('flex items-center gap-2', !returnedCollapsed && 'mb-2')}>
             <Undo2 className="h-4 w-4 text-red-600" />
             <h3 className="text-sm font-bold text-red-700 dark:text-red-400">
               חזרו מהקו ({returnedCalls.length})
             </h3>
             <span className="text-[11px] text-red-600/70">סומנו "לא בוצע" — ממתינות לשיבוץ מחדש</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="ms-auto h-6 w-6 text-red-600"
+              onClick={toggleReturnedCollapsed}
+            >
+              {returnedCollapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </Button>
           </div>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {returnedCalls.map((call) => (
-              <ServiceCallCard
-                key={call.id}
-                call={call}
-                isReturned
-                isSelected={selectedCallIds.has(call.id)}
-                isPending={pendingScheduleIds?.has(call.id)}
-                dupCount={groupSize?.get(call.id)}
-                onToggleSelect={onToggleSelect}
-              />
-            ))}
-          </div>
+          {!returnedCollapsed && (
+            <div className="grid max-h-[240px] gap-2 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">
+              {returnedCalls.map((call) => (
+                <ServiceCallCard
+                  key={call.id}
+                  call={call}
+                  isReturned
+                  isSelected={selectedCallIds.has(call.id)}
+                  isPending={pendingScheduleIds?.has(call.id)}
+                  dupCount={groupSize?.get(call.id)}
+                  onToggleSelect={onToggleSelect}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -449,6 +469,8 @@ export function UnscheduledServiceCalls({
         onZoneToggle={handleZoneToggle}
         onClearAll={handleClearAllZones}
         orderCountByZone={callCountByZone}
+        collapsed={zoneFilterCollapsed}
+        onToggleCollapse={toggleZoneFilterCollapsed}
       />
 
       {/* Main Panel */}
@@ -534,12 +556,20 @@ export function UnscheduledServiceCalls({
                   <SelectItem value="grouped">קיבוץ לפי אזור</SelectItem>
                 </SelectContent>
               </Select>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={toggleCallsCollapsed}
+              >
+                {callsCollapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </Button>
             </div>
           </div>
         </div>
 
         {/* Content */}
-        {viewMode === 'all' ? (
+        {callsCollapsed ? null : viewMode === 'all' ? (
           filteredCalls.length === 0 ? (
             <div className="p-6 text-center">
               <p className="text-sm text-muted-foreground">
@@ -570,7 +600,7 @@ export function UnscheduledServiceCalls({
               )}
             </div>
           ) : (
-          <div className="grid max-h-[500px] grid-cols-1 gap-3 overflow-y-auto p-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          <div className="grid max-h-[380px] grid-cols-1 gap-3 overflow-y-auto p-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {filteredCalls.map((call) => (
               <div key={call.id} className="group">
                 <ServiceCallCard
@@ -588,7 +618,7 @@ export function UnscheduledServiceCalls({
           </div>
           )
         ) : (
-          <div className="max-h-[600px] space-y-2 overflow-y-auto p-4">
+          <div className="max-h-[440px] space-y-2 overflow-y-auto p-4">
             <div className="mb-3 flex justify-end">
               <Button
                 variant="ghost"

@@ -34,6 +34,8 @@ export function AppHeader() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['orders'] }),
       queryClient.invalidateQueries({ queryKey: ['serviceCalls'] }),
+      queryClient.invalidateQueries({ queryKey: ['pickups'] }),
+      queryClient.invalidateQueries({ queryKey: ['calendarStops'] }),
     ]);
     setLastUpdated(new Date());
     setTimeAgo('עכשיו');
@@ -71,7 +73,7 @@ export function AppHeader() {
               דשבורד
             </NavLink>
             <NavLink
-              to="/routes"
+              to="/dispatch"
               className={({ isActive }) =>
                 cn(
                   'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
@@ -81,33 +83,7 @@ export function AppHeader() {
                 )
               }
             >
-              משלוחים
-            </NavLink>
-            <NavLink
-              to="/service-calls"
-              className={({ isActive }) =>
-                cn(
-                  'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                  isActive
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                )
-              }
-            >
-              קריאות שירות
-            </NavLink>
-            <NavLink
-              to="/pickups"
-              className={({ isActive }) =>
-                cn(
-                  'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                  isActive
-                    ? 'bg-teal-50 text-teal-700'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                )
-              }
-            >
-              איסופים
+              מסך סדרן
             </NavLink>
             <NavLink
               to="/inspections"

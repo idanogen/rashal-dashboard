@@ -1,13 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { AppShell } from '@/components/layout/AppShell';
 import { DriverShell } from '@/components/layout/DriverShell';
 import { DashboardPage } from '@/pages/DashboardPage';
-import { DeliveriesPage } from '@/pages/DeliveriesPage';
-import { ServiceCallsPage } from '@/pages/ServiceCallsPage';
+import { DispatchPage } from '@/pages/DispatchPage';
 import { InspectionsPage } from '@/pages/InspectionsPage';
-import { PickupsPage } from '@/pages/PickupsPage';
 import { RouteNavigationPage } from '@/pages/RouteNavigationPage';
 import { WhatsAppPage } from '@/pages/WhatsAppPage';
 import { AdminUsersPage } from '@/pages/AdminUsersPage';
@@ -74,9 +72,11 @@ function App() {
                     <AppShell>
                       <Routes>
                         <Route path="/" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><DashboardPage /></RoleBasedRoute>} />
-                        <Route path="/routes" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><DeliveriesPage /></RoleBasedRoute>} />
-                        <Route path="/service-calls" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><ServiceCallsPage /></RoleBasedRoute>} />
-                        <Route path="/pickups" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><PickupsPage /></RoleBasedRoute>} />
+                        <Route path="/dispatch" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><DispatchPage /></RoleBasedRoute>} />
+                        {/* הראוטים הישנים מפנים למסך הסדרן המאוחד עם הטאב המתאים */}
+                        <Route path="/routes" element={<Navigate to="/dispatch?tab=deliveries" replace />} />
+                        <Route path="/service-calls" element={<Navigate to="/dispatch?tab=service" replace />} />
+                        <Route path="/pickups" element={<Navigate to="/dispatch?tab=pickups" replace />} />
                         <Route path="/inspections" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><InspectionsPage /></RoleBasedRoute>} />
                         <Route path="/whatsapp" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><WhatsAppPage /></RoleBasedRoute>} />
                         <Route

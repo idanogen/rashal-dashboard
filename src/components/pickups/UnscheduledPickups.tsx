@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
-import { CalendarDays, CheckCircle2, GripVertical, Search, Undo2 } from 'lucide-react';
+import { CalendarDays, CheckCircle2, ChevronDown, ChevronLeft, GripVertical, Search, Undo2 } from 'lucide-react';
+import { usePersistedCollapse } from '@/hooks/usePersistedCollapse';
 
 interface UnscheduledPickupsProps {
   pickups: Pickup[];
@@ -119,6 +120,12 @@ export function UnscheduledPickups({
 }: UnscheduledPickupsProps) {
   const [search, setSearch] = useState('');
   const [selectedZones, setSelectedZones] = useState<string[]>([]);
+  const [zoneFilterCollapsed, toggleZoneFilterCollapsed] = usePersistedCollapse(
+    'collapse:pickups-zone-filter'
+  );
+  const [listCollapsed, toggleListCollapsed] = usePersistedCollapse(
+    'collapse:pickups-list'
+  );
 
   // zoneId per pickup (by city) — computed once.
   const zoneById = useMemo(() => {
@@ -195,6 +202,8 @@ export function UnscheduledPickups({
         onZoneToggle={toggleZone}
         onClearAll={() => setSelectedZones([])}
         orderCountByZone={countByZone}
+        collapsed={zoneFilterCollapsed}
+        onToggleCollapse={toggleZoneFilterCollapsed}
       />
 
       {/* Cards */}
@@ -210,20 +219,30 @@ export function UnscheduledPickups({
                 ? `מציג ${visible.length} מתוך ${searched.length}`
                 : `${visible.length} איסופים · בחר אזור לצמצום`}
             </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={toggleListCollapsed}
+            >
+              {listCollapsed ? <ChevronLeft className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </Button>
           </div>
-          <div className="grid max-h-[560px] gap-2 overflow-y-auto rounded-xl border bg-muted/20 p-2 sm:grid-cols-2 lg:grid-cols-3">
-            {visible.map((p) => (
-              <PickupCard
-                key={p.id}
-                pickup={p}
-                selected={selectedIds.has(p.id)}
-                onToggleSelect={onToggleSelect}
-                isPending={pendingScheduleIds.has(p.id)}
-                isReturned={returnedIds?.has(p.id) ?? false}
-                onShowDetails={onShowDetails}
-              />
-            ))}
-          </div>
+          {!listCollapsed && (
+            <div className="grid max-h-[400px] gap-2 overflow-y-auto rounded-xl border bg-muted/20 p-2 sm:grid-cols-2 lg:grid-cols-3">
+              {visible.map((p) => (
+                <PickupCard
+                  key={p.id}
+                  pickup={p}
+                  selected={selectedIds.has(p.id)}
+                  onToggleSelect={onToggleSelect}
+                  isPending={pendingScheduleIds.has(p.id)}
+                  isReturned={returnedIds?.has(p.id) ?? false}
+                  onShowDetails={onShowDetails}
+                />
+              ))}
+            </div>
+          )}
         </>
       )}
 
