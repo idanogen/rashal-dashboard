@@ -139,9 +139,21 @@ export function DriverDashboardPage() {
       list.push(s);
       map.set(s.deliveryDate, list);
     }
-    // Sort each day by sequence
+    // סידור זהה ליומן במחשב: לפי שעת התיאום (מוקדם→מאוחר),
+    // עצירות בלי שעה בסוף, ו-sequence כשובר-שוויון.
     for (const list of map.values()) {
-      list.sort((a, b) => a.sequence - b.sequence);
+      list.sort((a, b) => {
+        const ta = a.timeWindowStart;
+        const tb = b.timeWindowStart;
+        if (ta && tb) {
+          const cmp = ta.localeCompare(tb);
+          if (cmp !== 0) return cmp;
+          return a.sequence - b.sequence;
+        }
+        if (ta) return -1;
+        if (tb) return 1;
+        return a.sequence - b.sequence;
+      });
     }
     return map;
   }, [allStops]);
