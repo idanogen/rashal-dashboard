@@ -3,6 +3,7 @@ import confetti from 'canvas-confetti';
 import type { CalendarDelivery, CalendarStop } from '@/types/delivery';
 import { assigneeStyle } from '@/types/delivery';
 import { DRIVERS, TECHNICIANS, type AssigneeName } from '@/types/route';
+import { compareStopsByTime } from '@/lib/stop-order';
 
 // סדר תצוגה אחיד של משובצים (נהגים ואז טכנאים; דוד מופיע פעם אחת).
 const ASSIGNEE_ORDER: AssigneeName[] = Array.from(new Set<AssigneeName>([...DRIVERS, ...TECHNICIANS]));
@@ -677,15 +678,8 @@ export function DeliveryCalendar({
                 {dayDeliveries.length > 0 ? (
                   dayDeliveries.map((delivery) => {
                     const driverCfg = assigneeStyle(delivery.driver);
-                    // סידור אוטומטי לפי שעת התיאום: מוקדם→מאוחר, ועצירות בלי שעה בסוף.
-                    const sortedStops = [...delivery.stops].sort((a, b) => {
-                      const ta = a.timeWindowStart;
-                      const tb = b.timeWindowStart;
-                      if (ta && tb) return ta.localeCompare(tb);
-                      if (ta) return -1;
-                      if (tb) return 1;
-                      return 0;
-                    });
+                    // סדר קנוני משותף לכל המסכים: שעת תיאום ראשי, sequence שובר-שוויון.
+                    const sortedStops = [...delivery.stops].sort(compareStopsByTime);
                     const isCollapsed = collapsedGroups.has(delivery.id);
                     return (
                       <div key={delivery.id} className="space-y-1.5">

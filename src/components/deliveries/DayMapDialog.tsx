@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { buildWazeUrl, buildTelUrl } from '@/lib/navigation';
 import { getCityCoordinates } from '@/lib/geocoding';
+import { compareStopsByTime } from '@/lib/stop-order';
 import { optimizeStops } from '@/lib/stopOptimizer';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RouteCelebration } from './RouteCelebration';
@@ -82,12 +83,8 @@ export function DayMapDialog({ open, onClose, date, stops, onOptimize }: DayMapD
     DRIVER_ORDER.forEach((d) => map.set(d, []));
     stops
       .filter((s) => s.status !== 'cancelled')
-      .sort((a, b) => {
-        // Keep sequence ordering — stops is expected to carry the field,
-        // but our view-level CalendarStop doesn't include it. Rely on input
-        // order (the page sorts by sequence already).
-        return 0;
-      })
+      // סדר קנוני משותף: שעת תיאום ראשי (sequence שובר-שוויון, נסמך על סדר הקלט).
+      .sort(compareStopsByTime)
       .forEach((s) => {
         const list = map.get(s.driver as AssigneeName);
         if (list) list.push(s);

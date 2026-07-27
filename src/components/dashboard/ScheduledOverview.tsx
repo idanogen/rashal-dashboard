@@ -3,6 +3,7 @@ import { useCalendarStops } from '@/hooks/useCalendarStops';
 import { assigneeStyle } from '@/types/delivery';
 import { ASSIGNEES, type AssigneeName } from '@/types/route';
 import type { CalendarStop, StopSourceType } from '@/types/calendar-stop';
+import { compareStopsByTime } from '@/lib/stop-order';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -85,7 +86,8 @@ export function ScheduledOverview() {
           )
           .map(([driver, list]) => ({
             driver,
-            stops: list.sort((a, b) => a.sequence - b.sequence),
+            // סדר קנוני משותף: שעת תיאום ראשי, sequence שובר-שוויון.
+            stops: list.sort(compareStopsByTime),
           }));
         return { date, count: stops.length, groups };
       });
