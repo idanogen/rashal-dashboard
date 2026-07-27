@@ -208,16 +208,24 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate, onMoveSto
           )}
         </div>
         <div className="flex items-center gap-0.5 flex-shrink-0">
-          {(stop.sourceType === 'delivery' || stop.sourceType === 'service') && stop.sourceId && (
-            <OrderChatButton
-              order={{
-                id: stop.sourceId,
-                kind: stop.sourceType === 'service' ? 'service' : 'order',
-                customerName: stop.customerName,
-                city: stop.city,
-              }}
-            />
-          )}
+          {(() => {
+            // אותה לוגיקת עוגן כמו אצל הנהג: משלוח/שירות → הישות; משימה/איסוף
+            // → calendar_stop (kind='stop'), כדי שהשיחה תהיה משותפת בשני הצדדים.
+            const isService = stop.sourceType === 'service' && !!stop.sourceId;
+            const isDelivery = stop.sourceType === 'delivery' && !!stop.sourceId;
+            const chatKind = isService ? 'service' : isDelivery ? 'order' : 'stop';
+            const chatId = isService || isDelivery ? stop.sourceId! : stop.stopId;
+            return (
+              <OrderChatButton
+                order={{
+                  id: chatId,
+                  kind: chatKind,
+                  customerName: stop.customerName,
+                  city: stop.city,
+                }}
+              />
+            );
+          })()}
           {onRemove && (
             <button
               onClick={(e) => {

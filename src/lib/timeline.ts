@@ -3,8 +3,13 @@ import { supabase } from './supabase';
 
 // Per-source chat / timeline. A row is linked to an order OR a service call.
 
-/** What a chat/timeline is attached to. */
-export type ChatSourceKind = 'order' | 'service';
+/**
+ * What a chat/timeline is attached to.
+ * - order / service → anchored to the source entity (has customer history).
+ * - stop → anchored to a calendar_stops row, for stops with no entity
+ *   (task / pickup) so they still get a chat thread.
+ */
+export type ChatSourceKind = 'order' | 'service' | 'stop';
 export interface ChatSourceRef {
   kind: ChatSourceKind;
   id: string;
@@ -14,6 +19,7 @@ type TimelineEventRow = {
   id: string;
   order_id: string | null;
   service_call_id: string | null;
+  calendar_stop_id: string | null;
   type: string;
   user_id: string | null;
   user_name: string | null;
@@ -39,8 +45,10 @@ function rowToEvent(row: TimelineEventRow): TimelineEvent {
 }
 
 /** Column on timeline_events for a given source kind. */
-function sourceColumn(kind: ChatSourceKind): 'order_id' | 'service_call_id' {
-  return kind === 'order' ? 'order_id' : 'service_call_id';
+function sourceColumn(kind: ChatSourceKind): 'order_id' | 'service_call_id' | 'calendar_stop_id' {
+  if (kind === 'order') return 'order_id';
+  if (kind === 'service') return 'service_call_id';
+  return 'calendar_stop_id';
 }
 
 export interface PersistTimelineEventInput {
@@ -59,6 +67,7 @@ export async function persistTimelineEvent(event: PersistTimelineEventInput): Pr
     id: event.id,
     order_id: event.source.kind === 'order' ? event.source.id : null,
     service_call_id: event.source.kind === 'service' ? event.source.id : null,
+    calendar_stop_id: event.source.kind === 'stop' ? event.source.id : null,
     type: event.type,
     user_id: event.userId ?? 'current-user',
     user_name: event.userName ?? 'משתמש נוכחי',
@@ -122,13 +131,18 @@ export async function getCommentCounts(): Promise<Record<string, number>> {
   while (true) {
     const { data, error } = await supabase
       .from('timeline_events')
-      .select('order_id, service_call_id')
+      .select('order_id, service_call_id, calendar_stop_id')
       .eq('type', 'comment')
       .range(from, from + PAGE - 1);
     if (error) throw new Error(`getCommentCounts: ${error.message}`);
-    const rows = (data as { order_id: string | null; service_call_id: string | null }[] | null) ?? [];
+    const rows =
+      (data as {
+        order_id: string | null;
+        service_call_id: string | null;
+        calendar_stop_id: string | null;
+      }[] | null) ?? [];
     for (const row of rows) {
-      const key = row.order_id ?? row.service_call_id;
+      const key = row.order_id ?? row.service_call_id ?? row.calendar_stop_id;
       if (key) counts[key] = (counts[key] || 0) + 1;
     }
     if (rows.length < PAGE) break;

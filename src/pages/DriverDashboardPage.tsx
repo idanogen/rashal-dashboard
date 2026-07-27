@@ -488,8 +488,21 @@ function EmptyState({ message }: { message: string }) {
 function StopChatButton({ stop, className = '' }: { stop: DbCalendarStop; className?: string }) {
   const [open, setOpen] = useState(false);
   const { data: commentCounts = {} } = useCommentCounts();
-  const chatId = stop.serviceCallId ?? stop.orderId ?? stop.id;
-  const kind: ChatSourceKind = stop.sourceType === 'service' ? 'service' : 'order';
+  // עוגן הצ'אט לפי סוג העצירה. משלוח/שירות → הישות (order/service_call).
+  // משימה/איסוף → אין ישות, אז עוגנים ל-calendar_stop (kind='stop'), אחרת
+  // ה-insert נכשל על FK ל-orders והנהג מקבל "שגיאה בשליחת ההודעה".
+  let kind: ChatSourceKind;
+  let chatId: string;
+  if (stop.sourceType === 'service' && stop.serviceCallId) {
+    kind = 'service';
+    chatId = stop.serviceCallId;
+  } else if (stop.sourceType === 'delivery' && stop.orderId) {
+    kind = 'order';
+    chatId = stop.orderId;
+  } else {
+    kind = 'stop';
+    chatId = stop.id;
+  }
   const count = commentCounts[chatId] || 0;
 
   return (
