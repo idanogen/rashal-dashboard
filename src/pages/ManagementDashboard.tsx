@@ -6,6 +6,7 @@ import {
   Truck, Wrench, PackageOpen, Smile, Clock, Box, Frown, TrendingUp, MapPin, Users,
   Calendar, MapPinned, Menu,
 } from 'lucide-react';
+import { ActivityHeatMap } from '@/components/dashboard/ActivityHeatMap';
 import { useOrders } from '@/hooks/useOrders';
 import { useServiceCalls } from '@/hooks/useServiceCalls';
 import { usePickups } from '@/hooks/usePickups';
@@ -262,6 +263,11 @@ export function ManagementDashboard() {
             ))}
           </div>
         </Panel>
+      </div>
+
+      {/* מפת חום ארצית */}
+      <div className="mb-4">
+        <ActivityHeatMap orders={orders} serviceCalls={serviceCalls} pickups={pickups} stops={stops} />
       </div>
 
       {/* Exceptions row — פסטלים כמו במוקאפ */}
