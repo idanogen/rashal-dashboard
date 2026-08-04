@@ -99,6 +99,9 @@ export function ActivityHeatMap({
             center={[31.6, 34.95]}
             zoom={7}
             scrollWheelZoom={false}
+            zoomControl={false}
+            dragging={false}
+            doubleClickZoom={false}
             style={{ height: '100%', width: '100%', background: '#eef4ef' }}
             attributionControl={false}
             maxBounds={ISRAEL_BOUNDS.pad(0.4)}
@@ -108,7 +111,7 @@ export function ActivityHeatMap({
             <HeatLayer points={points} />
           </MapContainer>
         </div>
-        <div className="absolute end-3 top-3 z-[500] rounded-xl border bg-white/95 px-3 py-2 shadow-sm" style={{ borderColor: '#eef1f6' }} dir="rtl">
+        <div className="absolute start-3 top-3 z-[500] rounded-xl border bg-white/95 px-3 py-2 shadow-sm" style={{ borderColor: '#eef1f6' }} dir="rtl">
           <LegendRow icon={<Truck className="h-4 w-4" />} label="אספקות" color="#16a34a" />
           <div className="my-1" />
           <LegendRow icon={<Wrench className="h-4 w-4" />} label="קריאות שירות" color="#2b6cb0" />
