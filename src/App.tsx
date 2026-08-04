@@ -4,6 +4,7 @@ import { Toaster } from 'sonner';
 import { AppShell } from '@/components/layout/AppShell';
 import { DriverShell } from '@/components/layout/DriverShell';
 import { DashboardPage } from '@/pages/DashboardPage';
+import { ManagementDashboard } from '@/pages/ManagementDashboard';
 import { DispatchPage } from '@/pages/DispatchPage';
 import { InspectionsPage } from '@/pages/InspectionsPage';
 import { RouteNavigationPage } from '@/pages/RouteNavigationPage';
@@ -72,6 +73,7 @@ function App() {
                     <AppShell>
                       <Routes>
                         <Route path="/" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><DashboardPage /></RoleBasedRoute>} />
+                        <Route path="/overview" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><ManagementDashboard /></RoleBasedRoute>} />
                         <Route path="/dispatch" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><DispatchPage /></RoleBasedRoute>} />
                         {/* הראוטים הישנים מפנים למסך הסדרן המאוחד עם הטאב המתאים */}
                         <Route path="/routes" element={<Navigate to="/dispatch?tab=deliveries" replace />} />

@@ -73,6 +73,19 @@ export function AppHeader() {
               דשבורד
             </NavLink>
             <NavLink
+              to="/overview"
+              className={({ isActive }) =>
+                cn(
+                  'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                  isActive
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                )
+              }
+            >
+              דשבורד הנהלה
+            </NavLink>
+            <NavLink
               to="/dispatch"
               className={({ isActive }) =>
                 cn(
