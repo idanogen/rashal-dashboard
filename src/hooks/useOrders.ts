@@ -6,6 +6,5 @@ export function useOrders() {
     queryKey: ['orders'],
     queryFn: fetchAllOrders,
     staleTime: 30 * 1000,
-    refetchOnWindowFocus: true,
   });
 }

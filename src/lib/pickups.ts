@@ -1,5 +1,6 @@
 import type { Pickup, PickupLine, PickupStatus } from '@/types/pickup';
 import { supabase } from './supabase';
+import { dataWindowFilter } from './constants';
 
 type PickupRow = {
   id: string;
@@ -73,6 +74,7 @@ export async function fetchAllPickups(): Promise<Pickup[]> {
     const { data, error } = await supabase
       .from('pickups')
       .select('*')
+      .or(dataWindowFilter())
       .order('pickup_date', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false })
       .range(from, from + PAGE - 1);

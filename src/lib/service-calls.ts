@@ -1,5 +1,6 @@
 import type { ServiceCall, ServiceCallStatus } from '@/types/service-call';
 import { supabase } from './supabase';
+import { dataWindowFilter } from './constants';
 
 type ServiceCallRow = {
   id: string;
@@ -74,6 +75,7 @@ export async function fetchAllServiceCalls(): Promise<ServiceCall[]> {
     const { data, error } = await supabase
       .from('service_calls')
       .select('*')
+      .or(dataWindowFilter())
       .order('created_at', { ascending: false })
       .range(from, from + PAGE - 1);
     if (error) throw new Error(`Supabase fetchAllServiceCalls: ${error.message}`);

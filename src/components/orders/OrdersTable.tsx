@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Table,
   TableBody,
@@ -18,6 +18,7 @@ import { getDaysSinceCreated, getDaysColor } from '@/lib/utils';
 import { WhatsAppActions } from '@/components/whatsapp/WhatsAppActions';
 import { CustomerReplyBadge } from '@/components/whatsapp/CustomerReplyBadge';
 import { OrderChatButton } from '@/components/OrderChatButton';
+import { LoadMore } from '@/components/LoadMore';
 
 interface OrdersTableProps {
   orders: Order[];
@@ -28,6 +29,11 @@ interface OrdersTableProps {
 
 type SortKey = 'customerName' | 'city' | 'orderStatus' | 'openedBy' | 'created' | 'daysSince';
 type SortDir = 'asc' | 'desc';
+
+// Both the desktop table and the mobile cards are always in the DOM (the mobile
+// list is only hidden with `md:hidden`), so an unpaged render of ~6,000 orders
+// created ~80,000 nodes on every filter keystroke. Render a chunk at a time.
+const PAGE_SIZE = 100;
 
 function DupBadge({ count }: { count: number }) {
   return (
@@ -84,6 +90,11 @@ export function OrdersTable({ orders, filters, groupSize }: OrdersTableProps) {
     });
   }, [filtered, sortKey, sortDir]);
 
+  // Visible chunk — grows on demand, resets whenever the result set changes.
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  useEffect(() => setVisibleCount(PAGE_SIZE), [filters, sortKey, sortDir]);
+  const visible = useMemo(() => sorted.slice(0, visibleCount), [sorted, visibleCount]);
+
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -138,7 +149,7 @@ export function OrdersTable({ orders, filters, groupSize }: OrdersTableProps) {
                   </TableCell>
                 </TableRow>
               ) : (
-                sorted.map((order, idx) => (
+                visible.map((order, idx) => (
                   <TableRow
                     key={order.id}
                     className="cursor-pointer hover:bg-muted/40 transition-colors"
@@ -217,9 +228,14 @@ export function OrdersTable({ orders, filters, groupSize }: OrdersTableProps) {
             </TableBody>
           </Table>
         </div>
-        <p className="mt-2 text-xs text-muted-foreground">
-          מציג {sorted.length} מתוך {orders.length} הזמנות
-        </p>
+        <LoadMore
+          shown={visible.length}
+          matched={sorted.length}
+          total={orders.length}
+          noun="הזמנות"
+          onMore={() => setVisibleCount((c) => c + PAGE_SIZE)}
+          onAll={() => setVisibleCount(sorted.length)}
+        />
       </div>
 
       {/* Mobile Cards */}
@@ -227,7 +243,7 @@ export function OrdersTable({ orders, filters, groupSize }: OrdersTableProps) {
         {sorted.length === 0 ? (
           <p className="py-12 text-center text-muted-foreground">לא נמצאו הזמנות</p>
         ) : (
-          sorted.map((order) => (
+          visible.map((order) => (
             <Card
               key={order.id}
               className="cursor-pointer p-3 hover:bg-muted/40 transition-colors"
@@ -302,9 +318,14 @@ export function OrdersTable({ orders, filters, groupSize }: OrdersTableProps) {
             </Card>
           ))
         )}
-        <p className="text-center text-xs text-muted-foreground">
-          מציג {sorted.length} מתוך {orders.length} הזמנות
-        </p>
+        <LoadMore
+          shown={visible.length}
+          matched={sorted.length}
+          total={orders.length}
+          noun="הזמנות"
+          onMore={() => setVisibleCount((c) => c + PAGE_SIZE)}
+          onAll={() => setVisibleCount(sorted.length)}
+        />
       </div>
 
       {/* Detail Dialog */}

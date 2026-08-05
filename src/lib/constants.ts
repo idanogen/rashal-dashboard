@@ -46,3 +46,27 @@ export const SERVICE_CALL_STATUS_OPTIONS = [
   { value: 'בוצע', label: 'בוצע', color: 'green' },
   { value: 'בוטל', label: 'בוטל', color: 'red' },
 ] as const;
+
+// ─── Data window ────────────────────────────────────────────
+// Upper bound on how far back the list screens load rows. The tables grow with
+// every Priority sync (orders went 600 → 6,000 in four months) and the client
+// reads them whole, so an unbounded fetch gets heavier forever.
+//
+// 180 days excludes nothing today — the oldest order is from 06/04/2026 — so
+// this is a growth guard, not a behaviour change. Anything touched inside the
+// window is kept regardless of age (see dataWindowFilter), so an old record
+// that is still being worked on never disappears from the screen.
+// Tighten this number if the dispatcher does not need half a year of history.
+export const DATA_WINDOW_DAYS = 180;
+
+export function dataWindowCutoff(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - DATA_WINDOW_DAYS);
+  return d.toISOString();
+}
+
+/** PostgREST `or` clause: created inside the window, or touched inside it. */
+export function dataWindowFilter(): string {
+  const cutoff = dataWindowCutoff();
+  return `created_at.gte.${cutoff},updated_at.gte.${cutoff}`;
+}

@@ -23,7 +23,13 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 2,
-      refetchOnWindowFocus: true,
+      // Freshness comes from the realtime channel (useRealtimeSync), which
+      // invalidates the affected key the moment a row changes. Refetching whole
+      // tables again on every window focus only duplicated that work — with
+      // ~6k orders and ~5.5k service calls it meant multi-MB refetches each
+      // time the user switched tabs.
+      refetchOnWindowFocus: false,
+      staleTime: 60 * 1000,
     },
   },
 });

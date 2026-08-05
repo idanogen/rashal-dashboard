@@ -6,6 +6,5 @@ export function useCranes() {
     queryKey: ['cranes'],
     queryFn: fetchAllCranes,
     staleTime: 60 * 1000,
-    refetchOnWindowFocus: true,
   });
 }

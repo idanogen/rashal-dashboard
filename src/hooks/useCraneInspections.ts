@@ -14,7 +14,6 @@ export function useCraneInspections() {
     queryKey: ['craneInspections'],
     queryFn: fetchAllInspections,
     staleTime: 30 * 1000,
-    refetchOnWindowFocus: true,
   });
 }
 

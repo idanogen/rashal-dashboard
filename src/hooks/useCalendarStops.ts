@@ -6,6 +6,5 @@ export function useCalendarStops() {
     queryKey: ['calendarStops'],
     queryFn: fetchAllStops,
     staleTime: 30 * 1000,
-    refetchOnWindowFocus: true,
   });
 }

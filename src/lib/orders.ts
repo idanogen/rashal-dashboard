@@ -1,5 +1,6 @@
 import type { Order } from '@/types/order';
 import { supabase } from './supabase';
+import { dataWindowFilter } from './constants';
 
 type OrderRow = {
   id: string;
@@ -82,6 +83,7 @@ export async function fetchAllOrders(): Promise<Order[]> {
     const { data, error } = await supabase
       .from('orders')
       .select('*')
+      .or(dataWindowFilter())
       .order('created_at', { ascending: false })
       .range(from, from + PAGE - 1);
     if (error) throw new Error(`Supabase fetchAllOrders: ${error.message}`);

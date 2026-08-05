@@ -6,6 +6,5 @@ export function usePickups() {
     queryKey: ['pickups'],
     queryFn: fetchAllPickups,
     staleTime: 30 * 1000,
-    refetchOnWindowFocus: true,
   });
 }

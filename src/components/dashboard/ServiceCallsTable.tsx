@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Table,
   TableBody,
@@ -23,6 +23,7 @@ import { SERVICE_CALL_STATUS_OPTIONS } from '@/lib/constants';
 import { useUpdateServiceCall } from '@/hooks/useUpdateServiceCall';
 import { getDaysSinceCreated, getDaysColor } from '@/lib/utils';
 import { OrderChatButton } from '@/components/OrderChatButton';
+import { LoadMore } from '@/components/LoadMore';
 
 interface ServiceCallsTableProps {
   calls: ServiceCall[];
@@ -31,6 +32,8 @@ interface ServiceCallsTableProps {
 
 type SortKey = 'customerName' | 'city' | 'serviceCallStatus' | 'created' | 'daysSince';
 type SortDir = 'asc' | 'desc';
+
+const PAGE_SIZE = 100;
 
 function DupBadge({ count }: { count: number }) {
   return (
@@ -111,6 +114,9 @@ export function ServiceCallsTable({ calls, groupSize }: ServiceCallsTableProps) 
   const [statusFilter, setStatusFilter] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('created');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
+  // Same chunked render as OrdersTable: both the table and the mobile cards
+  // stay in the DOM, so ~5,500 calls meant tens of thousands of nodes.
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const filtered = useMemo(() => {
     return calls.filter((c) => {
@@ -139,6 +145,9 @@ export function ServiceCallsTable({ calls, groupSize }: ServiceCallsTableProps) 
       return sortDir === 'asc' ? cmp : -cmp;
     });
   }, [filtered, sortKey, sortDir]);
+
+  useEffect(() => setVisibleCount(PAGE_SIZE), [search, statusFilter, sortKey, sortDir]);
+  const visible = useMemo(() => sorted.slice(0, visibleCount), [sorted, visibleCount]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -215,7 +224,7 @@ export function ServiceCallsTable({ calls, groupSize }: ServiceCallsTableProps) 
                   </TableCell>
                 </TableRow>
               ) : (
-                sorted.map((call, idx) => (
+                visible.map((call, idx) => (
                   <TableRow key={call.id} className="hover:bg-muted/40 transition-colors">
                     <TableCell className="text-center text-xs text-muted-foreground">
                       {idx + 1}
@@ -274,9 +283,14 @@ export function ServiceCallsTable({ calls, groupSize }: ServiceCallsTableProps) 
             </TableBody>
           </Table>
         </div>
-        <p className="mt-2 text-xs text-muted-foreground">
-          מציג {sorted.length} מתוך {calls.length} קריאות שירות
-        </p>
+        <LoadMore
+          shown={visible.length}
+          matched={sorted.length}
+          total={calls.length}
+          noun="קריאות שירות"
+          onMore={() => setVisibleCount((c) => c + PAGE_SIZE)}
+          onAll={() => setVisibleCount(sorted.length)}
+        />
       </div>
 
       {/* Mobile Cards */}
@@ -284,7 +298,7 @@ export function ServiceCallsTable({ calls, groupSize }: ServiceCallsTableProps) 
         {sorted.length === 0 ? (
           <p className="py-12 text-center text-muted-foreground">לא נמצאו קריאות שירות</p>
         ) : (
-          sorted.map((call) => (
+          visible.map((call) => (
             <Card key={call.id} className="p-3">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
@@ -338,9 +352,14 @@ export function ServiceCallsTable({ calls, groupSize }: ServiceCallsTableProps) 
             </Card>
           ))
         )}
-        <p className="text-center text-xs text-muted-foreground">
-          מציג {sorted.length} מתוך {calls.length} קריאות שירות
-        </p>
+        <LoadMore
+          shown={visible.length}
+          matched={sorted.length}
+          total={calls.length}
+          noun="קריאות שירות"
+          onMore={() => setVisibleCount((c) => c + PAGE_SIZE)}
+          onAll={() => setVisibleCount(sorted.length)}
+        />
       </div>
     </div>
   );

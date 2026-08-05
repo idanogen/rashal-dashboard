@@ -54,6 +54,19 @@ async function setWatermark(key: string, iso: string) {
   if (error) throw new Error(`sync_state write (${key}): ${error.message}`);
 }
 
+// Value-equality for the change check below. Priority sends everything as text,
+// Postgres returns typed values, and `items`/`lines` are jsonb — so compare
+// loosely: null/undefined are the same absence, objects by their JSON shape.
+function sameValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a === null || a === undefined) return b === null || b === undefined;
+  if (b === null || b === undefined) return false;
+  if (typeof a === 'object' || typeof b === 'object') {
+    return JSON.stringify(a) === JSON.stringify(b);
+  }
+  return String(a) === String(b);
+}
+
 function maxDate(rows: Row[], field: string): string | null {
   let max: string | null = null;
   for (const r of rows) {
@@ -106,10 +119,29 @@ async function upsertCustomers(rows: Row[]) {
       priority_udate: s(r.CREATEDDATE),
       synced_at: new Date().toISOString(),
     }));
-  for (let i = 0; i < mapped.length; i += 500) {
+  // Same no-op guard as runAdoption: CREATEDDATE has day granularity, so every
+  // run re-sends the same customers. `synced_at` changes on every pass by
+  // definition, so it is excluded from the comparison and only rides along on
+  // rows that actually changed.
+  const names = mapped.map((m) => m.custname);
+  const current = new Map<string, Row>();
+  for (let i = 0; i < names.length; i += 200) {
+    const { data, error } = await supabaseAdmin
+      .from('priority_customers').select('*').in('custname', names.slice(i, i + 200));
+    if (error) throw new Error(`customers change check: ${error.message}`);
+    for (const d of data ?? []) current.set((d as Row).custname as string, d as Row);
+  }
+  const changedCustomers = mapped.filter((m) => {
+    const cur = current.get(m.custname);
+    if (!cur) return true;
+    return Object.keys(m).some(
+      (k) => k !== 'synced_at' && k !== 'custname' && !sameValue((m as Row)[k], cur[k]),
+    );
+  });
+  for (let i = 0; i < changedCustomers.length; i += 500) {
     const { error } = await supabaseAdmin
       .from('priority_customers')
-      .upsert(mapped.slice(i, i + 500), { onConflict: 'custname' });
+      .upsert(changedCustomers.slice(i, i + 500), { onConflict: 'custname' });
     if (error) throw new Error(`customers upsert: ${error.message}`);
   }
   // Self-paging backfill guard: the scenario pulls $orderby=CREATEDDATE asc&$top=4000.
@@ -123,7 +155,12 @@ async function upsertCustomers(rows: Row[]) {
     wm = bumped.toISOString().replace(/\.\d{3}Z$/, 'Z');
   }
   if (wm) await setWatermark('customers', wm);
-  return { received: rows.length, upserted: mapped.length, watermark: wm };
+  return {
+    received: rows.length,
+    upserted: changedCustomers.length,
+    unchanged: mapped.length - changedCustomers.length,
+    watermark: wm,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -144,7 +181,7 @@ interface AdoptConfig {
 }
 
 async function runAdoption(rows: Row[], cfg: AdoptConfig) {
-  const stats = { received: rows.length, updated: 0, adopted: 0, inserted: 0, skipped: 0 };
+  const stats = { received: rows.length, updated: 0, adopted: 0, inserted: 0, skipped: 0, unchanged: 0 };
 
   // dedupe batch by natural key (Priority can repeat rows across pages)
   const byKey = new Map<string, Row>();
@@ -243,13 +280,45 @@ async function runAdoption(rows: Row[], cfg: AdoptConfig) {
     }));
   }
 
+  // Drop no-op writes before touching the table.
+  // Priority re-sends the same rows on every run (ORDERS.STATUSDATE has DAY
+  // granularity, so the watermark sits at midnight and the window covers ~2
+  // days; pickup addresses use a rolling 3-day window). Re-upserting an
+  // identical row still bumps updated_at and still emits a realtime UPDATE, so
+  // every open client was invalidating and refetching the whole table every 20
+  // minutes. Compare against the current values and keep only real changes.
+  let changed = updates;
+  if (updates.length) {
+    const cols = new Set<string>([cfg.keyCol]);
+    for (const u of updates) for (const k of Object.keys(u)) cols.add(k);
+    const selectList = [...cols].join(',');
+    const updKeys = updates.map((u) => u[cfg.keyCol] as string);
+    const current = new Map<string, Row>();
+    for (let i = 0; i < updKeys.length; i += 200) {
+      const { data, error } = await supabaseAdmin
+        .from(cfg.table).select(selectList).in(cfg.keyCol, updKeys.slice(i, i + 200));
+      if (error) throw new Error(`${cfg.table} change check: ${error.message}`);
+      // `select()` takes a runtime-built column list, so supabase-js cannot infer
+      // the row shape here — hence the cast through unknown.
+      for (const d of (data ?? []) as unknown as Row[]) {
+        current.set(d[cfg.keyCol] as string, d);
+      }
+    }
+    changed = updates.filter((u) => {
+      const cur = current.get(u[cfg.keyCol] as string);
+      if (!cur) return true; // row vanished between the two reads — let the upsert handle it
+      return Object.keys(u).some((k) => k !== cfg.keyCol && !sameValue(u[k], cur[k]));
+    });
+    stats.unchanged = updates.length - changed.length;
+  }
+
   // bulk update of already-keyed rows: upsert by the natural key.
   // Only Priority-owned columns are in the payload, so app-owned columns
   // (order_status etc.) stay untouched. Requires a FULL unique index on keyCol.
   // NOTE: rows in one PostgREST upsert must share the exact same column set —
   // and a missing column would be nulled on conflict — so group by signature.
   const groups = new Map<string, Row[]>();
-  for (const u of updates) {
+  for (const u of changed) {
     const sig = Object.keys(u).sort().join(',');
     (groups.get(sig) ?? groups.set(sig, []).get(sig)!).push(u);
   }
@@ -261,7 +330,7 @@ async function runAdoption(rows: Row[], cfg: AdoptConfig) {
       if (error) throw new Error(`${cfg.table} bulk update: ${error.message}`);
     }
   }
-  stats.updated = updates.length;
+  stats.updated = changed.length;
 
   for (let i = 0; i < inserts.length; i += 500) {
     const { error } = await supabaseAdmin.from(cfg.table).insert(inserts.slice(i, i + 500));

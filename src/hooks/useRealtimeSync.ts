@@ -3,6 +3,11 @@ import { useQueryClient } from '@tanstack/react-query';
 import { supabase, uniqueChannelName } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 
+// A sync run touches many rows at once, so postgres_changes arrives as a burst.
+// Invalidating per event refetched whole tables repeatedly; coalesce the burst
+// into one invalidation per query key.
+const COALESCE_MS = 1500;
+
 export function useRealtimeSync() {
   const queryClient = useQueryClient();
   const { loading } = useAuth();
@@ -15,36 +20,52 @@ export function useRealtimeSync() {
     // established"). Gating on `loading` lets the socket connect once, already
     // authenticated.
     if (loading) return;
+
+    const pendingKeys = new Set<string>();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const scheduleInvalidate = (key: string) => {
+      pendingKeys.add(key);
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = undefined;
+        const keys = [...pendingKeys];
+        pendingKeys.clear();
+        for (const k of keys) queryClient.invalidateQueries({ queryKey: [k] });
+      }, COALESCE_MS);
+    };
+
     const channel = supabase
       .channel(uniqueChannelName('db-changes'))
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'orders' },
-        () => queryClient.invalidateQueries({ queryKey: ['orders'] })
+        () => scheduleInvalidate('orders')
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'routes' },
-        () => queryClient.invalidateQueries({ queryKey: ['routes'] })
+        () => scheduleInvalidate('routes')
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'service_calls' },
-        () => queryClient.invalidateQueries({ queryKey: ['serviceCalls'] })
+        () => scheduleInvalidate('serviceCalls')
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'calendar_stops' },
-        () => queryClient.invalidateQueries({ queryKey: ['calendarStops'] })
+        () => scheduleInvalidate('calendarStops')
       )
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'pickups' },
-        () => queryClient.invalidateQueries({ queryKey: ['pickups'] })
+        () => scheduleInvalidate('pickups')
       )
       .subscribe();
 
     return () => {
+      if (timer) clearTimeout(timer);
       supabase.removeChannel(channel);
     };
   }, [queryClient, loading]);

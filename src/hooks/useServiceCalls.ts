@@ -6,6 +6,5 @@ export function useServiceCalls() {
     queryKey: ['serviceCalls'],
     queryFn: fetchAllServiceCalls,
     staleTime: 30 * 1000,
-    refetchOnWindowFocus: true,
   });
 }
