@@ -301,6 +301,56 @@ async function applyCleanup(which: string): Promise<Record<string, unknown>> {
   return out;
 }
 
+// Records Priority has already closed that still carry an open stop on the
+// dispatcher's calendar. Read-only — the sweep deliberately leaves these alone,
+// so this is how they surface for a human to clear.
+async function reportStuckStops(): Promise<Record<string, unknown>> {
+  const rows: Row[] = [];
+
+  const { data: stops, error } = await sb.from("calendar_stops")
+    .select("id,order_id,service_call_id,delivery_date,driver,status")
+    .in("status", ["planned", "in_progress"]);
+  if (error) throw new Error(`calendar_stops: ${error.message}`);
+
+  const orderIds = (stops ?? []).map((s) => (s as Row).order_id).filter(Boolean) as string[];
+  const callIds = (stops ?? []).map((s) => (s as Row).service_call_id).filter(Boolean) as string[];
+
+  const load = async (table: string, ids: string[], statusCol: string, keyCol: string, closed: string[]) => {
+    const m = new Map<string, Row>();
+    for (let i = 0; i < ids.length; i += 200) {
+      const { data, error: e } = await sb.from(table)
+        .select(`id,${keyCol},customer_name,city,${statusCol},priority_status`)
+        .in("id", ids.slice(i, i + 200)).in(statusCol, closed);
+      if (e) throw new Error(`${table}: ${e.message}`);
+      for (const r of (data ?? []) as unknown as Row[]) m.set(r.id as string, r);
+    }
+    return m;
+  };
+
+  const closedOrders = await load("orders", orderIds, "order_status", "priority_order_id", ["סופק", "בוטל"]);
+  const closedCalls = await load("service_calls", callIds, "service_call_status", "priority_call_id", ["בוצע", "בוטל"]);
+
+  for (const s of (stops ?? []) as unknown as Row[]) {
+    const o = s.order_id ? closedOrders.get(s.order_id as string) : undefined;
+    const c = s.service_call_id ? closedCalls.get(s.service_call_id as string) : undefined;
+    const src = o ?? c;
+    if (!src) continue;
+    rows.push({
+      kind: o ? "משלוח" : "שירות",
+      ref: o ? o.priority_order_id : c!.priority_call_id,
+      customer_name: src.customer_name,
+      city: src.city,
+      new_status: o ? o.order_status : c!.service_call_status,
+      priority_status: src.priority_status,
+      delivery_date: s.delivery_date,
+      driver: s.driver,
+      stop_status: s.status,
+    });
+  }
+  rows.sort((a, b) => String(a.delivery_date).localeCompare(String(b.delivery_date)));
+  return { count: rows.length, rows };
+}
+
 // Read-only schema probe. Priority field names differ per environment (Roni's
 // learning #1: `$select` with an unknown field returns 400 naming it), and the
 // credentials only exist as Edge Function secrets — so discovery has to happen
@@ -357,6 +407,9 @@ Deno.serve(async (req: Request) => {
   if (job === "report-cleanup") {
     const which = body?.entity ? String(body.entity) : "orders";
     return new Response(JSON.stringify(await reportCleanup(which), null, 2), { headers: { "Content-Type": "application/json" } });
+  }
+  if (job === "report-stuck-stops") {
+    return new Response(JSON.stringify(await reportStuckStops(), null, 2), { headers: { "Content-Type": "application/json" } });
   }
   if (job === "apply-cleanup") {
     const which = body?.entity ? String(body.entity) : "orders";
