@@ -23,6 +23,7 @@ type OrderRow = {
   customer_requested_time: string | null;
   last_reminder_at: string | null;
   delivery_date: string | null;
+  priority_status: string | null;
   created_at: string;
 };
 
@@ -48,6 +49,7 @@ function rowToOrder(row: OrderRow): Order {
     customerRequestedTime: row.customer_requested_time ?? undefined,
     lastReminderAt: row.last_reminder_at ?? undefined,
     deliveryDate: row.delivery_date ?? undefined,
+    priorityStatus: row.priority_status ?? undefined,
     created: row.created_at,
   };
 }
@@ -83,6 +85,7 @@ export async function fetchAllOrders(): Promise<Order[]> {
     const { data, error } = await supabase
       .from('orders')
       .select('*')
+      .is('archived_at', null)
       .or(dataWindowFilter())
       .order('created_at', { ascending: false })
       .range(from, from + PAGE - 1);

@@ -23,6 +23,7 @@ type ServiceCallRow = {
   call_type: string | null;
   service_type: string | null;
   duplicate_of: string | null;
+  priority_status: string | null;
   created_at: string;
 };
 
@@ -48,6 +49,7 @@ function rowToServiceCall(row: ServiceCallRow): ServiceCall {
     callType: row.call_type ?? undefined,
     serviceType: row.service_type ?? undefined,
     duplicateOf: row.duplicate_of ?? undefined,
+    priorityStatus: row.priority_status ?? undefined,
     created: row.created_at,
   };
 }
@@ -75,6 +77,7 @@ export async function fetchAllServiceCalls(): Promise<ServiceCall[]> {
     const { data, error } = await supabase
       .from('service_calls')
       .select('*')
+      .is('archived_at', null)
       .or(dataWindowFilter())
       .order('created_at', { ascending: false })
       .range(from, from + PAGE - 1);

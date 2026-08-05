@@ -69,8 +69,10 @@ const Q = {
     `/ORDERS?$select=ORDNAME,CUSTNAME,CDES,CURDATE,STATUSDATE,ORDSTATUSDES,AGENTNAME,TYPEDES,DOERNAME,Y_151_0_ESHB` +
     `&$expand=${encodeURIComponent("ORDERITEMS_SUBFORM($select=PARTNAME,PDES,TQUANT,SERIALNAME)")}` +
     `&$filter=${encodeURIComponent(`STATUSDATE ge ${since}`)}&$orderby=STATUSDATE%20asc&$top=8000`,
+  // CALLSTATUSCODE added 05/08/2026 — the call's status in Priority. Without it
+  // nothing ever closed on our side and 96% of calls sat in "קריאה חדשה".
   service_calls: (since: string) =>
-    `/DOCUMENTS_Q?$select=DOCNO,CUSTNAME,CDES,STARTDATE,STATUSDATE,PHONENUM,SUSERLOGIN,Y_149_0_ESHB,Y_2578_0_ESHB,Y_2632_5_ESH,MALFDES,SYMDES,CALLTYPECODE,SERVTDES,SERNUM,PARTNAME,PARTDES,WARDATEFINAL,RSHL_INSTDATE` +
+    `/DOCUMENTS_Q?$select=DOCNO,CUSTNAME,CDES,STARTDATE,STATUSDATE,PHONENUM,SUSERLOGIN,Y_149_0_ESHB,Y_2578_0_ESHB,Y_2632_5_ESH,MALFDES,SYMDES,CALLTYPECODE,CALLSTATUSCODE,SERVTDES,SERNUM,PARTNAME,PARTDES,WARDATEFINAL,RSHL_INSTDATE` +
     `&$filter=${encodeURIComponent(`STATUSDATE ge ${since}`)}&$orderby=STATUSDATE%20asc&$top=1500`,
   pickups_lines: (since: string) =>
     `/DOCUMENTS_N?$select=DOCNO,DOC,CUSTNAME,CDES,CURDATE,STATDES,ORDNAME,ODOCNO,REFERENCE,TOWARHSDES,AGENTNAME,OWNERLOGIN,TOTQUANT,TOTPRICE,UDATE` +
@@ -103,13 +105,268 @@ const JOBS: Record<string, Step[]> = {
   ],
 };
 
+// ── Cleanup mapping (agreed with Idan 05/08/2026) ──────────────────────────
+// Priority is authoritative for TERMINAL states only. Anything still open there
+// (מאושרת לבצוע / לביצוע / שובצה / להמשך טיפול) leaves our status untouched, so
+// the dispatcher's own flow is never overwritten. "שובצה" is deliberately NOT
+// mapped — its meaning at Rashal is still unconfirmed.
+const ORDER_TERMINAL: Record<string, string> = {
+  "בוצעה": "סופק",
+  "שולמה": "סופק",
+  "מבוטלת": "בוטל",
+};
+const CALL_TERMINAL: Record<string, string> = {
+  "בוצעה": "בוצע",
+  "סופית": "בוצע",
+  "מבוטלת": "בוטל",
+};
+
+// Our oldest row is 19/03/2026, so one bounded window covers everything we hold.
+// (Paging with $skip blew the function's 150s idle timeout.)
+const CLEANUP_SINCE = "2026-03-01T00:00:00Z";
+
+// Statuses for one entity, in a single bounded request. Read-only.
+async function fetchPriorityStatuses(
+  entity: string, select: string, dateField: string,
+): Promise<Row[]> {
+  const auth = { headers: { Authorization: basicAuth(), "User-Agent": UA, Accept: "application/json" } };
+  const url = `${PRIORITY}/${entity}?$select=${select}` +
+    `&$filter=${encodeURIComponent(`${dateField} ge ${CLEANUP_SINCE}`)}` +
+    `&$orderby=${dateField}%20asc&$top=30000`;
+  const res = await fetch(url, auth);
+  if (!res.ok) throw new Error(`${entity} HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  return (JSON.parse(await res.text())?.value ?? []) as Row[];
+}
+
+type Row = Record<string, unknown>;
+
+// Dry-run: what WOULD the cleanup do? Writes nothing. One entity per call, to
+// stay inside the function's 150s idle timeout.
+async function reportCleanup(which: string): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = {};
+
+  const plan = async (
+    label: string, entity: string, keyField: string, statusField: string, dateField: string,
+    table: string, keyCol: string, statusCol: string, openDefault: string,
+    terminal: Record<string, string>,
+  ) => {
+    const pri = await fetchPriorityStatuses(entity, `${keyField},${statusField},${dateField}`, dateField);
+    const byKey = new Map<string, string>();
+    for (const r of pri) {
+      const k = String(r[keyField] ?? "").trim();
+      if (k) byKey.set(k, String(r[statusField] ?? "(null)"));
+    }
+
+    // our linked rows
+    const ours: Row[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await sb.from(table)
+        .select(`id,${keyCol},${statusCol}`).not(keyCol, "is", null).range(from, from + 999);
+      if (error) throw new Error(`${table} read: ${error.message}`);
+      ours.push(...((data ?? []) as Row[]));
+      if (!data || data.length < 1000) break;
+    }
+
+    const wouldChange: Record<string, number> = {};
+    const openBreakdown: Record<string, number> = {};
+    const closingIds: string[] = [];
+    let notFoundInPriority = 0, staysOpen = 0, alreadyCorrect = 0;
+    for (const o of ours) {
+      const p = byKey.get(String(o[keyCol]));
+      if (p === undefined) { notFoundInPriority++; continue; }
+      const target = terminal[p];
+      if (!target) {
+        staysOpen++;
+        openBreakdown[p] = (openBreakdown[p] ?? 0) + 1;
+        continue;
+      }
+      const cur = String(o[statusCol] ?? openDefault);
+      if (cur === target) { alreadyCorrect++; continue; }
+      wouldChange[`${cur} → ${target}`] = (wouldChange[`${cur} → ${target}`] ?? 0) + 1;
+      closingIds.push(o.id as string);
+    }
+
+    // Side effect worth knowing before we run: a record Priority already closed
+    // may still be sitting on the dispatcher's calendar as a planned stop.
+    const stopCol = table === 'orders' ? 'order_id' : 'service_call_id';
+    let openStopsOnClosing = 0;
+    for (let i = 0; i < closingIds.length; i += 200) {
+      const { data, error } = await sb.from('calendar_stops')
+        .select('id').in(stopCol, closingIds.slice(i, i + 200))
+        .in('status', ['planned', 'in_progress']);
+      if (error) throw new Error(`calendar_stops check: ${error.message}`);
+      openStopsOnClosing += (data ?? []).length;
+    }
+
+    out[label] = {
+      priority_rows: pri.length,
+      our_linked_rows: ours.length,
+      would_change: wouldChange,
+      would_change_total: Object.values(wouldChange).reduce((a, b) => a + b, 0),
+      stays_open: staysOpen,
+      stays_open_by_priority_status: openBreakdown,
+      already_correct: alreadyCorrect,
+      not_found_in_priority: notFoundInPriority,
+      active_calendar_stops_on_closing_rows: openStopsOnClosing,
+    };
+  };
+
+  if (which === "orders" || which === "both") {
+    try {
+      await plan("orders", "ORDERS", "ORDNAME", "ORDSTATUSDES", "STATUSDATE",
+        "orders", "priority_order_id", "order_status", "ממתין לתאום", ORDER_TERMINAL);
+    } catch (e) { out.orders = String(e).slice(0, 300); }
+  }
+
+  if (which === "service_calls" || which === "both") {
+    try {
+      await plan("service_calls", "DOCUMENTS_Q", "DOCNO", "CALLSTATUSCODE", "STATUSDATE",
+        "service_calls", "priority_call_id", "service_call_status", "קריאה חדשה", CALL_TERMINAL);
+    } catch (e) { out.service_calls = String(e).slice(0, 300); }
+  }
+
+  return out;
+}
+
+// Backfill: apply Priority's terminal statuses to rows we already hold.
+// Deliberately does NOT touch calendar_stops — Idan's call 05/08: a stop that is
+// still planned stays on the dispatcher's calendar even when Priority already
+// closed the record, because "בוצעה" is sometimes set for billing before the
+// drive actually happens. Those rows are reported instead (job report-stuck-stops).
+async function applyCleanup(which: string): Promise<Record<string, unknown>> {
+  const out: Record<string, unknown> = {};
+
+  const run = async (
+    label: string, entity: string, keyField: string, statusField: string, dateField: string,
+    table: string, keyCol: string, statusCol: string,
+    terminal: Record<string, string>,
+  ) => {
+    const pri = await fetchPriorityStatuses(entity, `${keyField},${statusField},${dateField}`, dateField);
+    const byKey = new Map<string, string>();
+    for (const r of pri) {
+      const k = String(r[keyField] ?? "").trim();
+      if (k) byKey.set(k, String(r[statusField] ?? ""));
+    }
+
+    const ours: Row[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await sb.from(table)
+        .select(`id,${keyCol},${statusCol},priority_status`).not(keyCol, "is", null).range(from, from + 999);
+      if (error) throw new Error(`${table} read: ${error.message}`);
+      ours.push(...((data ?? []) as Row[]));
+      if (!data || data.length < 1000) break;
+    }
+
+    // group by (target status, priority_status) so each UPDATE hits many ids
+    const buckets = new Map<string, string[]>();
+    let statusOnly = 0;
+    for (const o of ours) {
+      const p = byKey.get(String(o[keyCol]));
+      if (p === undefined) continue;
+      const target = terminal[p];
+      const curApp = String(o[statusCol] ?? "");
+      const curPri = o.priority_status === null ? "" : String(o.priority_status);
+      const needsApp = target && curApp !== target;
+      const needsPri = curPri !== p;
+      if (!needsApp && !needsPri) continue;
+      if (!needsApp) statusOnly++;
+      const bk = `${needsApp ? target : ""}|${p}`;
+      (buckets.get(bk) ?? buckets.set(bk, []).get(bk)!).push(o.id as string);
+    }
+
+    let appChanged = 0, priChanged = 0;
+    for (const [bk, ids] of buckets) {
+      const [target, pri_] = bk.split("|");
+      const patch: Row = { priority_status: pri_ };
+      if (target) patch[statusCol] = target;
+      for (let i = 0; i < ids.length; i += 200) {
+        const chunk = ids.slice(i, i + 200);
+        const { error } = await sb.from(table).update(patch).in("id", chunk);
+        if (error) throw new Error(`${table} update: ${error.message}`);
+        priChanged += chunk.length;
+        if (target) appChanged += chunk.length;
+      }
+    }
+    out[label] = { priority_rows: pri.length, our_linked_rows: ours.length, status_closed: appChanged, priority_status_written: priChanged, priority_status_only: statusOnly };
+  };
+
+  if (which === "orders" || which === "both") {
+    await run("orders", "ORDERS", "ORDNAME", "ORDSTATUSDES", "STATUSDATE",
+      "orders", "priority_order_id", "order_status", ORDER_TERMINAL);
+  }
+  if (which === "service_calls" || which === "both") {
+    await run("service_calls", "DOCUMENTS_Q", "DOCNO", "CALLSTATUSCODE", "STATUSDATE",
+      "service_calls", "priority_call_id", "service_call_status", CALL_TERMINAL);
+  }
+  return out;
+}
+
+// Read-only schema probe. Priority field names differ per environment (Roni's
+// learning #1: `$select` with an unknown field returns 400 naming it), and the
+// credentials only exist as Edge Function secrets — so discovery has to happen
+// here. Fixed queries only; no caller-supplied path, so this cannot be used as
+// an open proxy to Priority.
+async function probe(): Promise<Record<string, unknown>> {
+  const auth = { headers: { Authorization: basicAuth(), "User-Agent": UA, Accept: "application/json" } };
+  const out: Record<string, unknown> = {};
+
+  // 1. which ORDSTATUSDES values actually occur, and how often
+  try {
+    const res = await fetch(`${PRIORITY}/ORDERS?$select=ORDNAME,ORDSTATUSDES,STATUSDATE&$orderby=STATUSDATE%20desc&$top=500`, auth);
+    const body = await res.text();
+    if (res.ok) {
+      const counts: Record<string, number> = {};
+      for (const r of JSON.parse(body)?.value ?? []) {
+        const k = String(r.ORDSTATUSDES ?? "(null)");
+        counts[k] = (counts[k] ?? 0) + 1;
+      }
+      out.order_status_values = counts;
+    } else out.order_status_values = `HTTP ${res.status}: ${body.slice(0, 200)}`;
+  } catch (e) { out.order_status_values = String(e).slice(0, 200); }
+
+  // 2. which CALLSTATUSCODE values occur on service calls (the status field we
+  //    never mapped — discovered from a full-row dump on 05/08)
+  try {
+    const res = await fetch(`${PRIORITY}/DOCUMENTS_Q?$select=DOCNO,CALLSTATUSCODE,STATUSDATE&$orderby=STATUSDATE%20desc&$top=500`, auth);
+    const body = await res.text();
+    if (res.ok) {
+      const counts: Record<string, number> = {};
+      for (const r of JSON.parse(body)?.value ?? []) {
+        const k = String(r.CALLSTATUSCODE ?? "(null)");
+        counts[k] = (counts[k] ?? 0) + 1;
+      }
+      out.call_status_values = counts;
+    } else out.call_status_values = `HTTP ${res.status}: ${body.slice(0, 200)}`;
+  } catch (e) { out.call_status_values = String(e).slice(0, 200); }
+
+  return out;
+}
+
 Deno.serve(async (req: Request) => {
   let job = "pull-core", trigger = "manual";
+  let body: Record<string, unknown> = {};
   try {
-    const b = await req.json();
-    if (b?.job) job = String(b.job);
-    if (b?.trigger) trigger = String(b.trigger);
+    body = await req.json();
+    if (body?.job) job = String(body.job);
+    if (body?.trigger) trigger = String(body.trigger);
   } catch { /* defaults */ }
+
+  if (job === "probe") {
+    return new Response(JSON.stringify(await probe(), null, 2), { headers: { "Content-Type": "application/json" } });
+  }
+  if (job === "report-cleanup") {
+    const which = body?.entity ? String(body.entity) : "orders";
+    return new Response(JSON.stringify(await reportCleanup(which), null, 2), { headers: { "Content-Type": "application/json" } });
+  }
+  if (job === "apply-cleanup") {
+    const which = body?.entity ? String(body.entity) : "orders";
+    try {
+      return new Response(JSON.stringify(await applyCleanup(which), null, 2), { headers: { "Content-Type": "application/json" } });
+    } catch (e) {
+      return new Response(JSON.stringify({ error: String(e).slice(0, 500) }), { status: 500, headers: { "Content-Type": "application/json" } });
+    }
+  }
+
   const steps = JOBS[job];
   if (!steps) {
     return new Response(JSON.stringify({ error: `unknown job: ${job}` }), { status: 400, headers: { "Content-Type": "application/json" } });

@@ -48,6 +48,8 @@ export interface Order {
   lastReminderAt?: string;
   /** YYYY-MM-DD — when the order is scheduled for delivery (cron uses this). */
   deliveryDate?: string;
+  /** הסטטוס הגולמי מפריוריטי — מקור האמת לסגירה ולזיהוי טיוטא */
+  priorityStatus?: string;
   created: string;
 }
 

@@ -41,10 +41,13 @@ export function useZonedOrders(): ZonedOrdersResult {
       }
     }
 
-    // סינון לפי סטטוס
+    // סינון לפי סטטוס.
+    // טיוטא = הזמנה שעוד לא אושרה בפריוריטי, אין מה לתאם עליה. היא נשארת במסד
+    // ותיכנס לרשימה לבד ברגע שפריוריטי יאשר אותה (החלטת עידן 05/08/2026).
     const unscheduledOrders = allOrders.filter(
       (o) =>
         o.orderStatus === 'ממתין לתאום' &&
+        o.priorityStatus !== 'טיוטא' &&
         o.address &&
         o.city
     );

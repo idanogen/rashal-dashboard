@@ -32,8 +32,9 @@ export function useZonedServiceCalls(): ZonedServiceCallsResult {
       }
     }
 
+    // טיוטא = טרם אושרה בפריוריטי, כמו בהזמנות (החלטת עידן 05/08/2026).
     const pendingCalls = allCalls.filter(
-      (c) => c.serviceCallStatus === 'קריאה חדשה'
+      (c) => c.serviceCallStatus === 'קריאה חדשה' && c.priorityStatus !== 'טיוטא'
     );
 
     const scheduledCalls = allCalls.filter(

@@ -25,5 +25,7 @@ export interface ServiceCall {
   serviceType?: string;
   /** If set, this row is a Priority dupe of the referenced head row. */
   duplicateOf?: string;
+  /** הסטטוס הגולמי מפריוריטי — מקור האמת לסגירה ולזיהוי טיוטא */
+  priorityStatus?: string;
   created: string;
 }

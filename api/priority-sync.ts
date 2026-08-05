@@ -367,6 +367,29 @@ async function runAdoption(rows: Row[], cfg: AdoptConfig) {
   return stats;
 }
 
+// ---------------------------------------------------------------------------
+// Priority status → app status (agreed with Idan 05/08/2026).
+//
+// Priority is authoritative for TERMINAL states only. While a record is still
+// open there (מאושרת לבצוע / לביצוע / שובצה / להמשך טיפול) we leave the app
+// status alone, so the dispatcher's own flow is never overwritten. This is the
+// same contract pickups already had via STATDES — orders and service calls
+// simply never had their status pulled, which is why 96% of them sat "open"
+// forever.
+//
+// "שובצה" is deliberately unmapped: its meaning at Rashal is unconfirmed.
+// ---------------------------------------------------------------------------
+const ORDER_TERMINAL: Record<string, string> = {
+  'בוצעה': 'סופק',
+  'שולמה': 'סופק',
+  'מבוטלת': 'בוטל',
+};
+const CALL_TERMINAL: Record<string, string> = {
+  'בוצעה': 'בוצע',
+  'סופית': 'בוצע',
+  'מבוטלת': 'בוטל',
+};
+
 // ORDERITEMS_SUBFORM → items jsonb: מה בדיוק מספקים (עמי #2)
 function mapItems(r: Row): Row[] | null {
   const sub = r.ORDERITEMS_SUBFORM;
@@ -414,7 +437,12 @@ async function upsertOrders(rows: Row[]) {
         customer_status: 'לקוח חדש',
         created_at: s(r.CURDATE) ?? new Date().toISOString(),
         items: mapItems(r),
-        // order_status intentionally omitted → DB default 'ממתין לתאום'
+        priority_status: s(r.ORDSTATUSDES),
+        // order_status: terminal Priority states land closed straight away;
+        // anything still open falls through to the DB default 'ממתין לתאום'
+        ...(ORDER_TERMINAL[s(r.ORDSTATUSDES) ?? '']
+          ? { order_status: ORDER_TERMINAL[s(r.ORDSTATUSDES)!] }
+          : {}),
       };
     },
     updateRow: (r) => {
@@ -423,7 +451,12 @@ async function upsertOrders(rows: Row[]) {
         customer_number: s(r.CUSTNAME),
         customer_name: s(r.CDES),
         agent: s(r.AGENTNAME) ?? s(c.agent),
+        priority_status: s(r.ORDSTATUSDES),
       };
+      // Priority closed it → close ours too. Still open there → don't touch,
+      // the dispatcher owns the ממתין/תואמה flow.
+      const term = ORDER_TERMINAL[s(r.ORDSTATUSDES) ?? ''];
+      if (term) u.order_status = term;
       // contact fields only when Priority actually has a value
       const phone = s(r.Y_151_0_ESHB) ?? s(c.phone); if (phone) u.phone = phone;
       const address = s(c.address); if (address) u.address = address;
@@ -480,13 +513,21 @@ async function upsertServiceCalls(rows: Row[]) {
       symptom_desc: s(r.SYMDES),
       call_type: s(r.CALLTYPECODE),
       service_type: s(r.SERVTDES),
-      // service_call_status omitted → DB default 'קריאה חדשה'
+      priority_status: s(r.CALLSTATUSCODE),
+      // service_call_status: terminal Priority states land closed; anything
+      // still open falls through to the DB default 'קריאה חדשה'
+      ...(CALL_TERMINAL[s(r.CALLSTATUSCODE) ?? '']
+        ? { service_call_status: CALL_TERMINAL[s(r.CALLSTATUSCODE)!] }
+        : {}),
     }),
     updateRow: (r) => {
       const u: Row = {
         customer_number: s(r.CUSTNAME),
         customer_name: s(r.CDES),
+        priority_status: s(r.CALLSTATUSCODE),
       };
+      const term = CALL_TERMINAL[s(r.CALLSTATUSCODE) ?? ''];
+      if (term) u.service_call_status = term;
       const phone = s(r.PHONENUM); if (phone) u.phone = phone;
       const address = s(r.Y_149_0_ESHB); if (address) u.address = address;
       const city = s(r.Y_2578_0_ESHB); if (city) u.city = city;
