@@ -54,17 +54,44 @@ async function setWatermark(key: string, iso: string) {
   if (error) throw new Error(`sync_state write (${key}): ${error.message}`);
 }
 
+// Key-order-independent serialization. Postgres stores jsonb with its own key
+// order (by key length, then bytewise), so `items` built as {part,desc,qty,...}
+// reads back as {qty,desc,part,...}. A plain JSON.stringify comparison would
+// call every row with items "changed" and defeat the no-op guard entirely.
+function canonical(v: unknown): string {
+  if (v === null || v === undefined) return 'null';
+  if (Array.isArray(v)) return `[${v.map(canonical).join(',')}]`;
+  if (typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    return `{${Object.keys(o).sort().map((k) => `${JSON.stringify(k)}:${canonical(o[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(v);
+}
+
 // Value-equality for the change check below. Priority sends everything as text,
 // Postgres returns typed values, and `items`/`lines` are jsonb — so compare
-// loosely: null/undefined are the same absence, objects by their JSON shape.
+// loosely: null/undefined are the same absence, objects by their canonical shape.
+const ISO_LIKE = /^\d{4}-\d{2}-\d{2}([T ]|$)/;
+
 function sameValue(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (a === null || a === undefined) return b === null || b === undefined;
   if (b === null || b === undefined) return false;
   if (typeof a === 'object' || typeof b === 'object') {
-    return JSON.stringify(a) === JSON.stringify(b);
+    return canonical(a) === canonical(b);
   }
-  return String(a) === String(b);
+  const sa = String(a), sb = String(b);
+  if (sa === sb) return true;
+  // Date/timestamp columns never round-trip literally: Priority sends
+  // "2026-01-01T00:00:00+02:00" while Postgres hands back "2026-01-01" for a
+  // date column and UTC-normalised text for a timestamptz. Compare the instant
+  // (or the calendar day, when either side is date-only) instead of the text.
+  if (ISO_LIKE.test(sa) && ISO_LIKE.test(sb)) {
+    if (sa.length === 10 || sb.length === 10) return sa.slice(0, 10) === sb.slice(0, 10);
+    const ta = Date.parse(sa), tb = Date.parse(sb);
+    if (Number.isFinite(ta) && Number.isFinite(tb)) return ta === tb;
+  }
+  return false;
 }
 
 function maxDate(rows: Row[], field: string): string | null {
