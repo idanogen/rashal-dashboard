@@ -18,6 +18,7 @@ type CalendarStopRow = {
   order_id: string | null;
   service_call_id: string | null;
   pickup_id: string | null;
+  customer_number: string | null;
   customer_name: string;
   address: string | null;
   city: string | null;
@@ -65,6 +66,7 @@ function rowToStop(row: CalendarStopRow): CalendarStop {
     orderId: row.order_id ?? undefined,
     serviceCallId: row.service_call_id ?? undefined,
     pickupId: row.pickup_id ?? undefined,
+    customerNumber: row.customer_number ?? undefined,
     customerName: row.customer_name,
     address: row.address ?? undefined,
     city: row.city ?? undefined,
@@ -102,6 +104,7 @@ function stopFieldsToRow(
   if ('orderId' in fields) row.order_id = fields.orderId ?? null;
   if ('serviceCallId' in fields) row.service_call_id = fields.serviceCallId ?? null;
   if ('pickupId' in fields) row.pickup_id = fields.pickupId ?? null;
+  if ('customerNumber' in fields) row.customer_number = fields.customerNumber ?? null;
   if ('customerName' in fields) row.customer_name = fields.customerName;
   if ('address' in fields) row.address = fields.address ?? null;
   if ('city' in fields) row.city = fields.city ?? null;
@@ -247,6 +250,7 @@ export async function createStop(input: ScheduleStopInput): Promise<CalendarStop
     order_id: input.orderId ?? null,
     service_call_id: input.serviceCallId ?? null,
     pickup_id: input.pickupId ?? null,
+    customer_number: input.customerNumber ?? null,
     customer_name: input.customerName,
     address: input.address ?? null,
     city: input.city ?? null,

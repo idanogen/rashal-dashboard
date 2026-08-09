@@ -25,6 +25,7 @@ import {
   Wrench,
   ClipboardList,
   Undo2,
+  UserPlus,
   MessageCircle,
   Loader2,
   CalendarClock,
@@ -59,6 +60,7 @@ const SOURCE_CONFIG = {
   service:  { Icon: Wrench, color: 'text-orange-600', bg: 'bg-orange-50', label: 'שירות' },
   task:     { Icon: ClipboardList, color: 'text-amber-600', bg: 'bg-amber-50', label: 'משימה' },
   pickup:   { Icon: Undo2, color: 'text-teal-600', bg: 'bg-teal-50', label: 'איסוף' },
+  customer: { Icon: UserPlus, color: 'text-violet-600', bg: 'bg-violet-50', label: 'לקוח חדש' },
 } as const;
 
 /** Convert a DB CalendarStop to the UI CalendarStop shape the dialog expects. */

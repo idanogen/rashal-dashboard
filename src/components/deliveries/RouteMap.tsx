@@ -11,7 +11,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { CalendarStop } from '@/types/delivery';
 import { Card } from '@/components/ui/card';
-import { Package, MapPin, Wrench, ClipboardList, Warehouse, Undo2 } from 'lucide-react';
+import { Package, MapPin, Wrench, ClipboardList, Warehouse, Undo2, UserPlus } from 'lucide-react';
 import { WAREHOUSE_LOCATION } from '@/lib/maps';
 import { getCityCoordinates } from '@/lib/geocoding';
 import { getRoadRoute, type RoadRoute } from '@/lib/directions';
@@ -200,6 +200,7 @@ const sourceIconInPopup: Record<CalendarStop['sourceType'], typeof Package> = {
   service: Wrench,
   task: ClipboardList,
   pickup: Undo2,
+  customer: UserPlus,
 };
 
 // מסגרת המרקר = רמת ביטחון המיקום

@@ -48,6 +48,9 @@ export function useResolveStop() {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
       queryClient.invalidateQueries({ queryKey: ['serviceCalls'] });
       queryClient.invalidateQueries({ queryKey: ['pickups'] });
+      // עצירת 'customer' לא מסמנת ישות, ולכן הרשימה חייבת להיטען מחדש
+      // כדי שהלקוח ייעלם מהממתינים (או יחזור אליהם).
+      queryClient.invalidateQueries({ queryKey: ['newCustomers'] });
       toast.success(
         variables.status === 'completed' ? 'סומן כבוצע' : 'סומן כלא בוצע'
       );

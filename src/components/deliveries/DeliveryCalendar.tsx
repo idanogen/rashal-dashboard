@@ -28,6 +28,7 @@ import {
   Wrench,
   Undo2,
   ClipboardList,
+  UserPlus,
   Plus,
   Check,
   X,
@@ -49,8 +50,9 @@ const SOURCE_META = {
   service: { Icon: Wrench, color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-s-orange-500', dot: 'bg-orange-500', label: 'שירות' },
   pickup: { Icon: Undo2, color: 'text-teal-600', bg: 'bg-teal-50', border: 'border-s-teal-500', dot: 'bg-teal-500', label: 'איסוף' },
   task: { Icon: ClipboardList, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-s-amber-500', dot: 'bg-amber-500', label: 'משימה' },
+  customer: { Icon: UserPlus, color: 'text-violet-600', bg: 'bg-violet-50', border: 'border-s-violet-500', dot: 'bg-violet-500', label: 'לקוח חדש' },
 } as const;
-const SOURCE_ORDER = ['delivery', 'service', 'pickup', 'task'] as const;
+const SOURCE_ORDER = ['delivery', 'service', 'pickup', 'task', 'customer'] as const;
 
 interface DeliveryCalendarProps {
   deliveries: CalendarDelivery[];

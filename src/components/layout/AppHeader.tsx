@@ -36,6 +36,7 @@ export function AppHeader() {
       queryClient.invalidateQueries({ queryKey: ['serviceCalls'] }),
       queryClient.invalidateQueries({ queryKey: ['pickups'] }),
       queryClient.invalidateQueries({ queryKey: ['calendarStops'] }),
+      queryClient.invalidateQueries({ queryKey: ['newCustomers'] }),
     ]);
     setLastUpdated(new Date());
     setTimeAgo('עכשיו');

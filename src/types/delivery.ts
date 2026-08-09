@@ -2,7 +2,12 @@ import type { DriverName, AssigneeName } from './route';
 
 export type { DriverName, AssigneeName };
 
-export type CalendarStopSource = 'delivery' | 'service' | 'task' | 'pickup';
+export type CalendarStopSource =
+  | 'delivery'
+  | 'service'
+  | 'task'
+  | 'pickup'
+  | 'customer';
 export type CalendarStopStatus =
   | 'planned'
   | 'in_progress'

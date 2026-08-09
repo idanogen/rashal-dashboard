@@ -86,6 +86,7 @@ export function useRescheduleStop() {
     },
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ['calendarStops'] });
+      queryClient.invalidateQueries({ queryKey: ['newCustomers'] });
       if (vars.stop.sourceId) {
         queryClient.invalidateQueries({ queryKey: ['timeline', vars.stop.sourceId] });
       }

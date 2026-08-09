@@ -17,6 +17,7 @@ import {
   CalendarClock,
   Loader2,
   CalendarDays,
+  UserPlus,
 } from 'lucide-react';
 
 // מטא-דאטה לכל סוג עצירה — אייקון, צבע, תווית.
@@ -28,6 +29,7 @@ const SOURCE_META: Record<
   service: { Icon: Wrench, color: 'text-orange-600', bg: 'bg-orange-50', label: 'שירות' },
   pickup: { Icon: Undo2, color: 'text-teal-600', bg: 'bg-teal-50', label: 'איסוף' },
   task: { Icon: ClipboardList, color: 'text-amber-600', bg: 'bg-amber-50', label: 'משימה' },
+  customer: { Icon: UserPlus, color: 'text-violet-600', bg: 'bg-violet-50', label: 'לקוח חדש' },
 };
 const SOURCE_ORDER: StopSourceType[] = ['delivery', 'service', 'pickup', 'task'];
 
@@ -99,7 +101,7 @@ export function ScheduledOverview() {
       (s) =>
         (s.status === 'planned' || s.status === 'in_progress') && s.deliveryDate >= today
     );
-    const counts: Record<TypeFilter, number> = { all: active.length, delivery: 0, service: 0, pickup: 0, task: 0 };
+    const counts: Record<TypeFilter, number> = { all: active.length, delivery: 0, service: 0, pickup: 0, task: 0, customer: 0 };
     for (const s of active) counts[s.sourceType]++;
     return counts;
   }, [allStops, today]);

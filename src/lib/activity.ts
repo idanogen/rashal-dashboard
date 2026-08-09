@@ -18,7 +18,7 @@ export interface ActivityInput {
   actorRole?: string;
   entityType?: 'calendar_stop' | 'order' | 'service_call' | 'route';
   entityId?: string;
-  sourceType?: 'delivery' | 'service' | 'task' | 'pickup';
+  sourceType?: 'delivery' | 'service' | 'task' | 'pickup' | 'customer';
   customerName?: string;
   metadata?: Record<string, unknown>;
 }

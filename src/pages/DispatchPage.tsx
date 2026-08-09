@@ -21,6 +21,7 @@ import {
 import { useZonedOrders } from '@/hooks/useZonedOrders';
 import { useZonedServiceCalls } from '@/hooks/useZonedServiceCalls';
 import { usePickups } from '@/hooks/usePickups';
+import { useNewCustomers } from '@/hooks/useNewCustomers';
 import { useCalendarStops } from '@/hooks/useCalendarStops';
 import { useGeocodeBackfill } from '@/hooks/useGeocodeBackfill';
 import { useScheduleStop } from '@/hooks/useScheduleStop';
@@ -35,6 +36,7 @@ import { ServiceCallStatusBar } from '@/components/service-calls/ServiceCallStat
 import { UnscheduledOrders } from '@/components/deliveries/UnscheduledOrders';
 import { UnscheduledServiceCalls } from '@/components/service-calls/UnscheduledServiceCalls';
 import { UnscheduledPickups } from '@/components/pickups/UnscheduledPickups';
+import { UnscheduledCustomers } from '@/components/customers/UnscheduledCustomers';
 import { PickupDetailDialog } from '@/components/pickups/PickupDetailDialog';
 import { DedupToggle } from '@/components/dashboard/DedupToggle';
 import { DeliveryCalendar } from '@/components/deliveries/DeliveryCalendar';
@@ -61,6 +63,7 @@ import {
   Wrench,
   Undo2,
   ClipboardList,
+  UserPlus,
   ChevronDown,
   ChevronLeft,
 } from 'lucide-react';
@@ -69,18 +72,21 @@ import { usePersistedCollapse } from '@/hooks/usePersistedCollapse';
 import type { Order } from '@/types/order';
 import type { ServiceCall } from '@/types/service-call';
 import type { Pickup } from '@/types/pickup';
+import type { NewCustomer } from '@/types/customer';
+import { isBareCustomer } from '@/types/customer';
 import { ASSIGNEES, type AssigneeName } from '@/types/route';
 import type { CalendarDelivery, CalendarStopSource } from '@/types/delivery';
 import { toast } from 'sonner';
 
 // ─── סוגי פעילות ─────────────────────────────────────────────
-type ActivityKind = 'delivery' | 'service' | 'pickup';
-type ActivityTab = 'deliveries' | 'service' | 'pickups';
+type ActivityKind = 'delivery' | 'service' | 'pickup' | 'customer';
+type ActivityTab = 'deliveries' | 'service' | 'pickups' | 'customers';
 
 const TAB_TO_KIND: Record<ActivityTab, ActivityKind> = {
   deliveries: 'delivery',
   service: 'service',
   pickups: 'pickup',
+  customers: 'customer',
 };
 
 // פריט גנרי לשיבוץ — כל שלושת הסוגים נושאים את אותם שדות cache.
@@ -92,6 +98,17 @@ interface ScheduleItem {
   phone?: string;
 }
 
+/** לקוח חדש כפריט שיבוץ. המזהה הוא CUSTNAME, אין לו רשומת ישות משלו. */
+function customerToItem(c: NewCustomer): ScheduleItem {
+  return {
+    id: c.customerNumber,
+    customerName: c.customerName,
+    address: c.address,
+    city: c.city,
+    phone: c.phone,
+  };
+}
+
 interface PendingSchedule {
   kind: ActivityKind;
   items: ScheduleItem[];
@@ -99,7 +116,7 @@ interface PendingSchedule {
 }
 
 // dnd-kit: draggable "type" של כל אחת מרשימות הממתינים
-const DRAGGABLE_ITEM_TYPES = new Set(['order', 'serviceCall', 'pickup']);
+const DRAGGABLE_ITEM_TYPES = new Set(['order', 'serviceCall', 'pickup', 'customer']);
 
 // Collision detection מאוחד: כשגוררים פריט ממתין (מכל סוג) — נעדיף את
 // היום שהמצביע ממש מעליו; drop מחוץ ליום לא עושה כלום.
@@ -133,7 +150,7 @@ const collisionDetection: CollisionDetection = (args) => {
 
 // ─── צ'יפי סינון היומן ───────────────────────────────────────
 const CALENDAR_FILTER_KEY = 'rashal:calendarTypeFilter';
-const ALL_SOURCE_TYPES: CalendarStopSource[] = ['delivery', 'service', 'pickup', 'task'];
+const ALL_SOURCE_TYPES: CalendarStopSource[] = ['delivery', 'service', 'pickup', 'task', 'customer'];
 
 const CHIP_META: Record<
   CalendarStopSource,
@@ -163,6 +180,12 @@ const CHIP_META: Record<
     on: 'bg-amber-50 text-amber-700 border-amber-200',
     off: 'bg-muted text-muted-foreground/60 border-transparent',
   },
+  customer: {
+    label: 'לקוחות חדשים',
+    Icon: UserPlus,
+    on: 'bg-violet-50 text-violet-700 border-violet-200',
+    off: 'bg-muted text-muted-foreground/60 border-transparent',
+  },
 };
 
 function loadCalendarFilter(): Set<CalendarStopSource> {
@@ -183,6 +206,7 @@ const KIND_LABELS: Record<ActivityKind, { many: string; toastKind: 'delivery' | 
   delivery: { many: 'הזמנות', toastKind: 'delivery' },
   service: { many: 'קריאות שירות', toastKind: 'service', pickerTitle: 'בחר עובד' },
   pickup: { many: 'איסופים', toastKind: 'delivery', pickerTitle: 'בחר עובד לאיסוף' },
+  customer: { many: 'אספקות', toastKind: 'delivery', pickerTitle: 'בחר נהג לאספקה' },
 };
 
 export function DispatchPage() {
@@ -190,7 +214,9 @@ export function DispatchPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
   const tab: ActivityTab =
-    tabParam === 'service' || tabParam === 'pickups' ? tabParam : 'deliveries';
+    tabParam === 'service' || tabParam === 'pickups' || tabParam === 'customers'
+      ? tabParam
+      : 'deliveries';
   const setTab = (next: string) => {
     setSearchParams({ tab: next }, { replace: true });
   };
@@ -221,6 +247,12 @@ export function DispatchPage() {
   } = useZonedServiceCalls();
 
   const { data: pickups = [], isLoading: pickupsLoading, error: pickupsError } = usePickups();
+
+  const {
+    data: newCustomers = [],
+    isLoading: customersLoading,
+    error: customersError,
+  } = useNewCustomers();
 
   const { data: calendarStops = [] } = useCalendarStops();
   // Backfill geocoding מדויק לעצירות פעילות (רץ ברקע, מווסת-קצב).
@@ -268,11 +300,31 @@ export function DispatchPage() {
     [pickups]
   );
 
+  // ─── לקוחות חדשים: מי שעדיין לא שובץ כעצירת לקוח ───
+  const pendingCustomers = useMemo(
+    () => newCustomers.filter((c) => !c.isScheduled),
+    [newCustomers]
+  );
+  const bareCustomersCount = useMemo(
+    () => pendingCustomers.filter(isBareCustomer).length,
+    [pendingCustomers]
+  );
+  const scheduledCustomersCount = useMemo(
+    () =>
+      calendarStops.filter(
+        (s) =>
+          s.sourceType === 'customer' &&
+          (s.status === 'planned' || s.status === 'in_progress')
+      ).length,
+    [calendarStops]
+  );
+
   // ─── State משותף ───
   const [draggedItem, setDraggedItem] = useState<
     | { kind: 'delivery'; order: Order }
     | { kind: 'service'; call: ServiceCall }
     | { kind: 'pickup'; pickup: Pickup }
+    | { kind: 'customer'; customer: NewCustomer }
     | null
   >(null);
   const [draggedStop, setDraggedStop] = useState<{
@@ -284,6 +336,7 @@ export function DispatchPage() {
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const [selectedCallIds, setSelectedCallIds] = useState<Set<string>>(new Set());
   const [selectedPickupIds, setSelectedPickupIds] = useState<Set<string>>(new Set());
+  const [selectedCustomerIds, setSelectedCustomerIds] = useState<Set<string>>(new Set());
 
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [driverPickerOpen, setDriverPickerOpen] = useState(false);
@@ -407,9 +460,19 @@ export function DispatchPage() {
     (id: string) => setSelectedPickupIds((prev) => toggleId(prev, id)),
     []
   );
+  const handleToggleCustomer = useCallback(
+    (id: string) => setSelectedCustomerIds((prev) => toggleId(prev, id)),
+    []
+  );
 
   const activeSelection =
-    tab === 'deliveries' ? selectedOrderIds : tab === 'service' ? selectedCallIds : selectedPickupIds;
+    tab === 'deliveries'
+      ? selectedOrderIds
+      : tab === 'service'
+        ? selectedCallIds
+        : tab === 'pickups'
+          ? selectedPickupIds
+          : selectedCustomerIds;
 
   const handleBulkSchedule = useCallback(() => {
     if (activeSelection.size === 0) return;
@@ -479,6 +542,8 @@ export function DispatchPage() {
       setDraggedItem({ kind: 'service', call: active.data.current?.call as ServiceCall });
     } else if (t === 'pickup') {
       setDraggedItem({ kind: 'pickup', pickup: active.data.current?.pickup as Pickup });
+    } else if (t === 'customer') {
+      setDraggedItem({ kind: 'customer', customer: active.data.current?.customer as NewCustomer });
     } else if (t === 'stop') {
       const s = calendarStops.find((cs) => cs.id === active.id);
       if (s) setDraggedStop({ customerName: s.customerName, city: s.city, sourceType: s.sourceType });
@@ -575,13 +640,20 @@ export function DispatchPage() {
             ? pendingCalls.filter((c) => selectedCallIds.has(c.id))
             : [call];
         setPendingSchedule({ kind: 'service', items, date });
-      } else {
+      } else if (activeType === 'pickup') {
         const pickup = active.data.current?.pickup as Pickup;
         const items =
           selectedPickupIds.has(pickup.id) && selectedPickupIds.size > 1
             ? pendingPickups.filter((p) => selectedPickupIds.has(p.id))
             : [pickup];
         setPendingSchedule({ kind: 'pickup', items, date });
+      } else {
+        const customer = active.data.current?.customer as NewCustomer;
+        const picked =
+          selectedCustomerIds.has(customer.customerNumber) && selectedCustomerIds.size > 1
+            ? pendingCustomers.filter((c) => selectedCustomerIds.has(c.customerNumber))
+            : [customer];
+        setPendingSchedule({ kind: 'customer', items: picked.map(customerToItem), date });
       }
       setDriverPickerOpen(true);
     }
@@ -596,15 +668,19 @@ export function DispatchPage() {
         items = unscheduledOrders.filter((o) => selectedOrderIds.has(o.id));
       } else if (kind === 'service') {
         items = pendingCalls.filter((c) => selectedCallIds.has(c.id));
-      } else {
+      } else if (kind === 'pickup') {
         items = pendingPickups.filter((p) => selectedPickupIds.has(p.id));
+      } else {
+        items = pendingCustomers
+          .filter((c) => selectedCustomerIds.has(c.customerNumber))
+          .map(customerToItem);
       }
       setDatePickerOpen(false);
       if (items.length === 0) return;
       setPendingSchedule({ kind, items, date });
       setDriverPickerOpen(true);
     },
-    [tab, unscheduledOrders, pendingCalls, pendingPickups, selectedOrderIds, selectedCallIds, selectedPickupIds]
+    [tab, unscheduledOrders, pendingCalls, pendingPickups, pendingCustomers, selectedOrderIds, selectedCallIds, selectedPickupIds, selectedCustomerIds]
   );
 
   // ─── ביצוע השיבוץ בפועל (אחרי בדיקת כפילויות) ───
@@ -620,7 +696,9 @@ export function DispatchPage() {
               ? { orderId: item.id }
               : kind === 'service'
                 ? { serviceCallId: item.id }
-                : { pickupId: item.id }),
+                : kind === 'pickup'
+                  ? { pickupId: item.id }
+                  : { customerNumber: item.id }),
             customerName: item.customerName,
             address: item.address,
             city: item.city,
@@ -643,7 +721,8 @@ export function DispatchPage() {
         setPendingSchedule(null);
         if (kind === 'delivery') setSelectedOrderIds(new Set());
         else if (kind === 'service') setSelectedCallIds(new Set());
-        else setSelectedPickupIds(new Set());
+        else if (kind === 'pickup') setSelectedPickupIds(new Set());
+        else setSelectedCustomerIds(new Set());
       }
     },
     [scheduleStop]
@@ -761,9 +840,21 @@ export function DispatchPage() {
 
   // ─── מצב טעינה/שגיאה של הטאב הפעיל בלבד (היומן לא מחכה לאף אחד) ───
   const tabLoading =
-    tab === 'deliveries' ? ordersLoading : tab === 'service' ? callsLoading : pickupsLoading;
+    tab === 'deliveries'
+      ? ordersLoading
+      : tab === 'service'
+        ? callsLoading
+        : tab === 'pickups'
+          ? pickupsLoading
+          : customersLoading;
   const tabError =
-    tab === 'deliveries' ? ordersError : tab === 'service' ? callsError : pickupsError;
+    tab === 'deliveries'
+      ? ordersError
+      : tab === 'service'
+        ? callsError
+        : tab === 'pickups'
+          ? pickupsError
+          : customersError;
 
   const renderTabState = () => {
     if (tabLoading) {
@@ -825,6 +916,15 @@ export function DispatchPage() {
               איסופים
               <Badge variant="secondary" className="me-1 h-5 px-1.5 text-xs">
                 {pendingPickups.length}
+              </Badge>
+            </TabsTrigger>
+            <TabsTrigger value="customers" className="gap-1.5 px-4">
+              <UserPlus className="h-4 w-4" />
+              לקוחות חדשים
+              <Badge
+                className="me-1 h-5 bg-violet-600 px-1.5 text-xs hover:bg-violet-600"
+              >
+                {bareCustomersCount}
               </Badge>
             </TabsTrigger>
           </TabsList>
@@ -957,6 +1057,55 @@ export function DispatchPage() {
           )
         )}
 
+        {tab === 'customers' && (
+          tabState ?? (
+            <>
+              <div className="flex items-center justify-between">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1 px-2 text-xs text-muted-foreground"
+                  onClick={toggleStatsCollapsed}
+                >
+                  {statsCollapsed ? (
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                  ) : (
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  )}
+                  סטטוס
+                </Button>
+              </div>
+              {!statsCollapsed && (
+                <div className="grid grid-cols-3 gap-3">
+                  <Card className="p-4">
+                    <p className="text-xs text-muted-foreground">ללא הזמנה</p>
+                    <p className="mt-1 text-2xl font-bold text-violet-600">{bareCustomersCount}</p>
+                  </Card>
+                  <Card className="p-4">
+                    <p className="text-xs text-muted-foreground">נפתחו בסך הכל</p>
+                    <p className="mt-1 text-2xl font-bold text-blue-600">{pendingCustomers.length}</p>
+                  </Card>
+                  <Card className="p-4">
+                    <p className="text-xs text-muted-foreground">משובצים ביומן</p>
+                    <p className="mt-1 text-2xl font-bold text-emerald-600">
+                      {scheduledCustomersCount}
+                    </p>
+                  </Card>
+                </div>
+              )}
+              <UnscheduledCustomers
+                customers={pendingCustomers}
+                selectedIds={selectedCustomerIds}
+                onToggleSelect={handleToggleCustomer}
+                onSelectAll={(ids) => setSelectedCustomerIds(new Set(ids))}
+                onClearSelection={() => setSelectedCustomerIds(new Set())}
+                onBulkSchedule={handleBulkSchedule}
+                pendingScheduleIds={pendingScheduleIds}
+              />
+            </>
+          )
+        )}
+
         {/* ─── יומן קבוע: נשאר mounted בכל החלפת טאב ─── */}
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
@@ -1025,20 +1174,26 @@ export function DispatchPage() {
               ? draggedItem.order
               : draggedItem.kind === 'service'
                 ? draggedItem.call
-                : draggedItem.pickup;
+                : draggedItem.kind === 'pickup'
+                  ? draggedItem.pickup
+                  : { ...draggedItem.customer, id: draggedItem.customer.customerNumber };
           const selection =
             draggedItem.kind === 'delivery'
               ? selectedOrderIds
               : draggedItem.kind === 'service'
                 ? selectedCallIds
-                : selectedPickupIds;
+                : draggedItem.kind === 'pickup'
+                  ? selectedPickupIds
+                  : selectedCustomerIds;
           const isMulti = selection.has(item.id) && selection.size > 1;
           const style =
             draggedItem.kind === 'delivery'
               ? { border: 'border-primary ring-primary/20', icon: '📦', iconColor: 'text-primary', badge: 'bg-primary text-primary-foreground' }
               : draggedItem.kind === 'service'
                 ? { border: 'border-orange-400 ring-orange-400/20', icon: '🔧', iconColor: 'text-orange-600', badge: 'bg-orange-500 text-white' }
-                : { border: 'border-teal-400 ring-teal-400/20', icon: '↩️', iconColor: 'text-teal-600', badge: 'bg-teal-500 text-white' };
+                : draggedItem.kind === 'pickup'
+                  ? { border: 'border-teal-400 ring-teal-400/20', icon: '↩️', iconColor: 'text-teal-600', badge: 'bg-teal-500 text-white' }
+                  : { border: 'border-violet-400 ring-violet-400/20', icon: '🧑\u200d🦽', iconColor: 'text-violet-600', badge: 'bg-violet-500 text-white' };
           return (
             <div className="relative">
               {/* Stack visualization — 2 כרטיסים מאחור כשבחירה מרובה */}
