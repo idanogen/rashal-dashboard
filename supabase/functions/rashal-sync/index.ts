@@ -392,6 +392,228 @@ async function probe(): Promise<Record<string, unknown>> {
   return out;
 }
 
+// Field discovery. Priority field names differ per environment and `$select`
+// with an unknown one returns 400 (Roni's learning #1), so we never guess: pull
+// one full row per entity and list the keys. Used to pick the right date field
+// for the reconcile window — notably whether CUSTOMERS carries an update date
+// at all, or only CREATEDDATE (which never moves after creation).
+async function probeFields(): Promise<Record<string, unknown>> {
+  const auth = { headers: { Authorization: basicAuth(), "User-Agent": UA, Accept: "application/json" } };
+  const out: Record<string, unknown> = {};
+
+  for (const entity of ["CUSTOMERS", "ORDERS", "DOCUMENTS_Q", "DOCUMENTS_N"]) {
+    try {
+      const res = await fetch(`${PRIORITY}/${entity}?$top=1`, auth);
+      const body = await res.text();
+      if (!res.ok) { out[entity] = `HTTP ${res.status}: ${body.slice(0, 200)}`; continue; }
+      const row = JSON.parse(body)?.value?.[0] ?? {};
+      const keys = Object.keys(row);
+      out[entity] = {
+        total_fields: keys.length,
+        // the fields that could bound a reconcile window
+        date_like: keys.filter((k) => /DATE|UDATE|TIME/i.test(k)).sort(),
+        all: keys.sort(),
+      };
+    } catch (e) { out[entity] = String(e).slice(0, 200); }
+  }
+
+  return out;
+}
+
+// ─── ריצת השוואה (reconcile) ────────────────────────────────────────────────
+// המשיכות הרגילות הן הפרשיות בלבד: כל אחת שואלת רק על מה שזז מאז הווטרמרק.
+// רשומה שנוצרה לפני שהסנכרון התחיל, או שהווטרמרק דילג עליה, לא תיכנס לעולם,
+// ואף אחד לא ידע. זה מה שקרה ב-09/08: 3 אספקות מהגיליון של עמי לא היו קיימות
+// אצלנו בשום טבלה, בזמן שכל ארבע העבודות דיווחו success.
+//
+// הריצה הזו לא משתמשת בווטרמרק. היא מושכת את המצב המלא של חלון זמן ומשווה
+// מול מה שיש לנו. **קריאה בלבד, לא מתקנת כלום** — מדווחת, ועידן מחליט.
+const RECONCILE: Record<string, {
+  entity: string; key: string; dateField: string; extra: string[];
+  table: string; keyCol: string; nameCol: string;
+}> = {
+  customers: {
+    entity: "CUSTOMERS", key: "CUSTNAME", dateField: "CREATEDDATE",
+    extra: ["CUSTDES", "PHONE", "STATE", "ADDRESS", "STATUSDATE"],
+    table: "priority_customers", keyCol: "custname", nameCol: "cdes",
+  },
+  orders: {
+    entity: "ORDERS", key: "ORDNAME", dateField: "CURDATE",
+    extra: ["CDES", "ORDSTATUSDES", "STATUSDATE"],
+    table: "orders", keyCol: "priority_order_id", nameCol: "customer_name",
+  },
+  service_calls: {
+    entity: "DOCUMENTS_Q", key: "DOCNO", dateField: "STARTDATE",
+    extra: ["CDES", "CALLSTATUSCODE", "STATUSDATE"],
+    table: "service_calls", keyCol: "priority_call_id", nameCol: "customer_name",
+  },
+  pickups: {
+    entity: "DOCUMENTS_N", key: "DOCNO", dateField: "CURDATE",
+    extra: ["CDES", "STATDES", "UDATE"],
+    table: "pickups", keyCol: "priority_pickup_id", nameCol: "customer_name",
+  },
+};
+
+/** כל המפתחות שיש לנו בטבלה, בדפדוף. PostgREST חותך ב-1000 בשקט. */
+async function ourKeys(table: string, keyCol: string): Promise<Set<string>> {
+  const out = new Set<string>();
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await sb.from(table).select(keyCol)
+      .not(keyCol, "is", null).range(from, from + 999);
+    if (error) throw new Error(`${table}.${keyCol}: ${error.message}`);
+    for (const r of data ?? []) {
+      const v = (r as Record<string, unknown>)[keyCol];
+      if (v) out.add(String(v).trim());
+    }
+    if (!data || data.length < 1000) break;
+  }
+  return out;
+}
+
+async function reconcile(which: string, days: number): Promise<Record<string, unknown>> {
+  const cfg = RECONCILE[which];
+  if (!cfg) return { error: `unknown entity '${which}'`, known: Object.keys(RECONCILE) };
+
+  const since = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 19) + "Z";
+  const select = [cfg.key, cfg.dateField, ...cfg.extra].join(",");
+  const url = `${PRIORITY}/${cfg.entity}?$select=${select}` +
+    `&$filter=${encodeURIComponent(`${cfg.dateField} ge ${since}`)}` +
+    `&$orderby=${cfg.dateField}%20asc&$top=8000`;
+
+  const auth = { headers: { Authorization: basicAuth(), "User-Agent": UA, Accept: "application/json" } };
+  const res = await fetch(url, auth);
+  const body = await res.text();
+  if (!res.ok) return { entity: cfg.entity, error: `HTTP ${res.status}`, detail: body.slice(0, 300) };
+
+  const rows: Row[] = JSON.parse(body)?.value ?? [];
+  const have = await ourKeys(cfg.table, cfg.keyCol);
+
+  const missing: Row[] = [];
+  for (const r of rows) {
+    const k = String(r[cfg.key] ?? "").trim();
+    if (k && !have.has(k)) missing.push(r);
+  }
+
+  // כמה מהרשומות בחלון נגעו בהן אחרי היצירה. אם המספר גבוה, משיכה שמסננת
+  // לפי תאריך יצירה בלבד מפספסת עדכונים באופן שיטתי (המקרה של CUSTOMERS).
+  let touchedAfterCreate = 0;
+  if (cfg.extra.includes("STATUSDATE")) {
+    for (const r of rows) {
+      const c = String(r[cfg.dateField] ?? "").slice(0, 10);
+      const s = String(r.STATUSDATE ?? "").slice(0, 10);
+      if (c && s && s > c) touchedAfterCreate++;
+    }
+  }
+
+  return {
+    entity: cfg.entity,
+    window_days: days,
+    since,
+    in_priority: rows.length,
+    we_hold_total: have.size,
+    missing_in_us: missing.length,
+    touched_after_create: touchedAfterCreate,
+    // דגימה לפעולה ידנית — שם, טלפון ועיר, לא רק מזהים
+    sample: missing.slice(0, 50).map((r) => ({
+      key: r[cfg.key],
+      name: r.CDES ?? r.CUSTDES,
+      phone: r.PHONE ?? null,
+      city: r.STATE ?? null,
+      date: r[cfg.dateField],
+    })),
+  };
+}
+
+// ─── ריצת ההשוואה היומית ────────────────────────────────────────────────────
+// אותה השוואה, אבל אוטומטית ושותקת. מתריעה רק על חוסר אמיתי: רשומה שנוצרה
+// בפריוריטי לפני היום ועדיין לא אצלנו. רשומה מהיום היא פיגור רגיל בין ריצות
+// ולא חריגה, אחרת ההתראה תצפצף כל בוקר ותיהפך לרעש שמתעלמים ממנו.
+//
+// הרציונל: הוואצ'דוג סופר ריצות מוצלחות ולכן היה ירוק לאורך כל התקופה שבה
+// המערכת החביאה 73% מהעבודה. ניטור שלא בודק תוכן לא תופס כשל סמנטי.
+const RESEND_KEY = () => Deno.env.get("RESEND_API_KEY") ?? "";
+const ALERT_EMAIL = () => Deno.env.get("ALERT_EMAIL") ?? "idan@ogensolutions.biz";
+const ALERT_FROM = () => Deno.env.get("ALERT_FROM") ?? "Ogen Sync <onboarding@resend.dev>";
+
+async function sendAlertEmail(subject: string, html: string): Promise<boolean> {
+  const key = RESEND_KEY();
+  if (!key) { console.error("reconcile-daily: no RESEND_API_KEY"); return false; }
+  const r = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ from: ALERT_FROM(), to: [ALERT_EMAIL()], subject, html }),
+  });
+  if (!r.ok) console.error("resend failed:", r.status, (await r.text()).slice(0, 200));
+  return r.ok;
+}
+
+const LABELS: Record<string, string> = {
+  customers: "לקוחות", orders: "הזמנות",
+  service_calls: "קריאות שירות", pickups: "איסופים",
+};
+
+async function reconcileDaily(days: number): Promise<Record<string, unknown>> {
+  const todayUtc = new Date().toISOString().slice(0, 10);
+  const summary: Record<string, unknown> = {};
+  const anomalies: { entity: string; rows: Row[] }[] = [];
+  let checked = 0;
+
+  for (const which of Object.keys(RECONCILE)) {
+    let r: Record<string, unknown>;
+    try { r = await reconcile(which, days); }
+    catch (e) { summary[which] = { error: String(e).slice(0, 200) }; continue; }
+
+    if (r.error) { summary[which] = r; continue; }
+
+    // חוסר אמיתי = נוצר לפני היום ועדיין לא אצלנו
+    const sample = (r.sample ?? []) as Row[];
+    const real = sample.filter((s) => String(s.date ?? "").slice(0, 10) < todayUtc);
+    checked += Number(r.in_priority ?? 0);
+
+    summary[which] = {
+      in_priority: r.in_priority,
+      missing_total: r.missing_in_us,
+      missing_real: real.length,
+      missing_today_only: Number(r.missing_in_us ?? 0) - real.length,
+    };
+    if (real.length) anomalies.push({ entity: which, rows: real });
+  }
+
+  const totalReal = anomalies.reduce((a, b) => a + b.rows.length, 0);
+
+  await sb.from("reconcile_runs").insert({
+    window_days: days,
+    rows_checked: checked,
+    missing_real: totalReal,
+    summary,
+    details: anomalies.length ? anomalies : null,
+  });
+
+  if (totalReal > 0) {
+    const blocks = anomalies.map((a) => {
+      const rows = a.rows.slice(0, 25).map((s) =>
+        `<tr><td style="padding:4px 10px;font-family:monospace">${s.key}</td>` +
+        `<td style="padding:4px 10px">${s.name ?? ""}</td>` +
+        `<td style="padding:4px 10px">${s.city ?? ""}</td>` +
+        `<td style="padding:4px 10px" dir="ltr">${s.phone ?? ""}</td>` +
+        `<td style="padding:4px 10px">${String(s.date ?? "").slice(0, 10)}</td></tr>`).join("");
+      return `<h3 style="margin:18px 0 6px">${LABELS[a.entity] ?? a.entity} · ${a.rows.length}</h3>` +
+        `<table style="border-collapse:collapse;font-size:13px">${rows}</table>`;
+    }).join("");
+
+    await sendAlertEmail(
+      `רשעל · ${totalReal} רשומות קיימות בפריוריטי ולא אצלנו`,
+      `<div dir="rtl" style="font-family:system-ui,sans-serif;color:#14223a">
+         <p>ריצת ההשוואה היומית מצאה רשומות שנפתחו בפריוריטי לפני היום ולא הגיעו למערכת.</p>
+         <p style="color:#666;font-size:13px">רשומות שנוצרו היום לא נספרות, הן פיגור רגיל בין ריצות.</p>
+         ${blocks}
+       </div>`,
+    );
+  }
+
+  return { ran_at: new Date().toISOString(), window_days: days, missing_real: totalReal, summary };
+}
+
 Deno.serve(async (req: Request) => {
   let job = "pull-core", trigger = "manual";
   let body: Record<string, unknown> = {};
@@ -403,6 +625,23 @@ Deno.serve(async (req: Request) => {
 
   if (job === "probe") {
     return new Response(JSON.stringify(await probe(), null, 2), { headers: { "Content-Type": "application/json" } });
+  }
+  if (job === "probe-fields") {
+    return new Response(JSON.stringify(await probeFields(), null, 2), { headers: { "Content-Type": "application/json" } });
+  }
+  if (job === "reconcile-daily") {
+    const days = Number(body?.days ?? 30);
+    return new Response(JSON.stringify(await reconcileDaily(days), null, 2), { headers: { "Content-Type": "application/json" } });
+  }
+  if (job === "reconcile") {
+    const days = Number(body?.days ?? 30);
+    const which = body?.entity ? [String(body.entity)] : Object.keys(RECONCILE);
+    const out: Record<string, unknown> = { ran_at: new Date().toISOString() };
+    for (const w of which) {
+      try { out[w] = await reconcile(w, days); }
+      catch (e) { out[w] = { error: String(e).slice(0, 300) }; }
+    }
+    return new Response(JSON.stringify(out, null, 2), { headers: { "Content-Type": "application/json" } });
   }
   if (job === "report-cleanup") {
     const which = body?.entity ? String(body.entity) : "orders";
