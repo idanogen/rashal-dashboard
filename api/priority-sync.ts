@@ -379,9 +379,12 @@ async function runAdoption(rows: Row[], cfg: AdoptConfig) {
 //
 // "שובצה" is deliberately unmapped: its meaning at Rashal is unconfirmed.
 // ---------------------------------------------------------------------------
+// 09/08/2026 — 'בוצעה' and 'שולמה' removed. Neither means the goods reached the
+// customer: Priority sets 'בוצעה' at billing time, often days before the drive,
+// and 73% of new orders land already carrying it, so the dispatcher never saw
+// them. Proven against Ami's delivery sheet for 10/08. Only cancellation is
+// authoritative now; every other close belongs to the app (dispatcher/driver).
 const ORDER_TERMINAL: Record<string, string> = {
-  'בוצעה': 'סופק',
-  'שולמה': 'סופק',
   'מבוטלת': 'בוטל',
 };
 const CALL_TERMINAL: Record<string, string> = {

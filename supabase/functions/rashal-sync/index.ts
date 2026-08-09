@@ -110,9 +110,9 @@ const JOBS: Record<string, Step[]> = {
 // (מאושרת לבצוע / לביצוע / שובצה / להמשך טיפול) leaves our status untouched, so
 // the dispatcher's own flow is never overwritten. "שובצה" is deliberately NOT
 // mapped — its meaning at Rashal is still unconfirmed.
+// 09/08/2026 — "בוצעה" and "שולמה" removed, see api/priority-sync.ts for the
+// full reasoning. Priority sets "בוצעה" at billing time, before the drive.
 const ORDER_TERMINAL: Record<string, string> = {
-  "בוצעה": "סופק",
-  "שולמה": "סופק",
   "מבוטלת": "בוטל",
 };
 const CALL_TERMINAL: Record<string, string> = {
