@@ -35,7 +35,7 @@ import {
 import { useCallback } from 'react';
 import { usePersistedCollapse } from '@/hooks/usePersistedCollapse';
 import { ZoneFilter } from './ZoneFilter';
-import { getZoneById, ZONES } from '@/types/zone';
+import { getZoneById, NO_ADDRESS_ZONE, ZONES } from '@/types/zone';
 import { getDaysSinceCreated, getDaysColor, cn } from '@/lib/utils';
 import { useDraggable } from '@dnd-kit/core';
 
@@ -687,7 +687,10 @@ export function UnscheduledOrders({
                         />
                       )}
                       <span className="font-semibold">
-                        {zone?.name || 'ללא אזור'}
+                        {zone?.name ??
+                          (zoneId === NO_ADDRESS_ZONE
+                            ? 'חסרה כתובת'
+                            : 'ללא אזור')}
                       </span>
                       <Badge variant="outline" className="text-xs">
                         {activeInZone}/{zoneOrders.length}

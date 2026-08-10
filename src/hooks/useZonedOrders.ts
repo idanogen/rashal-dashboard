@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useDedupedOrders } from './useDedupedOrders';
-import { getZoneForCity, ZONES } from '@/types/zone';
+import { getZoneForCity, NO_ADDRESS_ZONE, ZONES } from '@/types/zone';
 import type { Order } from '@/types/order';
 
 export interface ZonedOrdersResult {
@@ -32,9 +32,16 @@ export function useZonedOrders(): ZonedOrdersResult {
   const result = useMemo(() => {
     const allOrders = orders;
 
-    // מיפוי כל הזמנה לאזור
+    // מיפוי כל הזמנה לאזור.
+    // הזמנה בלי כתובת או בלי עיר מקבלת אזור-דגל משלה. עד 10/08/2026 היא פשוט
+    // סוננה החוצה מהרשימה, כך ש-191 הזמנות ממתינות מעולם לא הגיעו לסדרן.
+    // עבודה לא נעלמת בשקט: היא מוצגת מסומנת, והסדרן משלים את הכתובת בטלפון.
     const orderZoneMap = new Map<string, string>();
     for (const order of allOrders) {
+      if (!order.address || !order.city) {
+        orderZoneMap.set(order.id, NO_ADDRESS_ZONE);
+        continue;
+      }
       const zoneId = getZoneForCity(order.city);
       if (zoneId) {
         orderZoneMap.set(order.id, zoneId);
@@ -45,11 +52,7 @@ export function useZonedOrders(): ZonedOrdersResult {
     // טיוטא = הזמנה שעוד לא אושרה בפריוריטי, אין מה לתאם עליה. היא נשארת במסד
     // ותיכנס לרשימה לבד ברגע שפריוריטי יאשר אותה (החלטת עידן 05/08/2026).
     const unscheduledOrders = allOrders.filter(
-      (o) =>
-        o.orderStatus === 'ממתין לתאום' &&
-        o.priorityStatus !== 'טיוטא' &&
-        o.address &&
-        o.city
+      (o) => o.orderStatus === 'ממתין לתאום' && o.priorityStatus !== 'טיוטא'
     );
 
     const scheduledOrders = allOrders.filter(
@@ -69,7 +72,8 @@ export function useZonedOrders(): ZonedOrdersResult {
     // ספירה
     for (const order of unscheduledOrders) {
       const zoneId = orderZoneMap.get(order.id);
-      if (zoneId) {
+      // NO_ADDRESS_ZONE הוא דגל, לא אזור. הוא לא נספר בשבבי האזורים.
+      if (zoneId && zoneId !== NO_ADDRESS_ZONE) {
         orderCountByZone.set(zoneId, (orderCountByZone.get(zoneId) ?? 0) + 1);
       }
     }

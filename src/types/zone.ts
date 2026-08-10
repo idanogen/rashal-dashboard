@@ -159,6 +159,12 @@ export const CITY_TO_ZONE: Record<string, string> = {
 };
 
 /**
+ * דגל לקבוצת "חסרה כתובת". לא אזור גיאוגרפי, ולכן לא מופיע ב-ZONES ולא נספר
+ * בשבבי האזורים. הזמנה כזו עדיין חייבת להופיע לסדרן.
+ */
+export const NO_ADDRESS_ZONE = 'no-address';
+
+/**
  * חיפוש אזור לפי שם עיר (עם נרמול)
  */
 export function getZoneForCity(city: string | undefined): string | undefined {
