@@ -22,7 +22,9 @@ async function logEvent(ev: Record<string, unknown>) {
   if (error) console.error("sync_events insert failed:", error.message);
 }
 
-async function fetchRetry(runId: number, entity: string, url: string, init: RequestInit, urlPath: string) {
+// `ref` = timeline_events.id. בלעדיו אי אפשר לדעת בדיעבד איזה אירוע נדחף,
+// ולכן גם אי אפשר לאתר כפילות אחרי ניקוז של תור שהצטבר.
+async function fetchRetry(runId: number, entity: string, url: string, init: RequestInit, urlPath: string, ref?: string) {
   const delays = [0, 2000, 5000];
   let lastErr = "";
   for (let i = 0; i < delays.length; i++) {
@@ -33,14 +35,14 @@ async function fetchRetry(runId: number, entity: string, url: string, init: Requ
       const body = await res.text();
       await logEvent({
         run_id: runId, entity, attempt: i + 1, http_status: res.status, ok: res.ok,
-        duration_ms: Date.now() - t0, url_path: urlPath,
+        duration_ms: Date.now() - t0, url_path: urlPath, ref: ref ?? null,
         error_snippet: res.ok ? null : body.slice(0, 300),
       });
       if (res.ok) return { res, body, attempts: i + 1 };
       lastErr = `HTTP ${res.status}: ${body.slice(0, 200)}`;
     } catch (e) {
       lastErr = String(e).slice(0, 300);
-      await logEvent({ run_id: runId, entity, attempt: i + 1, ok: false, duration_ms: Date.now() - t0, url_path: urlPath, error_snippet: lastErr });
+      await logEvent({ run_id: runId, entity, attempt: i + 1, ok: false, duration_ms: Date.now() - t0, url_path: urlPath, ref: ref ?? null, error_snippet: lastErr });
     }
   }
   return { res: null, body: lastErr, attempts: delays.length };
@@ -48,7 +50,14 @@ async function fetchRetry(runId: number, entity: string, url: string, init: Requ
 
 Deno.serve(async (req: Request) => {
   let trigger = "manual";
-  try { const b = await req.json(); if (b?.trigger) trigger = String(b.trigger); } catch { /* default */ }
+  // `max` מגביל כמה כתיבות ייצאו בריצה הזו. נועד לניקוז מבוקר של תור שהצטבר:
+  // ריצה ראשונה קטנה, אימות מול פריוריטי, ורק אז שחרור מלא.
+  let max = Infinity;
+  try {
+    const b = await req.json();
+    if (b?.trigger) trigger = String(b.trigger);
+    if (b?.max != null && Number.isFinite(Number(b.max))) max = Math.max(0, Number(b.max));
+  } catch { /* default */ }
 
   const t0 = Date.now();
   const { data: runRow, error: runErr } = await sb
@@ -73,13 +82,17 @@ Deno.serve(async (req: Request) => {
   // 2) דחיפה לפריוריטי, כתיבה-כתיבה. מעקב הצלחה פר-אירוע.
   const evOk = new Map<string, boolean>();
   let pushed = 0;
+  let held = 0;
   for (const w of writes) {
+    // מעבר לתקרה — לא נדחף ולא מאושר, יישלף שוב בריצה הבאה. אירוע שחלק
+    // מהכתיבות שלו כבר יצאו לא ייחסם כאן, אחרת הוא ייתקע חצי-דחוף.
+    if (pushed >= max && !evOk.has(w.event_id)) { held++; continue; }
     const path = w.url.replace(/^https?:\/\/[^/]+/, "").split("?")[0];
     const pr = await fetchRetry(runId, "push_write", w.url, {
       method: "POST",
       headers: { Authorization: basicAuth(), "User-Agent": UA, "Content-Type": "application/json" },
       body: w.body,
-    }, path);
+    }, path, w.event_id);
     retries += pr.attempts - 1;
     const ok = !!pr.res;
     if (ok) pushed++;
@@ -108,7 +121,7 @@ Deno.serve(async (req: Request) => {
     error_summary: errors.length ? errors.join(" | ").slice(0, 900) : null,
   }).eq("id", runId);
 
-  return new Response(JSON.stringify({ run_id: runId, job: "push-chat", status, writes: writes.length, pushed, acked, skipped: parsed.skipped ?? 0 }), {
+  return new Response(JSON.stringify({ run_id: runId, job: "push-chat", status, writes: writes.length, pushed, held, acked, skipped: parsed.skipped ?? 0 }), {
     headers: { "Content-Type": "application/json" },
   });
 });

@@ -75,6 +75,18 @@ export interface CalendarStop {
   rescheduledBy?: string;
   rescheduledAt?: string;
 
+  // Arrival — נתפס פעם אחת כשהנהג מסמן שהוא אצל הלקוח, לא מעקב רציף.
+  arrivedAt?: string;
+  arrivedCoordinates?: { lat: number; lng: number };
+
+  /**
+   * חריגה מהסדר. מלא רק כשהנהג עבר לעצירה הזו לפני שסגר עצירות שקדמו לה.
+   * ריק = נעשתה בסדר. מפעיל התראה לעמי ומופיע בדוח החריגות של הסדרן.
+   */
+  bypassedAt?: string;
+  bypassReason?: string;
+  bypassedBy?: string;
+
   created: string;
   updated: string;
 }

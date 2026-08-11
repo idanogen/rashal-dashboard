@@ -39,6 +39,12 @@ type CalendarStopRow = {
   geocoded_lng: number | null;
   geocoded_at: string | null;
   geocoded_address: string | null;
+  arrived_at: string | null;
+  arrived_lat: number | null;
+  arrived_lng: number | null;
+  bypassed_at: string | null;
+  bypass_reason: string | null;
+  bypassed_by: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -87,6 +93,14 @@ function rowToStop(row: CalendarStopRow): CalendarStop {
     scheduledBy: row.scheduled_by ?? undefined,
     rescheduledBy: row.rescheduled_by ?? undefined,
     rescheduledAt: row.rescheduled_at ?? undefined,
+    arrivedAt: row.arrived_at ?? undefined,
+    arrivedCoordinates:
+      row.arrived_lat != null && row.arrived_lng != null
+        ? { lat: Number(row.arrived_lat), lng: Number(row.arrived_lng) }
+        : undefined,
+    bypassedAt: row.bypassed_at ?? undefined,
+    bypassReason: row.bypass_reason ?? undefined,
+    bypassedBy: row.bypassed_by ?? undefined,
     created: row.created_at,
     updated: row.updated_at,
   };
@@ -121,6 +135,14 @@ function stopFieldsToRow(
   if ('scheduledBy' in fields) row.scheduled_by = fields.scheduledBy ?? null;
   if ('rescheduledBy' in fields) row.rescheduled_by = fields.rescheduledBy ?? null;
   if ('rescheduledAt' in fields) row.rescheduled_at = fields.rescheduledAt ?? null;
+  if ('arrivedAt' in fields) row.arrived_at = fields.arrivedAt ?? null;
+  if ('arrivedCoordinates' in fields) {
+    row.arrived_lat = fields.arrivedCoordinates?.lat ?? null;
+    row.arrived_lng = fields.arrivedCoordinates?.lng ?? null;
+  }
+  if ('bypassedAt' in fields) row.bypassed_at = fields.bypassedAt ?? null;
+  if ('bypassReason' in fields) row.bypass_reason = fields.bypassReason ?? null;
+  if ('bypassedBy' in fields) row.bypassed_by = fields.bypassedBy ?? null;
   return row;
 }
 

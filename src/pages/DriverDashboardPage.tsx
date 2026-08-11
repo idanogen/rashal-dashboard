@@ -17,7 +17,6 @@ import {
   MapPin,
   Phone,
   Navigation,
-  Check,
   X,
   Clock,
   Truck,
@@ -31,12 +30,24 @@ import {
   CalendarClock,
   ListChecks,
   Map as MapIcon,
+  SkipForward,
+  FileSignature,
 } from 'lucide-react';
 import type { CalendarStop as DbCalendarStop } from '@/types/calendar-stop';
 import type { CalendarStop as UiCalendarStop } from '@/types/delivery';
 import { OrderChatSheet } from '@/components/OrderChatSheet';
 import { NotCompletedReasonDialog } from '@/components/NotCompletedReasonDialog';
 import { DeliveryOutcomeDialog } from '@/components/DeliveryOutcomeDialog';
+import { BypassReasonDialog } from '@/components/BypassReasonDialog';
+import { SignFormDialog } from '@/components/forms/SignFormDialog';
+import { useBypassStop } from '@/hooks/useBypassStop';
+import { sendDriverAlert } from '@/lib/driver-alerts';
+import { getCurrentPosition } from '@/lib/geolocation';
+import { findForm, findPlannedForm } from '@/lib/forms/registry';
+import { loadFormContext, formKindForStop } from '@/lib/forms/context';
+import { saveSignedForm } from '@/lib/forms/save';
+import type { FormDefinition, FormContext } from '@/lib/forms/types';
+import { toast } from 'sonner';
 import { useCommentCounts } from '@/hooks/useTimeline';
 import type { ChatSourceKind } from '@/lib/timeline';
 
@@ -89,10 +100,32 @@ export function DriverDashboardPage() {
   const { data: allStops, isLoading } = useCalendarStops();
   const resolveStop = useResolveStop();
   const arriveStop = useArriveStop();
+  const bypassStop = useBypassStop();
   const log = useActivityLogger();
   const [coordinationStop, setCoordinationStop] = useState<UiCalendarStop | null>(null);
   const [notCompletedStop, setNotCompletedStop] = useState<DbCalendarStop | null>(null);
   const [showMap, setShowMap] = useState(true);
+
+  /** העצירה שהנהג ביקש לעבור אליה מחוץ לסדר, והעצירות שייעקפו בדרך. */
+  const [bypass, setBypass] = useState<{ target: DbCalendarStop; skipped: DbCalendarStop[] } | null>(null);
+
+  /** טופס פתוח לחתימה. `outcome` נשמר כדי להשלים את הסגירה אחרי החתימה. */
+  const [formSession, setFormSession] = useState<{
+    stop: DbCalendarStop;
+    definition: FormDefinition;
+    context: FormContext;
+    healthFund?: string;
+    customerNumber?: string;
+    outcome?: string;
+  } | null>(null);
+  const [savingForm, setSavingForm] = useState(false);
+  const [preparingForm, setPreparingForm] = useState<string | null>(null);
+
+  // עצירות היום נגזרות מתחת להנדלרים, וההנדלר של הדילוג צריך את הספירה
+  // הכוללת עבור ההודעה ("עצירה 3 מתוך 10"). ref מונע סדר הכרזות הפוך.
+  const todayStopsRef = useRef<DbCalendarStop[]>([]);
+
+  const driverName = profile?.linkedDriver ?? profile?.fullName ?? 'נהג';
 
   /** הקשר אירוע אחיד לעצירה — לדוחות. */
   const stopCtx = (stop: DbCalendarStop) => ({
@@ -131,9 +164,127 @@ export function DriverDashboardPage() {
 
   // "הגעה" — מסמן שהנהג בנקודה (status → in_progress) + רישום ללוג.
   // מחזיר את ה-promise כדי שהכרטיס יוכל לאפס את החיווי אם הכתיבה נכשלה.
-  const handleArrive = (stop: DbCalendarStop) => {
+  //
+  // המיקום נתפס במקביל ולא לפני: אם ההרשאה תלויה ועומדת או ה-GPS איטי,
+  // סימון ההגעה לא ימתין לו. מיקום חסר הוא נתון חסר, לא כישלון.
+  const handleArrive = async (stop: DbCalendarStop) => {
     log('arrival', stopCtx(stop));
-    return arriveStop.mutateAsync(stop.id);
+    const coordinates = await getCurrentPosition();
+    return arriveStop.mutateAsync({ stopId: stop.id, coordinates });
+  };
+
+  /**
+   * בקשה לסגור עצירה כ"בוצעה".
+   *
+   * כאן נמצאת הנעילה האמיתית: עצירה שיש לה טופס לא נסגרת בלי חתימה. אם אין
+   * טופס מתאים לקופה, הסגירה נמשכת כרגיל ומוצגת הודעה שמסבירה למה, במקום
+   * לחסום נהג בגלל טופס שעוד לא בנינו.
+   */
+  const handleRequestComplete = async (stop: DbCalendarStop, outcome?: string) => {
+    const kind = formKindForStop(stop);
+    if (!kind) {
+      handleResolve(stop, 'completed', outcome);
+      return;
+    }
+
+    setPreparingForm(stop.id);
+    try {
+      const loaded = await loadFormContext(stop, driverName);
+      const fund = loaded.healthFund ?? '';
+      const definition = findForm(fund, kind);
+
+      if (!definition) {
+        const planned = findPlannedForm(fund, kind);
+        toast.warning('אין עדיין טופס לקופה הזו', {
+          description: planned
+            ? `${planned.fundLabel} · ${planned.title} — טרם מומש. העצירה נסגרת בלי טופס.`
+            : `${fund || 'קופה לא מזוהה'} — העצירה נסגרת בלי טופס.`,
+        });
+        handleResolve(stop, 'completed', outcome);
+        return;
+      }
+
+      setFormSession({
+        stop,
+        definition,
+        context: loaded.context,
+        healthFund: fund,
+        customerNumber: loaded.customerNumber,
+        outcome,
+      });
+    } finally {
+      setPreparingForm(null);
+    }
+  };
+
+  /** חתימה הושלמה → שומרים טופס, מצרפים לפריוריטי, ורק אז סוגרים את העצירה. */
+  const handleFormSubmit = async (payload: {
+    values: Record<string, string | boolean>;
+    signatures: { customer?: string | null; driver?: string | null };
+    signerNames: { customer?: string; driver?: string };
+  }) => {
+    if (!formSession) return;
+    const { stop, definition, outcome } = formSession;
+
+    setSavingForm(true);
+    try {
+      const result = await saveSignedForm({
+        definition,
+        values: payload.values,
+        signatures: payload.signatures,
+        signerNames: payload.signerNames,
+        meta: {
+          customerName: stop.customerName,
+          driverName,
+          signedAt: new Date(),
+          location: stop.arrivedCoordinates ?? null,
+        },
+        stopId: stop.id,
+        orderId: stop.orderId ?? null,
+        serviceCallId: stop.serviceCallId ?? null,
+        customerNumber: formSession.customerNumber ?? stop.customerNumber ?? null,
+        healthFund: formSession.healthFund ?? null,
+      });
+
+      log('form_signed', {
+        ...stopCtx(stop),
+        metadata: { formKey: definition.key, signedFormId: result.id },
+      });
+
+      setFormSession(null);
+      handleResolve(stop, 'completed', outcome);
+
+      toast.success('הטופס נחתם ונשמר', {
+        description: result.pushedToPriority
+          ? 'הועבר גם לצירוף בכרטיס הלקוח בפריוריטי'
+          : 'נשמר במערכת. לא צורף לפריוריטי (חסר מספר לקוח).',
+      });
+    } catch (e) {
+      toast.error('שמירת הטופס נכשלה', {
+        description: e instanceof Error ? e.message : undefined,
+      });
+    } finally {
+      setSavingForm(false);
+    }
+  };
+
+  /** אישור מעבר מחוץ לסדר. */
+  const handleBypassConfirm = (reason: string) => {
+    if (!bypass) return;
+    log('stop_bypassed', {
+      ...stopCtx(bypass.target),
+      metadata: { reason, skipped: bypass.skipped.map((s) => s.customerName) },
+    });
+    bypassStop.mutate(
+      {
+        target: bypass.target,
+        bypassed: bypass.skipped,
+        reason,
+        driverName,
+        total: todayStopsRef.current.length,
+      },
+      { onSettled: () => setBypass(null) },
+    );
   };
 
   const today = toLocalDateStr(new Date());
@@ -156,7 +307,25 @@ export function DriverDashboardPage() {
   }, [allStops]);
 
   const todayStops = stopsByDate.get(today) ?? [];
+  todayStopsRef.current = todayStops;
   const tomorrowStops = stopsByDate.get(tomorrow) ?? [];
+
+  /**
+   * העצירה הפעילה = הראשונה שטרם נסגרה. רק היא נפתחת במלואה; השאר מכווצות.
+   * זו כל ה"נעילה": לעבוד לפי הסדר זו לחיצה אחת, לסטות זה שלוש לחיצות
+   * וסיבה. אין חסימה קשיחה, כי נהג שנחסם בשטח פשוט ישקר למערכת.
+   */
+  const activeStopId = todayStops.find((s) => !isResolved(s.status))?.id ?? null;
+
+  /** פתיחת דיאלוג הדילוג: מי נעקף בדרך אל העצירה שנבחרה. */
+  const requestBypass = (target: DbCalendarStop) => {
+    const targetIdx = todayStops.findIndex((s) => s.id === target.id);
+    const skipped = todayStops
+      .slice(0, targetIdx)
+      .filter((s) => !isResolved(s.status) && !s.bypassedAt);
+    if (skipped.length === 0) return;
+    setBypass({ target, skipped });
+  };
   const weekStops = useMemo(() => {
     const start = new Date();
     const end = new Date(Date.now() + 7 * 86_400_000);
@@ -333,8 +502,12 @@ export function DriverDashboardPage() {
                 key={stop.id}
                 stop={stop}
                 index={idx + 1}
+                locked={!isResolved(stop.status) && stop.id !== activeStopId}
+                preparingForm={preparingForm === stop.id}
+                onBypass={() => requestBypass(stop)}
                 onCoordinate={() => handleCoordinate(stop)}
                 onArrive={() => handleArrive(stop)}
+                onComplete={(outcome) => handleRequestComplete(stop, outcome)}
                 onResolve={(status, notes) => handleResolve(stop, status, notes)}
                 resolving={isResolvingStop(stop.id)}
               />
@@ -347,12 +520,16 @@ export function DriverDashboardPage() {
             <EmptyState message="אין עצירות מתוכננות למחר" />
           ) : (
             tomorrowStops.map((stop, idx) => (
+              /* ימים עתידיים לתצוגה בלבד: עד היום אפשר היה לסמן מכאן עצירה
+                 של מחר כבוצעה, וזה מעולם לא היה מכוון. */
               <DriverStopCard
                 key={stop.id}
                 stop={stop}
                 index={idx + 1}
+                readOnly
                 onCoordinate={() => handleCoordinate(stop)}
                 onArrive={() => handleArrive(stop)}
+                onComplete={(outcome) => handleRequestComplete(stop, outcome)}
                 onResolve={(status, notes) => handleResolve(stop, status, notes)}
                 resolving={isResolvingStop(stop.id)}
               />
@@ -378,8 +555,10 @@ export function DriverDashboardPage() {
                     key={stop.id}
                     stop={stop}
                     index={idx + 1}
+                    readOnly
                     onCoordinate={() => handleCoordinate(stop)}
                     onArrive={() => handleArrive(stop)}
+                    onComplete={(outcome) => handleRequestComplete(stop, outcome)}
                     onResolve={(status, notes) => handleResolve(stop, status, notes)}
                     resolving={isResolvingStop(stop.id)}
                   />
@@ -460,16 +639,51 @@ export function DriverDashboardPage() {
         }}
         onConfirm={(reason) => {
           if (!notCompletedStop) return;
-          log('stop_not_completed', {
-            ...stopCtx(notCompletedStop),
-            metadata: { reason },
-          });
+          const stop = notCompletedStop;
+          log('stop_not_completed', { ...stopCtx(stop), metadata: { reason } });
           resolveStop.mutate(
-            { stop: notCompletedStop, status: 'not_completed', notes: reason },
-            { onSuccess: () => setNotCompletedStop(null) }
+            { stop, status: 'not_completed', notes: reason },
+            {
+              onSuccess: () => {
+                setNotCompletedStop(null);
+                // הלקוח הזה נשרף להיום. ההתראה יוצאת תמיד, בלי תלות בשעת
+                // תיאום, ולא חוסמת את הנהג אם השליחה נכשלה.
+                void sendDriverAlert({
+                  kind: 'not_completed',
+                  stop,
+                  driverName,
+                  reason,
+                });
+              },
+            },
           );
         }}
       />
+
+      <BypassReasonDialog
+        open={!!bypass}
+        target={bypass?.target ?? null}
+        bypassed={bypass?.skipped ?? []}
+        submitting={bypassStop.isPending}
+        onOpenChange={(open) => {
+          if (!open) setBypass(null);
+        }}
+        onConfirm={handleBypassConfirm}
+      />
+
+      {formSession && (
+        <SignFormDialog
+          open
+          definition={formSession.definition}
+          context={formSession.context}
+          driverName={driverName}
+          submitting={savingForm}
+          onOpenChange={(open) => {
+            if (!open && !savingForm) setFormSession(null);
+          }}
+          onSubmit={handleFormSubmit}
+        />
+      )}
     </div>
   );
 }
@@ -538,13 +752,25 @@ interface DriverStopCardProps {
   onCoordinate: () => void;
   onArrive: () => Promise<unknown> | void;
   onResolve: (status: 'completed' | 'not_completed', notes?: string) => void;
+  /** סגירה כ"בוצעה" — עוברת דרך הטופס החתום כשיש כזה לקופה. */
+  onComplete?: (outcome?: string) => void;
+  /** לא העצירה הבאה בתור: הכרטיס מכווץ ואין עליו כפתורי סגירה. */
+  locked?: boolean;
+  /** יום עתידי — תצוגה בלבד. */
+  readOnly?: boolean;
+  /** טוען את הטופס ואת פרטי הלקוח לפני פתיחת החתימה. */
+  preparingForm?: boolean;
+  onBypass?: () => void;
   resolving: boolean;
 }
 
 /** משך חלון ה"חשיבה" בין הגעה לסופק (מונע לחיצות רצופות). */
 const ARRIVAL_THINK_MS = 10_000;
 
-function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve, resolving }: DriverStopCardProps) {
+function DriverStopCard({
+  stop, index, onCoordinate, onArrive, onResolve, onComplete,
+  locked, readOnly, preparingForm, onBypass, resolving,
+}: DriverStopCardProps) {
   const log = useActivityLogger();
   const logStop = (action: string) =>
     log(action, {
@@ -583,6 +809,12 @@ function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve, resolv
     });
     timerRef.current = setTimeout(() => setThinking(false), ARRIVAL_THINK_MS);
   };
+  /** סגירה כ"בוצעה". עוברת דרך הטופס אם ההורה חיבר אותו. */
+  const complete = (outcome?: string) => {
+    if (onComplete) onComplete(outcome);
+    else onResolve('completed', outcome);
+  };
+
   const isCustomerConfirmed = stop.coordinationStatus === 'customer_confirmed';
   const isCustomerRejected = stop.coordinationStatus === 'customer_rejected';
   const src = SOURCE_CONFIG[stop.sourceType] ?? SOURCE_CONFIG.delivery;
@@ -593,6 +825,69 @@ function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve, resolv
     coordinates: stop.coordinates ?? null,
   });
   const telUrl = buildTelUrl(stop.phone);
+
+  // ── עצירה שאינה הבאה בתור ─────────────────────────────────────────────
+  // שורה מכווצת: הכתובת והטלפון גלויים, אפשר גם לנווט, אבל אין כפתור סגירה.
+  // המעבר אליה קיים ודורש סיבה. זו הנעילה העדינה במלואה.
+  if (locked) {
+    return (
+      <Card className={`border-dashed ${stop.bypassedAt ? 'border-amber-300 bg-amber-50/50' : 'bg-muted/30'}`}>
+        <CardContent className="flex items-center gap-3 p-3">
+          <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-bold text-slate-600">
+            {index}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <span className={`flex h-4 w-4 items-center justify-center rounded ${src.bg} ${src.color}`}>
+                <SrcIcon className="h-2.5 w-2.5" />
+              </span>
+              <span className="truncate text-sm font-semibold text-slate-700">{stop.customerName}</span>
+              {stop.bypassedAt && (
+                <Badge variant="outline" className="border-amber-300 bg-amber-100 text-[10px] text-amber-800">
+                  נעקפה
+                </Badge>
+              )}
+            </div>
+            <p className="truncate text-xs text-muted-foreground">
+              {[stop.address, stop.city].filter(Boolean).join(', ') || 'ללא כתובת'}
+              {stop.timeWindowStart ? ` · ${stop.timeWindowStart.slice(0, 5)}` : ''}
+            </p>
+          </div>
+          <div className="flex flex-shrink-0 items-center gap-1">
+            {telUrl && (
+              <a
+                href={telUrl}
+                className="flex h-9 w-9 items-center justify-center rounded-lg border bg-white text-slate-600"
+                aria-label="חייג"
+              >
+                <Phone className="h-4 w-4" />
+              </a>
+            )}
+            {wazeUrl && (
+              <a
+                href={wazeUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex h-9 w-9 items-center justify-center rounded-lg border bg-white text-slate-600"
+                aria-label="נווט"
+              >
+                <Navigation className="h-4 w-4" />
+              </a>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onBypass}
+              className="h-9 gap-1 border-amber-200 bg-amber-50 px-2 text-[11px] text-amber-700"
+            >
+              <SkipForward className="h-3.5 w-3.5" />
+              עבור לכאן
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   const bgClass = stop.status === 'completed'
     ? 'bg-emerald-50/70 border-emerald-200'
@@ -696,6 +991,20 @@ function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve, resolv
               רושם הגעה…
             </div>
           </div>
+        ) : readOnly ? (
+          /* יום עתידי — תיאום וצ'אט בלבד. סגירת עצירה שייכת ליום שלה. */
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onCoordinate}
+              className="h-11 gap-1 text-xs"
+            >
+              <MessageCircle className="h-4 w-4 text-emerald-600" />
+              תיאום
+            </Button>
+            <StopChatButton stop={stop} />
+          </div>
         ) : !resolved ? (
           <div className="grid grid-cols-4 gap-2 pt-1">
             <Button
@@ -709,20 +1018,24 @@ function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve, resolv
               תיאום
             </Button>
             {hasArrived ? (
-              /* שלב 2 — אחרי הגעה: "סופק" בצבע שונה (ירוק) */
+              /* שלב 2 — אחרי הגעה: סגירה דרך הטופס החתום */
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  // משלוח → חובה לבחור תוצאת אספקה; אחרת סימון מיידי.
+                  // משלוח → קודם תוצאת אספקה, ואז הטופס.
                   if (isDelivery) setOutcomeOpen(true);
-                  else onResolve('completed');
+                  else complete();
                 }}
-                disabled={resolving}
+                disabled={resolving || preparingForm}
                 className="h-11 gap-1 text-xs bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700"
               >
-                <Check className="h-4 w-4" />
-                סופק
+                {preparingForm ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <FileSignature className="h-4 w-4" />
+                )}
+                {preparingForm ? 'טוען' : 'טופס'}
               </Button>
             ) : (
               /* שלב 1 — "הגעה" (כחול) */
@@ -765,7 +1078,7 @@ function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve, resolv
       onOpenChange={setOutcomeOpen}
       onSelect={(outcome) => {
         setOutcomeOpen(false);
-        onResolve('completed', outcome);
+        complete(outcome);
       }}
     />
     </>
