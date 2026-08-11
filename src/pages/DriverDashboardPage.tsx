@@ -33,6 +33,8 @@ import {
   SkipForward,
   FileSignature,
 } from 'lucide-react';
+import type { AssigneeName } from '@/types/route';
+import { DRIVERS, TECHNICIANS } from '@/types/route';
 import type { CalendarStop as DbCalendarStop } from '@/types/calendar-stop';
 import type { CalendarStop as UiCalendarStop } from '@/types/delivery';
 import { OrderChatSheet } from '@/components/OrderChatSheet';
@@ -125,7 +127,17 @@ export function DriverDashboardPage() {
   // הכוללת עבור ההודעה ("עצירה 3 מתוך 10"). ref מונע סדר הכרזות הפוך.
   const todayStopsRef = useRef<DbCalendarStop[]>([]);
 
-  const driverName = profile?.linkedDriver ?? profile?.fullName ?? 'נהג';
+  /**
+   * צפייה כנהג.
+   *
+   * לנהג עצמו ה-RLS כבר מחזיר רק את העצירות שלו, ואין מה לבחור. ל-admin
+   * ול-dispatcher חוזרות העצירות של כולם, ובלי סינון המסך היה מציג את היום
+   * של ארבעה נהגים כערימה אחת, ונעילת הסדר הייתה חסרת משמעות.
+   */
+  const isStaffViewer = !!profile && profile.role !== 'driver';
+  const [viewAs, setViewAs] = useState<AssigneeName | null>(null);
+  const effectiveDriver: AssigneeName | null = profile?.linkedDriver ?? viewAs;
+  const driverName = effectiveDriver ?? profile?.fullName ?? 'נהג';
 
   /** הקשר אירוע אחיד לעצירה — לדוחות. */
   const stopCtx = (stop: DbCalendarStop) => ({
@@ -295,6 +307,7 @@ export function DriverDashboardPage() {
     const map = new Map<string, DbCalendarStop[]>();
     for (const s of allStops ?? []) {
       if (s.status === 'cancelled') continue;
+      if (effectiveDriver && s.driver !== effectiveDriver) continue;
       const list = map.get(s.deliveryDate) ?? [];
       list.push(s);
       map.set(s.deliveryDate, list);
@@ -304,7 +317,7 @@ export function DriverDashboardPage() {
       list.sort(compareStopsByTime);
     }
     return map;
-  }, [allStops]);
+  }, [allStops, effectiveDriver]);
 
   const todayStops = stopsByDate.get(today) ?? [];
   todayStopsRef.current = todayStops;
@@ -409,6 +422,39 @@ export function DriverDashboardPage() {
           </Badge>
         )}
       </div>
+
+      {/* צפייה כנהג — למי שאינו נהג בעצמו */}
+      {isStaffViewer && (
+        <Card className="border-slate-300 bg-slate-50">
+          <CardContent className="space-y-2 p-3">
+            <p className="text-xs font-semibold text-slate-600">
+              צפייה במסך הנהג. בחר את מי לראות:
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {[...new Set([...DRIVERS, ...TECHNICIANS])].map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => setViewAs(viewAs === name ? null : name)}
+                  className={`h-9 rounded-lg border px-3 text-sm transition-colors ${
+                    viewAs === name
+                      ? 'border-slate-900 bg-slate-900 font-semibold text-white'
+                      : 'border-slate-200 bg-white text-slate-700'
+                  }`}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+            {!viewAs && (
+              <p className="text-[11px] text-amber-700">
+                לא נבחר נהג, ולכן מוצגות העצירות של כולם יחד. נעילת הסדר תיראה
+                נכון רק אחרי בחירת נהג.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Today's summary */}
       <Card className="border-emerald-200 bg-gradient-to-br from-emerald-50 to-white">

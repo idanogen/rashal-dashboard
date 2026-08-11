@@ -52,7 +52,9 @@ function App() {
               path="/driver"
               element={
                 <ProtectedRoute>
-                  <RoleBasedRoute allow={['driver']}>
+                  {/* admin ו-dispatcher נכנסים כדי לצפות במסך הנהג (בורר נהג
+                      בראש המסך). נהג עדיין רואה רק את עצמו, דרך RLS. */}
+                  <RoleBasedRoute allow={['driver', 'admin', 'dispatcher']}>
                     <DriverShell>
                       <DriverDashboardPage />
                     </DriverShell>
