@@ -16,7 +16,12 @@ import { updateStop } from '@/lib/calendar-stops';
  *    ההודעות שלנו.
  */
 
-export const ON_WAY_TEMPLATE = 'driver_on_the_way';
+/**
+ * 🔴 מציין מקום. heyy מקבל UUID ולא שם, ולכן הערך הזה נדחה בכוונה ואנחנו
+ * נופלים לטקסט חופשי עד לאישור. אחרי אישור מטא — להחליף ב-UUID מ-heyy.
+ * שם התבנית להגשה: driver_on_the_way
+ */
+export const ON_WAY_TEMPLATE = 'DEMO-driver-on-the-way';
 
 /** כמה זמן לפני תחילת חלון התיאום סביר להגיד "אני בדרך". */
 const WINDOW_LEAD_MINUTES = 90;

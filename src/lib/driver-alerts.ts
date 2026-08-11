@@ -38,7 +38,13 @@ export const ALERT_RECIPIENTS: { name: string; phone: string }[] = [
  * 🔴 שתי מלכודות של מטא: פרמטר ריק פוסל את השליחה (ולכן כל ערך חסר מוחלף
  * ב"לא צוין"), וגוף שמסתיים במשתנה נוטה להידחות (ולכן השורה האחרונה קבועה).
  */
-export const DRIVER_ALERT_TEMPLATE = 'driver_stop_alert';
+/**
+ * 🔴 heyy מקבל **מזהה UUID** של תבנית, לא שם. הערך כאן הוא מציין מקום, ולכן
+ * `heyySendTemplate` דוחה אותו מיד ואנחנו נופלים לטקסט חופשי. אחרי אישור
+ * מטא יש להחליף אותו ב-UUID האמיתי מתוך heyy (Tools → Templates).
+ * שם התבנית להגשה: driver_stop_alert
+ */
+export const DRIVER_ALERT_TEMPLATE = 'DEMO-driver-stop-alert';
 
 export type AlertKind = 'bypass' | 'not_completed';
 
