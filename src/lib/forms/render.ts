@@ -225,6 +225,20 @@ export async function generateFormPdf(
   }
 }
 
+/**
+ * מפתח האובייקט ב-Storage.
+ *
+ * 🔴 Supabase Storage דוחה מפתח שאינו ASCII ("Invalid key"), ולכן הוא חייב
+ * להיות נקי מעברית ומרווחים. שם התצוגה בעברית נשמר בנפרד ומוצג למשתמש;
+ * הנתיב עצמו הוא מזהה טכני ואף אחד לא קורא אותו.
+ */
+export function buildStorageKey(def: FormDefinition, formId: string, meta: FormMeta): string {
+  const d = meta.signedAt;
+  const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return `${formId}/${def.key}-${date}.pdf`;
+}
+
+/** שם ידידותי בעברית — לתצוגה ולהורדה, לא לנתיב. */
 export function buildFormFileName(def: FormDefinition, meta: FormMeta): string {
   const d = meta.signedAt;
   const date = `${String(d.getDate()).padStart(2, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${d.getFullYear()}`;

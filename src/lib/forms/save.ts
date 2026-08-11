@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { FormDefinition, FormValues } from './types';
-import { generateFormPdf, buildFormFileName } from './render';
+import { generateFormPdf, buildFormFileName, buildStorageKey } from './render';
 import type { FormMeta, SignatureImages, SignerNames } from './render';
 
 /**
@@ -41,10 +41,12 @@ export async function saveSignedForm(input: SaveSignedFormInput): Promise<SaveSi
   const { definition, values, signatures, signerNames, meta } = input;
 
   const pdfBlob = await generateFormPdf(definition, values, signatures, signerNames, meta);
-  const fileName = buildFormFileName(definition, meta);
 
   const formId = crypto.randomUUID();
-  const path = `${formId}/${fileName}`;
+  // שם התצוגה בעברית ↔ מפתח האחסון ב-ASCII. שניהם נשמרים: הראשון למשתמש
+  // ולצירוף בפריוריטי, השני כדי ש-Storage בכלל יקבל את הקובץ.
+  const fileName = buildFormFileName(definition, meta);
+  const path = buildStorageKey(definition, formId, meta);
 
   const { error: uploadError } = await supabase.storage
     .from('signed-forms')
