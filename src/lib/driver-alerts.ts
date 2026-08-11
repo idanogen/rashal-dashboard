@@ -98,7 +98,24 @@ export interface AlertResult {
  * להתראה שיוצאת בכל שעה נדרשת תבנית מאושרת. עד שתאושר, כישלון כאן לא עוצר
  * את הנהג: החריגה כבר נשמרה במסד והסדרן יראה אותה בדוח.
  */
-/** פרמטרי התבנית. מטא פוסלת פרמטר ריק, ולכן אין כאן אף מחרוזת ריקה. */
+/**
+ * משתני התבנית **לפי שם**. heyy לא תומך במיקום — אינדקס מספרי מחזיר ערכים
+ * ריקים אצל הנמען. השמות חייבים להתאים לשמות שיוגדרו בעורך של heyy.
+ * בנוסף, מטא פוסלת ערך ריק, ולכן אין כאן אף מחרוזת ריקה.
+ */
+export function buildAlertVariables(input: AlertInput): Array<{ name: string; value: string }> {
+  const v = buildAlertParams(input);
+  return [
+    { name: 'event', value: v[0] },
+    { name: 'customer', value: v[1] },
+    { name: 'address', value: v[2] },
+    { name: 'phone', value: v[3] },
+    { name: 'time_window', value: v[4] },
+    { name: 'driver', value: v[5] },
+    { name: 'reason', value: v[6] },
+  ];
+}
+
 export function buildAlertParams(input: AlertInput): string[] {
   const or = (v: string | null | undefined) => {
     const t = String(v ?? '').trim();
@@ -129,7 +146,6 @@ async function postSend(body: Record<string, unknown>): Promise<AlertResult> {
 
 export async function sendDriverAlert(input: AlertInput): Promise<AlertResult[]> {
   const bodyText = buildAlertText(input);
-  const parameters = buildAlertParams(input);
 
   return Promise.all(
     ALERT_RECIPIENTS.map(async (recipient) => {
@@ -143,7 +159,7 @@ export async function sendDriverAlert(input: AlertInput): Promise<AlertResult[]>
           ...common,
           kind: 'template',
           templateId: DRIVER_ALERT_TEMPLATE,
-          parameters,
+          variables: buildAlertVariables(input),
         });
         if (viaTemplate.sent) return viaTemplate;
 

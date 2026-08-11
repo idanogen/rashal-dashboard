@@ -103,6 +103,19 @@ async function estimateEta(from: CalendarStop, to: CalendarStop): Promise<number
   }
 }
 
+/** משתני התבנית לפי שם. ראה ההסבר ב-driver-alerts.ts. */
+export function buildOnWayVariables(
+  stop: CalendarStop,
+  etaMinutes: number | null,
+): Array<{ name: string; value: string }> {
+  const p = buildOnWayParams(stop, etaMinutes);
+  return [
+    { name: 'customer', value: p[0] },
+    { name: 'eta', value: p[1] },
+    { name: 'address', value: p[2] },
+  ];
+}
+
 export function buildOnWayParams(stop: CalendarStop, etaMinutes: number | null): string[] {
   const address = [stop.address, stop.city].filter(Boolean).join(', ');
   return [
@@ -155,7 +168,7 @@ export async function notifyNextCustomer(
         ...payload,
         kind: 'template',
         templateId: ON_WAY_TEMPLATE,
-        parameters: buildOnWayParams(next, etaMinutes),
+        variables: buildOnWayVariables(next, etaMinutes),
       }),
     });
     let json = (await res.json()) as { ok?: boolean; isDemo?: boolean; error?: string };

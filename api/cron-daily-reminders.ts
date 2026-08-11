@@ -80,14 +80,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       continue;
     }
 
-    const parameters = [
-      order.customer_name ?? 'לקוח',
-      '08:00',
-      '18:00',
-      order.address ?? '',
+    // heyy מזהה משתני תבנית **לפי שם** ולא לפי מיקום. השמות חייבים להתאים
+    // למה שהוגדר בעורך התבניות; אלה שמות זמניים עד שהתבנית תיווצר בפועל.
+    const variables = [
+      { name: 'customer', value: order.customer_name ?? 'לקוח' },
+      { name: 'time_start', value: '08:00' },
+      { name: 'time_end', value: '18:00' },
+      { name: 'address', value: order.address ?? '' },
     ];
+    const parameters = variables.map((v) => v.value);
 
-    const result = await heyySendTemplate(e164, DELIVERY_REMINDER_TEMPLATE_ID, parameters);
+    const result = await heyySendTemplate(e164, DELIVERY_REMINDER_TEMPLATE_ID, variables);
 
     // Log outbound
     const { data: outboundRow } = await supabaseAdmin
