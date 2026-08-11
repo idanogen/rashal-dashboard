@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { AppShell } from '@/components/layout/AppShell';
+import { DemoEnvironmentRibbon } from '@/components/DemoEnvironmentRibbon';
 import { DriverShell } from '@/components/layout/DriverShell';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { ManagementDashboard } from '@/pages/ManagementDashboard';
@@ -42,6 +43,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <AuthProvider>
+          <DemoEnvironmentRibbon />
           <Routes>
             <Route path="/login" element={<LoginPage />} />
 
