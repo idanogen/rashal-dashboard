@@ -188,6 +188,7 @@ export function DriverDashboardPage() {
         'no-phone': 'אין מספר טלפון לעצירה הבאה',
         'already-notified': '',
         'too-early': 'העצירה הבאה מתואמת לשעה מאוחרת, לא נשלחה הודעה',
+        'demo-blocked': 'מצב הדגמה: הודעה נשלחת רק למספרי בדיקה',
         'send-failed': 'שליחת ההודעה ללקוח הבא נכשלה',
       };
       const msg = r.skipped ? why[r.skipped] : '';

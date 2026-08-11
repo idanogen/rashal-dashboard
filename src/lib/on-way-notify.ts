@@ -1,6 +1,7 @@
 import type { CalendarStop } from '@/types/calendar-stop';
 import { getRoadRoute } from '@/lib/directions';
 import { updateStop } from '@/lib/calendar-stops';
+import { decideSend } from '@/lib/whatsapp-demo';
 
 /**
  * "הנהג בדרך אליך" — הודעה ללקוח הבא בתור ברגע שהנהג סוגר את הלקוח שלפניו.
@@ -30,6 +31,7 @@ export type SkipReason =
   | 'no-phone'
   | 'already-notified'
   | 'too-early'
+  | 'demo-blocked'
   | 'send-failed';
 
 export interface NotifyResult {
@@ -154,6 +156,13 @@ export async function notifyNextCustomer(
 
   const etaMinutes = await estimateEta(justResolved, next);
 
+  // במצב הדגמה: תבנית "בדיקה" המאושרת, ורק למספרי בדיקה. בלי החסימה הזו
+  // לקוח אמיתי בהדגמה היה מקבל הודעה שכתוב בה "זאת הודעת בדיקה".
+  const decision = decideSend(ON_WAY_TEMPLATE, buildOnWayVariables(next, etaMinutes), next.phone);
+  if (!decision.send) {
+    return { ...base, sent: false, skipped: 'demo-blocked', error: decision.blockedReason };
+  }
+
   try {
     const payload = {
       phoneE164: next.phone,
@@ -167,8 +176,8 @@ export async function notifyNextCustomer(
       body: JSON.stringify({
         ...payload,
         kind: 'template',
-        templateId: ON_WAY_TEMPLATE,
-        variables: buildOnWayVariables(next, etaMinutes),
+        templateId: decision.templateId,
+        variables: decision.variables,
       }),
     });
     let json = (await res.json()) as { ok?: boolean; isDemo?: boolean; error?: string };

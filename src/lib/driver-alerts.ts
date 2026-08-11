@@ -1,4 +1,5 @@
 import type { CalendarStop } from '@/types/calendar-stop';
+import { decideSend, WHATSAPP_DEMO_MODE } from '@/lib/whatsapp-demo';
 
 /**
  * התראות וואטסאפ על חריגה של נהג מהמסלול.
@@ -154,14 +155,21 @@ export async function sendDriverAlert(input: AlertInput): Promise<AlertResult[]>
         reminderKind: 'team_notification',
         triggeredBy: `driver:${input.driverName}`,
       };
+
+      // במצב הדגמה נשלחת התבנית המאושרת "בדיקה", ורק למספרי בדיקה.
+      const decision = decideSend(DRIVER_ALERT_TEMPLATE, buildAlertVariables(input), recipient.phone);
+      if (!decision.send) {
+        return { sent: false, isDemo: true, error: decision.blockedReason };
+      }
+
       try {
         const viaTemplate = await postSend({
           ...common,
           kind: 'template',
-          templateId: DRIVER_ALERT_TEMPLATE,
-          variables: buildAlertVariables(input),
+          templateId: decision.templateId,
+          variables: decision.variables,
         });
-        if (viaTemplate.sent) return viaTemplate;
+        if (viaTemplate.sent) return { ...viaTemplate, isDemo: WHATSAPP_DEMO_MODE };
 
         // התבנית טרם אושרה או נדחתה — ניסיון בטקסט חופשי, שיעבור אם חלון
         // 24 השעות פתוח. עדיף הודעה שנוחתת מאשר שקט מוחלט.
