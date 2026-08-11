@@ -22,8 +22,18 @@ export const config = { maxDuration: 60 };
 
 const SECRET = process.env.PRIORITY_SYNC_SECRET;
 const PRIORITY = 'https://p.priority-connect.online/odata/Priority/tabb4ce6.ini/shaal';
-const EVENT_BATCH = 12;           // אירועים לריצה
+const EVENT_BATCH = 12;           // אירועים *שנדחפים* בריצה
 const MAX_PAYLOAD = 3_000_000;    // תקרת base64 מצטבר לתגובה (מתחת ל-4.5MB של Vercel)
+
+// 🔴 חסם ראש-תור (התגלה 11/08/2026, תקוע מ-06/07):
+// אירוע שאין לישות שלו customer_number מדולג — אבל דילוג אינו ack, ולכן הוא
+// נשאר בראש התור. כשהקריאה שלפה בדיוק EVENT_BATCH אירועים, 12 חוסמים כאלה
+// גרמו לכל ריצה להחזיר אפס כתיבות, בעוד 509 אירועים תקינים ממתינים מאחוריהם.
+// הריצות דיווחו success, ולכן הוואצ'דוג היה ירוק לאורך חמישה שבועות.
+//
+// התיקון: סורקים חלון רחב, והמכסה נספרת על אירועים *שנדחפים בפועל*. אירוע
+// בלי מפתח לקוח פשוט לא צורך מכסה, ויעלה מעצמו כשהסנכרון ישלים לו את המספר.
+const SCAN_LIMIT = 400;
 
 type Row = Record<string, unknown>;
 const s = (v: unknown): string | null => {
@@ -88,7 +98,7 @@ async function handleGet(req: VercelRequest, res: VercelResponse) {
 
   const { data: events, error } = await query
     .order('created_at', { ascending: true })
-    .limit(EVENT_BATCH);
+    .limit(SCAN_LIMIT);
   if (error) throw new Error(`outbox read: ${error.message}`);
   const rows = (events ?? []) as Row[];
   if (!rows.length) return res.status(200).json({ writes: [] });
@@ -114,8 +124,12 @@ async function handleGet(req: VercelRequest, res: VercelResponse) {
   const writes: Row[] = [];
   let payload = 0;
   let skipped = 0;
+  const pushedEvents = new Set<string>();
 
   for (const ev of rows) {
+    // המכסה נספרת על אירועים שנדחפו בפועל, לא על אירועים שנסרקו.
+    if (pushedEvents.size >= EVENT_BATCH) break;
+
     const src = ev.order_id ? orderMap.get(ev.order_id as string) : callMap.get(ev.service_call_id as string);
     if (!src?.cust) { skipped++; continue; } // אין מפתח לקוח → יידחף כשיסונכרן
     const cust = src.cust;
@@ -128,6 +142,7 @@ async function handleGet(req: VercelRequest, res: VercelResponse) {
         url: custUrl(cust, 'INTERNALDIALOGTEXT_SUBFORM'),
         body: JSON.stringify({ TEXT: formatLine(ev, src.ctx), APPEND: true }),
       });
+      pushedEvents.add(ev.id as string);
     } else {
       // file_upload: כל תמונה = נספח בכרטיס הלקוח (data URI)
       let idx = 0;
@@ -140,6 +155,7 @@ async function handleGet(req: VercelRequest, res: VercelResponse) {
         const body = JSON.stringify({ EXTFILEDES: des, EXTFILENAME: file.dataUri });
         payload += body.length;
         writes.push({ event_id: ev.id, url: custUrl(cust, 'CUSTEXTFILE_SUBFORM'), body });
+        pushedEvents.add(ev.id as string);
       }
       // אירוע העלאה בלי תמונות תקינות → אין מה לדחוף, נסמן כטופל דרך ack הרגיל של הבא
     }
