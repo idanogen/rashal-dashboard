@@ -12,6 +12,8 @@ if [ ! -f .env.local ]; then
   exit 1
 fi
 
+TARGET="${1:-production}"
+
 push_var() {
   local name="$1"
   local value
@@ -23,9 +25,9 @@ push_var() {
   fi
 
   # מסירים ערך קודם אם קיים, אחרת ההוספה נכשלת
-  npx vercel env rm "$name" production --yes >/dev/null 2>&1
+  npx vercel env rm "$name" "$TARGET" --yes >/dev/null 2>&1
 
-  if printf '%s' "$value" | npx vercel env add "$name" production >/dev/null 2>&1; then
+  if printf '%s' "$value" | npx vercel env add "$name" "$TARGET" >/dev/null 2>&1; then
     echo "✅ ${name} הועלה (מסתיים ב-...${value: -4})"
   else
     echo "❌ ${name} נכשל"
@@ -36,5 +38,5 @@ push_var HEYY_API_KEY
 push_var HEYY_CHANNEL_ID
 
 echo ""
-echo "המצב הנוכחי ב-Vercel:"
-npx vercel env ls production 2>/dev/null | grep -E "HEYY" || echo "(לא נמצאו משתני HEYY)"
+echo "המצב הנוכחי ב-Vercel ($TARGET):"
+npx vercel env ls "$TARGET" 2>/dev/null | grep -E "HEYY" || echo "(לא נמצאו משתני HEYY)"
