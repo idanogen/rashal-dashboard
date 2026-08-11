@@ -11,10 +11,23 @@ interface SendBody {
   phoneE164: string;
   bodyText?: string;
   templateId?: string;
+  /** משתני התבנית **לפי שם**. heyy לא תומך במיקום — ראה ההערה ב-heyy-server.ts. */
+  variables?: Array<{ name: string; value: string }>;
+  /** @deprecated מערך ערכים לפי מיקום. נשמר לתאימות עם מסכים ישנים; מומר לשמות. */
   parameters?: string[];
   orderId?: string;
   reminderKind?: 'delivery_reminder' | 'schedule_request' | 'team_notification' | 'custom';
   triggeredBy?: string;
+}
+
+/**
+ * ממיר את הקלט לרשימת משתנים לפי שם. קריאה ישנה שמעבירה מערך לפי מיקום
+ * ממופה ל-"1","2","3"..., שזה מה שהעורך של heyy נותן כברירת מחדל כשלא
+ * מגדירים שם. עדיין עדיף לשלוח שמות מפורשים.
+ */
+function normalizeVariables(body: SendBody): Array<{ name: string; value: string }> {
+  if (body.variables?.length) return body.variables;
+  return (body.parameters ?? []).map((value, i) => ({ name: String(i + 1), value }));
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -56,7 +69,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const result =
     body.kind === 'text'
       ? await heyySendText(e164, body.bodyText ?? '')
-      : await heyySendTemplate(e164, body.templateId ?? '', body.parameters ?? []);
+      : await heyySendTemplate(e164, body.templateId ?? '', normalizeVariables(body));
 
   // Log to whatsapp_outbound regardless of success
   const { data: outboundRow, error: outboundErr } = await supabaseAdmin
