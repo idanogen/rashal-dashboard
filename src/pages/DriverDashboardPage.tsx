@@ -45,6 +45,7 @@ import { SignFormDialog } from '@/components/forms/SignFormDialog';
 import { useBypassStop } from '@/hooks/useBypassStop';
 import { sendDriverAlert } from '@/lib/driver-alerts';
 import { getCurrentPosition } from '@/lib/geolocation';
+import { notifyNextCustomer } from '@/lib/on-way-notify';
 import { findForm, findPlannedForm } from '@/lib/forms/registry';
 import { loadFormContext, formKindForStop } from '@/lib/forms/context';
 import { saveSignedForm } from '@/lib/forms/save';
@@ -160,8 +161,38 @@ export function DriverDashboardPage() {
         ...stopCtx(stop),
         ...(notes ? { metadata: { deliveryOutcome: notes } } : {}),
       });
-      resolveStop.mutate({ stop, status, notes });
+      resolveStop.mutate(
+        { stop, status, notes },
+        { onSuccess: () => announceOnWayToNext(stop) },
+      );
     }
+  };
+
+  /**
+   * הלקוח הבא בתור מקבל "הנהג בדרך אליך".
+   *
+   * לא חוסם ולא מקפיץ שגיאה: אם ההודעה לא יצאה, הנהג ממשיך לעבוד. מה שכן
+   * מוצג לו הוא למה היא לא יצאה, כי "לא נשלח" בשקט הוא בדיוק מה שגורם
+   * לאף אחד לא לשים לב שהתהליך מת.
+   */
+  const announceOnWayToNext = (justResolved: DbCalendarStop) => {
+    void notifyNextCustomer(todayStopsRef.current, justResolved).then((r) => {
+      if (r.sent) {
+        toast.success(`הודענו ל${r.customerName} שאתה בדרך`, {
+          description: r.etaMinutes ? `זמן משוער: כ-${r.etaMinutes} דקות` : undefined,
+        });
+        return;
+      }
+      if (!r.stopId) return; // אין לקוח הבא — סוף היום
+      const why: Record<string, string> = {
+        'no-phone': 'אין מספר טלפון לעצירה הבאה',
+        'already-notified': '',
+        'too-early': 'העצירה הבאה מתואמת לשעה מאוחרת, לא נשלחה הודעה',
+        'send-failed': 'שליחת ההודעה ללקוח הבא נכשלה',
+      };
+      const msg = r.skipped ? why[r.skipped] : '';
+      if (msg) toast.warning(msg, { description: r.customerName });
+    });
   };
 
   const handleCoordinate = (stop: DbCalendarStop) => {
@@ -700,6 +731,8 @@ export function DriverDashboardPage() {
                   driverName,
                   reason,
                 });
+                // גם עצירה שלא בוצעה היא עזיבה — הנהג ממשיך אל הבא בתור.
+                announceOnWayToNext(stop);
               },
             },
           );

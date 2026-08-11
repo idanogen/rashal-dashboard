@@ -87,6 +87,11 @@ export interface CalendarStop {
   bypassReason?: string;
   bypassedBy?: string;
 
+  /** מתי נשלחה ללקוח הודעת "הנהג בדרך אליך". ריק = טרם נשלחה. */
+  onWayNotifiedAt?: string;
+  /** הזמן המשוער שנשלח ללקוח, בדקות. נשמר כדי שנוכל לבדוק בדיעבד כמה דייקנו. */
+  onWayEtaMinutes?: number;
+
   created: string;
   updated: string;
 }

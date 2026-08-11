@@ -45,6 +45,8 @@ type CalendarStopRow = {
   bypassed_at: string | null;
   bypass_reason: string | null;
   bypassed_by: string | null;
+  on_way_notified_at: string | null;
+  on_way_eta_minutes: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -101,6 +103,8 @@ function rowToStop(row: CalendarStopRow): CalendarStop {
     bypassedAt: row.bypassed_at ?? undefined,
     bypassReason: row.bypass_reason ?? undefined,
     bypassedBy: row.bypassed_by ?? undefined,
+    onWayNotifiedAt: row.on_way_notified_at ?? undefined,
+    onWayEtaMinutes: row.on_way_eta_minutes ?? undefined,
     created: row.created_at,
     updated: row.updated_at,
   };
@@ -143,6 +147,8 @@ function stopFieldsToRow(
   if ('bypassedAt' in fields) row.bypassed_at = fields.bypassedAt ?? null;
   if ('bypassReason' in fields) row.bypass_reason = fields.bypassReason ?? null;
   if ('bypassedBy' in fields) row.bypassed_by = fields.bypassedBy ?? null;
+  if ('onWayNotifiedAt' in fields) row.on_way_notified_at = fields.onWayNotifiedAt ?? null;
+  if ('onWayEtaMinutes' in fields) row.on_way_eta_minutes = fields.onWayEtaMinutes ?? null;
   return row;
 }
 
