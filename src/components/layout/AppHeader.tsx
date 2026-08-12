@@ -1,5 +1,13 @@
-import { RefreshCw, Package, LogOut } from 'lucide-react';
+import { RefreshCw, Package, LogOut, Settings, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState, useEffect, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
@@ -15,6 +23,28 @@ const TRACKED_KEYS = new Set([
   'calendarStops',
   'newCustomers',
 ]);
+
+/** מה שעושים כל יום. הסדר הוא סדר החשיבות, לא סדר הבנייה. */
+const PRIMARY_LINKS = [
+  { to: '/dispatch', label: 'מסך סדרן' },
+  { to: '/orders', label: 'דשבורד' },
+  { to: '/feedback', label: '📝 הערות' },
+];
+
+/** מה שנוגעים בו פעם בכמה שבועות. יושב בתפריט "ניהול". */
+const ADMIN_LINKS = [
+  { to: '/overview', label: 'דשבורד הנהלה' },
+  { to: '/inspections', label: 'בדיקות מנופים' },
+  { to: '/whatsapp', label: 'וואטסאפ' },
+];
+
+const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+  cn(
+    'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+    isActive
+      ? 'bg-primary/10 text-primary'
+      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+  );
 
 /** ניסוח עברי תקין. "לפני 1 דקות" ו-"לפני 2822 דקות" שניהם לא תקינים. */
 function formatAgo(ms: number): string {
@@ -119,102 +149,44 @@ export function AppHeader() {
             </div>
           </div>
 
-          {/* Navigation */}
+          {/* Navigation
+              שורה ראשונה: מה שעושים כל יום. מה שמגדירים פעם בכמה שבועות
+              (דשבורד הנהלה, בדיקות מנופים, וואטסאפ, משתמשים) עבר לתפריט "ניהול",
+              אחרי שבדיקה הראתה שהתפריט משרת בפועל סדרן אחד. */}
           <nav className="flex items-center gap-1">
-            <NavLink
-              to="/"
-              end
-              className={({ isActive }) =>
-                cn(
-                  'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                  isActive
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                )
-              }
-            >
-              דשבורד
-            </NavLink>
-            <NavLink
-              to="/overview"
-              className={({ isActive }) =>
-                cn(
-                  'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                  isActive
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                )
-              }
-            >
-              דשבורד הנהלה
-            </NavLink>
-            <NavLink
-              to="/dispatch"
-              className={({ isActive }) =>
-                cn(
-                  'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                  isActive
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                )
-              }
-            >
-              מסך סדרן
-            </NavLink>
-            <NavLink
-              to="/inspections"
-              className={({ isActive }) =>
-                cn(
-                  'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                  isActive
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                )
-              }
-            >
-              בדיקות מנופים
-            </NavLink>
-            <NavLink
-              to="/whatsapp"
-              className={({ isActive }) =>
-                cn(
-                  'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                  isActive
-                    ? 'bg-emerald-50 text-emerald-700'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                )
-              }
-            >
-              💬 וואטסאפ
-            </NavLink>
-            <NavLink
-              to="/feedback"
-              className={({ isActive }) =>
-                cn(
-                  'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                  isActive
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                )
-              }
-            >
-              📝 הערות
-            </NavLink>
-            {isAdmin && (
-              <NavLink
-                to="/admin/users"
-                className={({ isActive }) =>
-                  cn(
-                    'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                    isActive
-                      ? 'bg-purple-50 text-purple-700'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                  )
-                }
-              >
-                👥 משתמשים
+            {PRIMARY_LINKS.map((link) => (
+              <NavLink key={link.to} to={link.to} className={navLinkClass}>
+                {link.label}
               </NavLink>
-            )}
+            ))}
+
+            <DropdownMenu>
+              <DropdownMenuTrigger className="flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground data-[state=open]:bg-muted/50">
+                <Settings className="h-4 w-4" />
+                ניהול
+                <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuLabel className="text-xs text-muted-foreground">
+                  ניהול והגדרות
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {ADMIN_LINKS.map((link) => (
+                  <DropdownMenuItem key={link.to} asChild>
+                    <NavLink to={link.to} className="cursor-pointer">
+                      {link.label}
+                    </NavLink>
+                  </DropdownMenuItem>
+                ))}
+                {isAdmin && (
+                  <DropdownMenuItem asChild>
+                    <NavLink to="/admin/users" className="cursor-pointer">
+                      👥 משתמשים
+                    </NavLink>
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </nav>
         </div>
 

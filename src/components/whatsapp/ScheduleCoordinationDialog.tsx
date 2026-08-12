@@ -252,7 +252,8 @@ export function ScheduleCoordinationDialog({ stop, open, onOpenChange }: Schedul
             {previewBody}
             {placeholder && (
               <div className="mt-2 text-amber-700 text-[10px]">
-                ⚠ ה-template עוד לא מאושר ב-Meta. במצב דמו ההודעה תשמר כלוג, ב-prod (real mode) השליחה תיכשל עם הודעת שגיאה מנחה.
+                ⚠ תבנית ההודעה ממתינה לאישור של מטא, ולכן אי אפשר לשלוח אותה עדיין.
+                עד שהאישור יגיע, סמנו "תואם טלפונית".
               </div>
             )}
           </div>
@@ -282,9 +283,22 @@ export function ScheduleCoordinationDialog({ stop, open, onOpenChange }: Schedul
           </Button>
           <Button
             onClick={handleSendWhatsApp}
-            disabled={!hasPhone || sendReminder.isPending || updateCoord.isPending}
+            // תבנית שממתינה לאישור מטא תיכשל בשליחה. עדיף כפתור מושבת עם הסבר
+            // מאשר לחיצה שמחזירה שגיאה טכנית.
+            disabled={
+              !hasPhone ||
+              (placeholder && !demo) ||
+              sendReminder.isPending ||
+              updateCoord.isPending
+            }
             className="gap-1.5"
-            title={!hasPhone ? 'אין מספר טלפון' : undefined}
+            title={
+              !hasPhone
+                ? 'אין מספר טלפון'
+                : placeholder && !demo
+                  ? 'תבנית ההודעה ממתינה לאישור של מטא'
+                  : undefined
+            }
           >
             {sendReminder.isPending ? (
               'שולח...'

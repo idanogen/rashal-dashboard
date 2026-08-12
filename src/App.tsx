@@ -17,7 +17,7 @@ import { AuthProvider } from '@/lib/auth-context';
 import { GlobalChatProvider } from '@/context/GlobalChatContext';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { ProtectedAdminRoute } from '@/components/ProtectedAdminRoute';
-import { RoleBasedRoute, RedirectDriversHome } from '@/components/RoleBasedRoute';
+import { RoleBasedRoute, RedirectDriversHome, HomeByRole } from '@/components/RoleBasedRoute';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -78,7 +78,10 @@ function App() {
                     <GlobalChatProvider>
                     <AppShell>
                       <Routes>
-                        <Route path="/" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><DashboardPage /></RoleBasedRoute>} />
+                        {/* שורש: סדרן ממשיך למסך הסדרן, שאר הצוות רואה את הדשבורד */}
+                        <Route path="/" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><HomeByRole><DashboardPage /></HomeByRole></RoleBasedRoute>} />
+                        {/* אותו דשבורד בכתובת קבועה, כדי שגם לסדרן תהיה דרך אליו */}
+                        <Route path="/orders" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><DashboardPage /></RoleBasedRoute>} />
                         <Route path="/overview" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><ManagementDashboard /></RoleBasedRoute>} />
                         <Route path="/dispatch" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><DispatchPage /></RoleBasedRoute>} />
                         {/* הראוטים הישנים מפנים למסך הסדרן המאוחד עם הטאב המתאים */}
