@@ -605,7 +605,9 @@ export function DeliveryCalendar({
       </div>
 
       {/* Week Grid */}
-      <div className="flex flex-col gap-4 md:flex-row md:flex-wrap xl:flex-nowrap">
+      {/* גלישה תמיד. בלי זה שבוע שכולו בעבר פותח חמש עמודות רחבות
+          בשורה אחת ומייצר גלילה אופקית. */}
+      <div className="flex flex-col gap-4 md:flex-row md:flex-wrap">
         {visibleDays.map((day) => {
           const dateStr = toLocalDateStr(day);
           const dayStops = getStopsForDate(dateStr);
