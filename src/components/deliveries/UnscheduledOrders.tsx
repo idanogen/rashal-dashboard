@@ -84,7 +84,9 @@ function DraggableOrderCard({
     <Card
       ref={setNodeRef}
       className={cn(
-        'relative',
+        // פס צד צבעוני לפי סוג — בטאב "הכל" ארבע הרשימות זו מתחת לזו,
+        // ובלי הסימון הזה אי אפשר לדעת על מה מסתכלים.
+        'relative border-s-4 border-s-blue-500',
         // אין transition בזמן גרירה — מונע "תקיעה" בין ה-isDragging ל-transform
         !isDragging && 'transition-[opacity,transform,box-shadow] duration-150',
         isExcluded
@@ -495,7 +497,7 @@ export function UnscheduledOrders({
 
       {/* Main Panel */}
       <div className="rounded-lg border bg-card shadow-sm">
-        <div className="border-b bg-muted/30 p-4">
+        <div className="sticky top-[calc(var(--app-header-h,61px)+56px)] z-20 border-b bg-muted/95 p-4 backdrop-blur-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2 flex-wrap">
               <Package className="h-5 w-5 text-muted-foreground" />

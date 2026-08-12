@@ -50,7 +50,8 @@ function PickupCard({
     <div
       ref={setNodeRef}
       className={cn(
-        'group relative flex items-start gap-2 rounded-xl border bg-card p-2.5',
+        // פס צד צבעוני — סימון סוג לטאב "הכל"
+        'group relative flex items-start gap-2 rounded-xl border border-s-4 border-s-teal-500 bg-card p-2.5',
         !isDragging && 'transition-[opacity,box-shadow] duration-150',
         selected && 'ring-2 ring-teal-500',
         isReturned && 'border-red-300 bg-red-50/50',
@@ -171,6 +172,14 @@ export function UnscheduledPickups({
 
   return (
     <div className="space-y-3">
+      {/* כותרת דביקה — בטאב "הכל" ארבע הרשימות זו מתחת לזו */}
+      <div className="sticky top-[calc(var(--app-header-h,61px)+56px)] z-20 -mx-1 flex items-center gap-2 rounded-lg border bg-muted/95 px-3 py-2 backdrop-blur-sm">
+        <Undo2 className="h-4 w-4 text-teal-600" />
+        <h3 className="font-bold">איסופים ממתינים</h3>
+        <span className="rounded-full bg-teal-100 px-2 py-0.5 text-xs font-semibold text-teal-700">
+          {visible.length}
+        </span>
+      </div>
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[200px]">

@@ -62,7 +62,8 @@ function CustomerCard({
     <div
       ref={setNodeRef}
       className={cn(
-        'group relative flex items-start gap-2 rounded-xl border bg-card p-2.5',
+        // פס צד צבעוני — סימון סוג לטאב "הכל"
+        'group relative flex items-start gap-2 rounded-xl border border-s-4 border-s-violet-500 bg-card p-2.5',
         !isDragging && 'transition-[opacity,box-shadow] duration-150',
         selected && 'ring-2 ring-violet-500',
         // לקוח בלי שום רשומה נלווית הוא בדיוק המקרה שנפל בין הכיסאות עד היום
@@ -217,6 +218,14 @@ export function UnscheduledCustomers({
 
   return (
     <div className="space-y-3">
+      {/* כותרת דביקה — בטאב "הכל" ארבע הרשימות זו מתחת לזו */}
+      <div className="sticky top-[calc(var(--app-header-h,61px)+56px)] z-20 -mx-1 flex items-center gap-2 rounded-lg border bg-muted/95 px-3 py-2 backdrop-blur-sm">
+        <UserPlus className="h-4 w-4 text-violet-600" />
+        <h3 className="font-bold">לקוחות חדשים</h3>
+        <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-semibold text-violet-700">
+          {visible.length}
+        </span>
+      </div>
       {/* למה המסך הזה קיים — הסדרן לא ראה את הלקוחות האלה עד היום */}
       <div className="flex items-start gap-2 rounded-xl border border-violet-200 bg-violet-50/60 p-2.5 text-xs text-violet-900">
         <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-violet-600" />
