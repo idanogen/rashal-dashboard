@@ -1,33 +1,92 @@
 import { RefreshCw, Package, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useQueryClient } from '@tanstack/react-query';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
 import { useIsAdmin } from '@/hooks/useProfile';
+
+// שאילתות הנתונים שהכותרת מדווחת עליהן.
+const TRACKED_KEYS = new Set([
+  'orders',
+  'serviceCalls',
+  'pickups',
+  'calendarStops',
+  'newCustomers',
+]);
+
+/** ניסוח עברי תקין. "לפני 1 דקות" ו-"לפני 2822 דקות" שניהם לא תקינים. */
+function formatAgo(ms: number): string {
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return 'עכשיו';
+  if (minutes === 1) return 'לפני דקה';
+  if (minutes === 2) return 'לפני שתי דקות';
+  if (minutes < 60) return `לפני ${minutes} דקות`;
+  const hours = Math.floor(minutes / 60);
+  if (hours === 1) return 'לפני שעה';
+  if (hours === 2) return 'לפני שעתיים';
+  if (hours < 24) return `לפני ${hours} שעות`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'לפני יום';
+  if (days === 2) return 'לפני יומיים';
+  return `לפני ${days} ימים`;
+}
 
 export function AppHeader() {
   const queryClient = useQueryClient();
   const { signOut } = useAuth();
   const isAdmin = useIsAdmin();
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
+  // 🔴 עד כה נמדד הזמן שעבר מאז שהטאב נפתח, וזה נקרא "עודכן". טאב שנשאר
+  // פתוח לילה שלם הציג "עודכן לפני 2822 דקות" בזמן שהנתונים היו טריים.
+  // מודדים עכשיו את המשיכה האחרונה שבאמת הצליחה מול Supabase.
+  const [lastUpdated, setLastUpdated] = useState<number>(() => Date.now());
   const [timeAgo, setTimeAgo] = useState('עכשיו');
 
-  // Update "time ago" every 15s
   useEffect(() => {
-    const interval = setInterval(() => {
-      const seconds = Math.floor((Date.now() - lastUpdated.getTime()) / 1000);
-      if (seconds < 60) {
-        setTimeAgo('עכשיו');
-      } else {
-        const minutes = Math.floor(seconds / 60);
-        setTimeAgo(`לפני ${minutes} דקות`);
+    const cache = queryClient.getQueryCache();
+    const readLatestFetch = () => {
+      let latest = 0;
+      for (const query of cache.getAll()) {
+        const root = query.queryKey[0];
+        if (typeof root !== 'string' || !TRACKED_KEYS.has(root)) continue;
+        if (query.state.dataUpdatedAt > latest) latest = query.state.dataUpdatedAt;
       }
-    }, 15_000);
+      // רק קדימה, כדי שמשיכה שנכשלה לא תחזיר את השעון אחורה.
+      if (latest > 0) setLastUpdated((prev) => (latest > prev ? latest : prev));
+    };
+    readLatestFetch();
+    return cache.subscribe(readLatestFetch);
+  }, [queryClient]);
+
+  useEffect(() => {
+    const tick = () => setTimeAgo(formatAgo(Date.now() - lastUpdated));
+    tick();
+    const interval = setInterval(tick, 15_000);
     return () => clearInterval(interval);
   }, [lastUpdated]);
+
+  // מעל שעה בלי משיכה מוצלחת — שווה לרענן.
+  const isStale = Date.now() - lastUpdated > 60 * 60_000;
+
+  // הגובה האמיתי של הכותרת נמסר כמשתנה CSS, כדי שאלמנטים דביקים אחרים
+  // (שורת המתגים במסך הסדרן) ייצמדו בדיוק מתחתיה. הגובה משתנה בין מובייל
+  // לדסקטופ, ומספר קשיח היה משאיר סדק שתוכן נגלל מאחוריו.
+  const headerRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+    const publish = () =>
+      document.documentElement.style.setProperty(
+        '--app-header-h',
+        `${el.offsetHeight}px`
+      );
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   async function handleRefresh() {
     setIsRefreshing(true);
@@ -38,13 +97,16 @@ export function AppHeader() {
       queryClient.invalidateQueries({ queryKey: ['calendarStops'] }),
       queryClient.invalidateQueries({ queryKey: ['newCustomers'] }),
     ]);
-    setLastUpdated(new Date());
+    setLastUpdated(Date.now());
     setTimeAgo('עכשיו');
     setTimeout(() => setIsRefreshing(false), 600);
   }
 
   return (
-    <header className="sticky top-0 z-50 border-b bg-card/80 backdrop-blur-sm">
+    <header
+      ref={headerRef}
+      className="sticky top-0 z-50 border-b bg-card/80 backdrop-blur-sm"
+    >
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-3">
@@ -157,7 +219,13 @@ export function AppHeader() {
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="hidden text-xs text-muted-foreground sm:block">
+          <span
+            className={cn(
+              'hidden text-xs sm:block',
+              isStale ? 'font-medium text-amber-600' : 'text-muted-foreground'
+            )}
+            title="הזמן שעבר מאז המשיכה האחרונה של הנתונים מהשרת. שינויים מגיעים גם בזמן אמת, וכפתור הרענון מושך הכל מחדש."
+          >
             עודכן {timeAgo}
           </span>
           <Button

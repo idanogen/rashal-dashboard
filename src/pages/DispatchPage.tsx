@@ -907,7 +907,11 @@ export function DispatchPage() {
       }}
     >
       <div className="space-y-6">
-        {/* ─── מתגי סוג פעילות ─── */}
+        {/* ─── מתגי סוג פעילות ───
+            דביקים מתחת לכותרת האתר, לפי הגובה שהיא מודדת. בין המתגים לרשימה יושבים
+            שלושה אזורים מתקפלים, ובלי הדביקות הסדרן גולל ומאבד את הידיעה על
+            איזה סוג פעילות הוא עומד. */}
+        <div className="sticky top-[var(--app-header-h,61px)] z-30 -mx-4 border-b bg-background/95 px-4 py-2 backdrop-blur-sm sm:-mx-6 sm:px-6">
         <Tabs value={tab} onValueChange={setTab} dir="rtl">
           <TabsList className="h-11">
             <TabsTrigger value="deliveries" className="gap-1.5 px-4">
@@ -942,6 +946,7 @@ export function DispatchPage() {
             </TabsTrigger>
           </TabsList>
         </Tabs>
+        </div>
 
         {/* ─── אזור מתחלף: הממתינים של הסוג הנבחר ─── */}
         {tab === 'deliveries' && (
