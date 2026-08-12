@@ -69,6 +69,7 @@ import {
   UserPlus,
   ChevronDown,
   ChevronLeft,
+  ListChecks,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { usePersistedCollapse } from '@/hooks/usePersistedCollapse';
@@ -87,9 +88,11 @@ import { toast } from 'sonner';
 
 // ─── סוגי פעילות ─────────────────────────────────────────────
 type ActivityKind = 'delivery' | 'service' | 'pickup' | 'customer';
-type ActivityTab = 'deliveries' | 'service' | 'pickups' | 'customers';
+type ActivityTab = 'all' | 'deliveries' | 'service' | 'pickups' | 'customers';
 
 const TAB_TO_KIND: Record<ActivityTab, ActivityKind> = {
+  // 'all' אינו סוג יחיד. הסוג בפועל נגזר מהרשימה שבה נעשתה הבחירה.
+  all: 'delivery',
   deliveries: 'delivery',
   service: 'service',
   pickups: 'pickup',
@@ -221,7 +224,10 @@ export function DispatchPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
   const tab: ActivityTab =
-    tabParam === 'service' || tabParam === 'pickups' || tabParam === 'customers'
+    tabParam === 'service' ||
+    tabParam === 'pickups' ||
+    tabParam === 'customers' ||
+    tabParam === 'all'
       ? tabParam
       : 'deliveries';
   const setTab = (next: string) => {
@@ -485,14 +491,28 @@ export function DispatchPage() {
     []
   );
 
+  // בטאב "הכל" מוצגות ארבע הרשימות יחד, ולכן הסוג לתזמון נגזר מהרשימה
+  // שבה בפועל נבחרו פריטים, ולא מהטאב.
+  const selectionKind: ActivityKind | null = selectedOrderIds.size
+    ? 'delivery'
+    : selectedCallIds.size
+      ? 'service'
+      : selectedPickupIds.size
+        ? 'pickup'
+        : selectedCustomerIds.size
+          ? 'customer'
+          : null;
+
   const activeSelection =
-    tab === 'deliveries'
+    selectionKind === 'delivery'
       ? selectedOrderIds
-      : tab === 'service'
+      : selectionKind === 'service'
         ? selectedCallIds
-        : tab === 'pickups'
+        : selectionKind === 'pickup'
           ? selectedPickupIds
-          : selectedCustomerIds;
+          : selectionKind === 'customer'
+            ? selectedCustomerIds
+            : new Set<string>();
 
   const handleBulkSchedule = useCallback(() => {
     if (activeSelection.size === 0) return;
@@ -700,7 +720,7 @@ export function DispatchPage() {
   // ─── תזמון bulk בלחיצה (מהרשימה של הטאב הפעיל) ───
   const handleDateSelected = useCallback(
     (date: string) => {
-      const kind = TAB_TO_KIND[tab];
+      const kind = selectionKind ?? TAB_TO_KIND[tab];
       let items: ScheduleItem[] = [];
       if (kind === 'delivery') {
         items = unscheduledOrders.filter((o) => selectedOrderIds.has(o.id));
@@ -718,7 +738,7 @@ export function DispatchPage() {
       setPendingSchedule({ kind, items, date });
       setDriverPickerOpen(true);
     },
-    [tab, unscheduledOrders, pendingCalls, pendingPickups, pendingCustomers, selectedOrderIds, selectedCallIds, selectedPickupIds, selectedCustomerIds]
+    [tab, selectionKind, unscheduledOrders, pendingCalls, pendingPickups, pendingCustomers, selectedOrderIds, selectedCallIds, selectedPickupIds, selectedCustomerIds]
   );
 
   // ─── ביצוע השיבוץ בפועל (אחרי בדיקת כפילויות) ───
@@ -982,6 +1002,16 @@ export function DispatchPage() {
         <div className="sticky top-[var(--app-header-h,61px)] z-30 -mx-4 border-b bg-background/95 px-4 py-2 backdrop-blur-sm sm:-mx-6 sm:px-6">
         <Tabs value={tab} onValueChange={setTab} dir="rtl">
           <TabsList className="h-11">
+            <TabsTrigger value="all" className="gap-1.5 px-4">
+              <ListChecks className="h-4 w-4" />
+              הכל
+              <Badge variant="secondary" className="me-1 h-5 px-1.5 text-xs">
+                {unscheduledOrders.length +
+                  pendingCalls.length +
+                  pendingPickups.length +
+                  bareCustomersCount}
+              </Badge>
+            </TabsTrigger>
             <TabsTrigger value="deliveries" className="gap-1.5 px-4">
               <Package className="h-4 w-4" />
               משלוחים
@@ -1020,8 +1050,8 @@ export function DispatchPage() {
         <StuckStopsAlert stops={calendarStops} onResolve={handleResolveStop} />
 
         {/* ─── אזור מתחלף: הממתינים של הסוג הנבחר ─── */}
-        {tab === 'deliveries' && (
-          tabState ?? (
+        {(tab === 'deliveries' || tab === 'all') && (
+          (tab === 'all' ? null : tabState) ?? (
             <>
               <div className="flex items-center justify-between">
                 <Button
@@ -1061,8 +1091,8 @@ export function DispatchPage() {
           )
         )}
 
-        {tab === 'service' && (
-          tabState ?? (
+        {(tab === 'service' || tab === 'all') && (
+          (tab === 'all' ? null : tabState) ?? (
             <>
               <div className="flex items-center justify-between">
                 <Button
@@ -1101,8 +1131,8 @@ export function DispatchPage() {
           )
         )}
 
-        {tab === 'pickups' && (
-          tabState ?? (
+        {(tab === 'pickups' || tab === 'all') && (
+          (tab === 'all' ? null : tabState) ?? (
             <>
               <div className="flex items-center justify-between">
                 <Button
@@ -1146,8 +1176,8 @@ export function DispatchPage() {
           )
         )}
 
-        {tab === 'customers' && (
-          tabState ?? (
+        {(tab === 'customers' || tab === 'all') && (
+          (tab === 'all' ? null : tabState) ?? (
             <>
               <div className="flex items-center justify-between">
                 <Button
