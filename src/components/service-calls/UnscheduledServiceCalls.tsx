@@ -481,6 +481,12 @@ export function UnscheduledServiceCalls({
               <Wrench className="h-5 w-5 text-muted-foreground" />
               <h3 className="font-bold">קריאות שירות חדשות</h3>
               <Badge variant="secondary">{filteredCalls.length}</Badge>
+              {/* בלי זה המספר כאן נמוך מזה שעל המתג למעלה, וזה נראה כמו תקלה */}
+              {returnedCalls.length > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  ועוד {returnedCalls.length} חזרו מהקו
+                </span>
+              )}
               {/* Select-all / clear-selection toggle */}
               {onSelectAll && activeCalls.length > 0 && (() => {
                 const activeIds = activeCalls.map((c) => c.id);

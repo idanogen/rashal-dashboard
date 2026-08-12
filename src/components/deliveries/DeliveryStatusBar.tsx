@@ -36,7 +36,7 @@ export function DeliveryStatusBar({
   ];
 
   return (
-    <div className="flex items-center justify-end gap-6 rounded-lg border bg-card px-4 py-3">
+    <div className="flex items-center justify-start gap-6 rounded-lg border bg-card px-4 py-3">
       <div className="flex items-center gap-2 text-sm font-medium">
         <Package className="h-4 w-4" />
         <span>סטטוס משלוחים</span>

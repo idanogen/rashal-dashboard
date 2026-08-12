@@ -501,6 +501,12 @@ export function UnscheduledOrders({
               <Package className="h-5 w-5 text-muted-foreground" />
               <h3 className="font-bold">הזמנות ממתינות לתיאום</h3>
               <Badge variant="secondary">{filteredOrders.length}</Badge>
+              {/* בלי זה המספר כאן נמוך מזה שעל המתג למעלה, וזה נראה כמו תקלה */}
+              {returnedOrders.length > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  ועוד {returnedOrders.length} חזרו מהקו
+                </span>
+              )}
               {/* Select-all / clear-selection toggle */}
               {onSelectAll && activeOrders.length > 0 && (() => {
                 const activeIds = activeOrders.map((o) => o.id);
