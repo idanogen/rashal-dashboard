@@ -427,6 +427,8 @@ export function DeliveryCalendar({
   onShowAllTypes,
 }: DeliveryCalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
+  /** ימי עבר של השבוע מוסתרים כברירת מחדל, ראה ההערה ב-visibleDays. */
+  const [showPastDays, setShowPastDays] = useState(false);
   const [coordinationStop, setCoordinationStop] = useState<CalendarStop | null>(null);
   // קבוצות נהג מקופלות ביומן (key = delivery.id = "date__driver")
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -491,23 +493,30 @@ export function DeliveryCalendar({
     return stops;
   };
 
+  /** ימי עבר של השבוע המוצג שנשארו בהם עצירות. */
+  const pastDaysWithStops = useMemo(() => {
+    return getWeekWorkDays(currentDate).filter((d) => {
+      if (!isPastDay(d)) return false;
+      return getDeliveriesForDate(toLocalDateStr(d)).length > 0;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentDate, deliveries, todayStr]);
+
   // Calculate visible days
   const visibleDays = useMemo(() => {
     const weekDays = getWeekWorkDays(currentDate);
     const currentAndFuture = weekDays.filter((d) => !isPastDay(d));
-    const pastWithStops = weekDays.filter((d) => {
-      if (!isPastDay(d)) return false;
-      const dateStr = toLocalDateStr(d);
-      return getDeliveriesForDate(dateStr).length > 0;
-    });
 
-    // 🔴 היום תמיד ראשון. ימי עבר שנשארו בהם עצירות נדחפים לסוף.
-    // קודם הם היו בראש, ובאמצע השבוע הם דחקו את היום לשורה שנייה מתחת לקפל —
-    // הסדרן פתח את המסך וראה ימים שעברו.
+    // שבוע שכולו בעבר: המשתמש ניווט אליו בכוונה, מציגים אותו כמו שהוא.
+    if (currentAndFuture.length === 0) return weekDays;
+
+    // 🔴 היומן תמיד כרונולוגי, אחרת הימים נראים מבולגנים. ימי עבר פשוט
+    // אינם מוצגים כברירת מחדל, כדי שהיום לא ייקבר מתחת אליהם. מה שנשאר
+    // פתוח בהם מופיע ממילא בחיווי "עצירות שנשארו פתוחות" בראש המסך.
     const upcoming = [...currentAndFuture];
 
     // If fewer than MIN_VISIBLE_DAYS, extend to next week
-    if (upcoming.length + pastWithStops.length < MIN_VISIBLE_DAYS) {
+    if (upcoming.length < MIN_VISIBLE_DAYS) {
       const nextWeekStart = new Date(currentDate);
       nextWeekStart.setDate(
         nextWeekStart.getDate() - nextWeekStart.getDay() + 7
@@ -515,15 +524,17 @@ export function DeliveryCalendar({
       const nextWeekDays = getWeekWorkDays(nextWeekStart);
 
       for (const day of nextWeekDays) {
-        if (upcoming.length + pastWithStops.length >= MIN_VISIBLE_DAYS) break;
+        if (upcoming.length >= MIN_VISIBLE_DAYS) break;
         if (!upcoming.some((d) => toLocalDateStr(d) === toLocalDateStr(day))) {
           upcoming.push(day);
         }
       }
     }
 
-    return [...upcoming, ...pastWithStops];
-  }, [currentDate, deliveries, todayStr]);
+    // ימי העבר חוזרים למקומם הכרונולוגי, לפני היום, רק כשמבקשים אותם.
+    return showPastDays ? [...pastDaysWithStops, ...upcoming] : upcoming;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentDate, deliveries, todayStr, showPastDays, pastDaysWithStops]);
 
   const goToPreviousWeek = () => {
     const newDate = new Date(currentDate);
@@ -565,6 +576,18 @@ export function DeliveryCalendar({
         </div>
 
         <div className="flex items-center gap-2">
+          {pastDaysWithStops.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowPastDays((v) => !v)}
+              className="rounded-lg text-xs font-medium text-muted-foreground"
+            >
+              {showPastDays
+                ? 'הסתר ימים שעברו'
+                : `הצג ${pastDaysWithStops.length} ימים שעברו`}
+            </Button>
+          )}
           <Button
             variant="outline"
             size="sm"
