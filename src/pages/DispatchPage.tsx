@@ -49,9 +49,12 @@ import {
   type DuplicateConflict,
 } from '@/components/deliveries/DuplicateScheduleWarningDialog';
 import { findActiveDuplicateStops } from '@/lib/calendar-stops';
+import { StuckStopsAlert } from '@/components/deliveries/StuckStopsAlert';
 import { NotCompletedReasonDialog } from '@/components/NotCompletedReasonDialog';
+import { ScheduleCoordinationDialog } from '@/components/whatsapp/ScheduleCoordinationDialog';
 import { showScheduleToast } from '@/lib/scheduleToast';
-import { buildCalendarDeliveries } from '@/lib/calendar-view';
+import { buildCalendarDeliveries, toViewStop } from '@/lib/calendar-view';
+import { compareStopsByTime } from '@/lib/stop-order';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -75,7 +78,11 @@ import type { Pickup } from '@/types/pickup';
 import type { NewCustomer } from '@/types/customer';
 import { isBareCustomer } from '@/types/customer';
 import { ASSIGNEES, type AssigneeName } from '@/types/route';
-import type { CalendarDelivery, CalendarStopSource } from '@/types/delivery';
+import type {
+  CalendarDelivery,
+  CalendarStopSource,
+  CalendarStop as CalendarStopView,
+} from '@/types/delivery';
 import { toast } from 'sonner';
 
 // ─── סוגי פעילות ─────────────────────────────────────────────
@@ -592,13 +599,13 @@ export function DispatchPage() {
       }
       if (srcDriver !== overDriver) return;
 
-      const groupStops = calendarStops
-        .filter(
-          (s) =>
-            s.deliveryDate === srcDate &&
-            s.driver === srcDriver &&
-            s.status !== 'cancelled'
-        )
+      const groupObjs = calendarStops.filter(
+        (s) =>
+          s.deliveryDate === srcDate &&
+          s.driver === srcDriver &&
+          s.status !== 'cancelled'
+      );
+      const groupStops = [...groupObjs]
         .sort((a, b) => a.sequence - b.sequence)
         .map((s) => s.id);
       const oldIndex = groupStops.indexOf(active.id as string);
@@ -608,6 +615,24 @@ export function DispatchPage() {
       const next = [...groupStops];
       const [moved] = next.splice(oldIndex, 1);
       next.splice(newIndex, 0, moved);
+
+      // 🔴 שעת התיאום מנצחת את הסדר הידני (ראה lib/stop-order.ts). לכן גרירה
+      // של עצירה עם שעה קבועה לא תזיז אותה על המסך. משתמש שאל בדיוק את זה
+      // בלוח ההערות ב-09/06 ולא קיבל תשובה. עכשיו המערכת אומרת את זה בעצמה.
+      const seqAfter = new Map(next.map((id, i) => [id, i]));
+      const displayBefore = [...groupObjs].sort(compareStopsByTime).map((s) => s.id);
+      const displayAfter = [...groupObjs]
+        .map((s) => ({ ...s, sequence: seqAfter.get(s.id) ?? s.sequence }))
+        .sort(compareStopsByTime)
+        .map((s) => s.id);
+
+      if (displayBefore.join('|') === displayAfter.join('|')) {
+        toast('הסדר ביומן לא השתנה', {
+          description:
+            'סדר העצירות נקבע לפי שעת התיאום שנקבעה עם הלקוח. כדי להקדים לקוח, שנו את שעת התיאום שלו.',
+          duration: 6000,
+        });
+      }
 
       reorderStops.mutate({
         deliveryDate: srcDate,
@@ -697,11 +722,42 @@ export function DispatchPage() {
   );
 
   // ─── ביצוע השיבוץ בפועל (אחרי בדיקת כפילויות) ───
+  // ─── תיאום מיד אחרי שיבוץ ───
+  // תור של עצירות שנוצרו זה עתה וממתינות לתיאום, אחת אחרי השנייה.
+  const [coordQueue, setCoordQueue] = useState<CalendarStopView[]>([]);
+  const [coordIndex, setCoordIndex] = useState(0);
+
+  const startCoordinationQueue = useCallback((stops: CalendarStopView[]) => {
+    if (stops.length === 0) return;
+    setCoordQueue(stops);
+    setCoordIndex(0);
+  }, []);
+
+  const closeCoordinationQueue = useCallback(() => {
+    setCoordQueue([]);
+    setCoordIndex(0);
+  }, []);
+
+  /** סגירת הדיאלוג מקדמת לעצירה הבאה בתור, ובסוף סוגרת. */
+  const advanceCoordinationQueue = useCallback(() => {
+    setCoordIndex((prev) => {
+      if (prev + 1 >= coordQueue.length) {
+        setCoordQueue([]);
+        return 0;
+      }
+      return prev + 1;
+    });
+  }, [coordQueue.length]);
+
   const runSchedule = useCallback(
     async (kind: ActivityKind, items: ScheduleItem[], driver: AssigneeName, date: string) => {
+      // 🔴 המדידה הראתה שעמי מתאם טלפונית תוך 3.7 דקות בחציון מרגע השיבוץ,
+      // ואף פעם לא לפניו. בעיניו זו פעולה אחת, ולכן אנחנו פותחים את התיאום
+      // מיד ולא מכריחים אותו לחפש ביומן כרטיס שהמערכת בדיוק יצרה.
+      const created: ReturnType<typeof toViewStop>[] = [];
       try {
         for (const item of items) {
-          await scheduleStop.mutateAsync({
+          const stop = await scheduleStop.mutateAsync({
             deliveryDate: date,
             driver,
             sourceType: kind,
@@ -717,13 +773,25 @@ export function DispatchPage() {
             city: item.city,
             phone: item.phone,
           });
+          created.push(toViewStop(stop));
         }
         showScheduleToast({
           count: items.length,
           assignee: driver,
           date,
           kind: KIND_LABELS[kind].toastKind,
+          // עצירה בודדת נפתחת לתיאום מיד. שיבוץ קבוצתי לא נפתח בכוח,
+          // כי ייתכן שהוא משבץ קבוצה ומתקשר אחר כך.
+          ...(created.length > 1
+            ? {
+                action: {
+                  label: `תאם את ${created.length} העצירות`,
+                  onClick: () => startCoordinationQueue(created),
+                },
+              }
+            : {}),
         });
+        if (created.length === 1) startCoordinationQueue(created);
       } catch (err) {
         console.error('schedule failed:', err);
         const msg = err instanceof Error ? err.message : '';
@@ -738,7 +806,7 @@ export function DispatchPage() {
         else setSelectedCustomerIds(new Set());
       }
     },
-    [scheduleStop]
+    [scheduleStop, startCoordinationQueue]
   );
 
   // עובד נבחר → בדיקת כפילויות מוקדמת (לכל הסוגים, כולל איסופים) → שיבוץ/אזהרה
@@ -947,6 +1015,9 @@ export function DispatchPage() {
           </TabsList>
         </Tabs>
         </div>
+
+        {/* עצירות עבר שנשארו פתוחות — משותף לכל הטאבים */}
+        <StuckStopsAlert stops={calendarStops} onResolve={handleResolveStop} />
 
         {/* ─── אזור מתחלף: הממתינים של הסוג הנבחר ─── */}
         {tab === 'deliveries' && (
@@ -1185,6 +1256,24 @@ export function DispatchPage() {
           />
         </div>
       </div>
+
+      {/* תיאום מיד אחרי שיבוץ, בלי לחפש את הכרטיס ביומן */}
+      <ScheduleCoordinationDialog
+        stop={coordQueue[coordIndex] ?? null}
+        open={coordQueue.length > 0}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) advanceCoordinationQueue();
+        }}
+        queue={
+          coordQueue.length > 1
+            ? {
+                index: coordIndex,
+                total: coordQueue.length,
+                onFinishAll: closeCoordinationQueue,
+              }
+            : undefined
+        }
+      />
 
       {/* ─── Drag Overlay ─── */}
       <DragOverlay dropAnimation={dropAnimationDown}>

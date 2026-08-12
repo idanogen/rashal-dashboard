@@ -26,6 +26,11 @@ interface ScheduleCoordinationDialogProps {
   stop: CalendarStop | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * תיאום של קבוצת עצירות ברצף, אחרי שיבוץ קבוצתי.
+   * מציג "עצירה N מתוך M" ומאפשר לצאת מהרצף בלחיצה אחת.
+   */
+  queue?: { index: number; total: number; onFinishAll: () => void };
 }
 
 function formatHebrewDate(yyyyMmDd: string): string {
@@ -38,7 +43,12 @@ function formatHebrewDate(yyyyMmDd: string): string {
   return `יום ${dayName}, ${dateStr}`;
 }
 
-export function ScheduleCoordinationDialog({ stop, open, onOpenChange }: ScheduleCoordinationDialogProps) {
+export function ScheduleCoordinationDialog({
+  stop,
+  open,
+  onOpenChange,
+  queue,
+}: ScheduleCoordinationDialogProps) {
   const { user } = useAuth();
   const sendReminder = useSendReminder();
   const updateCoord = useUpdateStopCoordination();
@@ -172,6 +182,22 @@ export function ScheduleCoordinationDialog({ stop, open, onOpenChange }: Schedul
             הזן את חלון הזמן ושלח הודעת תיאום ב-WhatsApp, או סמן שביצעת תיאום טלפוני.
           </DialogDescription>
         </DialogHeader>
+
+        {queue && (
+          <div className="flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50/60 px-3 py-2 text-xs">
+            <span className="font-medium text-blue-800">
+              תיאום ברצף · עצירה {queue.index + 1} מתוך {queue.total}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={queue.onFinishAll}
+              className="h-6 px-2 text-[11px] text-blue-700 hover:bg-blue-100"
+            >
+              סיים, אתאם אחר כך
+            </Button>
+          </div>
+        )}
 
         {/* Stop details */}
         <div className="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-sm">

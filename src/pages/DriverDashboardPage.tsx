@@ -30,6 +30,7 @@ import {
   Loader2,
   CalendarClock,
   ListChecks,
+  AlertTriangle,
   Map as MapIcon,
 } from 'lucide-react';
 import type { CalendarStop as DbCalendarStop } from '@/types/calendar-stop';
@@ -156,6 +157,21 @@ export function DriverDashboardPage() {
   }, [allStops]);
 
   const todayStops = stopsByDate.get(today) ?? [];
+
+  // 🔴 עצירות מימים שעברו שנשארו פתוחות. במדידה של 12/08/2026 היו 116 כאלה
+  // במערכת, רובן במצב "הגעתי" בלי סגירה. הנהג מעולם לא ראה אותן: המסך שלו
+  // מציג רק היום, מחר והשבוע הקרוב, אז מה שנשאר פתוח פשוט נעלם מהעין.
+  const leftOpen = useMemo(
+    () =>
+      (allStops ?? [])
+        .filter(
+          (s) =>
+            s.deliveryDate < today &&
+            (s.status === 'planned' || s.status === 'in_progress')
+        )
+        .sort((a, b) => b.deliveryDate.localeCompare(a.deliveryDate)),
+    [allStops, today]
+  );
   const tomorrowStops = stopsByDate.get(tomorrow) ?? [];
   const weekStops = useMemo(() => {
     const start = new Date();
@@ -297,6 +313,58 @@ export function DriverDashboardPage() {
         </TabsList>
 
         <TabsContent value="today" className="space-y-3">
+          {leftOpen.length > 0 && (
+            <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-3">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 flex-none text-amber-600" />
+                <span className="text-sm font-bold text-amber-900">
+                  נשארו לך {leftOpen.length} עצירות פתוחות מימים קודמים
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-amber-800">
+                כל עוד הן פתוחות, ההזמנה לא רשומה כסופקה במשרד.
+              </p>
+              <div className="mt-2 max-h-56 space-y-2 overflow-y-auto">
+                {leftOpen.map((stop) => (
+                  <div
+                    key={stop.id}
+                    className="rounded-lg border border-amber-200 bg-card p-2.5"
+                  >
+                    <div className="flex flex-wrap items-center gap-2 text-sm">
+                      <span className="font-semibold">{stop.customerName}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(stop.deliveryDate + 'T00:00:00').toLocaleDateString(
+                          'he-IL',
+                          { day: 'numeric', month: 'numeric' }
+                        )}
+                        {stop.city ? ` · ${stop.city}` : ''}
+                      </span>
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <Button
+                        onClick={() => handleResolve(stop, 'completed')}
+                        disabled={isResolvingStop(stop.id)}
+                        className="h-10 gap-1 bg-emerald-600 text-xs font-semibold text-white hover:bg-emerald-700"
+                      >
+                        <Check className="h-4 w-4" />
+                        בוצע
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => handleResolve(stop, 'not_completed')}
+                        disabled={isResolvingStop(stop.id)}
+                        className="h-10 gap-1 border-red-200 bg-red-50 text-xs text-red-700 hover:bg-red-100"
+                      >
+                        <X className="h-4 w-4" />
+                        לא בוצע
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {todayStops.length > 0 && (
             <div className="space-y-2">
               <div className="flex items-center gap-2">
@@ -598,11 +666,15 @@ function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve, resolv
     ? 'bg-emerald-50/70 border-emerald-200'
     : stop.status === 'not_completed'
       ? 'bg-red-50/60 border-red-200 opacity-75'
-      : isCustomerConfirmed
-        ? 'bg-emerald-50/40 border-emerald-300 ring-1 ring-emerald-300/60'
-        : isCustomerRejected
-          ? 'bg-red-50/40 border-red-200'
-          : 'bg-card';
+      // עצירה פתוחה שהנהג כבר הגיע אליה: מסגרת כחולה בולטת, כדי שלא תיבלע
+      // בין השאר ותישאר פתוחה בסוף היום.
+      : hasArrived
+        ? 'bg-blue-50/50 border-blue-300 ring-2 ring-blue-300/70'
+        : isCustomerConfirmed
+          ? 'bg-emerald-50/40 border-emerald-300 ring-1 ring-emerald-300/60'
+          : isCustomerRejected
+            ? 'bg-red-50/40 border-red-200'
+            : 'bg-card';
 
   return (
     <>
@@ -697,6 +769,48 @@ function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve, resolv
             </div>
           </div>
         ) : !resolved ? (
+          /* 🔴 אחרי "הגעה" הכפתור לסגירה מקבל שורה שלמה. מדידה ב-12/08/2026
+             מצאה 116 עצירות עבר שנפתחו ולא נסגרו, 101 מהן של נהג אחד. כשכל
+             ארבעת הכפתורים באותו גודל, "סופק" נבלע ביניהם על מסך טלפון. */
+          hasArrived ? (
+            <div className="space-y-2 pt-1">
+              <Button
+                onClick={() => {
+                  // משלוח → חובה לבחור תוצאת אספקה; אחרת סימון מיידי.
+                  if (isDelivery) setOutcomeOpen(true);
+                  else onResolve('completed');
+                }}
+                disabled={resolving}
+                className="h-14 w-full gap-2 bg-emerald-600 text-base font-bold text-white hover:bg-emerald-700"
+              >
+                <Check className="h-5 w-5" />
+                סיימתי כאן, סמן כסופק
+              </Button>
+              <div className="grid grid-cols-3 gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onCoordinate}
+                  disabled={resolving}
+                  className="h-11 gap-1 text-xs"
+                >
+                  <MessageCircle className="h-4 w-4 text-emerald-600" />
+                  תיאום
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onResolve('not_completed')}
+                  disabled={resolving}
+                  className="h-11 gap-1 text-xs bg-red-50 border-red-200 text-red-700 hover:bg-red-100"
+                >
+                  <X className="h-4 w-4" />
+                  לא בוצע
+                </Button>
+                <StopChatButton stop={stop} />
+              </div>
+            </div>
+          ) : (
           <div className="grid grid-cols-4 gap-2 pt-1">
             <Button
               variant="outline"
@@ -708,35 +822,16 @@ function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve, resolv
               <MessageCircle className="h-4 w-4 text-emerald-600" />
               תיאום
             </Button>
-            {hasArrived ? (
-              /* שלב 2 — אחרי הגעה: "סופק" בצבע שונה (ירוק) */
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  // משלוח → חובה לבחור תוצאת אספקה; אחרת סימון מיידי.
-                  if (isDelivery) setOutcomeOpen(true);
-                  else onResolve('completed');
-                }}
-                disabled={resolving}
-                className="h-11 gap-1 text-xs bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700"
-              >
-                <Check className="h-4 w-4" />
-                סופק
-              </Button>
-            ) : (
-              /* שלב 1 — "הגעה" (כחול) */
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleArriveClick}
-                disabled={resolving}
-                className="h-11 gap-1 text-xs bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
-              >
-                <MapPin className="h-4 w-4" />
-                הגעה
-              </Button>
-            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleArriveClick}
+              disabled={resolving}
+              className="h-11 gap-1 text-xs bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+            >
+              <MapPin className="h-4 w-4" />
+              הגעה
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -749,6 +844,7 @@ function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve, resolv
             </Button>
             <StopChatButton stop={stop} />
           </div>
+          )
         ) : (
           <div className="pt-1">
             <StopChatButton stop={stop} className="w-full" />
