@@ -42,6 +42,26 @@ export function RoleBasedRoute({ children, allow, redirectTo }: RoleBasedRoutePr
   return <>{children}</>;
 }
 
+/**
+ * נחיתה לפי תפקיד על נתיב השורש.
+ * סדרן עובד כל היום במסך הסדרן, ועד כה הוא נחת על הדשבורד והתחיל כל בוקר
+ * בקליק מיותר. הדשבורד עצמו נשאר נגיש לו דרך `/orders`.
+ */
+export function HomeByRole({ children }: { children: ReactNode }) {
+  const { data: profile, isLoading } = useCurrentProfile();
+  if (isLoading) {
+    return (
+      <div className="min-h-[40vh] flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  if (profile?.role === 'dispatcher') {
+    return <Navigate to="/dispatch" replace />;
+  }
+  return <>{children}</>;
+}
+
 /** Convenience: send drivers to /driver, everyone else stays where they are. */
 export function RedirectDriversHome({ children }: { children: ReactNode }) {
   const { data: profile, isLoading } = useCurrentProfile();
