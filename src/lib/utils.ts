@@ -24,7 +24,10 @@ export function getDaysSinceCreated(created: string | undefined): number | null 
   if (isNaN(createdDate.getTime())) return null;
   const now = new Date();
   const diffMs = now.getTime() - createdDate.getTime();
-  return Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  // 🔴 פריוריטי מחזיר שעון ישראל עם סיומת Z, כלומר מסמן זמן מקומי כאילו הוא
+  // UTC. התוצאה: כל רשומה נראית 3 שעות בעתיד, ורשומה שנפתחה היום קיבלה
+  // "1d-" והסדרן קרא אותה כאתמול. גיל שלילי הוא חסר משמעות בכל מקרה.
+  return Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
 }
 
 /** צבע לפי מספר ימים: ירוק (0-3), כתום (4-7), אדום (8+) */
