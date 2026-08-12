@@ -504,25 +504,15 @@ export function DeliveryCalendar({
   // היומן מציג תמיד את שבוע העבודה המלא לפי הסדר. ימי עבר מקבלים עמודה
   // צרה עם מונה בלבד, כדי שהסדר לא יישבר ושהיום לא ייקבר מתחתיהם.
   const visibleDays = useMemo(() => {
-    const weekDays = getWeekWorkDays(currentDate);
-    const hasFuture = weekDays.some((d) => !isPastDay(d));
-
-    // שבוע שכולו בעבר: ניווטו אליו בכוונה, אין טעם לכווץ בו הכל.
-    if (!hasFuture) return weekDays;
-
-    return weekDays;
+    return getWeekWorkDays(currentDate);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentDate, todayStr]);
 
-  /** שבוע שכולו בעבר מוצג במלואו, בלי כיווץ. */
-  const weekIsAllPast = useMemo(
-    () => getWeekWorkDays(currentDate).every((d) => isPastDay(d)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [currentDate, todayStr]
-  );
-
+  // כל יום שעבר מכווץ כברירת מחדל, גם בשבוע שכולו בעבר. אחרת חמש עמודות
+  // רחבות לא נכנסות לרוחב המסך, ויום חמישי נדחף לשורה שנייה מתחת לקפל.
+  // כך כל חמשת ימי העבודה תמיד נראים, לפי הסדר, ולחיצה פותחת את מה שצריך.
   const isCollapsedDay = (day: Date) =>
-    !weekIsAllPast && isPastDay(day) && !expandedPastDays.has(toLocalDateStr(day));
+    isPastDay(day) && !expandedPastDays.has(toLocalDateStr(day));
 
   const goToPreviousWeek = () => {
     const newDate = new Date(currentDate);
@@ -654,7 +644,7 @@ export function DeliveryCalendar({
               date={day}
               isToday={isTodayFlag}
               isPast={isPast}
-              widthClass="w-full md:min-w-[260px] md:flex-1"
+              widthClass="w-full md:min-w-[240px] md:flex-1"
             >
               {/* Day Header */}
               <div
@@ -679,7 +669,7 @@ export function DeliveryCalendar({
                     >
                       {dayNames[day.getDay()]}
                     </span>
-                    {isPast && !weekIsAllPast && (
+                    {isPast && (
                       <Button
                         variant="ghost"
                         size="icon"
