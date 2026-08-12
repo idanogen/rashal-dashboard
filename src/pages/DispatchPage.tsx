@@ -407,6 +407,19 @@ export function DispatchPage() {
     [calendarStops, visibleTypes]
   );
 
+  // כמה עצירות הסינון מסתיר בכל יום — כדי שהיומן יוכל לומר את זה במקום "אין עצירות".
+  const hiddenByFilter = useMemo(() => {
+    const map: Record<string, number> = {};
+    if (visibleTypes.size === ALL_SOURCE_TYPES.length) return map;
+    for (const s of calendarStops) {
+      if (s.status === 'cancelled') continue;
+      if (visibleTypes.has(s.sourceType)) continue;
+      map[s.deliveryDate] = (map[s.deliveryDate] ?? 0) + 1;
+    }
+    return map;
+  }, [calendarStops, visibleTypes]
+  );
+
   const pendingScheduleIds = useMemo(
     () => new Set<string>(pendingSchedule?.items.map((i) => i.id) ?? []),
     [pendingSchedule]
@@ -1109,7 +1122,16 @@ export function DispatchPage() {
         {/* ─── יומן קבוע: נשאר mounted בכל החלפת טאב ─── */}
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-muted-foreground">מציג ביומן:</span>
+            <span className="text-xs font-medium text-muted-foreground">
+              מציג ביומן
+              {visibleTypes.size < ALL_SOURCE_TYPES.length && (
+                <span className="text-amber-700">
+                  {' '}
+                  ({visibleTypes.size} מתוך {ALL_SOURCE_TYPES.length} סוגים)
+                </span>
+              )}
+              :
+            </span>
             {ALL_SOURCE_TYPES.map((t) => {
               const meta = CHIP_META[t];
               const on = visibleTypes.has(t);
@@ -1131,10 +1153,22 @@ export function DispatchPage() {
                 </button>
               );
             })}
+            {visibleTypes.size < ALL_SOURCE_TYPES.length && (
+              <button
+                type="button"
+                onClick={() => setVisibleTypes(new Set(ALL_SOURCE_TYPES))}
+                className="rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-100"
+                title="החזר את היומן להצגת כל הסוגים"
+              >
+                הצג הכל
+              </button>
+            )}
           </div>
 
           <DeliveryCalendar
             deliveries={calendarDeliveries}
+            hiddenByFilter={hiddenByFilter}
+            onShowAllTypes={() => setVisibleTypes(new Set(ALL_SOURCE_TYPES))}
             onRemoveOrder={handleRemoveFromCalendar}
             onAddTask={(date) => setTaskDialogDate(date)}
             onResolveStop={handleResolveStop}

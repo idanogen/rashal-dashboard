@@ -34,6 +34,7 @@ import {
   X,
   Map as MapIcon,
   MessageCircle,
+  EyeOff,
 } from 'lucide-react';
 import { useDroppable } from '@dnd-kit/core';
 import { ScheduleCoordinationDialog } from '@/components/whatsapp/ScheduleCoordinationDialog';
@@ -66,6 +67,13 @@ interface DeliveryCalendarProps {
   onMoveStop?: (stopId: string) => void;
   /** Called when user clicks "map" on a day to see the full day's route */
   onViewDayMap?: (dateStr: string) => void;
+  /**
+   * כמה עצירות מוסתרות בכל יום בגלל סינון הסוגים (מפתח = תאריך).
+   * בלי זה יום ריק נראה זהה ליום שכולו מסונן, והמשתמש מסיק שהמידע נעלם.
+   */
+  hiddenByFilter?: Record<string, number>;
+  /** מחזיר את סינון הסוגים להצגת הכל */
+  onShowAllTypes?: () => void;
 }
 
 // ─── Stop Card ─────────────────────────────────────────────
@@ -415,6 +423,8 @@ export function DeliveryCalendar({
   onResolveStop,
   onViewDayMap,
   onMoveStop,
+  hiddenByFilter,
+  onShowAllTypes,
 }: DeliveryCalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [coordinationStop, setCoordinationStop] = useState<CalendarStop | null>(null);
@@ -491,10 +501,13 @@ export function DeliveryCalendar({
       return getDeliveriesForDate(dateStr).length > 0;
     });
 
-    let visible = [...pastWithStops, ...currentAndFuture];
+    // 🔴 היום תמיד ראשון. ימי עבר שנשארו בהם עצירות נדחפים לסוף.
+    // קודם הם היו בראש, ובאמצע השבוע הם דחקו את היום לשורה שנייה מתחת לקפל —
+    // הסדרן פתח את המסך וראה ימים שעברו.
+    const upcoming = [...currentAndFuture];
 
     // If fewer than MIN_VISIBLE_DAYS, extend to next week
-    if (visible.length < MIN_VISIBLE_DAYS) {
+    if (upcoming.length + pastWithStops.length < MIN_VISIBLE_DAYS) {
       const nextWeekStart = new Date(currentDate);
       nextWeekStart.setDate(
         nextWeekStart.getDate() - nextWeekStart.getDay() + 7
@@ -502,14 +515,14 @@ export function DeliveryCalendar({
       const nextWeekDays = getWeekWorkDays(nextWeekStart);
 
       for (const day of nextWeekDays) {
-        if (visible.length >= MIN_VISIBLE_DAYS) break;
-        if (!visible.some((d) => toLocalDateStr(d) === toLocalDateStr(day))) {
-          visible.push(day);
+        if (upcoming.length + pastWithStops.length >= MIN_VISIBLE_DAYS) break;
+        if (!upcoming.some((d) => toLocalDateStr(d) === toLocalDateStr(day))) {
+          upcoming.push(day);
         }
       }
     }
 
-    return visible;
+    return [...upcoming, ...pastWithStops];
   }, [currentDate, deliveries, todayStr]);
 
   const goToPreviousWeek = () => {
@@ -613,6 +626,7 @@ export function DeliveryCalendar({
           );
           const isTodayFlag = isToday(day);
           const isPast = isPastDay(day);
+          const hiddenCount = hiddenByFilter?.[dateStr] ?? 0;
 
           return (
             <DayDropZone
@@ -745,11 +759,41 @@ export function DeliveryCalendar({
                       </div>
                     );
                   })
+                ) : hiddenCount > 0 ? (
+                  // היום לא ריק, הוא מסונן. בלי החיווי הזה נראה כאילו הנתונים נעלמו.
+                  <div className="flex flex-col items-center justify-center h-32 gap-1.5 px-2 text-center">
+                    <EyeOff className="h-5 w-5 text-amber-500" />
+                    <span className="text-xs font-medium text-amber-700">
+                      {hiddenCount} עצירות מוסתרות בסינון
+                    </span>
+                    {onShowAllTypes && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={onShowAllTypes}
+                        className="h-7 rounded-md border-amber-300 px-2 text-[11px] text-amber-700 hover:bg-amber-50"
+                      >
+                        הצג הכל
+                      </Button>
+                    )}
+                  </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center h-32 text-muted-foreground/50">
                     <Truck className="h-5 w-5 mb-1" />
                     <span className="text-xs">אין עצירות</span>
                   </div>
+                )}
+
+                {/* ליום שיש בו גם עצירות גלויות וגם מוסתרות */}
+                {dayDeliveries.length > 0 && hiddenCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={onShowAllTypes}
+                    className="flex w-full items-center justify-center gap-1 rounded-md py-1 text-[11px] font-medium text-amber-700 hover:bg-amber-50"
+                  >
+                    <EyeOff className="h-3 w-3" />
+                    ועוד {hiddenCount} מוסתרות בסינון
+                  </button>
                 )}
               </div>
             </DayDropZone>
