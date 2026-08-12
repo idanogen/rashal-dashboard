@@ -310,6 +310,13 @@ interface UnscheduledPanelProps {
   intro?: ReactNode;
   /** כפתורים נוספים בשורת הכלים העליונה */
   toolbarExtra?: ReactNode;
+  /**
+   * חיפוש ואזורים מבחוץ. כשהם מועברים, הפאנל לא מצייר את תיבת החיפוש ואת
+   * סינון האזורים בעצמו — הם יושבים פעם אחת מעל כל הרשימות (DispatchFilterBar),
+   * כדי שסינון אחד יחול על כל סוגי המסמכים יחד.
+   */
+  search?: string;
+  selectedZones?: string[];
 }
 
 export function UnscheduledPanel({
@@ -332,6 +339,8 @@ export function UnscheduledPanel({
   handled,
   intro,
   toolbarExtra,
+  search: searchProp,
+  selectedZones: zonesProp,
 }: UnscheduledPanelProps) {
   // מי שחזר מהקו יוצא לרצועה אדומה משלו; השאר עובר את מסלול הסינון הרגיל.
   const returnedItems = useMemo(
@@ -343,8 +352,15 @@ export function UnscheduledPanel({
     [allItems, returnedIds]
   );
 
-  const [selectedZones, setSelectedZones] = useState<string[]>([]);
-  const [search, setSearch] = useState('');
+  // כשהחיפוש/האזורים מגיעים מבחוץ הם מנצחים, וה-state המקומי לא נצבע כלל.
+  const searchControlled = searchProp !== undefined;
+  const zonesControlled = zonesProp !== undefined;
+  const [localZones, setLocalZones] = useState<string[]>([]);
+  const [localSearch, setLocalSearch] = useState('');
+  const search = searchProp ?? localSearch;
+  const selectedZones = zonesProp ?? localZones;
+  const setSearch = setLocalSearch;
+  const setSelectedZones = setLocalZones;
   const [viewMode, setViewMode] = useState<'all' | 'grouped'>('all');
   const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set());
   const [expandedZones, setExpandedZones] = useState<Set<string>>(new Set());
@@ -512,15 +528,17 @@ export function UnscheduledPanel({
         </div>
       )}
 
-      {/* סינון לפי אזור */}
-      <ZoneFilter
-        selectedZones={selectedZones}
-        onZoneToggle={handleZoneToggle}
-        onClearAll={handleClearAllZones}
-        orderCountByZone={zoneCounts}
-        collapsed={zoneFilterCollapsed}
-        onToggleCollapse={toggleZoneFilterCollapsed}
-      />
+      {/* סינון לפי אזור — רק כשהוא לא מנוהל מבחוץ */}
+      {!zonesControlled && (
+        <ZoneFilter
+          selectedZones={selectedZones}
+          onZoneToggle={handleZoneToggle}
+          onClearAll={handleClearAllZones}
+          orderCountByZone={zoneCounts}
+          collapsed={zoneFilterCollapsed}
+          onToggleCollapse={toggleZoneFilterCollapsed}
+        />
+      )}
 
       {/* הפאנל */}
       <div className="rounded-lg border bg-card shadow-sm">
@@ -581,24 +599,26 @@ export function UnscheduledPanel({
               {toolbarExtra}
             </div>
             <div className="flex items-center gap-2">
-              <div className="relative">
-                <Search className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={searchPlaceholder}
-                  className="h-8 w-[230px] pr-8 text-xs"
-                />
-                {search && (
-                  <button
-                    onClick={() => setSearch('')}
-                    className="absolute left-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
-                    title="נקה חיפוש"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
+              {!searchControlled && (
+                <div className="relative">
+                  <Search className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder={searchPlaceholder}
+                    className="h-8 w-[230px] pr-8 text-xs"
+                  />
+                  {search && (
+                    <button
+                      onClick={() => setSearch('')}
+                      className="absolute left-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+                      title="נקה חיפוש"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+              )}
               <Select value={viewMode} onValueChange={(v) => setViewMode(v as 'all' | 'grouped')}>
                 <SelectTrigger className="h-8 w-[140px] text-xs">
                   <SelectValue />

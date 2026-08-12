@@ -33,6 +33,13 @@ import { useMoveStop } from '@/hooks/useMoveStop';
 import { useActivityLogger } from '@/hooks/useActivityLogger';
 import { DeliveryStatusBar } from '@/components/deliveries/DeliveryStatusBar';
 import { ServiceCallStatusBar } from '@/components/service-calls/ServiceCallStatusBar';
+import { DispatchFilterBar } from '@/components/dispatch/DispatchFilterBar';
+import {
+  buildCustomerItems,
+  buildOrderItems,
+  buildPickupItems,
+  buildServiceCallItems,
+} from '@/components/dispatch/items';
 import { UnscheduledOrders } from '@/components/deliveries/UnscheduledOrders';
 import { UnscheduledServiceCalls } from '@/components/service-calls/UnscheduledServiceCalls';
 import { UnscheduledPickups } from '@/components/pickups/UnscheduledPickups';
@@ -375,6 +382,71 @@ export function DispatchPage() {
   const [taskDialogDate, setTaskDialogDate] = useState<string | null>(null);
   const [mapDialogDate, setMapDialogDate] = useState<string | null>(null);
   const [detailPickup, setDetailPickup] = useState<Pickup | null>(null);
+
+  // ─── חיפוש וסינון אזור: אחד לכל סוגי המסמכים ───
+  // עד 12/08/2026 לכל רשימה היו חיפוש וסינון אזור משלה, ובטאב "הכל" זה
+  // אמר להקליד את אותו שם ארבע פעמים. החיפוש רץ על כל השדות של הרשומה.
+  const [filterSearch, setFilterSearch] = useState('');
+  const [filterZones, setFilterZones] = useState<string[]>([]);
+  const [customersOnlyBare, setCustomersOnlyBare] = useState(true);
+
+  const toggleFilterZone = useCallback((zoneId: string) => {
+    setFilterZones((prev) =>
+      prev.includes(zoneId) ? prev.filter((z) => z !== zoneId) : [...prev, zoneId]
+    );
+  }, []);
+
+  // ה-VMs נבנים כאן רק כדי לספור: כמה תואמים, וכמה בכל אזור. הרשימות
+  // עצמן בונות אותם שוב מאותם בנאים, וה-useMemo שומר שזה יקרה רק על שינוי נתונים.
+  const scopedCustomers = useMemo(
+    () => (customersOnlyBare ? pendingCustomers.filter(isBareCustomer) : pendingCustomers),
+    [pendingCustomers, customersOnlyBare]
+  );
+  const itemsByTab = useMemo(
+    () => ({
+      deliveries: buildOrderItems(unscheduledOrders, orderZoneMap, ordersGroupSize),
+      service: buildServiceCallItems(pendingCalls, callZoneMap, callsGroupSize),
+      pickups: buildPickupItems(pendingPickups, setDetailPickup),
+      customers: buildCustomerItems(scopedCustomers),
+    }),
+    [
+      unscheduledOrders,
+      orderZoneMap,
+      ordersGroupSize,
+      pendingCalls,
+      callZoneMap,
+      callsGroupSize,
+      pendingPickups,
+      scopedCustomers,
+    ]
+  );
+
+  /** הפריטים של הטאב הנוכחי, או של כל הסוגים בטאב "הכל". */
+  const visibleItems = useMemo(() => {
+    if (tab === 'all') return Object.values(itemsByTab).flat();
+    return itemsByTab[tab] ?? [];
+  }, [itemsByTab, tab]);
+
+  const searchedItems = useMemo(() => {
+    const q = filterSearch.trim().toLowerCase();
+    if (!q) return visibleItems;
+    return visibleItems.filter((i) => i.searchText.includes(q));
+  }, [visibleItems, filterSearch]);
+
+  /** ספירת האזורים על מה שעבר את החיפוש, כדי שהצ'יפים לא ישקרו. */
+  const filterZoneCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const i of searchedItems) m.set(i.zoneId, (m.get(i.zoneId) || 0) + 1);
+    return m;
+  }, [searchedItems]);
+
+  const filterMatchCount = useMemo(
+    () =>
+      filterZones.length === 0
+        ? searchedItems.length
+        : searchedItems.filter((i) => filterZones.includes(i.zoneId)).length,
+    [searchedItems, filterZones]
+  );
 
   const [duplicateState, setDuplicateState] = useState<{
     conflicts: DuplicateConflict[];
@@ -1049,6 +1121,18 @@ export function DispatchPage() {
         {/* עצירות עבר שנשארו פתוחות — משותף לכל הטאבים */}
         <StuckStopsAlert stops={calendarStops} onResolve={handleResolveStop} />
 
+        {/* חיפוש וסינון אזור אחד, חל על כל סוגי המסמכים שמוצגים */}
+        <DispatchFilterBar
+          search={filterSearch}
+          onSearchChange={setFilterSearch}
+          selectedZones={filterZones}
+          onZoneToggle={toggleFilterZone}
+          onClearZones={() => setFilterZones([])}
+          countByZone={filterZoneCounts}
+          matchCount={filterMatchCount}
+          totalCount={visibleItems.length}
+        />
+
         {/* ─── אזור מתחלף: הממתינים של הסוג הנבחר ─── */}
         {(tab === 'deliveries' || tab === 'all') && (
           (tab === 'all' ? null : tabState) ?? (
@@ -1086,6 +1170,8 @@ export function DispatchPage() {
                 groupSize={ordersGroupSize}
                 returnedIds={returnedOrderIds}
                 handledOrders={[...scheduledOrders, ...deliveredOrders]}
+                search={filterSearch}
+                selectedZones={filterZones}
               />
             </>
           )
@@ -1126,6 +1212,8 @@ export function DispatchPage() {
                 pendingScheduleIds={pendingScheduleIds}
                 returnedIds={returnedCallIds}
                 handledCalls={[...scheduledCalls, ...completedCalls]}
+                search={filterSearch}
+                selectedZones={filterZones}
               />
             </>
           )
@@ -1171,6 +1259,8 @@ export function DispatchPage() {
                 pendingScheduleIds={pendingScheduleIds}
                 returnedIds={returnedPickupIds}
                 onShowDetails={setDetailPickup}
+                search={filterSearch}
+                selectedZones={filterZones}
               />
             </>
           )
@@ -1220,6 +1310,10 @@ export function DispatchPage() {
                 onClearSelection={() => setSelectedCustomerIds(new Set())}
                 onBulkSchedule={handleBulkSchedule}
                 pendingScheduleIds={pendingScheduleIds}
+                onlyBare={customersOnlyBare}
+                onOnlyBareChange={setCustomersOnlyBare}
+                search={filterSearch}
+                selectedZones={filterZones}
               />
             </>
           )

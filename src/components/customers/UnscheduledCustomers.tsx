@@ -1,12 +1,11 @@
 import { useMemo, useState } from 'react';
 import { Sparkles, UserPlus } from 'lucide-react';
 
-import { UnscheduledPanel, type DispatchItemVM } from '@/components/dispatch/UnscheduledPanel';
-import { Badge } from '@/components/ui/badge';
+import { buildCustomerItems } from '@/components/dispatch/items';
+import { UnscheduledPanel } from '@/components/dispatch/UnscheduledPanel';
 import { Button } from '@/components/ui/button';
 import type { NewCustomer } from '@/types/customer';
 import { isBareCustomer } from '@/types/customer';
-import { getZoneForCity } from '@/types/zone';
 
 interface UnscheduledCustomersProps {
   customers: NewCustomer[];
@@ -16,6 +15,15 @@ interface UnscheduledCustomersProps {
   onClearSelection: () => void;
   onBulkSchedule: () => void;
   pendingScheduleIds: Set<string>;
+  /**
+   * מתג "רק ללא הזמנה". כשהוא מנוהל מבחוץ הדף יכול לספור אזורים על אותה
+   * קבוצה בדיוק שמוצגת. בלי הפרופים האלה הרכיב מנהל אותו בעצמו.
+   */
+  onlyBare?: boolean;
+  onOnlyBareChange?: (value: boolean) => void;
+  /** חיפוש ואזורים משותפים למסך הסדרן. כשמועברים, הפאנל לא מצייר אותם בעצמו. */
+  search?: string;
+  selectedZones?: string[];
 }
 
 export function UnscheduledCustomers({
@@ -26,13 +34,19 @@ export function UnscheduledCustomers({
   onClearSelection,
   onBulkSchedule,
   pendingScheduleIds,
+  onlyBare: onlyBareProp,
+  onOnlyBareChange,
+  search,
+  selectedZones,
 }: UnscheduledCustomersProps) {
   /**
    * ברירת המחדל היא להציג רק לקוחות בלי שום רשומה נלווית. אלה האספקות
    * שאף מסך אחר לא מראה. מי שכבר יש לו הזמנה או קריאה נמצא ממילא בטאב שלו,
    * והצגתו כאן רק תכפיל אותו לסדרן.
    */
-  const [onlyBare, setOnlyBare] = useState(true);
+  const [localOnlyBare, setLocalOnlyBare] = useState(true);
+  const onlyBare = onlyBareProp ?? localOnlyBare;
+  const setOnlyBare = onOnlyBareChange ?? setLocalOnlyBare;
 
   const scoped = useMemo(
     () => (onlyBare ? customers.filter(isBareCustomer) : customers),
@@ -41,74 +55,7 @@ export function UnscheduledCustomers({
 
   const bareCount = useMemo(() => customers.filter(isBareCustomer).length, [customers]);
 
-  const items = useMemo<DispatchItemVM[]>(
-    () =>
-      scoped.map((customer) => ({
-        id: customer.customerNumber,
-        dragId: customer.customerNumber,
-        dragData: { type: 'customer', customer },
-        zoneId: getZoneForCity(customer.city) || 'unassigned',
-        customerName: customer.customerName,
-        customerNumber: customer.customerNumber,
-        phone: customer.phone,
-        addressLine: `${customer.address ?? ''}${customer.city ? `, ${customer.city}` : ''}`.replace(
-          /^, /,
-          ''
-        ),
-        created: customer.openedAt,
-        searchText: [
-          customer.customerName,
-          customer.customerNumber,
-          customer.city,
-          customer.phone,
-          customer.address,
-          customer.openedBy,
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase(),
-        nameBadge: isBareCustomer(customer) ? (
-          <span className="ms-1 inline-flex h-4 items-center rounded bg-violet-600 px-1 text-[10px] font-semibold text-white">
-            ללא הזמנה
-          </span>
-        ) : undefined,
-        footerBadges: (
-          <>
-            {customer.healthFund && (
-              <Badge variant="outline" className="h-4 max-w-[140px] truncate px-1 text-[10px]">
-                {customer.healthFund}
-              </Badge>
-            )}
-            {customer.hasOrder && (
-              <Badge variant="secondary" className="h-4 px-1 text-[10px]">
-                יש הזמנה
-              </Badge>
-            )}
-            {customer.hasServiceCall && (
-              <Badge variant="secondary" className="h-4 px-1 text-[10px]">
-                יש קריאה
-              </Badge>
-            )}
-            {customer.hasPickup && (
-              <Badge variant="secondary" className="h-4 px-1 text-[10px]">
-                יש איסוף
-              </Badge>
-            )}
-            {customer.openedBy && (
-              <span className="text-[10px] text-muted-foreground">
-                נפתח ע"י {customer.openedBy}
-              </span>
-            )}
-          </>
-        ),
-        history: {
-          currentId: customer.customerNumber,
-          customerNumber: customer.customerNumber,
-          customerName: customer.customerName,
-        },
-      })),
-    [scoped]
-  );
+  const items = useMemo(() => buildCustomerItems(scoped), [scoped]);
 
   return (
     <UnscheduledPanel
@@ -126,6 +73,8 @@ export function UnscheduledCustomers({
       onClearSelection={onClearSelection}
       onBulkSchedule={onBulkSchedule}
       pendingScheduleIds={pendingScheduleIds}
+      search={search}
+      selectedZones={selectedZones}
       intro={
         // למה המסך הזה קיים — הסדרן לא ראה את הלקוחות האלה עד היום
         <div className="flex items-start gap-2 rounded-xl border border-violet-200 bg-violet-50/60 p-2.5 text-xs text-violet-900">
@@ -141,7 +90,7 @@ export function UnscheduledCustomers({
           variant={onlyBare ? 'default' : 'outline'}
           size="sm"
           className="h-7 text-xs"
-          onClick={() => setOnlyBare((v) => !v)}
+          onClick={() => setOnlyBare(!onlyBare)}
         >
           {onlyBare ? 'רק ללא הזמנה' : 'כל הלקוחות החדשים'}
         </Button>

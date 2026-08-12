@@ -1,10 +1,9 @@
 import { useMemo } from 'react';
 import { Undo2 } from 'lucide-react';
 
-import { UnscheduledPanel, type DispatchItemVM } from '@/components/dispatch/UnscheduledPanel';
-import { Badge } from '@/components/ui/badge';
+import { buildPickupItems } from '@/components/dispatch/items';
+import { UnscheduledPanel } from '@/components/dispatch/UnscheduledPanel';
 import type { Pickup } from '@/types/pickup';
-import { getZoneForCity } from '@/types/zone';
 
 interface UnscheduledPickupsProps {
   pickups: Pickup[];
@@ -17,6 +16,9 @@ interface UnscheduledPickupsProps {
   /** איסופים שחזרו מהקו (סטטוס עצירה "לא בוצע"). */
   returnedIds?: Set<string>;
   onShowDetails: (pickup: Pickup) => void;
+  /** חיפוש ואזורים משותפים למסך הסדרן. כשמועברים, הפאנל לא מצייר אותם בעצמו. */
+  search?: string;
+  selectedZones?: string[];
 }
 
 export function UnscheduledPickups({
@@ -29,61 +31,11 @@ export function UnscheduledPickups({
   pendingScheduleIds,
   returnedIds,
   onShowDetails,
+  search,
+  selectedZones,
 }: UnscheduledPickupsProps) {
-  const items = useMemo<DispatchItemVM[]>(
-    () =>
-      pickups.map((pickup) => {
-        const lineCount = pickup.lines?.length ?? 0;
-        return {
-          id: pickup.id,
-          dragId: pickup.id,
-          dragData: { type: 'pickup', pickup },
-          zoneId: getZoneForCity(pickup.city) || 'unassigned',
-          customerName: pickup.customerName,
-          customerNumber: pickup.customerNumber,
-          phone: pickup.phone,
-          addressLine: `${pickup.address ?? ''}${pickup.city ? `, ${pickup.city}` : ''}`.replace(
-            /^, /,
-            ''
-          ),
-          created: pickup.created,
-          searchText: [
-            pickup.customerName,
-            pickup.customerNumber,
-            pickup.city,
-            pickup.priorityPickupId,
-            pickup.phone,
-          ]
-            .filter(Boolean)
-            .join(' ')
-            .toLowerCase(),
-          meta: pickup.priorityPickupId ? (
-            <p className="mt-0.5 text-[11px] text-muted-foreground" dir="ltr">
-              מסמך: {pickup.priorityPickupId}
-            </p>
-          ) : undefined,
-          footerBadges: (
-            <>
-              {pickup.priorityStatus && (
-                <Badge variant="outline" className="h-4 px-1 text-[10px]">
-                  {pickup.priorityStatus}
-                </Badge>
-              )}
-              {lineCount > 0 && (
-                <Badge variant="outline" className="h-4 px-1 text-[10px]">
-                  {lineCount} פריטים
-                </Badge>
-              )}
-            </>
-          ),
-          onShowDetails: () => onShowDetails(pickup),
-          history: {
-            currentId: pickup.id,
-            customerNumber: pickup.customerNumber,
-            customerName: pickup.customerName,
-          },
-        };
-      }),
+  const items = useMemo(
+    () => buildPickupItems(pickups, onShowDetails),
     [pickups, onShowDetails]
   );
 
@@ -104,6 +56,8 @@ export function UnscheduledPickups({
       onBulkSchedule={onBulkSchedule}
       pendingScheduleIds={pendingScheduleIds}
       returnedIds={returnedIds}
+      search={search}
+      selectedZones={selectedZones}
     />
   );
 }

@@ -1,12 +1,8 @@
 import { useMemo } from 'react';
 import { Wrench } from 'lucide-react';
 
-import { ServiceCallDetailDialog } from '@/components/service-calls/ServiceCallDetailDialog';
-import {
-  UnscheduledPanel,
-  type DispatchItemVM,
-  type HandledMatch,
-} from '@/components/dispatch/UnscheduledPanel';
+import { buildServiceCallItems } from '@/components/dispatch/items';
+import { UnscheduledPanel, type HandledMatch } from '@/components/dispatch/UnscheduledPanel';
 import type { ServiceCall } from '@/types/service-call';
 
 interface UnscheduledServiceCallsProps {
@@ -26,6 +22,9 @@ interface UnscheduledServiceCallsProps {
   returnedIds?: Set<string>;
   /** קריאות שכבר טופלו (תואם ביקור / בוצע) — לחיווי "כבר משובץ" כשחיפוש ריק בממתינים. */
   handledCalls?: ServiceCall[];
+  /** חיפוש ואזורים משותפים למסך הסדרן. כשמועברים, הפאנל לא מצייר אותם בעצמו. */
+  search?: string;
+  selectedZones?: string[];
 }
 
 export function UnscheduledServiceCalls({
@@ -41,57 +40,11 @@ export function UnscheduledServiceCalls({
   pendingScheduleIds,
   returnedIds,
   handledCalls,
+  search,
+  selectedZones,
 }: UnscheduledServiceCallsProps) {
-  const items = useMemo<DispatchItemVM[]>(
-    () =>
-      calls.map((call) => ({
-        id: call.id,
-        dragId: `servicecall-${call.id}`,
-        dragData: { type: 'serviceCall', call },
-        zoneId: callZoneMap.get(call.id) || 'unassigned',
-        customerName: call.customerName,
-        customerNumber: call.customerNumber,
-        phone: call.phone,
-        addressLine: call.city,
-        created: call.created,
-        dupCount: groupSize?.get(call.id),
-        searchText: [call.customerName, call.customerNumber, call.phone]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase(),
-        meta: (
-          <>
-            {(call.faultDesc || call.symptomDesc) && (
-              <p className="mt-0.5 text-[11px] font-medium text-amber-800">
-                תקלה: {call.faultDesc ?? call.symptomDesc}
-                {call.faultDesc && call.symptomDesc ? ` · ${call.symptomDesc}` : ''}
-              </p>
-            )}
-            {(call.deviceName || call.deviceSerial) && (
-              <p
-                className="mt-0.5 text-[11px] text-muted-foreground"
-                title={call.deviceDesc ?? undefined}
-              >
-                מכשיר: <bdi>{call.deviceName ?? '—'}</bdi>
-                {call.deviceSerial && (
-                  <>
-                    {' '}
-                    · סריאלי <bdi>{call.deviceSerial}</bdi>
-                  </>
-                )}
-              </p>
-            )}
-          </>
-        ),
-        renderDetail: (open, onClose) => (
-          <ServiceCallDetailDialog call={call} open={open} onClose={onClose} />
-        ),
-        history: {
-          currentId: call.id,
-          customerNumber: call.customerNumber,
-          customerName: call.customerName,
-        },
-      })),
+  const items = useMemo(
+    () => buildServiceCallItems(calls, callZoneMap, groupSize),
     [calls, callZoneMap, groupSize]
   );
 
@@ -125,6 +78,8 @@ export function UnscheduledServiceCalls({
       pendingScheduleIds={pendingScheduleIds}
       returnedIds={returnedIds}
       handled={handled}
+      search={search}
+      selectedZones={selectedZones}
     />
   );
 }

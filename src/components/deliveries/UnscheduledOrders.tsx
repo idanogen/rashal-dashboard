@@ -1,12 +1,8 @@
 import { useMemo } from 'react';
 import { Package } from 'lucide-react';
 
-import { OrderDetailDialog } from '@/components/orders/OrderDetailDialog';
-import {
-  UnscheduledPanel,
-  type DispatchItemVM,
-  type HandledMatch,
-} from '@/components/dispatch/UnscheduledPanel';
+import { buildOrderItems } from '@/components/dispatch/items';
+import { UnscheduledPanel, type HandledMatch } from '@/components/dispatch/UnscheduledPanel';
 import type { Order } from '@/types/order';
 
 interface UnscheduledOrdersProps {
@@ -30,6 +26,9 @@ interface UnscheduledOrdersProps {
   returnedIds?: Set<string>;
   /** הזמנות שכבר טופלו (תואמה אספקה / סופק) — לחיווי "כבר משובץ" כשחיפוש ריק בממתינים. */
   handledOrders?: Order[];
+  /** חיפוש ואזורים משותפים למסך הסדרן. כשמועברים, הפאנל לא מצייר אותם בעצמו. */
+  search?: string;
+  selectedZones?: string[];
 }
 
 export function UnscheduledOrders({
@@ -45,54 +44,11 @@ export function UnscheduledOrders({
   groupSize,
   returnedIds,
   handledOrders,
+  search,
+  selectedZones,
 }: UnscheduledOrdersProps) {
-  const items = useMemo<DispatchItemVM[]>(
-    () =>
-      orders.map((order) => ({
-        id: order.id,
-        dragId: `order-${order.id}`,
-        dragData: { type: 'order', order },
-        zoneId: orderZoneMap.get(order.id) || 'unassigned',
-        customerName: order.customerName,
-        customerNumber: order.customerNumber,
-        phone: order.phone,
-        addressLine: `${order.address ?? ''}${order.city ? `, ${order.city}` : ''}`.replace(
-          /^, /,
-          ''
-        ),
-        created: order.created,
-        dupCount: groupSize?.get(order.id),
-        searchText: [order.customerName, order.customerNumber, order.phone]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase(),
-        meta:
-          order.items && order.items.length > 0 ? (
-            <p
-              className="mt-0.5 text-[11px] text-muted-foreground"
-              title={order.items
-                .map(
-                  (it) =>
-                    `${it.desc ?? it.part ?? ''}${it.qty && it.qty !== 1 ? ` ×${it.qty}` : ''}`
-                )
-                .join('\n')}
-            >
-              ציוד: <bdi>{order.items[0].desc ?? order.items[0].part}</bdi>
-              {order.items[0].qty && order.items[0].qty !== 1 ? ` ×${order.items[0].qty}` : ''}
-              {order.items.length > 1 && (
-                <span className="font-medium"> (+{order.items.length - 1} פריטים)</span>
-              )}
-            </p>
-          ) : undefined,
-        renderDetail: (open, onClose) => (
-          <OrderDetailDialog order={order} open={open} onClose={onClose} />
-        ),
-        history: {
-          currentId: order.id,
-          customerNumber: order.customerNumber,
-          customerName: order.customerName,
-        },
-      })),
+  const items = useMemo(
+    () => buildOrderItems(orders, orderZoneMap, groupSize),
     [orders, orderZoneMap, groupSize]
   );
 
@@ -126,6 +82,8 @@ export function UnscheduledOrders({
       pendingScheduleIds={pendingScheduleIds}
       returnedIds={returnedIds}
       handled={handled}
+      search={search}
+      selectedZones={selectedZones}
     />
   );
 }
