@@ -384,11 +384,13 @@ function DayDropZone({
   children,
   isToday,
   isPast,
+  widthClass,
 }: {
   date: Date;
   children: React.ReactNode;
   isToday: boolean;
   isPast: boolean;
+  widthClass: string;
 }) {
   const dateStr = toLocalDateStr(date);
   const { isOver, setNodeRef } = useDroppable({
@@ -399,7 +401,7 @@ function DayDropZone({
   return (
     <div
       ref={setNodeRef}
-      className={`rounded-xl border bg-card shadow-sm transition-all duration-200 overflow-hidden ${
+      className={`rounded-xl border bg-card shadow-sm transition-all duration-200 overflow-hidden ${widthClass} ${
         isToday ? 'ring-2 ring-primary shadow-md' : ''
       } ${isPast ? 'opacity-70' : ''} ${
         isOver
@@ -427,8 +429,14 @@ export function DeliveryCalendar({
   onShowAllTypes,
 }: DeliveryCalendarProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
-  /** ימי עבר של השבוע מוסתרים כברירת מחדל, ראה ההערה ב-visibleDays. */
-  const [showPastDays, setShowPastDays] = useState(false);
+  /** ימי עבר מוצגים כעמודה צרה. לחיצה פותחת יום מסוים לרוחב מלא. */
+  const [expandedPastDays, setExpandedPastDays] = useState<Set<string>>(new Set());
+  const togglePastDay = (dateStr: string) =>
+    setExpandedPastDays((prev) => {
+      const next = new Set(prev);
+      next.has(dateStr) ? next.delete(dateStr) : next.add(dateStr);
+      return next;
+    });
   const [coordinationStop, setCoordinationStop] = useState<CalendarStop | null>(null);
   // קבוצות נהג מקופלות ביומן (key = delivery.id = "date__driver")
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -493,48 +501,28 @@ export function DeliveryCalendar({
     return stops;
   };
 
-  /** ימי עבר של השבוע המוצג שנשארו בהם עצירות. */
-  const pastDaysWithStops = useMemo(() => {
-    return getWeekWorkDays(currentDate).filter((d) => {
-      if (!isPastDay(d)) return false;
-      return getDeliveriesForDate(toLocalDateStr(d)).length > 0;
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentDate, deliveries, todayStr]);
-
-  // Calculate visible days
+  // היומן מציג תמיד את שבוע העבודה המלא לפי הסדר. ימי עבר מקבלים עמודה
+  // צרה עם מונה בלבד, כדי שהסדר לא יישבר ושהיום לא ייקבר מתחתיהם.
   const visibleDays = useMemo(() => {
     const weekDays = getWeekWorkDays(currentDate);
-    const currentAndFuture = weekDays.filter((d) => !isPastDay(d));
+    const hasFuture = weekDays.some((d) => !isPastDay(d));
 
-    // שבוע שכולו בעבר: המשתמש ניווט אליו בכוונה, מציגים אותו כמו שהוא.
-    if (currentAndFuture.length === 0) return weekDays;
+    // שבוע שכולו בעבר: ניווטו אליו בכוונה, אין טעם לכווץ בו הכל.
+    if (!hasFuture) return weekDays;
 
-    // 🔴 היומן תמיד כרונולוגי, אחרת הימים נראים מבולגנים. ימי עבר פשוט
-    // אינם מוצגים כברירת מחדל, כדי שהיום לא ייקבר מתחת אליהם. מה שנשאר
-    // פתוח בהם מופיע ממילא בחיווי "עצירות שנשארו פתוחות" בראש המסך.
-    const upcoming = [...currentAndFuture];
-
-    // If fewer than MIN_VISIBLE_DAYS, extend to next week
-    if (upcoming.length < MIN_VISIBLE_DAYS) {
-      const nextWeekStart = new Date(currentDate);
-      nextWeekStart.setDate(
-        nextWeekStart.getDate() - nextWeekStart.getDay() + 7
-      );
-      const nextWeekDays = getWeekWorkDays(nextWeekStart);
-
-      for (const day of nextWeekDays) {
-        if (upcoming.length >= MIN_VISIBLE_DAYS) break;
-        if (!upcoming.some((d) => toLocalDateStr(d) === toLocalDateStr(day))) {
-          upcoming.push(day);
-        }
-      }
-    }
-
-    // ימי העבר חוזרים למקומם הכרונולוגי, לפני היום, רק כשמבקשים אותם.
-    return showPastDays ? [...pastDaysWithStops, ...upcoming] : upcoming;
+    return weekDays;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentDate, deliveries, todayStr, showPastDays, pastDaysWithStops]);
+  }, [currentDate, todayStr]);
+
+  /** שבוע שכולו בעבר מוצג במלואו, בלי כיווץ. */
+  const weekIsAllPast = useMemo(
+    () => getWeekWorkDays(currentDate).every((d) => isPastDay(d)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [currentDate, todayStr]
+  );
+
+  const isCollapsedDay = (day: Date) =>
+    !weekIsAllPast && isPastDay(day) && !expandedPastDays.has(toLocalDateStr(day));
 
   const goToPreviousWeek = () => {
     const newDate = new Date(currentDate);
@@ -556,13 +544,6 @@ export function DeliveryCalendar({
       year: 'numeric',
     });
 
-  // Dynamic grid columns
-  const gridCols =
-    visibleDays.length <= 3
-      ? 'xl:grid-cols-3'
-      : visibleDays.length <= 4
-        ? 'xl:grid-cols-4'
-        : 'xl:grid-cols-5';
 
   return (
     <div className="space-y-4">
@@ -576,18 +557,6 @@ export function DeliveryCalendar({
         </div>
 
         <div className="flex items-center gap-2">
-          {pastDaysWithStops.length > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowPastDays((v) => !v)}
-              className="rounded-lg text-xs font-medium text-muted-foreground"
-            >
-              {showPastDays
-                ? 'הסתר ימים שעברו'
-                : `הצג ${pastDaysWithStops.length} ימים שעברו`}
-            </Button>
-          )}
           <Button
             variant="outline"
             size="sm"
@@ -636,9 +605,7 @@ export function DeliveryCalendar({
       </div>
 
       {/* Week Grid */}
-      <div
-        className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 ${gridCols} gap-4`}
-      >
+      <div className="flex flex-col gap-4 md:flex-row md:flex-wrap xl:flex-nowrap">
         {visibleDays.map((day) => {
           const dateStr = toLocalDateStr(day);
           const dayStops = getStopsForDate(dateStr);
@@ -650,6 +617,34 @@ export function DeliveryCalendar({
           const isTodayFlag = isToday(day);
           const isPast = isPastDay(day);
           const hiddenCount = hiddenByFilter?.[dateStr] ?? 0;
+          const collapsed = isCollapsedDay(day);
+
+          // יום שעבר מוצג כעמודה צרה: שם היום, תאריך, ומונה. לחיצה פותחת.
+          if (collapsed) {
+            return (
+              <button
+                key={day.toISOString()}
+                type="button"
+                onClick={() => togglePastDay(dateStr)}
+                title={`הצג את ${dayNames[day.getDay()]} ${day.getDate()}`}
+                className="flex w-full flex-row items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-500/5 px-3 py-2 text-amber-800 transition-colors hover:bg-amber-500/10 md:w-[92px] md:flex-none md:flex-col md:justify-start md:py-3"
+              >
+                <span className="text-xs font-semibold">{dayNames[day.getDay()]}</span>
+                <span className="text-lg font-bold leading-none">{day.getDate()}</span>
+                <span className="text-[10px] opacity-70">
+                  {day.toLocaleDateString('he-IL', { month: 'short' })}
+                </span>
+                {dayStops.length > 0 ? (
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold">
+                    {dayStops.length}
+                  </span>
+                ) : (
+                  <span className="text-[10px] opacity-50">ריק</span>
+                )}
+                <ChevronDown className="h-3.5 w-3.5 opacity-50" />
+              </button>
+            );
+          }
 
           return (
             <DayDropZone
@@ -657,6 +652,7 @@ export function DeliveryCalendar({
               date={day}
               isToday={isTodayFlag}
               isPast={isPast}
+              widthClass="w-full md:min-w-[260px] md:flex-1"
             >
               {/* Day Header */}
               <div
@@ -681,6 +677,17 @@ export function DeliveryCalendar({
                     >
                       {dayNames[day.getDay()]}
                     </span>
+                    {isPast && !weekIsAllPast && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 rounded-md hover:bg-amber-100"
+                        onClick={() => togglePastDay(dateStr)}
+                        title="כווץ את היום"
+                      >
+                        <ChevronRight className="h-3.5 w-3.5 text-amber-600" />
+                      </Button>
+                    )}
                     {onAddTask && !isPast && (
                       <Button
                         variant="ghost"
