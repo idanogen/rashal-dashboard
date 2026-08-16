@@ -12,6 +12,8 @@ import { useServiceCalls } from '@/hooks/useServiceCalls';
 import { usePickups } from '@/hooks/usePickups';
 import { useCalendarStops } from '@/hooks/useCalendarStops';
 import { computeManagementMetrics, SLA_DAYS } from '@/lib/management-metrics';
+import { useSurveys } from '@/hooks/useSurveys';
+import { computeSurveyMetrics, formatScore } from '@/lib/surveys';
 
 const NAVY = '#14223a';
 const BLUE = '#2b6cb0';
@@ -88,12 +90,14 @@ export function ManagementDashboard() {
   const { data: serviceCalls = [], isLoading: l2 } = useServiceCalls();
   const { data: pickups = [], isLoading: l3 } = usePickups();
   const { data: stops = [], isLoading: l4 } = useCalendarStops();
-  const loading = l1 || l2 || l3 || l4;
+  const { data: surveys = [], isLoading: l5 } = useSurveys(30);
+  const loading = l1 || l2 || l3 || l4 || l5;
 
   const m = useMemo(
     () => computeManagementMetrics(orders, serviceCalls, pickups, stops),
     [orders, serviceCalls, pickups, stops],
   );
+  const sv = useMemo(() => computeSurveyMetrics(surveys), [surveys]);
 
   const maxTech = Math.max(...m.callsByTechnician.map((t) => t.value), 1);
   const maxRegion = Math.max(...m.activityByRegion.map((r) => r.value), 1);
@@ -123,13 +127,26 @@ export function ManagementDashboard() {
 
       {/* KPI row */}
       <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <KpiCard title="שביעות רצון לקוחות" accent="#cbd5e1" muted icon={<Smile className="h-5 w-5" />}
+        {/* שביעות רצון. עד שתגיע התשובה הראשונה הכרטיס נשאר אפור, כדי שלא
+            יציג ממוצע של מדגם אחד כאילו הוא מדד. */}
+        <KpiCard title="שביעות רצון לקוחות" accent={sv.answered > 0 ? GREEN : '#cbd5e1'} muted={sv.answered === 0}
+          icon={<Smile className="h-5 w-5" />}
           top={
             <div className="grid grid-cols-3 gap-2">
-              <Big n="—" t="CSAT" color="#8a96a8" /><Big n="—" t="NPS" color="#8a96a8" /><Big n="—" t="מענה לסקר" color="#8a96a8" />
+              <Big n={formatScore(sv.satisfaction) || '·'} t="שביעות רצון" color={sv.answered > 0 ? NAVY : '#8a96a8'} />
+              <Big n={formatScore(sv.recommend) || '·'} t="ממליצים" color={sv.answered > 0 ? NAVY : '#8a96a8'} />
+              <Big n={sv.responseRate === null ? '·' : `${sv.responseRate}%`} t="מענה לסקר" color={sv.answered > 0 ? GREEN : '#8a96a8'} />
             </div>
           }
-          bottom={<div className="col-span-2 text-center text-[11px] text-slate-400">ממתין למנוע הסקרים (לא קיים בפריוריטי)</div>}
+          bottom={
+            <div className="col-span-2 text-center text-[11px] text-slate-400">
+              {sv.answered > 0
+                ? `מבוסס על ${sv.answered} תשובות ב-30 יום`
+                : sv.sent > 0
+                  ? `${sv.sent} סקרים נשלחו, טרם התקבלה תשובה`
+                  : 'טרם נשלחו סקרים'}
+            </div>
+          }
         />
 
         <KpiCard title="איסופי ציוד" accent={PURPLE} icon={<PackageOpen className="h-5 w-5" />}
@@ -277,15 +294,85 @@ export function ManagementDashboard() {
           <ExceptionCard icon={<Clock className="h-5 w-5" />} n={m.exceptions.lateDeliveries} label="אספקות באיחור" tint="#fdecec" fg={RED} />
           <ExceptionCard icon={<Box className="h-5 w-5" />} n={m.exceptions.pickupsOver14d} label="איסופים מעל 14 יום" tint="#f3effe" fg={PURPLE} />
           <ExceptionCard icon={<MapPin className="h-5 w-5" />} n={m.exceptions.unlocatedStops} label="עצירות ללא מיקום במפה" tint="#eef4fd" fg={BLUE} />
-          <div className="flex flex-col justify-center rounded-2xl p-4" style={{ background: '#fdf6ec' }}>
-            <div className="mb-2 flex items-center justify-between">
-              <Frown className="h-5 w-5" style={{ color: '#8a96a8' }} />
-              <span className="text-[28px] font-extrabold leading-none" style={{ color: '#8a96a8' }}>—</span>
-            </div>
-            <div className="text-[12.5px] font-medium" style={{ color: NAVY }}>לקוחות בדירוג נמוך <span className="text-slate-400">(סקרים)</span></div>
-          </div>
+          <ExceptionCard
+            icon={<Frown className="h-5 w-5" />}
+            n={sv.lowRated.length}
+            label="לקוחות בדירוג נמוך"
+            tint="#fdf6ec"
+            fg={sv.lowRated.length > 0 ? '#c2410c' : '#8a96a8'}
+          />
         </div>
       </div>
+
+      {/* ── סקרי שביעות רצון ──────────────────────────────────────────
+          הנקודה שבה הסקר מפסיק להיות ציון כללי והופך לכלי ניהולי: ממוצע
+          פר נהג ופר קופה. הקטע כולו מוסתר עד שיש תשובה ראשונה, כדי שהמסך
+          לא יתמלא בכרטיסים ריקים לפני שהמנוע רץ. */}
+      {sv.answered > 0 && (
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <Panel icon={<Smile className="h-4 w-4" />} title="שביעות רצון לפי נהג" hint="הנמוך קודם">
+            <ScoreList rows={sv.byDriver} />
+          </Panel>
+
+          <Panel icon={<Users className="h-4 w-4" />} title="שביעות רצון לפי קופה" hint="הנמוך קודם">
+            <ScoreList rows={sv.byFund} />
+          </Panel>
+
+          <Panel icon={<Frown className="h-4 w-4" />} title="מה הלקוחות כתבו" hint={`${sv.withComments.length} הערות`}>
+            {sv.withComments.length === 0 ? (
+              <p className="py-8 text-center text-xs text-slate-400">אין עדיין הערות חופשיות</p>
+            ) : (
+              <div className="max-h-[240px] space-y-2 overflow-y-auto py-1">
+                {sv.withComments.slice(0, 20).map((s) => (
+                  <div key={s.id} className="rounded-xl border p-2.5" style={{ borderColor: '#eef1f6' }}>
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <span className="truncate text-[11.5px] font-semibold" style={{ color: NAVY }}>
+                        {s.customerName || 'לקוח'}
+                      </span>
+                      <span
+                        className="shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-bold"
+                        style={{
+                          background: (s.satisfaction ?? 5) <= 2 ? '#fee2e2' : '#dcfce7',
+                          color: (s.satisfaction ?? 5) <= 2 ? '#b91c1c' : '#166534',
+                        }}
+                      >
+                        {s.satisfaction ?? '?'} מתוך 5
+                      </span>
+                    </div>
+                    <p className="text-[12px] leading-relaxed text-slate-600">{s.comment}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Panel>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** רשימת ממוצעים עם פס מילוי. הסולם קבוע 1 עד 5, אחרת השוואה בין נהגים משקרת. */
+function ScoreList({ rows }: { rows: { name: string; avg: number; count: number }[] }) {
+  if (rows.length === 0) {
+    return <p className="py-8 text-center text-xs text-slate-400">אין עדיין מספיק תשובות</p>;
+  }
+  return (
+    <div className="space-y-2.5 py-1">
+      {rows.map((r) => (
+        <div key={r.name} className="flex items-center gap-2">
+          <span className="w-20 shrink-0 truncate text-xs">{r.name}</span>
+          <div className="h-5 flex-1 overflow-hidden rounded-full bg-slate-100">
+            <div
+              className="h-full rounded-full"
+              style={{ width: `${(r.avg / 5) * 100}%`, background: r.avg < 3.5 ? '#dc2626' : '#16a34a' }}
+            />
+          </div>
+          <span className="w-14 shrink-0 text-start text-xs font-bold" style={{ color: NAVY }}>
+            {r.avg.toFixed(1)}
+            <span className="ms-1 font-normal text-slate-400">({r.count})</span>
+          </span>
+        </div>
+      ))}
     </div>
   );
 }

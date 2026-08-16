@@ -10,7 +10,18 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <!-- ווידג'ט המשוב הצף של עוגן סולושנס: תקופת הרצה. קומפקטי אוטומטית במובייל (נהגים). -->
-    <script src="https://dana-v3.vercel.app/fb-widget/widget.js" data-project="rashal-dashboard" defer></script>
+    <!-- ווידג'ט המשוב הצף של עוגן סולושנס: תקופת הרצה. קומפקטי אוטומטית במובייל (נהגים).
+         🔴 לא נטען בעמוד הסקר (/s/…). זה המסך היחיד שרואה לקוח קצה, והרובוט הצף
+         הוא כלי פנימי שלנו: הוא מבלבל מטופל מבוגר, ואין סיבה שהטלפון שלו יפנה
+         בכלל לשרת שלנו. בדיקה על הנתיב, לא הסתרה ב-CSS, כדי שהסקריפט לא ירד. -->
+    <script>
+      if (!location.pathname.startsWith('/s/')) {
+        var fb = document.createElement('script');
+        fb.src = 'https://dana-v3.vercel.app/fb-widget/widget.js';
+        fb.setAttribute('data-project', 'rashal-dashboard');
+        fb.defer = true;
+        document.body.appendChild(fb);
+      }
+    </script>
   </body>
 </html>

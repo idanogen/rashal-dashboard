@@ -13,6 +13,7 @@ import { AdminUsersPage } from '@/pages/AdminUsersPage';
 import { DriverDashboardPage } from '@/pages/DriverDashboardPage';
 import { FeedbackPage } from '@/pages/FeedbackPage';
 import { LoginPage } from '@/pages/LoginPage';
+import { SurveyPage } from '@/pages/SurveyPage';
 import { AuthProvider } from '@/lib/auth-context';
 import { GlobalChatProvider } from '@/context/GlobalChatContext';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
@@ -44,6 +45,11 @@ function App() {
         <AuthProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+
+            {/* סקר שביעות רצון — המסך היחיד שנפתח בלי משתמש. הלקוח מגיע אליו
+                מקישור בוואטסאפ, והטוקן שבכתובת הוא כל הזיהוי. חייב לשבת מעל
+                ה-catch-all, אחרת ProtectedRoute יזרוק אותו למסך התחברות. */}
+            <Route path="/s/:token" element={<SurveyPage />} />
 
             {/* Driver view — minimal layout, mobile-first */}
             <Route
