@@ -31,7 +31,7 @@ function parseScore(v: unknown): number | null | undefined {
 
 /**
  * השם שמוצג ללקוח. בפריוריטי השם מגיע לרוב כ"כהן יעל", ופנייה בשם המשפחה
- * נשמעת כמו מכתב מרשות ולא כמו הודעה מראש"ל, אז לוקחים את החלק האחרון.
+ * נשמעת כמו מכתב מרשות ולא כמו הודעה מר.שעל, אז לוקחים את החלק האחרון.
  * שם ריק אינו שגיאה: העמוד פשוט יפתח בלי פנייה אישית.
  */
 function firstName(full: string | null | undefined): string {
@@ -41,7 +41,7 @@ function firstName(full: string | null | undefined): string {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // העמוד מוגש מאותו מקור, אבל כשהסקר יעבור לתת-דומיין של ראש"ל זה כבר לא
+  // העמוד מוגש מאותו מקור, אבל כשהסקר יעבור לתת-דומיין של ר.שעל זה כבר לא
   // יהיה נכון. משאירים את הכותרת פתוחה לקריאה בלבד של נקודת הקצה הזו.
   res.setHeader('Cache-Control', 'no-store');
 

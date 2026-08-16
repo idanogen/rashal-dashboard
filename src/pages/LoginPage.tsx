@@ -35,7 +35,7 @@ export function LoginPage() {
     <div dir="rtl" className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle className="text-2xl text-center">ראש"ל ציוד רפואי</CardTitle>
+          <CardTitle className="text-2xl text-center">ר.שעל ציוד רפואי</CardTitle>
           <p className="text-center text-sm text-slate-500 mt-2">התחברות למערכת</p>
         </CardHeader>
         <CardContent>

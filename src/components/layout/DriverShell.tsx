@@ -40,7 +40,7 @@ export function DriverShell({ children }: DriverShellProps) {
               <Package className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-sm font-bold leading-tight">ראש"ל ציוד רפואי</h1>
+              <h1 className="text-sm font-bold leading-tight">ר.שעל ציוד רפואי</h1>
               <p className="text-[10px] text-muted-foreground">מסלול הנהג</p>
             </div>
           </div>

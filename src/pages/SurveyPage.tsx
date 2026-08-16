@@ -12,7 +12,7 @@ import { useParams } from 'react-router-dom';
  *   הוא שקושר את התשובה לעצירה, לנהג ולקופה.
  * · שתי הקשות מסיימות. המלל החופשי אופציונלי ולא חוסם שליחה.
  *
- * הניסוח של שתי השאלות נלקח מילה במילה מטופס שביעות הרצון של ראש״ל.
+ * הניסוח של שתי השאלות נלקח מילה במילה מטופס שביעות הרצון של ר.שעל.
  */
 
 const NAVY = '#14223a';
@@ -82,21 +82,21 @@ function StarRow({
   );
 }
 
-/** מסגרת המסמך: אותה מעטפת לכל המצבים, כדי שגם הודעת שגיאה תיראה כמו ראש״ל. */
+/** מסגרת המסמך: אותה מעטפת לכל המצבים, כדי שגם הודעת שגיאה תיראה כמו ר.שעל. */
 function Sheet({ children }: { children: React.ReactNode }) {
   return (
     <div dir="rtl" className="min-h-screen bg-[#eef1f6] px-4 py-6" style={{ fontFamily: 'Assistant, sans-serif' }}>
       <div className="mx-auto w-full max-w-md rounded-2xl bg-white p-6 shadow-[0_6px_30px_rgba(20,34,58,0.13)]">
         <div className="text-center">
           <div className="text-[26px] font-extrabold tracking-wide" style={{ color: NAVY }}>
-            ראש״ל
+            ר.שעל
           </div>
           <div className="mx-auto mt-2 h-[3px] w-full rounded" style={{ background: NAVY }} />
           <div className="mt-2 text-[13px] text-slate-500">סקר שביעות רצון לקוחות</div>
         </div>
         {children}
       </div>
-      <p className="mt-4 text-center text-[11px] text-slate-400">ראש״ל ציוד רפואי</p>
+      <p className="mt-4 text-center text-[11px] text-slate-400">ר.שעל ציוד רפואי</p>
     </div>
   );
 }
@@ -125,7 +125,7 @@ export function SurveyPage() {
   // בלשונית ובכל שיתוף של הקישור.
   // ובנוסף noindex: הכתובת מכילה טוקן אישי, ואין שום סיבה שהיא תיכנס למנוע חיפוש.
   useEffect(() => {
-    document.title = 'סקר שביעות רצון · ראש״ל';
+    document.title = 'סקר שביעות רצון · ר.שעל';
 
     const meta = document.createElement('meta');
     meta.name = 'robots';
