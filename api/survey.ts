@@ -30,14 +30,26 @@ function parseScore(v: unknown): number | null | undefined {
 }
 
 /**
- * השם שמוצג ללקוח. בפריוריטי השם מגיע לרוב כ"כהן יעל", ופנייה בשם המשפחה
- * נשמעת כמו מכתב מרשות ולא כמו הודעה מר.שעל, אז לוקחים את החלק האחרון.
- * שם ריק אינו שגיאה: העמוד פשוט יפתח בלי פנייה אישית.
+ * השם שמוצג ללקוח: **השם המלא, כמו שהוא**.
+ *
+ * 🔴 אל תנסו לחלץ מכאן שם פרטי. ניסינו, וזה נכשל על נתונים אמיתיים.
+ * בפריוריטי אין שדה שם פרטי בכלל (`priority_customers` מחזיקה רק `cdes`),
+ * והשם המלא מגיע בשני הכיוונים גם יחד:
+ *
+ *   רטיג חווה         משפחה ואז פרטי
+ *   אמה חצבי          פרטי ואז משפחה
+ *   בן נעים שלמה      משפחה משתי מילים ואז פרטי
+ *   ליפשיץ מנחם צבי   משפחה ואז שני שמות פרטיים
+ *
+ * כל כלל שייבחר יפנה לחלק מהמטופלים בשם המשפחה שלהם. מטופל מבוגר שמקבל
+ * "שלום חצבי" מבין שמדובר במשלוח אוטומטי, וזה בדיוק מה שהסקר לא צריך.
+ * השם המלא רשמי במקצת, אבל לעולם אינו שגוי.
+ *
+ * מנוקה מרווחים כפולים, שקיימים במסד ("בן גיגי  מרים").
+ * שם ריק אינו שגיאה: העמוד פשוט נפתח בלי פנייה אישית.
  */
-function firstName(full: string | null | undefined): string {
-  const parts = String(full ?? '').trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '';
-  return parts.length === 1 ? parts[0] : parts[parts.length - 1];
+function displayName(full: string | null | undefined): string {
+  return String(full ?? '').trim().replace(/\s+/g, ' ');
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -82,7 +94,7 @@ async function handleGet(req: VercelRequest, res: VercelResponse) {
 
   return res.status(200).json({
     ok: true,
-    customerName: firstName(data.customer_name),
+    customerName: displayName(data.customer_name),
     alreadyAnswered: Boolean(data.answered_at),
   });
 }
