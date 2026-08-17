@@ -7,15 +7,18 @@ import { useParams } from 'react-router-dom';
  * זה המסך היחיד במערכת שרואה מי שאינו מחובר, והוא נפתח מקישור בוואטסאפ
  * אצל מטופלים שרובם מבוגרים. לכן הוא נבנה אחרת מכל שאר המסכים:
  *
- * · מסך אחד בלי גלילה, בלי תפריט, בלי כלום מלבד השאלות.
+ * · מסמך אחד, בלי תפריט ובלי ניווט. נראה כמו מכתב רשמי של ר.שעל.
  * · אין הרשמה, אין סיסמה, ואין שדה שבו הלקוח ממלא מי הוא. הטוקן שבכתובת
  *   הוא שקושר את התשובה לעצירה, לנהג ולקופה.
  * · שתי הקשות מסיימות. המלל החופשי אופציונלי ולא חוסם שליחה.
  *
  * הניסוח של שתי השאלות נלקח מילה במילה מטופס שביעות הרצון של ר.שעל.
+ * המכתב יוצא בשמו של שלומי קורן, סמנכ"ל החברה, כדי שהפנייה תרגיש אישית
+ * ולא כמו טופס אוטומטי (החלטת עידן, 17/08/2026).
  */
 
 const NAVY = '#14223a';
+const BRAND = '#1f8fc4'; // הכחול מהלוגו
 
 type Phase = 'loading' | 'form' | 'sending' | 'done' | 'already' | 'notfound' | 'error';
 
@@ -73,7 +76,7 @@ function StarRow({
           onMouseEnter={() => setHover(n)}
           onMouseLeave={() => setHover(null)}
           className="flex h-14 w-14 items-center justify-center rounded-xl text-[38px] leading-none transition-transform active:scale-90"
-          style={{ color: n <= shown ? '#f0a500' : '#dbe1ea' }}
+          style={{ color: n <= shown ? '#f0a500' : '#dde3ea' }}
         >
           ★
         </button>
@@ -82,21 +85,70 @@ function StarRow({
   );
 }
 
-/** מסגרת המסמך: אותה מעטפת לכל המצבים, כדי שגם הודעת שגיאה תיראה כמו ר.שעל. */
-function Sheet({ children }: { children: React.ReactNode }) {
+/** נייר המכתבים: לוגו, שם החברה, וקו מפריד. חוזר בכל מצבי העמוד. */
+function Letterhead() {
   return (
-    <div dir="rtl" className="min-h-screen bg-[#eef1f6] px-4 py-6" style={{ fontFamily: 'Assistant, sans-serif' }}>
-      <div className="mx-auto w-full max-w-md rounded-2xl bg-white p-6 shadow-[0_6px_30px_rgba(20,34,58,0.13)]">
-        <div className="text-center">
-          <div className="text-[26px] font-extrabold tracking-wide" style={{ color: NAVY }}>
-            ר.שעל
-          </div>
-          <div className="mx-auto mt-2 h-[3px] w-full rounded" style={{ background: NAVY }} />
-          <div className="mt-2 text-[13px] text-slate-500">סקר שביעות רצון לקוחות</div>
-        </div>
-        {children}
+    <div className="text-center">
+      <img
+        src="/rashal-logo.jpg"
+        alt="ר.שעל"
+        width={124}
+        height={124}
+        className="mx-auto h-[124px] w-[124px] object-contain"
+      />
+      <div className="mt-2 text-[22px] font-extrabold tracking-wide" style={{ color: NAVY }}>
+        ר.שעל
       </div>
-      <p className="mt-4 text-center text-[11px] text-slate-400">ר.שעל ציוד רפואי</p>
+      <div className="mt-0.5 text-[12px] tracking-wide text-slate-500">שירותי עזר לנכים</div>
+      <div className="mx-auto mt-4 h-[2px] w-full rounded" style={{ background: BRAND }} />
+    </div>
+  );
+}
+
+/**
+ * בלוק החתימה.
+ *
+ * הכתב הוא Gveret Levin, פונט כתב-יד עברי אמיתי מ-Google Fonts. זו חתימה
+ * טיפוגרפית ולא סריקה של החתימה של שלומי. אם תגיע סריקה אמיתית, מחליפים
+ * את ה-<span> בתמונה ותו לא.
+ */
+function Signature() {
+  return (
+    <div className="mt-7 border-t pt-5" style={{ borderColor: '#e8edf3' }}>
+      <p className="text-[13.5px] leading-relaxed text-slate-600">בברכה,</p>
+      <div
+        className="mt-1 text-[34px] leading-none"
+        style={{ fontFamily: "'Gveret Levin', 'Assistant', cursive", color: BRAND }}
+      >
+        שלומי קורן
+      </div>
+      <p className="mt-2 text-[13px] font-semibold" style={{ color: NAVY }}>
+        שלומי קורן
+      </p>
+      <p className="text-[12.5px] text-slate-500">סמנכ"ל · ר.שעל שירותי עזר לנכים</p>
+    </div>
+  );
+}
+
+/** מסגרת המסמך: אותה מעטפת לכל המצבים, כדי שגם הודעת שגיאה תיראה כמו ר.שעל. */
+function Sheet({ children, signed = false }: { children: React.ReactNode; signed?: boolean }) {
+  return (
+    <div
+      dir="rtl"
+      className="min-h-screen px-4 py-6"
+      style={{ background: '#eef2f6', fontFamily: 'Assistant, sans-serif' }}
+    >
+      <div
+        className="mx-auto w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-[0_8px_34px_rgba(20,34,58,0.13)]"
+        style={{ borderTop: `5px solid ${BRAND}` }}
+      >
+        <div className="p-6">
+          <Letterhead />
+          {children}
+          {signed && <Signature />}
+        </div>
+      </div>
+      <p className="mt-4 text-center text-[11px] text-slate-400">ר.שעל שירותי עזר לנכים</p>
     </div>
   );
 }
@@ -124,6 +176,7 @@ export function SurveyPage() {
   // כותרת הטאב. ברירת המחדל היא "דשבורד הזמנות", וזה מה שהלקוח היה רואה
   // בלשונית ובכל שיתוף של הקישור.
   // ובנוסף noindex: הכתובת מכילה טוקן אישי, ואין שום סיבה שהיא תיכנס למנוע חיפוש.
+  // ופונט כתב היד לחתימה, שנטען רק כאן ולא בכל המערכת.
   useEffect(() => {
     document.title = 'סקר שביעות רצון · ר.שעל';
 
@@ -131,8 +184,15 @@ export function SurveyPage() {
     meta.name = 'robots';
     meta.content = 'noindex, nofollow';
     document.head.appendChild(meta);
+
+    const font = document.createElement('link');
+    font.rel = 'stylesheet';
+    font.href = 'https://fonts.googleapis.com/css2?family=Gveret+Levin&display=swap';
+    document.head.appendChild(font);
+
     return () => {
       meta.remove();
+      font.remove();
     };
   }, []);
 
@@ -192,7 +252,7 @@ export function SurveyPage() {
 
   if (phase === 'already') {
     return (
-      <Sheet>
+      <Sheet signed>
         <Message title="כבר קיבלנו את התשובה שלך" body="תודה רבה, זה עוזר לנו להשתפר." />
       </Sheet>
     );
@@ -200,8 +260,11 @@ export function SurveyPage() {
 
   if (phase === 'done') {
     return (
-      <Sheet>
-        <Message title="תודה על שיתוף הפעולה" body="התשובה שלך התקבלה, וזה עוזר לנו להשתפר." />
+      <Sheet signed>
+        <Message
+          title="תודה על שיתוף הפעולה"
+          body="התשובה שלך התקבלה ותגיע אליי אישית. אנחנו קוראים כל מילה."
+        />
       </Sheet>
     );
   }
@@ -218,15 +281,18 @@ export function SurveyPage() {
   const sending = phase === 'sending';
 
   return (
-    <Sheet>
-      {name && (
-        <p className="mt-5 text-center text-[15px] font-semibold" style={{ color: NAVY }}>
-          שלום {name},
+    <Sheet signed>
+      {/* פתיח אישי. הפנייה בגוף ראשון היא מה שהופך את זה ממשוב אוטומטי
+          לפנייה של אדם, וזו הסיבה שהוא נכתב בשמו של סמנכ"ל החברה. */}
+      <div className="mt-5 rounded-xl px-4 py-3" style={{ background: '#f4f8fb' }}>
+        <p className="text-[15px] font-bold" style={{ color: NAVY }}>
+          {name ? `${name} שלום,` : 'שלום,'}
         </p>
-      )}
-      <p className="mt-1 text-center text-[13.5px] leading-relaxed text-slate-500">
-        נשמח לשתי שאלות קצרות על האספקה שקיבלת.
-      </p>
+        <p className="mt-1.5 text-[13.5px] leading-relaxed text-slate-600">
+          ביקרנו אצלך לאחרונה מטעם ר.שעל. חשוב לי לדעת איך הרגשת עם השירות שקיבלת,
+          ולכן אשמח אם תקדיש לנו פחות מדקה ותענה על שתי שאלות קצרות.
+        </p>
+      </div>
 
       {QUESTIONS.map((question, i) => {
         const value = question.key === 'q1' ? q1 : q2;
