@@ -3,7 +3,7 @@ import { requireUser } from './_lib/require-user.js';
 import { supabaseAdmin } from './_lib/supabase-admin.js';
 import { loadThread } from './_lib/thread.js';
 import { normalizePhone } from './_lib/phone.js';
-import { OGEN_TEMPLATES, type OgenTemplateKey } from './_lib/ogen-templates.js';
+import { listActiveTemplates } from './_lib/templates-store.js';
 
 /**
  * "על מי אני עומד בפריוריטי", ואז כל השיחה איתו. קריאה אחת.
@@ -166,24 +166,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  // ⭐ המרשם מגיע מהשרת ולא מהחלונית, כדי שהוספת תבנית לא תדרוש גרסה
-  // חדשה של התוסף אצל כל עובד.
-  // 🔴 **לא מסננים לפי קטגוריה.** תבנית שיווק היא עדיין תבנית שאפשר
-  // לשלוח, והיא לפעמים היחידה שיש. מה שכן: הקטגוריה נשלחת לחלונית כדי
-  // שהיא תאמר לעובד שההודעה הזאת עולה יותר וכפופה להסכמת דיוור, במקום
-  // שהמחיר יתגלה בחשבונית.
-  const templates = (Object.keys(OGEN_TEMPLATES) as OgenTemplateKey[])
-    .map((key) => ({ key, ...OGEN_TEMPLATES[key] }))
-    .map(({ key, label, variables, preview, hasDocumentHeader, category }) => ({
-      key,
-      label,
-      variables,
-      preview,
-      category,
+  // ⭐ המחסנית מגיעה מהטבלה, לא מהקוד ולא מהחלונית. מנהל מוסיף תבנית
+  // במסך, וכל הצוות מקבל אותה בלי לעדכן גרסה של התוסף.
+  // 🔴 לא מסננים לפי קטגוריה: תבנית שיווק היא עדיין תבנית שאפשר לשלוח,
+  // והחלונית אומרת שהיא עולה יותר במקום שהמחיר יתגלה בחשבונית.
+  let templates: Array<Record<string, unknown>> = [];
+  try {
+    templates = (await listActiveTemplates()).map((t) => ({
+      key: t.key,
+      label: t.label,
+      variables: t.variables,
+      preview: t.bodyPreview,
+      category: t.category,
       // כרגע לא ניתן לשליחה: מסלול הפקת המסמך מפריוריטי טרם נבנה.
-      available: !hasDocumentHeader,
-      unavailableReason: hasDocumentHeader ? 'המסמך עדיין לא מופק מפריוריטי' : null,
+      available: !t.hasDocumentHeader,
+      unavailableReason: t.hasDocumentHeader ? 'המסמך עדיין לא מופק מפריוריטי' : null,
     }));
+  } catch (e) {
+    // 🔴 כשל בטעינת המחסנית לא מפיל את הזיהוי. החלונית עדיין שווה משהו
+    // בלי תבניות, והיא תאמר "אין תבנית זמינה" במקום להיראות שבורה.
+    console.error('[priority-context] templates failed', e);
+  }
 
   return res.status(200).json({
     ok: true,

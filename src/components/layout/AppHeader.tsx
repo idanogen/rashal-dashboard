@@ -145,7 +145,7 @@ export function AppHeader() {
             </div>
             <div className="hidden sm:block">
               <h1 className="text-lg font-bold leading-tight">דשבורד הזמנות</h1>
-              <p className="text-xs text-muted-foreground">רשעל ציוד רפואי</p>
+              <p className="text-xs text-muted-foreground">ר.שעל ציוד רפואי</p>
             </div>
           </div>
 
@@ -178,6 +178,13 @@ export function AppHeader() {
                     </NavLink>
                   </DropdownMenuItem>
                 ))}
+                {isAdmin && (
+                  <DropdownMenuItem asChild>
+                    <NavLink to="/admin/wa-templates" className="cursor-pointer">
+                      💬 תבניות וואטסאפ
+                    </NavLink>
+                  </DropdownMenuItem>
+                )}
                 {isAdmin && (
                   <DropdownMenuItem asChild>
                     <NavLink to="/admin/users" className="cursor-pointer">

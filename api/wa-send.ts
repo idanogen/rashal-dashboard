@@ -5,12 +5,11 @@ import { heyySendTemplate, heyySendText, isHeyyDemo } from './_lib/heyy-server.j
 import { toE164, normalizePhone } from './_lib/phone.js';
 import { windowState } from './_lib/thread.js';
 import {
-  OGEN_TEMPLATES,
+  getTemplate,
   buildVariables,
-  isTemplateKey,
   renderPreview,
-  type OgenTemplateKey,
-} from './_lib/ogen-templates.js';
+  type WaTemplate,
+} from './_lib/templates-store.js';
 
 /**
  * מסלול השליחה של החלונית בפריוריטי.
@@ -71,19 +70,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ ok: false, error: 'empty_body', message: 'אין מה לשלוח.' });
   }
   // ── התבנית, ואימות מלא שלה בשרת ─────────────────────────
-  let template: OgenTemplateKey | null = null;
+  let template: WaTemplate | null = null;
   let variables: Array<{ name: string; value: string }> = [];
 
   if (kind === 'template') {
-    if (!isTemplateKey(body.templateKey)) {
-      return res.status(400).json({ ok: false, error: 'no_template', message: 'לא נבחרה תבנית מוכרת.' });
+    // 🔴 המפתח מתורגם לתבנית **בשרת, מול הטבלה**. מזהה שמגיע מהדפדפן
+    // פירושו שכל מי שמחזיק טוקן יכול לשלוח כל תבנית שקיימת בחשבון של
+    // הלקוח, כולל תבניות שכובו וכולל תבניות שיווק.
+    try {
+      template = await getTemplate(String(body.templateKey ?? ''));
+    } catch (e) {
+      console.error('[wa-send] template lookup failed', e);
+      return res.status(500).json({ ok: false, error: 'server_error' });
     }
-    template = body.templateKey;
+    if (!template) {
+      return res.status(400).json({
+        ok: false,
+        error: 'no_template',
+        message: 'התבנית לא נמצאה או שכובתה.',
+      });
+    }
 
     // 🔴 תבנית עם קובץ בכותרת דורשת כתובת למסמך בכל שליחה, ומסלול הפקת
     // המסמך מפריוריטי עוד לא נבנה אצל ר.שעל. עדיף לומר את זה מפורשות
     // מאשר לשלוח תבנית שתגיע ללקוח בלי הקובץ שהיא מבטיחה.
-    if (OGEN_TEMPLATES[template].hasDocumentHeader) {
+    if (template.hasDocumentHeader) {
       return res.status(400).json({
         ok: false,
         error: 'document_not_wired',
@@ -103,38 +114,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     variables = built.variables;
   }
 
-  // ── אכיפת החלון ─────────────────────────────────────────
-  if (kind === 'text') {
-    const { data: conv, error } = await supabaseAdmin
-      .from('wa_conversations')
-      .select('last_inbound_at')
-      .eq('phone_local', local)
-      .order('last_message_at', { ascending: false, nullsFirst: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (error) {
-      console.error('[wa-send] window lookup failed', error.message);
-      return res.status(500).json({ ok: false, error: 'server_error' });
-    }
-
-    const win = windowState(conv?.last_inbound_at ?? null);
-    if (!win.open) {
-      return res.status(409).json({
-        ok: false,
-        error: 'window_closed',
-        window: win,
-        message: conv
-          ? 'החלון סגור. עברו 24 שעות מההודעה האחרונה של הלקוח, ולכן אפשר לשלוח רק תבנית מאושרת.'
-          : 'הלקוח עוד לא כתב לנו מעולם, ולכן ההודעה הראשונה חייבת להיות תבנית מאושרת.',
-      });
-    }
-  }
-
   const result =
     kind === 'text'
       ? await heyySendText(e164, body.bodyText!.trim())
-      : await heyySendTemplate(e164, OGEN_TEMPLATES[template!].id, variables);
+      : await heyySendTemplate(e164, template!.heyyTemplateId, variables);
 
   // תיעוד גם על כישלון. שליחה שנפלה בלי שורה היא שליחה שאי אפשר לחקור.
   const { data: outboundRow, error: outErr } = await supabaseAdmin
@@ -144,7 +127,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       vendor_message_id: result.vendorMessageId || null,
       phone_e164: e164,
       message_kind: kind,
-      template_id: template ? OGEN_TEMPLATES[template].id : null,
+      template_id: template ? template.heyyTemplateId : null,
       // ⭐ גם לתבנית נשמר הטקסט המלא שהלקוח קרא, ולא רק מזהה. בלעדיו
       // השרשור בדיעבד מציג "תבנית מאושרת" בלי שום מושג מה נאמר בה.
       body_text:

@@ -10,6 +10,7 @@ import { InspectionsPage } from '@/pages/InspectionsPage';
 import { RouteNavigationPage } from '@/pages/RouteNavigationPage';
 import { WhatsAppPage } from '@/pages/WhatsAppPage';
 import { AdminUsersPage } from '@/pages/AdminUsersPage';
+import { WhatsAppTemplatesPage } from '@/pages/WhatsAppTemplatesPage';
 import { DriverDashboardPage } from '@/pages/DriverDashboardPage';
 import { FeedbackPage } from '@/pages/FeedbackPage';
 import { LoginPage } from '@/pages/LoginPage';
@@ -96,6 +97,14 @@ function App() {
                         <Route path="/pickups" element={<Navigate to="/dispatch?tab=pickups" replace />} />
                         <Route path="/inspections" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><InspectionsPage /></RoleBasedRoute>} />
                         <Route path="/whatsapp" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><WhatsAppPage /></RoleBasedRoute>} />
+                        <Route
+                          path="/admin/wa-templates"
+                          element={
+                            <ProtectedAdminRoute>
+                              <WhatsAppTemplatesPage />
+                            </ProtectedAdminRoute>
+                          }
+                        />
                         <Route
                           path="/admin/users"
                           element={

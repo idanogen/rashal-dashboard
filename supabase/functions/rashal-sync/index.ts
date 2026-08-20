@@ -479,6 +479,63 @@ async function probe(): Promise<Record<string, unknown>> {
     } else out.call_status_values = `HTTP ${res.status}: ${body.slice(0, 200)}`;
   } catch (e) { out.call_status_values = String(e).slice(0, 200); }
 
+  // 3. תעודות משלוח וחשבוניות — אילו סטטוסים בכלל קיימים, ובאיזה נפח.
+  //    "פתוחה" חייב להיגזר מערך אמיתי, לא מהנחה על שם השדה.
+  for (const [entity, statusField, dateField] of [
+    ["DOCUMENTS_D", "STATDES", "CURDATE"],
+    ["AINVOICES", "STATDES", "IVDATE"],
+  ] as const) {
+    try {
+      const res = await fetch(
+        `${PRIORITY}/${entity}?$select=${statusField},${dateField}&$orderby=${dateField}%20desc&$top=1000`,
+        auth,
+      );
+      const body = await res.text();
+      if (res.ok) {
+        const counts: Record<string, number> = {};
+        for (const r of JSON.parse(body)?.value ?? []) {
+          const k = String((r as Row)[statusField] ?? "(null)");
+          counts[k] = (counts[k] ?? 0) + 1;
+        }
+        out[`${entity}_status_values`] = counts;
+      } else out[`${entity}_status_values`] = `HTTP ${res.status}: ${body.slice(0, 200)}`;
+    } catch (e) { out[`${entity}_status_values`] = String(e).slice(0, 200); }
+  }
+
+  // 4. כיסוי השדות המועמדים ל"פתוח". שדה שקיים אבל תמיד ריק מייצר כלל מת,
+  //    ולכן סופרים כיסוי לפני שבונים עליו מדד.
+  try {
+    const res = await fetch(
+      `${PRIORITY}/DOCUMENTS_D?$select=DOCNO,STATDES,IVALL,POSTPONEIV,TOTPRICE,CURDATE&$orderby=CURDATE%20desc&$top=1000`, auth);
+    const body = await res.text();
+    if (res.ok) {
+      const rows = (JSON.parse(body)?.value ?? []) as Row[];
+      const c: Record<string, number> = {};
+      for (const r of rows) {
+        const st = String(r.STATDES ?? "(null)");
+        const iv = r.IVALL === null || r.IVALL === undefined || r.IVALL === "" ? "ריק" : String(r.IVALL);
+        c[`${st} · IVALL=${iv}`] = (c[`${st} · IVALL=${iv}`] ?? 0) + 1;
+      }
+      out.documents_d_invoiced_coverage = c;
+    } else out.documents_d_invoiced_coverage = `HTTP ${res.status}: ${body.slice(0, 200)}`;
+  } catch (e) { out.documents_d_invoiced_coverage = String(e).slice(0, 200); }
+
+  try {
+    const res = await fetch(
+      `${PRIORITY}/AINVOICES?$select=IVNUM,STATDES,IVRECONDATE,FNCNUM,TOTPRICE,IVDATE&$orderby=IVDATE%20desc&$top=1000`, auth);
+    const body = await res.text();
+    if (res.ok) {
+      const rows = (JSON.parse(body)?.value ?? []) as Row[];
+      const c: Record<string, number> = {};
+      for (const r of rows) {
+        const st = String(r.STATDES ?? "(null)");
+        const rec = r.IVRECONDATE ? "מותאמת" : "לא מותאמת";
+        c[`${st} · ${rec}`] = (c[`${st} · ${rec}`] ?? 0) + 1;
+      }
+      out.ainvoices_recon_coverage = c;
+    } else out.ainvoices_recon_coverage = `HTTP ${res.status}: ${body.slice(0, 200)}`;
+  } catch (e) { out.ainvoices_recon_coverage = String(e).slice(0, 200); }
+
   return out;
 }
 
@@ -491,7 +548,10 @@ async function probeFields(): Promise<Record<string, unknown>> {
   const auth = { headers: { Authorization: basicAuth(), "User-Agent": UA, Accept: "application/json" } };
   const out: Record<string, unknown> = {};
 
-  for (const entity of ["CUSTOMERS", "ORDERS", "DOCUMENTS_Q", "DOCUMENTS_N"]) {
+  // 20/08: נוספו תעודות משלוח, חשבוניות וספר המסמכים הכספיים. הפעלת API היא
+  // פר-מסך אצל כל לקוח (במטלפרס DOCUMENTS_D החזיר 400 בזמן שמסכים אחרים
+  // עבדו), ולכן זו בדיקה ולא הנחה. רשימה קבועה, לא נתיב מהקורא.
+  for (const entity of ["CUSTOMERS", "ORDERS", "DOCUMENTS_Q", "DOCUMENTS_N", "DOCUMENTS_D", "AINVOICES", "GENINVOICES"]) {
     try {
       const res = await fetch(`${PRIORITY}/${entity}?$top=1`, auth);
       const body = await res.text();
