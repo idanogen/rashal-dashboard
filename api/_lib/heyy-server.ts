@@ -10,9 +10,36 @@ export const isHeyyDemo = HEYY_MODE !== 'real';
 
 export interface HeyyApiResult {
   ok: boolean;
+  /** מזהה ההודעה אצל heyy (`data.id`). זה מה שחוזר גם בוובהוק העדכון. */
   waMessageId?: string;
+  /** מזהה ההודעה אצל מטא (`data.vendorId`, בפורמט `wamid.*`). */
+  vendorMessageId?: string;
   status: 'pending' | 'sent' | 'delivered' | 'read' | 'failed';
   statusDetail?: string;
+}
+
+/**
+ * מחלץ את שני המזהים מתשובת heyy.
+ *
+ * 🔴 הלקח שעלה ביוקר (20/08/2026): הקוד חיפש `data.waMessageId`, **שדה
+ * שלא קיים בסכימה של heyy בכלל**. הוא החזיר תמיד undefined, נשמר כמחרוזת
+ * ריקה, וכל הודעה שיצאה מאז שהחשבון חובר נשארה `pending` לנצח. זה כלל
+ * את הודעות הסקר שאנחנו יודעים בוודאות שנמסרו ונענו.
+ *
+ * המבנה האמיתי נלמד ממטען וובהוק חי, לא מתיעוד (אין כזה):
+ *   data.id        מזהה פנימי של heyy
+ *   data.vendorId  wamid.* של מטא
+ *
+ * ההערה הישנה "waMessageId ריק אינו כישלון, heyy שולח אסינכרונית" היתה
+ * נכונה בחצי: heyy באמת שולח אסינכרונית, אבל **המזהה כן חוזר מיד**, ובלעדיו
+ * אין שום דרך לקשור עדכון מסירה להודעה. שקט נראה בדיוק כמו תקינות.
+ */
+function extractIds(json: any): { waMessageId: string; vendorMessageId: string } {
+  const d = json?.data ?? json ?? {};
+  return {
+    waMessageId: String(d.id ?? d.waMessageId ?? d.messageId ?? json?.id ?? '').trim(),
+    vendorMessageId: String(d.vendorId ?? d.vendorMessageId ?? '').trim(),
+  };
 }
 
 interface HeyyApiResponse {
@@ -48,17 +75,24 @@ export async function heyySendText(phoneE164: string, body: string): Promise<Hey
       const errMsg = typeof json.error === 'string' ? json.error : json.error?.message ?? json.message ?? `HTTP ${res.status}`;
       return { ok: false, status: 'failed', statusDetail: errMsg };
     }
-    // waMessageId ריק אינו כישלון — heyy שולח אסינכרונית ומחזיר PENDING.
     // דחייה אמיתית (למשל חלון 24 השעות סגור) מגיעה ב-errors[].
-    const j = json as HeyyApiResponse & { data?: { waMessageId?: string; status?: string; errors?: unknown[] } };
+    const j = json as any;
     const rejected = j.data?.errors;
     if (Array.isArray(rejected) && rejected.length) {
       return { ok: false, status: 'failed', statusDetail: `heyy rejected: ${JSON.stringify(rejected).slice(0, 300)}` };
     }
-    const waMessageId = j.data?.waMessageId ?? j.waMessageId ?? '';
+    const { waMessageId, vendorMessageId } = extractIds(j);
     const rawStatus = (j.data?.status ?? j.status ?? 'PENDING').toString().toLowerCase();
     const status: HeyyApiResult['status'] = rawStatus === 'pending' ? 'pending' : (rawStatus as HeyyApiResult['status']);
-    return { ok: true, waMessageId, status };
+    // 🔴 בלי מזהה אין מעקב מסירה. שומרים את התשובה הגולמית כדי שהמקרה
+    // יהיה גלוי בשורה עצמה ולא ייעלם בשקט כמו שקרה עד היום.
+    return {
+      ok: true,
+      waMessageId,
+      vendorMessageId,
+      status,
+      statusDetail: waMessageId ? undefined : `אין מזהה בתשובת heyy: ${JSON.stringify(json).slice(0, 300)}`,
+    };
   } catch (err) {
     return { ok: false, status: 'failed', statusDetail: err instanceof Error ? err.message : 'unknown error' };
   }
@@ -117,17 +151,23 @@ export async function heyySendTemplate(
       return { ok: false, status: 'failed', statusDetail: errMsg };
     }
 
-    // דחייה אמיתית מגיעה ב-errors[], לא בהיעדר waMessageId.
+    // דחייה אמיתית מגיעה ב-errors[], לא בהיעדר מזהה.
     const rejected = json.data?.errors;
     if (Array.isArray(rejected) && rejected.length) {
       return { ok: false, status: 'failed', statusDetail: `heyy rejected: ${JSON.stringify(rejected).slice(0, 300)}` };
     }
 
-    const waMessageId = json.data?.waMessageId ?? json.waMessageId ?? '';
+    const { waMessageId, vendorMessageId } = extractIds(json);
     const rawStatus = (json.data?.status ?? json.status ?? 'PENDING').toString().toLowerCase();
     // PENDING = התקבל לשליחה. הסטטוס הסופי מגיע מאוחר יותר דרך webhook.
     const status: HeyyApiResult['status'] = rawStatus === 'pending' ? 'pending' : (rawStatus as HeyyApiResult['status']);
-    return { ok: true, waMessageId, status, statusDetail: waMessageId ? undefined : 'accepted by heyy (async dispatch)' };
+    return {
+      ok: true,
+      waMessageId,
+      vendorMessageId,
+      status,
+      statusDetail: waMessageId ? undefined : `אין מזהה בתשובת heyy: ${JSON.stringify(json).slice(0, 300)}`,
+    };
   } catch (err) {
     return { ok: false, status: 'failed', statusDetail: err instanceof Error ? err.message : 'unknown error' };
   }

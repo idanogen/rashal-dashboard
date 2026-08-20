@@ -75,7 +75,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { data: outboundRow, error: outboundErr } = await supabaseAdmin
     .from('whatsapp_outbound')
     .insert({
-      wa_message_id: result.waMessageId ?? null,
+      // מחרוזת ריקה אינה מזהה. NULL הוא, כי הוא לא מתחזה להתאמה אפשרית.
+      wa_message_id: result.waMessageId || null,
+      vendor_message_id: result.vendorMessageId || null,
       phone_e164: e164,
       message_kind: body.kind,
       template_id: body.kind === 'template' ? body.templateId : null,
