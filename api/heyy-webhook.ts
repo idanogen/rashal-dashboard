@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabaseAdmin } from './_lib/supabase-admin.js';
 import { extractMessage, parseCustomerReply } from './_lib/extract.js';
 import { normalizePhone, toE164 } from './_lib/phone.js';
+import { recordToThread } from './_lib/wa-thread.js';
 
 /**
  * מקלט הוובהוקים של heyy.
@@ -140,6 +141,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   };
 
   const vendorMessageId = pick(payload, ['data.vendorId', 'data.vendorMessageId', 'vendorId']);
+
+  // ⭐ שכבת השיחות נכתבת מכאן, ומכאן בלבד, לכל שלושת האירועים.
+  // כך גם הודעה שעובד הקליד ידנית בממשק של heyy נוחתת בשרשור.
+  // הקריאה אידמפוטנטית לפי מזהה ההודעה, ולכן עדכון חוזר לא מכפיל.
+  // כישלון כאן לא מפיל את הטיפול: השכבה הישנה עדיין נכתבת למטה.
+  if (payload?.data) {
+    const thread = await recordToThread(payload.data);
+    if (!thread.ok) console.error('[heyy-webhook] thread record failed:', thread.error);
+  }
 
   if (route === 'status') {
     return handleStatus(payload, waMessageId, vendorMessageId, finish);
