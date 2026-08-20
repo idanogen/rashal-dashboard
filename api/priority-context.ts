@@ -178,9 +178,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       variables: t.variables,
       preview: t.bodyPreview,
       category: t.category,
-      // כרגע לא ניתן לשליחה: מסלול הפקת המסמך מפריוריטי טרם נבנה.
-      available: !t.hasDocumentHeader,
-      unavailableReason: t.hasDocumentHeader ? 'המסמך עדיין לא מופק מפריוריטי' : null,
+      // ⭐ מדיה **קבועה** (סרטון הדרכה) נשלחת כמו שהיא, כי הקובץ כבר
+      // ב-heyy. 🔴 מדיה **פר נמען** חסומה, כי הקובץ ששמור בתבנית הוא
+      // תעודת הדוגמה שהוגשה למטא, ושליחתה ללקוח אמיתי הייתה תקלה חמורה.
+      available: !t.mediaPerMessage,
+      unavailableReason: t.mediaPerMessage ? 'המסמך עדיין לא מופק מפריוריטי' : null,
     }));
   } catch (e) {
     // 🔴 כשל בטעינת המחסנית לא מפיל את הזיהוי. החלונית עדיין שווה משהו

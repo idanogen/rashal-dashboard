@@ -140,6 +140,7 @@ async function handleGet(res: VercelResponse) {
     pickups_since: odataTs(pickups),
     delivery_notes_since: odataTs(notes),
     invoices_since: odataTs(invoicesFrom),
+    cinvoices_since: odataTs(invoicesFrom),
   });
 }
 
@@ -768,7 +769,7 @@ async function upsertPickups(rows: Row[], backfill = false) {
 // ---------------------------------------------------------------------------
 async function upsertDocs(
   rows: Row[],
-  table: 'delivery_notes' | 'invoices',
+  table: 'delivery_notes' | 'invoices' | 'consolidated_invoices',
   keyCol: 'priority_doc_id' | 'priority_iv_id',
   map: (r: Row) => Row,
   wmField: string,
@@ -826,6 +827,28 @@ const mapDeliveryNote = (r: Row): Row => ({
   priority_udate: s(r.UDATE),
 });
 
+// חשבונית מרכזת. אצל ר.שעל זהו מקור החיוב בפועל: 2,998 ב-2026 מול 54 ב-AINVOICES.
+// 🔴 גם כאן אין UDATE, ולכן המשיכה השוטפת היא חלון חוזר ולא ווטרמרק.
+const mapCInvoice = (r: Row): Row => ({
+  priority_iv_id: s(r.IVNUM),
+  doc_no: s(r.DOCNO),
+  customer_number: s(r.CUSTNAME),
+  customer_name: s(r.CDES),
+  invoice_date: s(r.IVDATE),
+  status: s(r.STATDES),
+  source_order: s(r.ORDNAME),
+  agent: s(r.AGENTNAME),
+  book_num: s(r.BOOKNUM),
+  fnc_num: s(r.FNCNUM),
+  recon_date: s(r.IVRECONDATE),
+  debit: s(r.DEBIT),
+  iv_type: s(r.IVTYPE),
+  vat: num(r.VAT),
+  total_price: num(r.TOTPRICE),
+  total_qty: num(r.TOTQUANT),
+  is_final: s(r.FINAL),
+});
+
 const mapInvoice = (r: Row): Row => ({
   priority_iv_id: s(r.IVNUM),
   customer_number: s(r.CUSTNAME),
@@ -870,6 +893,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (kind === 'delivery_notes') {
         return res.status(200).json(await upsertDocs(
           rows, 'delivery_notes', 'priority_doc_id', mapDeliveryNote, 'UDATE', 'delivery_notes', backfill));
+      }
+      if (kind === 'cinvoices') {
+        return res.status(200).json(await upsertDocs(
+          rows, 'consolidated_invoices', 'priority_iv_id', mapCInvoice, 'IVDATE', 'cinvoices', backfill));
       }
       if (kind === 'invoices') {
         return res.status(200).json(await upsertDocs(

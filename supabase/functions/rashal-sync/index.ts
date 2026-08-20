@@ -88,6 +88,11 @@ const Q = {
   invoices: (since: string) =>
     `/AINVOICES?$select=IVNUM,CUSTNAME,CDES,IVDATE,STATDES,ORDNAME,AGENTNAME,BOOKNUM,FNCNUM,IVRECONDATE,DEBIT,IVTYPE,VAT,TOTPRICE` +
     `&$filter=${encodeURIComponent(`IVDATE ge ${since}`)}&$orderby=IVDATE%20asc&$top=4000`,
+  // חשבונית מרכזת — מקור החיוב האמיתי אצל ר.שעל. אין UDATE, ולכן ה-since
+  // מגיע מה-inbox כחלון חוזר ולא כווטרמרק שמתקדם.
+  cinvoices: (since: string) =>
+    `/CINVOICES?$select=IVNUM,DOCNO,CUSTNAME,CDES,IVDATE,STATDES,ORDNAME,AGENTNAME,BOOKNUM,FNCNUM,IVRECONDATE,DEBIT,IVTYPE,VAT,TOTPRICE,TOTQUANT,FINAL` +
+    `&$filter=${encodeURIComponent(`IVDATE ge ${since}`)}&$orderby=IVDATE%20asc&$top=4000`,
   pickups_addresses: (since: string) =>
     `/DOCUMENTS_N?$select=DOCNO,DOC,CUSTNAME,CDES,CURDATE,STATDES,ORDNAME,ODOCNO,REFERENCE,TOWARHSDES,AGENTNAME,OWNERLOGIN,TOTQUANT,TOTPRICE,UDATE` +
     `&$expand=${encodeURIComponent("DOCUMENTS_DCONT_SUBFORM($select=ADRS,STATE,PHONE,FAX)")}` +
@@ -151,6 +156,14 @@ const BACKFILL_Q: Record<string, { kind: string; url: (f: string, t: string) => 
     kind: "invoices",
     url: (f, t) =>
       `/AINVOICES?$select=IVNUM,CUSTNAME,CDES,IVDATE,STATDES,ORDNAME,AGENTNAME,BOOKNUM,FNCNUM,IVRECONDATE,DEBIT,IVTYPE,VAT,TOTPRICE` +
+      `&$filter=${encodeURIComponent(`IVDATE ge ${f} and IVDATE lt ${t}`)}` +
+      `&$orderby=IVDATE%20asc&$top=4000`,
+  },
+  // חשבונית מרכזת. אצל ר.שעל זה מקור החיוב העיקרי, לא AINVOICES (עידן, 20/08).
+  cinvoices: {
+    kind: "cinvoices",
+    url: (f, t) =>
+      `/CINVOICES?$select=IVNUM,DOCNO,CUSTNAME,CDES,IVDATE,STATDES,ORDNAME,AGENTNAME,BOOKNUM,FNCNUM,IVRECONDATE,DEBIT,IVTYPE,VAT,TOTPRICE,TOTQUANT,FINAL` +
       `&$filter=${encodeURIComponent(`IVDATE ge ${f} and IVDATE lt ${t}`)}` +
       `&$orderby=IVDATE%20asc&$top=4000`,
   },
@@ -218,6 +231,7 @@ const JOBS: Record<string, Step[]> = {
   "pull-docs": [
     { entity: "delivery_notes", kind: "delivery_notes", buildUrl: (w) => w.delivery_notes_since ? Q.delivery_notes(w.delivery_notes_since) : null },
     { entity: "invoices", kind: "invoices", buildUrl: (w) => w.invoices_since ? Q.invoices(w.invoices_since) : null },
+    { entity: "cinvoices", kind: "cinvoices", buildUrl: (w) => w.cinvoices_since ? Q.cinvoices(w.cinvoices_since) : null },
   ],
   "pull-pickup-addresses": [
     { entity: "pickups_addresses", kind: "pickups", buildUrl: () => Q.pickups_addresses(rolling3Days()) },
@@ -513,6 +527,7 @@ async function probe(): Promise<Record<string, unknown>> {
   for (const [entity, statusField, dateField] of [
     ["DOCUMENTS_D", "STATDES", "CURDATE"],
     ["AINVOICES", "STATDES", "IVDATE"],
+    ["CINVOICES", "STATDES", "IVDATE"],
   ] as const) {
     try {
       const res = await fetch(
@@ -580,7 +595,7 @@ async function probeFields(): Promise<Record<string, unknown>> {
   // 20/08: נוספו תעודות משלוח, חשבוניות וספר המסמכים הכספיים. הפעלת API היא
   // פר-מסך אצל כל לקוח (במטלפרס DOCUMENTS_D החזיר 400 בזמן שמסכים אחרים
   // עבדו), ולכן זו בדיקה ולא הנחה. רשימה קבועה, לא נתיב מהקורא.
-  for (const entity of ["CUSTOMERS", "ORDERS", "DOCUMENTS_Q", "DOCUMENTS_N", "DOCUMENTS_D", "AINVOICES", "GENINVOICES"]) {
+  for (const entity of ["CUSTOMERS", "ORDERS", "DOCUMENTS_Q", "DOCUMENTS_N", "DOCUMENTS_D", "AINVOICES", "GENINVOICES", "CINVOICES", "TINVOICES"]) {
     try {
       const res = await fetch(`${PRIORITY}/${entity}?$top=1`, auth);
       const body = await res.text();

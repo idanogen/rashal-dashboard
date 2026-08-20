@@ -1,21 +1,20 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
 import { toast } from 'sonner';
 
 /**
  * מחסנית התבניות: מה שהצוות יכול לשלוח מהחלונית שבתוך הפריוריטי.
  *
- * ⭐ הסיבה שהמסך הזה קיים: המחסנית הייתה כתובה בקוד, ולכן תבנית חדשה
- * דרשה פריסה. **ל-heyy אין API לתבניות**, אז ממילא אי אפשר למשוך את
- * הרשימה משם. כאן מוסיפים שורה, וכל הצוות מקבל אותה מיד.
+ * ⭐ **המסך הזה הוא מראה של heyy, לא טופס הזנה.** הנוסח, המשתנים,
+ * הקטגוריה והסטטוס מגיעים מ-`POST /v3/message_templates/search`, כי שם
+ * הם נקבעו ושם מטא אישרה אותם. הקלדה ידנית של נוסח פירושה שני נוסחים
+ * שיתפצלו, והלקוח יקבל את זה שאנחנו לא רואים.
  *
- * 🔴 **המשתנים לא מוזנים בנפרד.** הם נגזרים מהנוסח, כאן ובשרת, ולכן אי
- * אפשר שיתפצלו ממנו. משתנה שנכתב בשם אחר מזה שבעורך של heyy מגיע ללקוח
- * כערך ריק, בלי שום שגיאה בדרך.
+ * מה שכן נקבע כאן: **התווית** שהעובד רואה, **אם התבנית מוצעת לצוות**,
+ * הסדר, וההערה.
  */
 
 interface Template {
@@ -25,34 +24,15 @@ interface Template {
   label: string;
   category: 'utility' | 'marketing';
   body_preview: string;
-  has_document_header: boolean;
+  variables: string[] | null;
+  attachment_kind: string | null;
+  attachment_file_id: string | null;
+  media_per_message: boolean;
+  heyy_status: string | null;
   active: boolean;
   sort_order: number;
   notes: string | null;
-  variables: string[];
-}
-
-const EMPTY: Template = {
-  key: '',
-  heyy_template_id: '',
-  name: '',
-  label: '',
-  category: 'utility',
-  body_preview: '',
-  has_document_header: false,
-  active: true,
-  sort_order: 100,
-  notes: null,
-  variables: [],
-};
-
-/** אותה נוסחה שבשרת. שם המשתנה בין שני זוגות סוגריים מסולסלים. */
-function variablesOf(body: string): string[] {
-  const seen: string[] = [];
-  for (const m of String(body ?? '').matchAll(/\{\{(\w+)\}\}/g)) {
-    if (!seen.includes(m[1])) seen.push(m[1]);
-  }
-  return seen;
+  synced_at: string | null;
 }
 
 async function call(method: 'GET' | 'POST', body?: unknown) {
@@ -71,11 +51,29 @@ async function call(method: 'GET' | 'POST', body?: unknown) {
   return json;
 }
 
+const ATTACHMENT_LABEL: Record<string, string> = {
+  document: 'מסמך',
+  video: 'סרטון',
+  image: 'תמונה',
+  audio: 'אודיו',
+  button: 'כפתור',
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  active: 'מאושרת',
+  in_review: 'בבדיקה',
+  rejected: 'נדחתה',
+  unavailable: 'לא זמינה',
+  missing: 'נמחקה מ-heyy',
+};
+
 export function WhatsAppTemplatesPage() {
   const [rows, setRows] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
-  const [draft, setDraft] = useState<Template>(EMPTY);
-  const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [labelDraft, setLabelDraft] = useState('');
+  const [notesDraft, setNotesDraft] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -93,19 +91,20 @@ export function WhatsAppTemplatesPage() {
     void load();
   }, [load]);
 
-  const draftVars = useMemo(() => variablesOf(draft.body_preview), [draft.body_preview]);
-
-  async function save() {
-    setSaving(true);
+  async function sync() {
+    setSyncing(true);
     try {
-      await call('POST', { action: 'save', ...draft });
-      toast.success(`התבנית "${draft.label}" נשמרה`);
-      setDraft(EMPTY);
+      const r = await call('POST', { action: 'sync' });
+      const parts: string[] = [];
+      if (r.added?.length) parts.push(`${r.added.length} חדשות`);
+      if (r.updated?.length) parts.push(`${r.updated.length} עודכנו`);
+      if (r.missing?.length) parts.push(`${r.missing.length} כבר לא ב-heyy`);
+      toast.success(parts.length ? parts.join(' · ') : 'אין שינוי');
       await load();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'השמירה נכשלה');
+      toast.error(e instanceof Error ? e.message : 'הסנכרון נכשל');
     } finally {
-      setSaving(false);
+      setSyncing(false);
     }
   }
 
@@ -118,186 +117,146 @@ export function WhatsAppTemplatesPage() {
     }
   }
 
+  async function saveEdit(t: Template) {
+    try {
+      await call('POST', { action: 'update', key: t.key, label: labelDraft, notes: notesDraft });
+      setEditing(null);
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'השמירה נכשלה');
+    }
+  }
+
   return (
     <div className="space-y-6 p-4 md:p-6" dir="rtl">
-      <div>
-        <h1 className="text-2xl font-semibold">תבניות וואטסאפ</h1>
-        <p className="text-muted-foreground mt-1 text-sm">
-          מה שהצוות יכול לשלוח מהחלונית שבתוך הפריוריטי. תבנית חדשה נכנסת לשימוש מיד,
-          בלי עדכון גרסה של התוסף.
-        </p>
-      </div>
-
-      {/* ── הרשימה ─────────────────────────────────────── */}
-      <div className="space-y-3">
-        {loading && <div className="text-muted-foreground text-sm">טוען…</div>}
-        {!loading && rows.length === 0 && (
-          <div className="text-muted-foreground text-sm">אין עדיין תבניות.</div>
-        )}
-        {rows.map((t) => (
-          <Card key={t.key} className={`p-4 ${t.active ? '' : 'opacity-60'}`}>
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-semibold">{t.label}</span>
-                  <span className="text-muted-foreground text-xs" dir="ltr">
-                    {t.name}
-                  </span>
-                  {t.category === 'marketing' && (
-                    // 🔴 שיווק עולה יותר וכפוף להסכמת הנמען. זה חייב להיות גלוי.
-                    <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
-                      שיווק · עולה יותר
-                    </span>
-                  )}
-                  {t.has_document_header && (
-                    <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
-                      נושאת קובץ
-                    </span>
-                  )}
-                  {!t.active && (
-                    <span className="rounded bg-slate-200 px-2 py-0.5 text-xs text-slate-700">כבויה</span>
-                  )}
-                </div>
-                <pre className="mt-2 whitespace-pre-wrap rounded bg-[#dcf8c6] p-3 text-sm leading-relaxed">
-                  {t.body_preview}
-                </pre>
-                <div className="text-muted-foreground mt-2 text-xs">
-                  משתנים: {t.variables.length ? t.variables.join(' · ') : 'אין'}
-                </div>
-                {t.notes && <div className="text-muted-foreground mt-1 text-xs">{t.notes}</div>}
-              </div>
-              <div className="flex shrink-0 gap-2">
-                <Button variant="outline" size="sm" onClick={() => setDraft(t)}>
-                  ערוך
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => void toggle(t)}>
-                  {t.active ? 'כבה' : 'הפעל'}
-                </Button>
-              </div>
-            </div>
-          </Card>
-        ))}
-      </div>
-
-      {/* ── הוספה ועריכה ───────────────────────────────── */}
-      <Card className="space-y-4 p-4">
-        <h2 className="font-semibold">{rows.some((r) => r.key === draft.key) ? 'עריכת תבנית' : 'תבנית חדשה'}</h2>
-
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
-            <Label htmlFor="label">מה העובד רואה</Label>
-            <Input
-              id="label"
-              value={draft.label}
-              onChange={(e) => setDraft({ ...draft, label: e.target.value })}
-              placeholder="תיאום משלוח"
-            />
-          </div>
-          <div>
-            <Label htmlFor="key">מפתח פנימי</Label>
-            <Input
-              id="key"
-              dir="ltr"
-              value={draft.key}
-              onChange={(e) => setDraft({ ...draft, key: e.target.value })}
-              placeholder="delivery_coordination"
-            />
-          </div>
-          <div>
-            <Label htmlFor="name">שם התבנית ב-heyy</Label>
-            <Input
-              id="name"
-              dir="ltr"
-              value={draft.name}
-              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-              placeholder="ogen_delivery_coordination"
-            />
-          </div>
-          <div>
-            <Label htmlFor="hid">מזהה התבנית ב-heyy</Label>
-            <Input
-              id="hid"
-              dir="ltr"
-              value={draft.heyy_template_id}
-              onChange={(e) => setDraft({ ...draft, heyy_template_id: e.target.value })}
-              placeholder="00000000-0000-0000-0000-000000000000"
-            />
-            <p className="text-muted-foreground mt-1 text-xs">
-              נשלף מכתובת הדפדפן של דף התבנית ב-heyy. אין להם ממשק אחר להוצאת המזהה.
-            </p>
-          </div>
-        </div>
-
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Label htmlFor="body">הנוסח, בדיוק כפי שאושר במטא</Label>
-          <textarea
-            id="body"
-            className="border-input mt-1 min-h-28 w-full rounded-md border bg-transparent p-3 text-sm"
-            value={draft.body_preview}
-            onChange={(e) => setDraft({ ...draft, body_preview: e.target.value })}
-            placeholder={'שלום {{customer_name}}, תיאמנו משלוח ליום {{date}}.'}
-          />
-          <p className="text-muted-foreground mt-1 text-xs">
-            כל משתנה נכתב כך: <span dir="ltr">{'{{שם_המשתנה}}'}</span>, ובאותו שם בדיוק
-            כמו בעורך של heyy. שם שונה מגיע ללקוח כערך ריק, בלי שום שגיאה.
+          <h1 className="text-2xl font-semibold">תבניות וואטסאפ</h1>
+          <p className="text-muted-foreground mt-1 max-w-2xl text-sm">
+            מה שהצוות יכול לשלוח מהחלונית שבתוך הפריוריטי. הנוסח והמשתנים מגיעים מ-heyy
+            ולא נערכים כאן. מה שנקבע כאן: איך התבנית נקראת אצל העובד, ואם היא מוצעת לו.
           </p>
-          <div className="mt-2 text-xs">
-            <span className="text-muted-foreground">משתנים שזוהו: </span>
-            {draftVars.length ? (
-              <span dir="ltr">{draftVars.join(' · ')}</span>
-            ) : (
-              <span className="text-amber-700">אין. תבנית בלי משתנה לא תדע למי היא פונה.</span>
-            )}
-          </div>
         </div>
+        <Button onClick={() => void sync()} disabled={syncing}>
+          {syncing ? 'מסנכרן…' : 'סנכרן מ-heyy'}
+        </Button>
+      </div>
 
-        <div className="flex flex-wrap items-center gap-6">
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={draft.category === 'marketing'}
-              onChange={(e) => setDraft({ ...draft, category: e.target.checked ? 'marketing' : 'utility' })}
-            />
-            מטא סיווגה כשיווק
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={draft.has_document_header}
-              onChange={(e) => setDraft({ ...draft, has_document_header: e.target.checked })}
-            />
-            נושאת קובץ בכותרת
-          </label>
-          <div className="flex items-center gap-2 text-sm">
-            <Label htmlFor="sort" className="whitespace-nowrap">
-              סדר
-            </Label>
-            <Input
-              id="sort"
-              className="w-20"
-              type="number"
-              value={draft.sort_order}
-              onChange={(e) => setDraft({ ...draft, sort_order: Number(e.target.value) })}
-            />
-          </div>
+      {loading && <div className="text-muted-foreground text-sm">טוען…</div>}
+      {!loading && rows.length === 0 && (
+        <div className="text-muted-foreground text-sm">
+          אין עדיין תבניות. לחץ על "סנכרן מ-heyy".
         </div>
+      )}
 
-        <p className="text-muted-foreground text-xs">
-          🔴 הקטגוריה היא זו שמטא <strong>קבעה אחרי האישור</strong>, לא זו שהוגשה. תבנית
-          שסווגה שיווק עולה יותר, כפופה להסכמת הנמען, ולא תגיע ללקוח שביקש לא לקבל דיוור.
-        </p>
+      <div className="space-y-3">
+        {rows.map((t) => {
+          const vars = t.variables ?? [];
+          const isEditing = editing === t.key;
+          return (
+            <Card key={t.key} className={`p-4 ${t.active ? '' : 'opacity-70'}`}>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {isEditing ? (
+                      <Input
+                        className="h-8 w-56"
+                        value={labelDraft}
+                        onChange={(e) => setLabelDraft(e.target.value)}
+                        placeholder="איך זה נקרא אצל העובד"
+                      />
+                    ) : (
+                      <span className="font-semibold">{t.label}</span>
+                    )}
+                    <span className="text-muted-foreground text-xs" dir="ltr">
+                      {t.name}
+                    </span>
 
-        <div className="flex gap-2">
-          <Button onClick={() => void save()} disabled={saving}>
-            {saving ? 'שומר…' : 'שמור'}
-          </Button>
-          {draft.key && (
-            <Button variant="outline" onClick={() => setDraft(EMPTY)}>
-              נקה
-            </Button>
-          )}
-        </div>
-      </Card>
+                    {t.active ? (
+                      <span className="rounded bg-green-100 px-2 py-0.5 text-xs text-green-800">
+                        מוצעת לצוות
+                      </span>
+                    ) : (
+                      <span className="rounded bg-slate-200 px-2 py-0.5 text-xs text-slate-700">
+                        לא מוצעת
+                      </span>
+                    )}
+
+                    {/* 🔴 שיווק עולה יותר וכפוף להסכמת הנמען. גלוי תמיד. */}
+                    {t.category === 'marketing' && (
+                      <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
+                        שיווק · עולה יותר
+                      </span>
+                    )}
+                    {t.attachment_kind && (
+                      <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
+                        {ATTACHMENT_LABEL[t.attachment_kind] ?? t.attachment_kind}
+                        {t.media_per_message && ' · משתנה פר לקוח'}
+                      </span>
+                    )}
+                    {t.heyy_status && t.heyy_status !== 'active' && (
+                      <span className="rounded bg-red-100 px-2 py-0.5 text-xs text-red-800">
+                        {STATUS_LABEL[t.heyy_status] ?? t.heyy_status}
+                      </span>
+                    )}
+                  </div>
+
+                  <pre className="mt-2 whitespace-pre-wrap rounded bg-[#dcf8c6] p-3 text-sm leading-relaxed">
+                    {t.body_preview || '(אין גוף טקסט)'}
+                  </pre>
+
+                  <div className="text-muted-foreground mt-2 text-xs">
+                    משתנים: {vars.length ? <span dir="ltr">{vars.join(' · ')}</span> : 'אין'}
+                  </div>
+
+                  {isEditing ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <Input
+                        className="h-8 flex-1"
+                        value={notesDraft}
+                        onChange={(e) => setNotesDraft(e.target.value)}
+                        placeholder="הערה, למשל למה היא לא מוצעת"
+                      />
+                      <Button size="sm" onClick={() => void saveEdit(t)}>
+                        שמור
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setEditing(null)}>
+                        בטל
+                      </Button>
+                    </div>
+                  ) : (
+                    t.notes && <div className="text-muted-foreground mt-1 text-xs">{t.notes}</div>
+                  )}
+                </div>
+
+                {!isEditing && (
+                  <div className="flex shrink-0 gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setEditing(t.key);
+                        setLabelDraft(t.label);
+                        setNotesDraft(t.notes ?? '');
+                      }}
+                    >
+                      ערוך
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => void toggle(t)}>
+                      {t.active ? 'הסר מהצוות' : 'הצע לצוות'}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+
+      <p className="text-muted-foreground text-xs">
+        🔴 הקטגוריה היא זו שמטא <strong>קבעה אחרי האישור</strong>, לא זו שהוגשה. תבנית
+        שסווגה שיווק עולה יותר, כפופה להסכמת הנמען, ולא תגיע ללקוח שביקש לא לקבל דיוור.
+      </p>
     </div>
   );
 }

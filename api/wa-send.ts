@@ -1,7 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireUser } from './_lib/require-user.js';
 import { supabaseAdmin } from './_lib/supabase-admin.js';
-import { heyySendTemplate, heyySendText, isHeyyDemo } from './_lib/heyy-server.js';
+import { heyySendText, isHeyyDemo } from './_lib/heyy-server.js';
+import { sendTemplate as sendTemplateV3 } from './_lib/heyy-v3.js';
 import { toE164, normalizePhone } from './_lib/phone.js';
 import { windowState } from './_lib/thread.js';
 import {
@@ -71,7 +72,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   // ── התבנית, ואימות מלא שלה בשרת ─────────────────────────
   let template: WaTemplate | null = null;
-  let variables: Array<{ name: string; value: string }> = [];
+  let variables: Record<string, string> = {};
 
   if (kind === 'template') {
     // 🔴 המפתח מתורגם לתבנית **בשרת, מול הטבלה**. מזהה שמגיע מהדפדפן
@@ -91,10 +92,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // 🔴 תבנית עם קובץ בכותרת דורשת כתובת למסמך בכל שליחה, ומסלול הפקת
-    // המסמך מפריוריטי עוד לא נבנה אצל ר.שעל. עדיף לומר את זה מפורשות
-    // מאשר לשלוח תבנית שתגיע ללקוח בלי הקובץ שהיא מבטיחה.
-    if (template.hasDocumentHeader) {
+    // 🔴 תבנית שהמדיה בה משתנה פר לקוח (המסמך מפריוריטי) דורשת קובץ
+    // חדש בכל שליחה, ומסלול ההפקה עוד לא נבנה. עדיף לומר את זה מפורשות
+    // מאשר לשלוח תבנית שמבטיחה מסמך ומגיעה בלעדיו.
+    // ⭐ מדיה **קבועה** (סרטון הדרכה) נשלחת כמו שהיא: הקובץ כבר ב-heyy.
+    if (template.mediaPerMessage) {
       return res.status(400).json({
         ok: false,
         error: 'document_not_wired',
@@ -114,10 +116,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     variables = built.variables;
   }
 
+  // 🔴 שני מסלולים ושתי גרסאות API. טקסט חופשי נשאר על v2.0 שעובד,
+  // ותבנית עוברת ב-v3 כי רק שם אפשר לצרף מדיה.
   const result =
     kind === 'text'
       ? await heyySendText(e164, body.bodyText!.trim())
-      : await heyySendTemplate(e164, template!.heyyTemplateId, variables);
+      : await (async () => {
+          const t = template!;
+          const attach =
+            t.attachmentId && t.attachmentFileId && t.attachmentKind !== 'button' && !t.mediaPerMessage
+              ? [{ id: t.attachmentId, fileId: t.attachmentFileId }]
+              : undefined;
+          const r = await sendTemplateV3({
+            phoneE164: e164,
+            templateId: t.heyyTemplateId,
+            variables,
+            attachments: attach,
+          });
+          return {
+            ok: r.ok,
+            waMessageId: r.messageId,
+            vendorMessageId: r.vendorMessageId,
+            status: r.status,
+            statusDetail: r.detail,
+          };
+        })();
 
   // תיעוד גם על כישלון. שליחה שנפלה בלי שורה היא שליחה שאי אפשר לחקור.
   const { data: outboundRow, error: outErr } = await supabaseAdmin

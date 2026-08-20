@@ -3,6 +3,8 @@
 // כל מה שתלוי בנתוני סקר (CSAT/NPS/דירוגים) אינו כאן — הוא ממתין למנוע הסקרים.
 import type { Order } from '@/types/order';
 import type { ServiceCall } from '@/types/service-call';
+import type { DeliveryNote, ConsolidatedInvoice } from '@/types/document';
+import { CINVOICE_NOT_SENT } from '@/types/document';
 import type { Pickup } from '@/types/pickup';
 import type { CalendarStop } from '@/types/calendar-stop';
 import { getZoneForCity, getZoneById, REGION_LABELS } from '@/types/zone';
@@ -30,6 +32,10 @@ function real<T extends { duplicateOf?: string }>(rows: T[]): T[] {
 export interface KpiBlock {
   deliveries: { todayPlanned: number; todayDone: number; late: number; slaPct: number; avgDays: number | null };
   service: { open: number; doneThisMonth: number; avgCloseHours: number | null };
+  docs: {
+    notesOpen: number; notesClosedThisMonth: number; notesOldestOpenDays: number | null;
+    invoicesNotSent: number; invoicesSent: number; invoicesTotal: number;
+  };
   pickups: { waiting: number; collected: number; cancelled: number; donePct: number };
 }
 
@@ -40,6 +46,7 @@ export interface NamedCount { name: string; value: number }
 export interface ManagementMetrics {
   kpi: KpiBlock;
   serviceByDay: Series[];      // פתוחות (נפתחו) מול נסגרו, 14 יום
+  docsByMonth: Series[];       // תעודות משלוח: נפתחו מול נסגרו, 6 חודשים
   ordersByMonth: Series[];     // הוזמנו מול סופקו, 6 חודשים
   pickupFunnel: FunnelStep[];  // ממתין → תואם → נאסף
   callsByTechnician: NamedCount[];
@@ -52,6 +59,8 @@ export function computeManagementMetrics(
   serviceCalls: ServiceCall[],
   pickups: Pickup[],
   stops: CalendarStop[],
+  notes: DeliveryNote[] = [],
+  invoices: ConsolidatedInvoice[] = [],
 ): ManagementMetrics {
   const o = real(orders);
   const sc = real(serviceCalls);
@@ -188,6 +197,45 @@ export function computeManagementMetrics(
     .map(([name, value]) => ({ name, value }))
     .sort((a, b) => b.value - a.value);
 
+  // ---- KPI: מסמכים כספיים ----
+  // "פתוח" = טיוטא. המסמך נפתח בפריוריטי ומעולם לא נסגר סופית.
+  const openNotes = notes.filter((n) => n.status === 'טיוטא');
+  const notesClosedThisMonth = notes.filter(
+    // אין שדה "נסגר ב-". עבור מסמך שכבר אינו טיוטא, UDATE הוא בקירוב טוב
+    // רגע הסגירה, כי זה העדכון האחרון שנעשה עליו.
+    (n) => n.status === 'סופית' && n.priorityUdate && new Date(n.priorityUdate) >= monthStart,
+  ).length;
+  const notesOldestOpenDays = openNotes.length
+    ? Math.max(...openNotes.map((n) => (n.docDate ? Math.floor((now - new Date(n.docDate).getTime()) / DAY_MS) : 0)))
+    : null;
+  // "פתוחה" = טרם שודרה לקופה. הסטטוסים כאן הם מחזור EDI ולא טיוטא/סופית,
+  // ולכן ההגדרה נשענת על רשימת סטטוסים מפורשת ולא על ערך יחיד.
+  const invoicesNotSent = invoices.filter((i) => CINVOICE_NOT_SENT.includes(i.status ?? '')).length;
+  const invoicesSent = invoices.filter((i) => i.status === 'vEDI-SENT').length;
+
+  // ---- תעודות משלוח לפי חודש (6): נפתחו מול נסגרו ----
+  const docsByMonth: Series[] = [];
+  const docMonthIndex = new Map<string, number>();
+  const docBase = new Date(); docBase.setDate(1);
+  const MON_D = ['ינו', 'פבר', 'מרץ', 'אפר', 'מאי', 'יונ', 'יול', 'אוג', 'ספט', 'אוק', 'נוב', 'דצמ'];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(docBase.getFullYear(), docBase.getMonth() - i, 1);
+    docMonthIndex.set(`${d.getFullYear()}-${d.getMonth()}`, docsByMonth.length);
+    docsByMonth.push({ label: MON_D[d.getMonth()], a: 0, b: 0 });
+  }
+  for (const n of notes) {
+    if (n.docDate) {
+      const d = new Date(n.docDate);
+      const i = docMonthIndex.get(`${d.getFullYear()}-${d.getMonth()}`);
+      if (i != null) docsByMonth[i].a++;
+    }
+    if (n.status === 'סופית' && n.priorityUdate) {
+      const d = new Date(n.priorityUdate);
+      const i = docMonthIndex.get(`${d.getFullYear()}-${d.getMonth()}`);
+      if (i != null) docsByMonth[i].b++;
+    }
+  }
+
   // ---- חריגים ----
   const pickupsOver14d = pk.filter(
     (p) => p.pickupStatus === 'ממתין לתאום' && p.created && (now - new Date(p.created).getTime()) > 14 * DAY_MS,
@@ -199,8 +247,17 @@ export function computeManagementMetrics(
       deliveries: { todayPlanned, todayDone, late, slaPct, avgDays },
       service: { open: openCalls, doneThisMonth, avgCloseHours },
       pickups: { waiting: pWaiting, collected: pCollected, cancelled: pCancelled, donePct },
+      docs: {
+        notesOpen: openNotes.length,
+        notesClosedThisMonth,
+        notesOldestOpenDays,
+        invoicesNotSent,
+        invoicesSent,
+        invoicesTotal: invoices.length,
+      },
     },
     serviceByDay,
+    docsByMonth,
     ordersByMonth,
     pickupFunnel,
     callsByTechnician,

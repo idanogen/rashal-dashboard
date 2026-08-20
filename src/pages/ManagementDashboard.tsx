@@ -4,7 +4,7 @@ import {
 } from 'recharts';
 import {
   Truck, Wrench, PackageOpen, Smile, Clock, Box, Frown, TrendingUp, MapPin, Users,
-  Calendar, MapPinned, Menu,
+  Calendar, MapPinned, Menu, FileText, Receipt,
 } from 'lucide-react';
 import { ActivityHeatMap } from '@/components/dashboard/ActivityHeatMap';
 import { useOrders } from '@/hooks/useOrders';
@@ -13,6 +13,7 @@ import { usePickups } from '@/hooks/usePickups';
 import { useCalendarStops } from '@/hooks/useCalendarStops';
 import { computeManagementMetrics, SLA_DAYS } from '@/lib/management-metrics';
 import { useSurveys } from '@/hooks/useSurveys';
+import { useDeliveryNotes, useConsolidatedInvoices } from '@/hooks/useDocuments';
 import { computeSurveyMetrics, formatScore } from '@/lib/surveys';
 
 const NAVY = '#14223a';
@@ -20,6 +21,7 @@ const BLUE = '#2b6cb0';
 const PURPLE = '#7c5cf0';
 const GREEN = '#16a34a';
 const AMBER = '#e0a800';
+const TEAL = '#0d9488';
 const RED = '#dc2626';
 
 /* ---- כרטיס KPI בסגנון המוקאפ: כותרת מימין, אייקון בעיגול צבעוני משמאל ---- */
@@ -91,11 +93,13 @@ export function ManagementDashboard() {
   const { data: pickups = [], isLoading: l3 } = usePickups();
   const { data: stops = [], isLoading: l4 } = useCalendarStops();
   const { data: surveys = [], isLoading: l5 } = useSurveys(30);
-  const loading = l1 || l2 || l3 || l4 || l5;
+  const { data: notes = [], isLoading: l6 } = useDeliveryNotes();
+  const { data: invoices = [], isLoading: l7 } = useConsolidatedInvoices();
+  const loading = l1 || l2 || l3 || l4 || l5 || l6 || l7;
 
   const m = useMemo(
-    () => computeManagementMetrics(orders, serviceCalls, pickups, stops),
-    [orders, serviceCalls, pickups, stops],
+    () => computeManagementMetrics(orders, serviceCalls, pickups, stops, notes, invoices),
+    [orders, serviceCalls, pickups, stops, notes, invoices],
   );
   const sv = useMemo(() => computeSurveyMetrics(surveys), [surveys]);
 
@@ -190,6 +194,58 @@ export function ManagementDashboard() {
             </>
           }
         />
+      </div>
+
+      {/* מסמכים כספיים: "פתוח" = טיוטא, כלומר המסמך נפתח בפריוריטי ולא נסגר סופית */}
+      <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <KpiCard title="תעודות משלוח פתוחות" accent={TEAL} icon={<FileText className="h-5 w-5" />}
+          top={
+            <div className="grid grid-cols-2 gap-2">
+              <Big n={m.kpi.docs.notesOpen} t="פתוחות (טיוטא)" color={TEAL} />
+              <Big n={m.kpi.docs.notesClosedThisMonth} t="נסגרו החודש" color={GREEN} />
+            </div>
+          }
+          bottom={
+            <div className="col-span-2 text-center text-[11px] text-slate-400">
+              {m.kpi.docs.notesOldestOpenDays != null
+                ? `הישנה ביותר פתוחה ${m.kpi.docs.notesOldestOpenDays} ימים`
+                : 'אין תעודות פתוחות'}
+            </div>
+          }
+        />
+
+        <KpiCard title="חשבוניות שטרם שודרו" accent={m.kpi.docs.invoicesNotSent > 0 ? AMBER : GREEN}
+          icon={<Receipt className="h-5 w-5" />}
+          top={
+            <div className="grid grid-cols-2 gap-2">
+              <Big n={m.kpi.docs.invoicesNotSent} t="טרם שודרו" color={m.kpi.docs.invoicesNotSent > 0 ? AMBER : GREEN} />
+              <Big n={m.kpi.docs.invoicesSent} t="שודרו לקופה" color={GREEN} />
+            </div>
+          }
+          bottom={
+            <div className="col-span-2 text-center text-[11px] text-slate-400">
+              חשבוניות מרכזות · {m.kpi.docs.invoicesTotal} סה״כ
+            </div>
+          }
+        />
+
+        <div className="xl:col-span-2">
+          <Panel icon={<FileText className="h-4 w-4" />} title="תעודות משלוח לפי חודש" hint="6 חודשים · נפתחו מול נסגרו">
+            <div className="h-[190px] w-full" dir="ltr">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={m.docsByMonth} margin={{ top: 5, right: 8, left: -18, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eef1f6" />
+                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#7a889e' }} tickLine={false} axisLine={false} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: '#7a889e' }} tickLine={false} axisLine={false} />
+                  <Tooltip contentStyle={{ fontSize: 12, direction: 'rtl', borderRadius: 10, border: '1px solid #eef1f6' }} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Bar name="נפתחו" dataKey="a" fill="#a7d8d4" radius={[4, 4, 0, 0]} />
+                  <Bar name="נסגרו" dataKey="b" fill={TEAL} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Panel>
+        </div>
       </div>
 
       {/* Charts row 1 */}

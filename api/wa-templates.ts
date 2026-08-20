@@ -1,21 +1,24 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient } from '@supabase/supabase-js';
 import { supabaseAdmin } from './_lib/supabase-admin.js';
-import { variablesOf } from './_lib/templates-store.js';
+import { syncTemplates } from './_lib/templates-sync.js';
 
 /**
  * ניהול מחסנית התבניות.
  *
- *   GET  /api/wa-templates            כל התבניות, כולל כבויות
- *   POST /api/wa-templates            { action: 'save' | 'toggle', ... }
+ *   GET  /api/wa-templates     כל התבניות, כולל כבויות
+ *   POST { action: 'sync' }    משיכה מ-heyy
+ *   POST { action: 'update' }  תווית, סדר והערה
+ *   POST { action: 'toggle' }  הצעה לצוות, או הסרה
  *
- * ⭐ למה זו נקודת קצה ולא כתיבה ישירה מהדפדפן: **תבנית היא הרשאה לשלוח
- * בשם החברה.** RLS על `wa_templates` מרשה קריאה למשתמש מחובר וכתיבה
- * ל-service_role בלבד, וכאן נבדק שהכותב הוא מנהל.
+ * ⭐ **אי אפשר להקליד כאן תבנית.** הנוסח, המשתנים, הקטגוריה והסטטוס
+ * מגיעים מ-heyy בלבד, כי שם הם נקבעו ושם מטא אישרה אותם. הקלדה ידנית
+ * של נוסח פירושה שני נוסחים שיתפצלו, והלקוח יקבל את זה שאנחנו לא רואים.
+ * מה שנשאר למנהל: התווית שהעובד רואה, אם התבנית מוצעת, הסדר, וההערה.
  *
- * 🔴 **המשתנים לא נשלחים ולא נשמרים.** הם נגזרים מהנוסח, כאן ובקריאה,
- * ולכן אי אפשר שיתפצלו ממנו. שדה שמתאר את מה שכבר כתוב בשדה אחר הוא
- * שדה שיסטה ממנו.
+ * 🔴 למה נקודת קצה ולא כתיבה ישירה מהדפדפן: **תבנית היא הרשאה לשלוח
+ * בשם החברה.** RLS מרשה קריאה למשתמש מחובר וכתיבה ל-service_role בלבד,
+ * וכאן נבדק שהכותב הוא מנהל.
  */
 
 const cleanEnv = (s?: string): string | undefined => s?.replace(/(?:\\n|\s)+$/g, '');
@@ -45,8 +48,6 @@ async function requireAdmin(req: VercelRequest): Promise<{ ok: boolean; status: 
   return { ok: true, status: 200 };
 }
 
-/** מזהה תבנית ב-heyy הוא UUID. שדה חופשי כאן שולח הודעות לשום מקום. */
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** מפתח פנימי: אותיות אנגליות קטנות, ספרות וקו תחתון. */
 const KEY = /^[a-z][a-z0-9_]*$/;
 
@@ -66,7 +67,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (error) return res.status(500).json({ ok: false, error: error.message });
     return res.status(200).json({
       ok: true,
-      templates: (data ?? []).map((t) => ({ ...t, variables: variablesOf(t.body_preview as string) })),
+      templates: data ?? [],
     });
   }
 
@@ -77,6 +78,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const body = (req.body ?? {}) as Record<string, unknown>;
   const action = String(body.action ?? '');
 
+  // ⭐ משיכה מ-heyy. זה מה שהופך את המסך מטופס הזנה למראה של המציאות.
+  if (action === 'sync') {
+    try {
+      const r = await syncTemplates();
+      return res.status(200).json({ ok: true, ...r });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'sync failed';
+      console.error('[wa-templates] sync failed', msg);
+      return res.status(502).json({ ok: false, error: 'הסנכרון מ-heyy נכשל: ' + msg });
+    }
+  }
+
   if (action === 'toggle') {
     const key = String(body.key ?? '');
     const active = Boolean(body.active);
@@ -85,52 +98,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ ok: true });
   }
 
-  if (action !== 'save') {
+  if (action !== 'update') {
     return res.status(400).json({ ok: false, error: 'unknown action' });
   }
 
+  // ── עדכון מה ששייך לנו בלבד ──────────────────────────
   const key = String(body.key ?? '').trim();
-  const heyyId = String(body.heyy_template_id ?? '').trim();
-  const name = String(body.name ?? '').trim();
-  const label = String(body.label ?? '').trim();
-  const preview = String(body.body_preview ?? '').trim();
-  const category = body.category === 'marketing' ? 'marketing' : 'utility';
-
   if (!KEY.test(key)) {
-    return res.status(400).json({ ok: false, error: 'המפתח חייב להיות אותיות אנגליות קטנות, ספרות וקו תחתון, ולהתחיל באות.' });
-  }
-  // 🔴 מזהה שגוי לא נכשל ברעש: heyy תדחה את השליחה ואיש לא יבין למה.
-  if (!UUID.test(heyyId)) {
-    return res.status(400).json({ ok: false, error: 'מזהה התבנית ב-heyy חייב להיות UUID. שולפים אותו מכתובת ה-URL של דף התבנית.' });
-  }
-  if (!label || !name || !preview) {
-    return res.status(400).json({ ok: false, error: 'חסר שם, תווית או נוסח.' });
-  }
-  // 🔴 העורך של heyy אוכף אותו כלל, ותבנית בלי משתנים כאן פשוט לא תדע
-  // למי היא פונה. עדיף להיעצר בהזנה מאשר לגלות בשליחה הראשונה.
-  const vars = variablesOf(preview);
-  for (const v of vars) {
-    if (!KEY.test(v)) {
-      return res.status(400).json({ ok: false, error: `שם משתנה פסול: ${v}` });
-    }
+    return res.status(400).json({ ok: false, error: 'מפתח לא תקין.' });
   }
 
-  const { error } = await supabaseAdmin.from('wa_templates').upsert(
-    {
-      key,
-      heyy_template_id: heyyId,
-      name,
-      label,
-      category,
-      body_preview: preview,
-      has_document_header: Boolean(body.has_document_header),
-      sort_order: Number(body.sort_order ?? 100),
-      notes: body.notes ? String(body.notes) : null,
-      active: body.active === undefined ? true : Boolean(body.active),
-    },
-    { onConflict: 'key' },
-  );
+  const patch: Record<string, unknown> = {};
+  if (typeof body.label === 'string' && body.label.trim()) patch.label = body.label.trim();
+  if (body.sort_order !== undefined) patch.sort_order = Number(body.sort_order);
+  if (body.notes !== undefined) patch.notes = body.notes ? String(body.notes) : null;
 
+  if (!Object.keys(patch).length) {
+    return res.status(400).json({ ok: false, error: 'אין מה לעדכן.' });
+  }
+
+  const { error } = await supabaseAdmin.from('wa_templates').update(patch).eq('key', key);
   if (error) return res.status(500).json({ ok: false, error: error.message });
-  return res.status(200).json({ ok: true, variables: vars });
+  return res.status(200).json({ ok: true });
 }
