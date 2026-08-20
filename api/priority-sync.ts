@@ -109,21 +109,37 @@ function maxDate(rows: Row[], field: string): string | null {
 async function handleGet(res: VercelResponse) {
   // Overlap windows: ORDERS.STATUSDATE has DAY granularity → look back a full
   // extra day. DOCUMENTS_Q.STATUSDATE has minute granularity → 15 min is plenty.
-  const [orders, calls, customers, pickups] = await Promise.all([
+  const [orders, calls, customers, pickups, notes] = await Promise.all([
     getWatermark('orders', 3),
     getWatermark('service_calls', 3),
     getWatermark('customers', 90), // retention rule: 90-day window
     getWatermark('pickups', 90),
+    getWatermark('delivery_notes', 90),
   ]);
   orders.setUTCHours(orders.getUTCHours() - 25);
   calls.setUTCMinutes(calls.getUTCMinutes() - 15);
   customers.setUTCMinutes(customers.getUTCMinutes() - 15);
   pickups.setUTCMinutes(pickups.getUTCMinutes() - 15); // DOCUMENTS_N.UDATE has minute granularity
+  notes.setUTCMinutes(notes.getUTCMinutes() - 15);     // DOCUMENTS_D.UDATE, same shape
+
+  // 🔴 AINVOICES has NO update timestamp of any kind — the entity carries
+  // IVDATE / DISTRDATE / IVRECONDATE and nothing that moves when the row is
+  // edited. A pure watermark on IVDATE would therefore pull each invoice once,
+  // on the day it was issued, and never see it again — so a draft that gets
+  // finalised later would sit "open" on the dashboard forever.
+  // Instead the invoice pull always re-reads a fixed rolling window. Volume is
+  // small (~1,000 invoices per quarter), so re-reading is cheap and correct.
+  const INVOICE_REPULL_DAYS = 120;
+  const invoicesFrom = new Date();
+  invoicesFrom.setUTCDate(invoicesFrom.getUTCDate() - INVOICE_REPULL_DAYS);
+
   return res.status(200).json({
     orders_since: odataTs(orders),
     calls_since: odataTs(calls),
     customers_since: odataTs(customers),
     pickups_since: odataTs(pickups),
+    delivery_notes_since: odataTs(notes),
+    invoices_since: odataTs(invoicesFrom),
   });
 }
 
@@ -742,6 +758,92 @@ async function upsertPickups(rows: Row[], backfill = false) {
 }
 
 // ---------------------------------------------------------------------------
+// delivery_notes ← DOCUMENTS_D   |   invoices ← AINVOICES     (20/08/2026)
+//
+// "פתוח" = STATDES 'טיוטא', כלומר המסמך טרם נסגר סופית (הכרעת עידן 20/08).
+//
+// 🔴 ל-AINVOICES אין UDATE. אין שום חותמת עדכון על הישות, ולכן משיכה לפי
+// IVDATE בלבד לעולם לא תחזיר חשבונית שהסטטוס שלה השתנה אחרי ההנפקה. הפתרון
+// הוא חלון חוזר (ראה INVOICE_REPULL_DAYS ב-handleGet) ולא ווטרמרק גרידא.
+// ---------------------------------------------------------------------------
+async function upsertDocs(
+  rows: Row[],
+  table: 'delivery_notes' | 'invoices',
+  keyCol: 'priority_doc_id' | 'priority_iv_id',
+  map: (r: Row) => Row,
+  wmField: string,
+  wmKey: string,
+  backfill: boolean,
+) {
+  const mapped = rows.map(map).filter((m) => m[keyCol]);
+  const stats = { received: rows.length, upserted: 0, unchanged: 0, inserted: 0 };
+  if (!mapped.length) return { ...stats, backfill, watermark: null };
+
+  // אותו שומר no-op כמו בשאר הישויות: פריוריטי שולח מחדש את אותן שורות בכל
+  // ריצה, וכתיבה זהה עדיין מקפיצה updated_at ומשדרת realtime לכל דפדפן פתוח.
+  const keys = mapped.map((m) => m[keyCol] as string);
+  const current = new Map<string, Row>();
+  for (let i = 0; i < keys.length; i += 200) {
+    const { data, error } = await supabaseAdmin
+      .from(table).select('*').in(keyCol, keys.slice(i, i + 200));
+    if (error) throw new Error(`${table} change check: ${error.message}`);
+    for (const d of (data ?? []) as unknown as Row[]) current.set(d[keyCol] as string, d);
+  }
+  const changed = mapped.filter((m) => {
+    const cur = current.get(m[keyCol] as string);
+    if (!cur) return true;
+    return Object.keys(m).some((k) => k !== keyCol && !sameValue(m[k], cur[k]));
+  });
+  stats.inserted = mapped.filter((m) => !current.has(m[keyCol] as string)).length;
+  stats.unchanged = mapped.length - changed.length;
+
+  for (let i = 0; i < changed.length; i += 500) {
+    const { error } = await supabaseAdmin
+      .from(table).upsert(changed.slice(i, i + 500), { onConflict: keyCol });
+    if (error) throw new Error(`${table} upsert: ${error.message}`);
+  }
+  stats.upserted = changed.length;
+
+  const wm = maxDate(rows, wmField);
+  if (wm && !backfill) await setWatermark(wmKey, wm);
+  return { ...stats, backfill, watermark: backfill ? null : wm };
+}
+
+const mapDeliveryNote = (r: Row): Row => ({
+  priority_doc_id: s(r.DOCNO),
+  priority_doc: num(r.DOC),
+  customer_number: s(r.CUSTNAME),
+  customer_name: s(r.CDES),
+  doc_date: s(r.CURDATE),
+  status: s(r.STATDES),
+  invoiced: s(r.IVALL),
+  source_order: s(r.ORDNAME),
+  warehouse: s(r.WARHSDES),
+  agent: s(r.AGENTNAME),
+  opened_by: s(r.USERLOGIN),
+  total_qty: num(r.TOTQUANT),
+  total_price: num(r.TOTPRICE),
+  priority_udate: s(r.UDATE),
+});
+
+const mapInvoice = (r: Row): Row => ({
+  priority_iv_id: s(r.IVNUM),
+  customer_number: s(r.CUSTNAME),
+  customer_name: s(r.CDES),
+  invoice_date: s(r.IVDATE),
+  status: s(r.STATDES),
+  source_order: s(r.ORDNAME),
+  agent: s(r.AGENTNAME),
+  book_num: s(r.BOOKNUM),
+  fnc_num: s(r.FNCNUM),
+  recon_date: s(r.IVRECONDATE),
+  debit: s(r.DEBIT),
+  iv_type: s(r.IVTYPE),
+  vat: num(r.VAT),
+  total_price: num(r.TOTPRICE),
+});
+
+// ---------------------------------------------------------------------------
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!SECRET) return res.status(500).json({ error: 'PRIORITY_SYNC_SECRET not configured' });
   if (req.headers['x-sync-secret'] !== SECRET) {
@@ -765,6 +867,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (kind === 'orders') return res.status(200).json(await upsertOrders(rows, backfill));
       if (kind === 'service_calls') return res.status(200).json(await upsertServiceCalls(rows, backfill));
       if (kind === 'pickups') return res.status(200).json(await upsertPickups(rows, backfill));
+      if (kind === 'delivery_notes') {
+        return res.status(200).json(await upsertDocs(
+          rows, 'delivery_notes', 'priority_doc_id', mapDeliveryNote, 'UDATE', 'delivery_notes', backfill));
+      }
+      if (kind === 'invoices') {
+        return res.status(200).json(await upsertDocs(
+          rows, 'invoices', 'priority_iv_id', mapInvoice, 'IVDATE', 'invoices', backfill));
+      }
       return res.status(400).json({ error: `unknown kind: ${kind}` });
     }
 

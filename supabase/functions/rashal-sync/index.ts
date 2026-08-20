@@ -78,6 +78,16 @@ const Q = {
     `/DOCUMENTS_N?$select=DOCNO,DOC,CUSTNAME,CDES,CURDATE,STATDES,ORDNAME,ODOCNO,REFERENCE,TOWARHSDES,AGENTNAME,OWNERLOGIN,TOTQUANT,TOTPRICE,UDATE` +
     `&$expand=${encodeURIComponent("TRANSORDER_N_SUBFORM($select=TRANS,KLINE,PARTNAME,PDES,TQUANT,TUNITNAME,BARCODE,ORDNAME,RETREASONDES)")}` +
     `&$filter=${encodeURIComponent(`UDATE ge ${since}`)}&$orderby=UDATE%20asc&$top=8000`,
+  // תעודות משלוח וחשבוניות (20/08/2026). שתיהן אומתו כפתוחות ב-API של ר.שעל.
+  // "פתוח" = STATDES 'טיוטא'.
+  delivery_notes: (since: string) =>
+    `/DOCUMENTS_D?$select=DOCNO,DOC,CUSTNAME,CDES,CURDATE,UDATE,STATDES,IVALL,ORDNAME,WARHSDES,AGENTNAME,USERLOGIN,TOTQUANT,TOTPRICE` +
+    `&$filter=${encodeURIComponent(`UDATE ge ${since}`)}&$orderby=UDATE%20asc&$top=4000`,
+  // 🔴 אין UDATE ב-AINVOICES. הסינון הוא על IVDATE, וה-since מגיע כחלון חוזר
+  // מה-inbox (INVOICE_REPULL_DAYS) ולא כווטרמרק שמתקדם.
+  invoices: (since: string) =>
+    `/AINVOICES?$select=IVNUM,CUSTNAME,CDES,IVDATE,STATDES,ORDNAME,AGENTNAME,BOOKNUM,FNCNUM,IVRECONDATE,DEBIT,IVTYPE,VAT,TOTPRICE` +
+    `&$filter=${encodeURIComponent(`IVDATE ge ${since}`)}&$orderby=IVDATE%20asc&$top=4000`,
   pickups_addresses: (since: string) =>
     `/DOCUMENTS_N?$select=DOCNO,DOC,CUSTNAME,CDES,CURDATE,STATDES,ORDNAME,ODOCNO,REFERENCE,TOWARHSDES,AGENTNAME,OWNERLOGIN,TOTQUANT,TOTPRICE,UDATE` +
     `&$expand=${encodeURIComponent("DOCUMENTS_DCONT_SUBFORM($select=ADRS,STATE,PHONE,FAX)")}` +
@@ -129,6 +139,20 @@ const BACKFILL_Q: Record<string, { kind: string; url: (f: string, t: string) => 
       `&$expand=${encodeURIComponent("TRANSORDER_N_SUBFORM($select=TRANS,KLINE,PARTNAME,PDES,TQUANT,TUNITNAME,BARCODE,ORDNAME,RETREASONDES)")}` +
       `&$filter=${encodeURIComponent(`CURDATE ge ${f} and CURDATE lt ${t}`)}` +
       `&$orderby=CURDATE%20asc&$top=4000`,
+  },
+  delivery_notes: {
+    kind: "delivery_notes",
+    url: (f, t) =>
+      `/DOCUMENTS_D?$select=DOCNO,DOC,CUSTNAME,CDES,CURDATE,UDATE,STATDES,IVALL,ORDNAME,WARHSDES,AGENTNAME,USERLOGIN,TOTQUANT,TOTPRICE` +
+      `&$filter=${encodeURIComponent(`CURDATE ge ${f} and CURDATE lt ${t}`)}` +
+      `&$orderby=CURDATE%20asc&$top=4000`,
+  },
+  invoices: {
+    kind: "invoices",
+    url: (f, t) =>
+      `/AINVOICES?$select=IVNUM,CUSTNAME,CDES,IVDATE,STATDES,ORDNAME,AGENTNAME,BOOKNUM,FNCNUM,IVRECONDATE,DEBIT,IVTYPE,VAT,TOTPRICE` +
+      `&$filter=${encodeURIComponent(`IVDATE ge ${f} and IVDATE lt ${t}`)}` +
+      `&$orderby=IVDATE%20asc&$top=4000`,
   },
   pickups_addresses: {
     kind: "pickups",
@@ -189,6 +213,11 @@ const JOBS: Record<string, Step[]> = {
   ],
   "pull-pickups": [
     { entity: "pickups_lines", kind: "pickups", buildUrl: (w) => w.pickups_since ? Q.pickups_lines(w.pickups_since) : null },
+  ],
+  // מסמכים כספיים. עבודה נפרדת כדי שתקלה בהם לא תפיל את משיכת הליבה.
+  "pull-docs": [
+    { entity: "delivery_notes", kind: "delivery_notes", buildUrl: (w) => w.delivery_notes_since ? Q.delivery_notes(w.delivery_notes_since) : null },
+    { entity: "invoices", kind: "invoices", buildUrl: (w) => w.invoices_since ? Q.invoices(w.invoices_since) : null },
   ],
   "pull-pickup-addresses": [
     { entity: "pickups_addresses", kind: "pickups", buildUrl: () => Q.pickups_addresses(rolling3Days()) },
