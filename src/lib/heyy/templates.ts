@@ -15,11 +15,11 @@ import type { WhatsAppReminderKind } from './types';
 
 export interface TemplateDef {
   kind: WhatsAppReminderKind;
-  /** heyy templateId — replace 'DEMO-*' with real UUID after Meta approval. */
+  /** heyy templateId . replace 'DEMO-*' with real UUID after Meta approval. */
   templateId: string;
   /** Hebrew label shown in the dashboard. */
   label: string;
-  /** Preview body with placeholders — used for display only, not sent. */
+  /** Preview body with placeholders . used for display only, not sent. */
   bodyPreview: string;
   /** Parameter labels in order (UI shows these next to inputs). */
   paramLabels: string[];
@@ -33,7 +33,7 @@ export const TEMPLATES: Record<WhatsAppReminderKind, TemplateDef> = {
     templateId: 'DEMO-delivery-reminder',
     label: 'תזכורת משלוח',
     bodyPreview:
-      'שלום {{1}},\nתזכורת על משלוח של ראש"ל ציוד רפואי היום בין השעות {{2}}-{{3}}.\nכתובת: {{4}}\nלשאלות: 03-XXXXXXX',
+      'שלום {{1}},\nתזכורת על משלוח של ר.שעל ציוד רפואי היום בין השעות {{2}}-{{3}}.\nכתובת: {{4}}\nלשאלות: 03-XXXXXXX',
     paramLabels: ['שם הלקוח', 'שעת התחלה', 'שעת סיום', 'כתובת'],
     buildParams: (i) => [i.customerName ?? '', i.timeStart ?? '08:00', i.timeEnd ?? '18:00', i.address ?? ''],
   },
@@ -42,7 +42,7 @@ export const TEMPLATES: Record<WhatsAppReminderKind, TemplateDef> = {
     templateId: 'DEMO-schedule-request',
     label: 'בקשת תיאום משלוח',
     bodyPreview:
-      'שלום {{1}},\nנשמח לתאם איתכם משלוח של ראש"ל ציוד רפואי.\nמתי נוח לכם לקבל? נא לענות אחת מהאפשרויות:\nבוקר / צהריים / אחה"צ / ערב',
+      'שלום {{1}},\nנשמח לתאם איתכם משלוח של ר.שעל ציוד רפואי.\nמתי נוח לכם לקבל? נא לענות אחת מהאפשרויות:\nבוקר / צהריים / אחה"צ / ערב',
     paramLabels: ['שם הלקוח'],
     buildParams: (i) => [i.customerName ?? ''],
   },
@@ -51,7 +51,7 @@ export const TEMPLATES: Record<WhatsAppReminderKind, TemplateDef> = {
     templateId: 'DEMO-schedule-coordination',
     label: 'תיאום משלוח עם תאריך ושעה',
     bodyPreview:
-      'שלום {{1}},\nתיאמנו עבורכם משלוח של ראש"ל ציוד רפואי ביום {{2}}, בין השעות {{3}} ל-{{4}}.\n{{5}}\nאם נוח לכם — ענו "אישור". אם לא — ענו עם זמן מועדף.',
+      'שלום {{1}},\nתיאמנו עבורכם משלוח של ר.שעל ציוד רפואי ביום {{2}}, בין השעות {{3}} ל-{{4}}.\n{{5}}\nאם נוח לכם, ענו "אישור". אם לא, ענו עם זמן מועדף.',
     paramLabels: ['שם הלקוח', 'תאריך', 'שעת התחלה', 'שעת סיום', 'הערה (אופציונלי)'],
     buildParams: (i) => [
       i.customerName ?? '',
