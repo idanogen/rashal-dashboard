@@ -82,6 +82,10 @@ export async function fetchSurveys(days = 30): Promise<Survey[]> {
     .from('customer_surveys')
     .select(COLUMNS)
     .gte('created_at', since)
+    // שורות הבדיקה של עידן ושל שלומי נשארות במסד כהוכחה שהצינור עבד, אבל
+    // הן לא מדידה. `eq(false)` ולא `neq(true)`, כי סינון שלילי ב-PostgREST
+    // מפיל גם שורות עם NULL, ולכן העמודה היא NOT NULL DEFAULT false.
+    .eq('is_test', false)
     .order('created_at', { ascending: false })
     .limit(1000);
 
