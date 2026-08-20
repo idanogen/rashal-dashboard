@@ -4,6 +4,13 @@ import { supabaseAdmin } from './_lib/supabase-admin.js';
 import { heyySendTemplate, heyySendText, isHeyyDemo } from './_lib/heyy-server.js';
 import { toE164, normalizePhone } from './_lib/phone.js';
 import { windowState } from './_lib/thread.js';
+import {
+  OGEN_TEMPLATES,
+  buildVariables,
+  isTemplateKey,
+  renderPreview,
+  type OgenTemplateKey,
+} from './_lib/ogen-templates.js';
 
 /**
  * מסלול השליחה של החלונית בפריוריטי.
@@ -28,8 +35,14 @@ interface SendBody {
   phone?: string;
   kind?: 'text' | 'template';
   bodyText?: string;
-  templateId?: string;
-  variables?: Array<{ name: string; value: string }>;
+  /**
+   * 🔴 מפתח מהמרשם, ולא מזהה תבנית. מזהה שמגיע מהדפדפן פירושו שכל מי
+   * שמחזיק טוקן יכול לשלוח כל תבנית שקיימת בחשבון של הלקוח, כולל תבניות
+   * שיווק שעולות יותר וכפופות להסכמת הנמען.
+   */
+  templateKey?: string;
+  /** ערכי המשתנים לפי שם. השרת בונה מהם את המערך בסדר הנכון. */
+  values?: Record<string, unknown>;
   customerNumber?: string;
   entityType?: string;
   entityKey?: string;
@@ -57,8 +70,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (kind === 'text' && !body.bodyText?.trim()) {
     return res.status(400).json({ ok: false, error: 'empty_body', message: 'אין מה לשלוח.' });
   }
-  if (kind === 'template' && !body.templateId) {
-    return res.status(400).json({ ok: false, error: 'no_template', message: 'לא נבחרה תבנית.' });
+  // ── התבנית, ואימות מלא שלה בשרת ─────────────────────────
+  let template: OgenTemplateKey | null = null;
+  let variables: Array<{ name: string; value: string }> = [];
+
+  if (kind === 'template') {
+    if (!isTemplateKey(body.templateKey)) {
+      return res.status(400).json({ ok: false, error: 'no_template', message: 'לא נבחרה תבנית מוכרת.' });
+    }
+    template = body.templateKey;
+
+    // 🔴 תבנית עם קובץ בכותרת דורשת כתובת למסמך בכל שליחה, ומסלול הפקת
+    // המסמך מפריוריטי עוד לא נבנה אצל ר.שעל. עדיף לומר את זה מפורשות
+    // מאשר לשלוח תבנית שתגיע ללקוח בלי הקובץ שהיא מבטיחה.
+    if (OGEN_TEMPLATES[template].hasDocumentHeader) {
+      return res.status(400).json({
+        ok: false,
+        error: 'document_not_wired',
+        message: 'שליחת מסמך עוד לא מחוברת. המסמך עצמו עדיין לא מופק מפריוריטי.',
+      });
+    }
+
+    const built = buildVariables(template, body.values ?? {});
+    if (!built.ok) {
+      return res.status(400).json({
+        ok: false,
+        error: 'missing_values',
+        missing: built.missing,
+        message: 'חסרים שדות בתבנית: ' + built.missing.join(', '),
+      });
+    }
+    variables = built.variables;
   }
 
   // ── אכיפת החלון ─────────────────────────────────────────
@@ -92,7 +134,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const result =
     kind === 'text'
       ? await heyySendText(e164, body.bodyText!.trim())
-      : await heyySendTemplate(e164, body.templateId!, body.variables ?? []);
+      : await heyySendTemplate(e164, OGEN_TEMPLATES[template!].id, variables);
 
   // תיעוד גם על כישלון. שליחה שנפלה בלי שורה היא שליחה שאי אפשר לחקור.
   const { data: outboundRow, error: outErr } = await supabaseAdmin
@@ -102,8 +144,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       vendor_message_id: result.vendorMessageId || null,
       phone_e164: e164,
       message_kind: kind,
-      template_id: kind === 'template' ? body.templateId : null,
-      body_text: kind === 'text' ? body.bodyText!.trim() : null,
+      template_id: template ? OGEN_TEMPLATES[template].id : null,
+      // ⭐ גם לתבנית נשמר הטקסט המלא שהלקוח קרא, ולא רק מזהה. בלעדיו
+      // השרשור בדיעבד מציג "תבנית מאושרת" בלי שום מושג מה נאמר בה.
+      body_text:
+        kind === 'text'
+          ? body.bodyText!.trim()
+          : renderPreview(template!, body.values ?? {}),
       status: result.status,
       status_detail: result.statusDetail,
       // ⭐ מי שלח, ומאיזה מסמך. זה מה שהופך את השרשור לקריא בדיעבד.

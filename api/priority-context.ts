@@ -3,6 +3,7 @@ import { requireUser } from './_lib/require-user.js';
 import { supabaseAdmin } from './_lib/supabase-admin.js';
 import { loadThread } from './_lib/thread.js';
 import { normalizePhone } from './_lib/phone.js';
+import { OGEN_TEMPLATES, type OgenTemplateKey } from './_lib/ogen-templates.js';
 
 /**
  * "על מי אני עומד בפריוריטי", ואז כל השיחה איתו. קריאה אחת.
@@ -22,6 +23,20 @@ import { normalizePhone } from './_lib/phone.js';
  * של אותו לקוח מופיע בין המועמדים. מספר בלי שם מוחזר כ"סביר", והחלונית
  * אומרת את זה למשתמש במקום להעמיד פנים.
  */
+
+/**
+ * מה כותבים ב"עדכון בנוגע ל..." לפי המסך שעליו עומדים.
+ * 🟡 מילוי מראש בלבד, והמשתמש עורך. מסך שלא ברשימה מקבל ניסוח כללי,
+ * ולא ניחוש שנשמע ודאי.
+ */
+const SUBJECT_BY_FORM: Record<string, string> = {
+  CUSTOMERS: 'הפנייה',
+  ORDERS: 'ההזמנה',
+  DOCUMENTS_D: 'תעודת המשלוח',
+  AINVOICES: 'החשבונית',
+  PORDERS: 'הזמנת הרכש',
+  SERVCALLS: 'קריאת השירות',
+};
 
 const MAX_CANDIDATES = 120;
 const MAX_LEN = 60;
@@ -142,10 +157,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
+  // ⭐ המרשם מגיע מהשרת ולא מהחלונית, כדי שהוספת תבנית לא תדרוש גרסה
+  // חדשה של התוסף אצל כל עובד.
+  const templates = (Object.keys(OGEN_TEMPLATES) as OgenTemplateKey[])
+    .map((key) => ({ key, ...OGEN_TEMPLATES[key] }))
+    .filter((t) => t.category === 'utility')
+    .map(({ key, label, variables, preview, hasDocumentHeader }) => ({
+      key,
+      label,
+      variables,
+      preview,
+      // כרגע לא ניתן לשליחה: מסלול הפקת המסמך מפריוריטי טרם נבנה.
+      available: !hasDocumentHeader,
+      unavailableReason: hasDocumentHeader ? 'המסמך עדיין לא מופק מפריוריטי' : null,
+    }));
+
   return res.status(200).json({
     ok: true,
     form: body.form ?? null,
     customer: best,
+    templates,
+    prefill: {
+      customer_name: best.customerName ?? '',
+      subject: SUBJECT_BY_FORM[String(body.form ?? '').toUpperCase()] ?? 'הפנייה',
+    },
     // מוחזר רק כשבאמת יש יותר מאחד, כדי שהחלונית תוכל לשאול במקום לנחש.
     matches: matches.length > 1 ? matches : [],
     ...thread,
