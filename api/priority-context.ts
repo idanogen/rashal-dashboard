@@ -11,6 +11,12 @@ import { OGEN_TEMPLATES, type OgenTemplateKey } from './_lib/ogen-templates.js';
  *   POST /api/priority-context
  *   { form: "CUSTOMERS", candidates: ["101143", "מכון הפיזיותרפיה", "054-...", ...] }
  *
+ * 🔴 **המצליבה היא `customer_directory` ולא `priority_customers`.**
+ * המראה מפריוריטי מבוססת דלתא וקולטת רק לקוח שנוצר או עודכן מאז שהסנכרון
+ * התחיל. נמדד ב-20/08/2026: 2,018 לקוחות במראה מול 4,635 שיש להם עבודה
+ * אצלנו, כלומר **63% מהלקוחות היו בלתי נראים לחלונית**. הספר מאחד את
+ * המראה עם טבלאות העבודה, כי מי שיש לו הזמנה הוא לקוח גם אם המראה שתקה.
+ *
  * ⭐ **זה הלב של המוצר, וזו הסיבה שהתוסף אצל ר.שעל דק.**
  * בתוסף של עוגן הזהר נאלצנו למפות ידנית איזה מספר שדה מחזיק את הטלפון
  * בכל מסך, וזה היה החוסם מספר 1 של המוצר: כל מסך חדש דרש אשף מיפוי.
@@ -92,9 +98,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // ── שלב א: מי מהמועמדים הוא מספר לקוח קיים ─────────────
   const { data: byNumber, error: numErr } = await supabaseAdmin
-    .from('priority_customers')
-    .select('custname, cdes, phone, city')
-    .in('custname', candidates)
+    .from('customer_directory')
+    .select('customer_number, customer_name, phone, city, source')
+    .in('customer_number', candidates)
     .limit(20);
 
   if (numErr) {
@@ -104,12 +110,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const nameKeys = new Set(candidates.map(nameKey));
   const matches: Match[] = (byNumber ?? []).map((c) => ({
-    customerNumber: c.custname as string,
-    customerName: (c.cdes as string) ?? null,
+    customerNumber: c.customer_number as string,
+    customerName: (c.customer_name as string) ?? null,
     phone: (c.phone as string) ?? null,
     city: (c.city as string) ?? null,
     // ⭐ הזוג: מספר שיש לצידו את השם של אותו לקוח על אותו מסך.
-    confidence: nameKeys.has(nameKey(c.cdes as string)) ? 'verified' : 'probable',
+    confidence: nameKeys.has(nameKey(c.customer_name as string)) ? 'verified' : 'probable',
   }));
 
   // ── שלב ב: אם אף מספר לא נתפס, אולי יש טלפון על המסך ────
@@ -118,15 +124,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!matches.length) {
     const phones = [...new Set(candidates.map(normalizePhone).filter(Boolean))] as string[];
     if (phones.length) {
+      // 🔴 מצליבים מול `phone_local` המנורמל ולא מול העמודה הגולמית.
+      // בפריוריטי אותו מספר מופיע גם כ-`052-5355474` וגם כ-`0525355474`,
+      // והשוואה גולמית מפספסת את מי שנכתב עם מקפים.
       const { data: byPhone } = await supabaseAdmin
-        .from('priority_customers')
-        .select('custname, cdes, phone, city')
-        .in('phone', phones)
+        .from('customer_directory')
+        .select('customer_number, customer_name, phone, city')
+        .in('phone_local', phones)
         .limit(20);
       for (const c of byPhone ?? []) {
         matches.push({
-          customerNumber: c.custname as string,
-          customerName: (c.cdes as string) ?? null,
+          customerNumber: c.customer_number as string,
+          customerName: (c.customer_name as string) ?? null,
           phone: (c.phone as string) ?? null,
           city: (c.city as string) ?? null,
           confidence: 'phone',
