@@ -130,7 +130,7 @@ async function handleGet(res: VercelResponse) {
 // ---------------------------------------------------------------------------
 // customers → priority_customers cache (plain upsert by custname)
 // ---------------------------------------------------------------------------
-async function upsertCustomers(rows: Row[]) {
+async function upsertCustomers(rows: Row[], backfill = false) {
   const mapped = rows
     .filter((r) => s(r.CUSTNAME))
     .map((r) => ({
@@ -181,12 +181,13 @@ async function upsertCustomers(rows: Row[]) {
     bumped.setUTCDate(bumped.getUTCDate() + 1);
     wm = bumped.toISOString().replace(/\.\d{3}Z$/, 'Z');
   }
-  if (wm) await setWatermark('customers', wm);
+  if (wm && !backfill) await setWatermark('customers', wm);
   return {
     received: rows.length,
     upserted: changedCustomers.length,
     unchanged: mapped.length - changedCustomers.length,
-    watermark: wm,
+    backfill,
+    watermark: backfill ? null : wm,
   };
 }
 
@@ -546,7 +547,7 @@ async function upsertOrders(rows: Row[], backfill = false) {
 // ---------------------------------------------------------------------------
 // service_calls ← DOCUMENTS_Q
 // ---------------------------------------------------------------------------
-async function upsertServiceCalls(rows: Row[]) {
+async function upsertServiceCalls(rows: Row[], backfill = false) {
   const stats = await runAdoption(rows, {
     table: 'service_calls',
     keyCol: 'priority_call_id',
@@ -579,6 +580,13 @@ async function upsertServiceCalls(rows: Row[]) {
       // still open falls through to the DB default 'קריאה חדשה'
       ...(CALL_TERMINAL[s(r.CALLSTATUSCODE) ?? '']
         ? { service_call_status: CALL_TERMINAL[s(r.CALLSTATUSCODE)!] }
+        : {}),
+      // History pull: 'שובצה' / 'לביצוע' / 'להמשך טיפול' on a months-old call
+      // is not live work — archive rather than invent a closing status.
+      ...(backfill && isHistoric(s(r.STARTDATE))
+        ? (CALL_HISTORIC[s(r.CALLSTATUSCODE) ?? '']
+            ? { service_call_status: CALL_HISTORIC[s(r.CALLSTATUSCODE)!] }
+            : archivedFields('backfill-still-open-20260820'))
         : {}),
     }),
     updateRow: (r) => {
@@ -613,11 +621,11 @@ async function upsertServiceCalls(rows: Row[]) {
       if (!s(ex.phone)) { const p = s(r.PHONENUM); if (p) u.phone = p; }
       return u;
     },
-  });
+  }, backfill);
 
   const wm = maxDate(rows, 'STATUSDATE') ?? maxDate(rows, 'STARTDATE');
-  if (wm) await setWatermark('service_calls', wm);
-  return { ...stats, watermark: wm };
+  if (wm && !backfill) await setWatermark('service_calls', wm);
+  return { ...stats, backfill, watermark: backfill ? null : wm };
 }
 
 // ---------------------------------------------------------------------------
@@ -662,7 +670,7 @@ function pickupStatusFromPriority(statdes: string | null): string | null {
   return null;
 }
 
-async function upsertPickups(rows: Row[]) {
+async function upsertPickups(rows: Row[], backfill = false) {
   const stats = await runAdoption(rows, {
     table: 'pickups',
     keyCol: 'priority_pickup_id',
@@ -693,6 +701,11 @@ async function upsertPickups(rows: Row[]) {
         // initial operational status derived from Priority (סופית→נאסף etc.),
         // open drafts start as 'ממתין לתאום'.
         pickup_status: pickupStatusFromPriority(s(r.STATDES)) ?? 'ממתין לתאום',
+        // History pull: a months-old draft is not a pickup anyone is waiting
+        // on. Archive it instead of letting it swell the pending list.
+        ...(backfill && isHistoric(s(r.CURDATE)) && !PICKUP_HISTORIC[s(r.STATDES) ?? '']
+          ? archivedFields('backfill-still-open-20260820')
+          : {}),
       };
     },
     updateRow: (r) => {
@@ -721,11 +734,11 @@ async function upsertPickups(rows: Row[]) {
       priority_pickup_id: s(r.DOCNO),
       customer_number: s(r.CUSTNAME),
     }),
-  });
+  }, backfill);
 
   const wm = maxDate(rows, 'UDATE');
-  if (wm) await setWatermark('pickups', wm);
-  return { ...stats, watermark: wm };
+  if (wm && !backfill) await setWatermark('pickups', wm);
+  return { ...stats, backfill, watermark: backfill ? null : wm };
 }
 
 // ---------------------------------------------------------------------------
@@ -740,14 +753,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (req.method === 'POST') {
       const kind = String(req.query.kind ?? '');
+      // History mode. Opt-in per request, so the cron path (which never sends
+      // it) keeps the 90-day retention rule and the watermark exactly as they
+      // are today.
+      const backfill = String(req.query.backfill ?? '') === '1';
       // Make posts the raw OData response body: { "@odata.context": ..., "value": [...] }
       const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
       const rows: Row[] = Array.isArray(body?.value) ? body.value : [];
 
-      if (kind === 'customers') return res.status(200).json(await upsertCustomers(rows));
-      if (kind === 'orders') return res.status(200).json(await upsertOrders(rows));
-      if (kind === 'service_calls') return res.status(200).json(await upsertServiceCalls(rows));
-      if (kind === 'pickups') return res.status(200).json(await upsertPickups(rows));
+      if (kind === 'customers') return res.status(200).json(await upsertCustomers(rows, backfill));
+      if (kind === 'orders') return res.status(200).json(await upsertOrders(rows, backfill));
+      if (kind === 'service_calls') return res.status(200).json(await upsertServiceCalls(rows, backfill));
+      if (kind === 'pickups') return res.status(200).json(await upsertPickups(rows, backfill));
       return res.status(400).json({ error: `unknown kind: ${kind}` });
     }
 

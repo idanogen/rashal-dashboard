@@ -84,6 +84,96 @@ const Q = {
     `&$filter=${encodeURIComponent(`UDATE ge ${since}`)}&$orderby=UDATE%20asc&$top=8000`,
 };
 
+// ─── משיכת היסטוריה (backfill) ──────────────────────────────────────────────
+// המשיכות הרגילות רודפות אחרי ווטרמרק ולכן לעולם לא מגיעות אחורה. הריצה הזו
+// מקבלת חלון תאריכים מפורש ומושכת אותו במלואו, פעם אחת.
+//
+// שני דברים שקבעו את המבנה:
+//   1. פריוריטי חותך ב-2,000 שורות לתשובה **בשקט**, גם כש-$top גדול יותר
+//      (הלקח של רוני על DOCUMENTS_p, ואומת ב-20/08 גם על ORDERS ועל
+//      DOCUMENTS_Q). לכן קוראים לזה חודש-חודש מבחוץ ולא בבת אחת.
+//   2. הסינון הוא לפי **תאריך היצירה** ולא לפי תאריך הסטטוס, כדי שהחלונות
+//      יהיו זרים זה לזה ולא יזוזו בין הרצה להרצה.
+//
+// שמות השדות מועתקים מילה במילה מ-Q למעלה. $select עם שדה לא קיים מחזיר 400
+// (לקח #1 של רוני), אז לא מנחשים ולא מקצרים.
+const BACKFILL_Q: Record<string, { kind: string; url: (f: string, t: string) => string }> = {
+  customers: {
+    kind: "customers",
+    url: (f, t) =>
+      `/CUSTOMERS?$select=CUSTNAME,CUSTDES,ADDRESS,STATE,PHONE,FAX,AGENTNAME,MCUSTDES,OWNERLOGIN,CREATEDDATE` +
+      `&$filter=${encodeURIComponent(`CREATEDDATE ge ${f} and CREATEDDATE lt ${t}`)}` +
+      `&$orderby=CREATEDDATE%20asc&$top=4000`,
+  },
+  orders: {
+    kind: "orders",
+    url: (f, t) =>
+      `/ORDERS?$select=ORDNAME,CUSTNAME,CDES,CURDATE,STATUSDATE,ORDSTATUSDES,AGENTNAME,TYPEDES,DOERNAME,Y_151_0_ESHB` +
+      `&$expand=${encodeURIComponent("ORDERITEMS_SUBFORM($select=PARTNAME,PDES,TQUANT,SERIALNAME)")}` +
+      `&$filter=${encodeURIComponent(`CURDATE ge ${f} and CURDATE lt ${t}`)}` +
+      `&$orderby=CURDATE%20asc&$top=4000`,
+  },
+  service_calls: {
+    kind: "service_calls",
+    url: (f, t) =>
+      `/DOCUMENTS_Q?$select=DOCNO,CUSTNAME,CDES,STARTDATE,STATUSDATE,PHONENUM,SUSERLOGIN,Y_149_0_ESHB,Y_2578_0_ESHB,Y_2632_5_ESH,MALFDES,SYMDES,CALLTYPECODE,CALLSTATUSCODE,SERVTDES,SERNUM,PARTNAME,PARTDES,WARDATEFINAL,RSHL_INSTDATE` +
+      `&$filter=${encodeURIComponent(`STARTDATE ge ${f} and STARTDATE lt ${t}`)}` +
+      `&$orderby=STARTDATE%20asc&$top=1500`,
+  },
+  // איסופים בשני מעברים, בדיוק כמו בחי: השורות יוצרות את הרשומה, הכתובות
+  // ממלאות טלפון/כתובת/עיר. מעבר אחד בלבד היה מייצר היסטוריה בלי אנשי קשר.
+  pickups_lines: {
+    kind: "pickups",
+    url: (f, t) =>
+      `/DOCUMENTS_N?$select=DOCNO,DOC,CUSTNAME,CDES,CURDATE,STATDES,ORDNAME,ODOCNO,REFERENCE,TOWARHSDES,AGENTNAME,OWNERLOGIN,TOTQUANT,TOTPRICE,UDATE` +
+      `&$expand=${encodeURIComponent("TRANSORDER_N_SUBFORM($select=TRANS,KLINE,PARTNAME,PDES,TQUANT,TUNITNAME,BARCODE,ORDNAME,RETREASONDES)")}` +
+      `&$filter=${encodeURIComponent(`CURDATE ge ${f} and CURDATE lt ${t}`)}` +
+      `&$orderby=CURDATE%20asc&$top=4000`,
+  },
+  pickups_addresses: {
+    kind: "pickups",
+    url: (f, t) =>
+      `/DOCUMENTS_N?$select=DOCNO,DOC,CUSTNAME,CDES,CURDATE,STATDES,ORDNAME,ODOCNO,REFERENCE,TOWARHSDES,AGENTNAME,OWNERLOGIN,TOTQUANT,TOTPRICE,UDATE` +
+      `&$expand=${encodeURIComponent("DOCUMENTS_DCONT_SUBFORM($select=ADRS,STATE,PHONE,FAX)")}` +
+      `&$filter=${encodeURIComponent(`CURDATE ge ${f} and CURDATE lt ${t}`)}` +
+      `&$orderby=CURDATE%20asc&$top=4000`,
+  },
+};
+
+// חלון אחד, ישות אחת. קריאה מפריוריטי + כתיבה דרך ה-inbox במצב backfill.
+// ה-inbox במצב הזה לא מקדם את הווטרמרק, כך שהסנכרון החי לא מושפע בכלל.
+async function runBackfill(entity: string, from: string, to: string, dry: boolean) {
+  const cfg = BACKFILL_Q[entity];
+  if (!cfg) return { error: `unknown entity '${entity}'`, known: Object.keys(BACKFILL_Q) };
+
+  const url = PRIORITY + cfg.url(from, to);
+  const res = await fetch(url, {
+    headers: { Authorization: basicAuth(), "User-Agent": UA, Accept: "application/json" },
+  });
+  const body = await res.text();
+  if (!res.ok) return { entity, from, to, error: `HTTP ${res.status}`, detail: body.slice(0, 300) };
+
+  let fetched = 0;
+  try { fetched = (JSON.parse(body)?.value ?? []).length; } catch { /* best effort */ }
+
+  // 2,000 בדיוק = כמעט בוודאות קיטום שקט, לא סוף אמיתי של החלון.
+  const truncated = fetched >= 2000;
+
+  if (dry) return { entity, from, to, fetched, truncated, dry: true };
+
+  const post = await fetch(`${INBOX}?kind=${cfg.kind}&backfill=1`, {
+    method: "POST",
+    headers: { "x-sync-secret": syncSecret(), "Content-Type": "application/json" },
+    body,
+  });
+  const postBody = await post.text();
+  if (!post.ok) return { entity, from, to, fetched, truncated, error: `inbox HTTP ${post.status}`, detail: postBody.slice(0, 300) };
+
+  let stats: unknown = postBody.slice(0, 400);
+  try { stats = JSON.parse(postBody); } catch { /* keep raw */ }
+  return { entity, from, to, fetched, truncated, stats };
+}
+
 // חלון מתגלגל 3 ימים לכתובות איסוף (כמו addDays(now;-3) ב-Make)
 function rolling3Days(): string {
   const d = new Date(Date.now() - 3 * 24 * 3600 * 1000);
@@ -646,6 +736,23 @@ Deno.serve(async (req: Request) => {
   if (job === "report-cleanup") {
     const which = body?.entity ? String(body.entity) : "orders";
     return new Response(JSON.stringify(await reportCleanup(which), null, 2), { headers: { "Content-Type": "application/json" } });
+  }
+  if (job === "backfill") {
+    const entity = String(body?.entity ?? "");
+    const from = String(body?.from ?? "");
+    const to = String(body?.to ?? "");
+    const dry = body?.dry === true || String(body?.dry ?? "") === "1";
+    if (!entity || !from || !to) {
+      return new Response(JSON.stringify({
+        error: "backfill requires entity, from, to (ISO)",
+        known: Object.keys(BACKFILL_Q),
+      }), { status: 400, headers: { "Content-Type": "application/json" } });
+    }
+    try {
+      return new Response(JSON.stringify(await runBackfill(entity, from, to, dry), null, 2), { headers: { "Content-Type": "application/json" } });
+    } catch (e) {
+      return new Response(JSON.stringify({ error: String(e).slice(0, 500) }), { status: 500, headers: { "Content-Type": "application/json" } });
+    }
   }
   if (job === "report-stuck-stops") {
     return new Response(JSON.stringify(await reportStuckStops(), null, 2), { headers: { "Content-Type": "application/json" } });

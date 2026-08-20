@@ -74,6 +74,9 @@ export async function fetchAllPickups(): Promise<Pickup[]> {
     const { data, error } = await supabase
       .from('pickups')
       .select('*')
+      // כמו ב-orders וב-service_calls: ארכיון לא מוצג. בלי זה טיוטות ישנות
+      // שסומנו בארכיון ממשיכות להיספר, והמסך מראה יותר ממה שבאמת ממתין.
+      .is('archived_at', null)
       .or(dataWindowFilter())
       .order('pickup_date', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false })
