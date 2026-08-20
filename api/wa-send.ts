@@ -92,7 +92,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const built = buildVariables(template, body.values ?? {});
-    if (!built.ok) {
+    if (built.missing.length) {
       return res.status(400).json({
         ok: false,
         error: 'missing_values',

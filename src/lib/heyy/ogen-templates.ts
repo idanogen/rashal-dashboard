@@ -35,7 +35,9 @@ export const OGEN_TEMPLATES: Record<OgenTemplateKey, OgenTemplate> = {
     id: 'e42a2229-1dca-435b-b774-a4c7be5effc5',
     name: 'ogen_service_update',
     label: 'עדכון ללקוח',
-    category: 'utility',
+    // 🔴 מטא סיווגה גם אותה **שיווק**, למרות הניסוח שנצמד לעסקה.
+    // ראה ההערה על הסיווג בתחתית הקובץ.
+    category: 'marketing',
     variables: ['customer_name', 'subject', 'details'],
     hasDocumentHeader: false,
     preview:
@@ -69,6 +71,30 @@ export const OGEN_TEMPLATES: Record<OgenTemplateKey, OgenTemplate> = {
 export const DEPRECATED_MARKETING_TEMPLATE = 'ogen_open_conversation';
 
 /** בונה את מערך המשתנים לשליחה, בשמות שהעורך של heyy מכיר. */
+/**
+ * 🔴🔴 **הסיווג של מטא נקבע באישור, לא בהגשה. וגוף עם טקסט חופשי יוצא שיווק.**
+ *
+ * נמדד על שלוש תבניות באותו יום (20/08/2026):
+ *
+ * | תבנית | גוף | בהגשה | אחרי אישור |
+ * |---|---|---|---|
+ * | `ogen_open_conversation` | "בנוגע ל{נושא}: {פרטים}" | שיווק | שיווק |
+ * | `ogen_service_update` | "עדכון בנוגע ל{נושא} שלכם: {פרטים}" | **שירות** | **שיווק** |
+ * | `ogen_send_document` | "מצורפת {סוג} מספר {מספר}" | שירות | **שירות** |
+ *
+ * ⭐ **המסקנה, ושווה לכל תבנית שנכתוב מכאן:** זה לא הניסוח ולא המילים
+ * "עדכון" ו"שלכם". מה שקובע הוא **האם לתבנית יש חריץ לתוכן חופשי**.
+ * תבנית שיכולה לשאת כל טקסט היא מבחינת מטא מוצר דיוור, ולא משנה איך
+ * עוטפים אותה. `ogen_send_document` נשארה שירות כי כל משתנה בה מוגבל
+ * (סוג מסמך, מספר מסמך), ואין בה מקום לפרוזה.
+ *
+ * 🔴 **המחיר של שיווק:** תעריף גבוה יותר, כפיפות להסכמת הנמען ולמכסות
+ * פר-לקוח, ואפשרות שמטא תחסום אותה למי שביקש לא לקבל דיוור.
+ *
+ * **הדרך לתבנית פתיחה בקטגוריית שירות: לוותר על החריץ החופשי** ולבנות
+ * כמה תבניות צרות, שכל משתנה בהן הוא ערך מובנה (מספר מסמך, תאריך, שעה).
+ */
+
 export function buildVariables(
   key: OgenTemplateKey,
   values: Record<string, string>,

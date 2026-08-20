@@ -28,7 +28,9 @@ export const OGEN_TEMPLATES: Record<OgenTemplateKey, OgenTemplate> = {
     id: 'e42a2229-1dca-435b-b774-a4c7be5effc5',
     name: 'ogen_service_update',
     label: 'עדכון ללקוח',
-    category: 'utility',
+    // 🔴 מטא סיווגה גם אותה **שיווק**, למרות הניסוח שנצמד לעסקה.
+    // ראה ההערה על הסיווג בתחתית הקובץ.
+    category: 'marketing',
     variables: ['customer_name', 'subject', 'details'],
     hasDocumentHeader: false,
     preview:
@@ -49,6 +51,30 @@ export const OGEN_TEMPLATES: Record<OgenTemplateKey, OgenTemplate> = {
   },
 };
 
+/**
+ * 🔴🔴 **הסיווג של מטא נקבע באישור, לא בהגשה. וגוף עם טקסט חופשי יוצא שיווק.**
+ *
+ * נמדד על שלוש תבניות באותו יום (20/08/2026):
+ *
+ * | תבנית | גוף | בהגשה | אחרי אישור |
+ * |---|---|---|---|
+ * | `ogen_open_conversation` | "בנוגע ל{נושא}: {פרטים}" | שיווק | שיווק |
+ * | `ogen_service_update` | "עדכון בנוגע ל{נושא} שלכם: {פרטים}" | **שירות** | **שיווק** |
+ * | `ogen_send_document` | "מצורפת {סוג} מספר {מספר}" | שירות | **שירות** |
+ *
+ * ⭐ **המסקנה, ושווה לכל תבנית שנכתוב מכאן:** זה לא הניסוח ולא המילים
+ * "עדכון" ו"שלכם". מה שקובע הוא **האם לתבנית יש חריץ לתוכן חופשי**.
+ * תבנית שיכולה לשאת כל טקסט היא מבחינת מטא מוצר דיוור, ולא משנה איך
+ * עוטפים אותה. `ogen_send_document` נשארה שירות כי כל משתנה בה מוגבל
+ * (סוג מסמך, מספר מסמך), ואין בה מקום לפרוזה.
+ *
+ * 🔴 **המחיר של שיווק:** תעריף גבוה יותר, כפיפות להסכמת הנמען ולמכסות
+ * פר-לקוח, ואפשרות שמטא תחסום אותה למי שביקש לא לקבל דיוור.
+ *
+ * **הדרך לתבנית פתיחה בקטגוריית שירות: לוותר על החריץ החופשי** ולבנות
+ * כמה תבניות צרות, שכל משתנה בהן הוא ערך מובנה (מספר מסמך, תאריך, שעה).
+ */
+
 export function isTemplateKey(v: unknown): v is OgenTemplateKey {
   return typeof v === 'string' && Object.prototype.hasOwnProperty.call(OGEN_TEMPLATES, v);
 }
@@ -59,10 +85,28 @@ export function isTemplateKey(v: unknown): v is OgenTemplateKey {
  * 🔴 משתנה ריק אינו נדחה על ידי heyy. הוא פשוט מגיע ללקוח כחור בטקסט
  * ("עדכון בנוגע ל שלכם:"), ולכן החוסר נתפס כאן ולא אצל הלקוח.
  */
+export interface BuiltVariables {
+  ok: boolean;
+  variables: Array<{ name: string; value: string }>;
+  /** שמות המשתנים שנשארו ריקים. ריק כש-`ok`. */
+  missing: string[];
+}
+
+/**
+ * בונה את מערך המשתנים לשליחה.
+ *
+ * 🔴 משתנה ריק אינו נדחה על ידי heyy. הוא פשוט מגיע ללקוח כחור בטקסט
+ * ("עדכון בנוגע ל שלכם:"), ולכן החוסר נתפס כאן ולא אצל הלקוח.
+ *
+ * 🔴 **מחזיר מבנה אחד ולא איחוד מבדיל.** הבנייה של פונקציות Vercel רצה
+ * **בלי `strict`**, ושם צמצום לפי `if (r.ok)` לא עובד והקומפיילר נופל על
+ * `Property 'missing' does not exist`. זו מלכודת מוכרת בפרויקט הזה
+ * (ראה `api/admin-users.ts`), ו-`tsc` המקומי לא תופס אותה כי הוא כן strict.
+ */
 export function buildVariables(
   key: OgenTemplateKey,
   values: Record<string, unknown>,
-): { ok: true; variables: Array<{ name: string; value: string }> } | { ok: false; missing: string[] } {
+): BuiltVariables {
   const spec = OGEN_TEMPLATES[key];
   const variables: Array<{ name: string; value: string }> = [];
   const missing: string[] = [];
@@ -73,7 +117,7 @@ export function buildVariables(
     variables.push({ name, value });
   }
 
-  return missing.length ? { ok: false, missing } : { ok: true, variables };
+  return { ok: missing.length === 0, variables, missing };
 }
 
 /** הטקסט שהלקוח יקרא, לתצוגה בחלונית ולתיעוד. אותו מילוי שהשרת שולח. */

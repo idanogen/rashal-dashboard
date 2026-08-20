@@ -159,14 +159,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // ⭐ המרשם מגיע מהשרת ולא מהחלונית, כדי שהוספת תבנית לא תדרוש גרסה
   // חדשה של התוסף אצל כל עובד.
+  // 🔴 **לא מסננים לפי קטגוריה.** תבנית שיווק היא עדיין תבנית שאפשר
+  // לשלוח, והיא לפעמים היחידה שיש. מה שכן: הקטגוריה נשלחת לחלונית כדי
+  // שהיא תאמר לעובד שההודעה הזאת עולה יותר וכפופה להסכמת דיוור, במקום
+  // שהמחיר יתגלה בחשבונית.
   const templates = (Object.keys(OGEN_TEMPLATES) as OgenTemplateKey[])
     .map((key) => ({ key, ...OGEN_TEMPLATES[key] }))
-    .filter((t) => t.category === 'utility')
-    .map(({ key, label, variables, preview, hasDocumentHeader }) => ({
+    .map(({ key, label, variables, preview, hasDocumentHeader, category }) => ({
       key,
       label,
       variables,
       preview,
+      category,
       // כרגע לא ניתן לשליחה: מסלול הפקת המסמך מפריוריטי טרם נבנה.
       available: !hasDocumentHeader,
       unavailableReason: hasDocumentHeader ? 'המסמך עדיין לא מופק מפריוריטי' : null,

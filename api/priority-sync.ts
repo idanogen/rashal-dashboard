@@ -207,7 +207,55 @@ interface AdoptConfig {
   adoptRow: (r: Row, existing: Row) => Row; // key + fill-missing for ADOPT
 }
 
-async function runAdoption(rows: Row[], cfg: AdoptConfig) {
+// ---------------------------------------------------------------------------
+// Backfill mode (20/08/2026) — history alignment back to 01/01/2026
+//
+// The live sync deliberately refuses to INSERT anything older than 90 days
+// (Idan's retention rule, 04/07). That rule is what keeps the dispatcher's work
+// lists honest, and it stays exactly as it is for every normal run.
+//
+// A one-off history pull needs the opposite, so it runs as an explicit mode:
+//   POST /api/priority-sync?kind=orders&backfill=1
+// It is never reached by the cron path, which posts without the flag.
+//
+// Two things change, and nothing else:
+//   1. the 90-day INSERT refusal is lifted
+//   2. the watermark is NOT advanced — a history window must never move the
+//      live cursor, or the next scheduled run would skip forward and lose days
+// ---------------------------------------------------------------------------
+const LIVE_DAYS = 90;
+
+const isHistoric = (docDate: string | null): boolean =>
+  !!docDate && new Date(docDate).getTime() < Date.now() - LIVE_DAYS * 24 * 3600 * 1000;
+
+// A record Priority still calls open, that was created months ago, is not
+// pending work — it is history nobody is going to act on. It lands archived:
+// present in the database for reporting, invisible to the dispatcher.
+const archivedFields = (reason: string) => ({
+  archived_at: new Date().toISOString(),
+  archived_reason: reason,
+});
+
+// Historical closure, backfill only. Unlike the live mapping, a months-old
+// order that Priority billed really did happen — the 09/08 reasoning (Priority
+// sets 'בוצעה' at billing time, before the drive) is about NEW orders being
+// born closed, and cannot apply to a record from January.
+const ORDER_HISTORIC: Record<string, string> = {
+  'מבוטלת': 'בוטל',
+  'בוצעה': 'סופק',
+  'שולמה': 'סופק',
+};
+const CALL_HISTORIC: Record<string, string> = {
+  'מבוטלת': 'בוטל',
+  'בוצעה': 'בוצע',
+  'סופית': 'בוצע',
+};
+const PICKUP_HISTORIC: Record<string, string> = {
+  'מבוטלת': 'בוטל',
+  'סופית': 'נאסף',
+};
+
+async function runAdoption(rows: Row[], cfg: AdoptConfig, backfill = false) {
   const stats = { received: rows.length, updated: 0, adopted: 0, inserted: 0, skipped: 0, unchanged: 0 };
 
   // dedupe batch by natural key (Priority can repeat rows across pages)
@@ -289,8 +337,9 @@ async function runAdoption(rows: Row[], cfg: AdoptConfig) {
       }
       // Idan's retention rule (04/07): never INSERT records older than 90 days.
       // Existing rows (keyed/adopted) are always fair game for updates.
+      // Lifted only in backfill mode, which is the whole point of that mode.
       const dd = cfg.docDate(r);
-      if (dd && new Date(dd).getTime() < Date.now() - 90 * 24 * 3600 * 1000) {
+      if (!backfill && dd && new Date(dd).getTime() < Date.now() - 90 * 24 * 3600 * 1000) {
         const adopteeOld = findAdoptee(r);
         if (!adopteeOld) { stats.skipped++; return; }
       }
@@ -408,7 +457,7 @@ function mapItems(r: Row): Row[] | null {
 // ---------------------------------------------------------------------------
 // orders ← ORDERS (enriched with address/city from the customers cache)
 // ---------------------------------------------------------------------------
-async function upsertOrders(rows: Row[]) {
+async function upsertOrders(rows: Row[], backfill = false) {
   // batch-load customer cache for enrichment
   const custnames = [...new Set(rows.map((r) => s(r.CUSTNAME)).filter(Boolean))] as string[];
   const cache = new Map<string, Row>();
@@ -446,6 +495,14 @@ async function upsertOrders(rows: Row[]) {
         ...(ORDER_TERMINAL[s(r.ORDSTATUSDES) ?? '']
           ? { order_status: ORDER_TERMINAL[s(r.ORDSTATUSDES)!] }
           : {}),
+        // History pull: close it by what Priority says, and archive whatever
+        // Priority still calls open, so months-old rows never reach the
+        // dispatcher's pending list.
+        ...(backfill && isHistoric(s(r.CURDATE))
+          ? (ORDER_HISTORIC[s(r.ORDSTATUSDES) ?? '']
+              ? { order_status: ORDER_HISTORIC[s(r.ORDSTATUSDES)!] }
+              : archivedFields('backfill-still-open-20260820'))
+          : {}),
       };
     },
     updateRow: (r) => {
@@ -478,11 +535,12 @@ async function upsertOrders(rows: Row[]) {
       const items = mapItems(r); if (items) u.items = items;
       return u;
     },
-  });
+  }, backfill);
 
+  // A history window must never move the live cursor.
   const wm = maxDate(rows, 'STATUSDATE') ?? maxDate(rows, 'CURDATE');
-  if (wm) await setWatermark('orders', wm);
-  return { ...stats, watermark: wm };
+  if (wm && !backfill) await setWatermark('orders', wm);
+  return { ...stats, backfill, watermark: backfill ? null : wm };
 }
 
 // ---------------------------------------------------------------------------
