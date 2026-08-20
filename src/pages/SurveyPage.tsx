@@ -90,11 +90,11 @@ function Letterhead() {
   return (
     <div className="text-center">
       <img
-        src="/rashal-logo.jpg"
+        src="/rashal-logo.png"
         alt="ר.שעל"
-        width={124}
-        height={124}
-        className="mx-auto h-[124px] w-[124px] object-contain"
+        width={176}
+        height={144}
+        className="mx-auto h-[144px] w-[176px] object-contain"
       />
       <div className="mt-2 text-[22px] font-extrabold tracking-wide" style={{ color: NAVY }}>
         ר.שעל
