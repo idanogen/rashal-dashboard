@@ -92,9 +92,9 @@ function Letterhead() {
       <img
         src="/rashal-logo.png"
         alt="ר.שעל"
-        width={176}
-        height={144}
-        className="mx-auto h-[144px] w-[176px] object-contain"
+        width={156}
+        height={158}
+        className="mx-auto h-[158px] w-[156px] object-contain"
       />
       <div className="mt-2 text-[22px] font-extrabold tracking-wide" style={{ color: NAVY }}>
         ר.שעל
