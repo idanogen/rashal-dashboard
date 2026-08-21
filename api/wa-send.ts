@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireUser } from './_lib/require-user.js';
 import { supabaseAdmin } from './_lib/supabase-admin.js';
 import { heyySendText, isHeyyDemo } from './_lib/heyy-server.js';
-import { sendTemplate as sendTemplateV3 } from './_lib/heyy-v3.js';
+import { sendTemplate as sendTemplateV3, uploadFileFromUrl } from './_lib/heyy-v3.js';
 import { toE164, normalizePhone } from './_lib/phone.js';
 import { windowState } from './_lib/thread.js';
 import {
@@ -46,6 +46,48 @@ interface SendBody {
   customerNumber?: string;
   entityType?: string;
   entityKey?: string;
+  /** כתובת ה-PDF שפריוריטי הפיקה, לתבנית שנושאת מסמך פר נמען. */
+  documentUrl?: string;
+  /** שם הקובץ שהלקוח יראה בוואטסאפ. */
+  documentName?: string;
+}
+
+/**
+ * 🔴 **כתובת המסמך מגיעה מהדפדפן, ולכן היא לא נאמנת.**
+ * בלי הגבלת מארח, מי שמחזיק טוקן היה גורם לשרת שלנו למשוך קובץ מכל
+ * כתובת בעולם, להעלות אותו לחשבון ה-heyy של עוגן, ולשלוח אותו מהמספר
+ * הרשמי של הלקוח. מותר רק מה שהפריוריטי של ר.שעל עצמה הפיקה.
+ */
+const DOC_HOSTS = (process.env.PRIORITY_DOC_HOSTS ?? 'p.priority-connect.online')
+  .split(',')
+  .map((h) => h.trim().toLowerCase())
+  .filter(Boolean);
+
+function documentUrlError(raw: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return 'כתובת המסמך אינה תקינה.';
+  }
+  if (url.protocol !== 'https:') return 'כתובת המסמך חייבת להיות https.';
+  if (!DOC_HOSTS.includes(url.hostname.toLowerCase())) {
+    return 'כתובת המסמך אינה מהפריוריטי של ר.שעל.';
+  }
+  return null;
+}
+
+/**
+ * שם הקובץ שהלקוח רואה. מנוקה מכל מה שאינו שם: נתיבים, מרכאות ושורות
+ * חדשות נכנסים לכותרת של בקשת ההעלאה, ואין סיבה לתת להם להגיע לשם.
+ */
+function safeFileName(raw: unknown): string {
+  const base = String(raw ?? '')
+    .replace(/[\\/\r\n"']/g, '')
+    .trim()
+    .slice(0, 80);
+  if (!base) return 'מסמך.pdf';
+  return /\.pdf$/i.test(base) ? base : `${base}.pdf`;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -73,6 +115,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // ── התבנית, ואימות מלא שלה בשרת ─────────────────────────
   let template: WaTemplate | null = null;
   let variables: Record<string, string> = {};
+  let documentUrl: string | null = null;
 
   if (kind === 'template') {
     // 🔴 המפתח מתורגם לתבנית **בשרת, מול הטבלה**. מזהה שמגיע מהדפדפן
@@ -92,16 +135,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
-    // 🔴 תבנית שהמדיה בה משתנה פר לקוח (המסמך מפריוריטי) דורשת קובץ
-    // חדש בכל שליחה, ומסלול ההפקה עוד לא נבנה. עדיף לומר את זה מפורשות
-    // מאשר לשלוח תבנית שמבטיחה מסמך ומגיעה בלעדיו.
+    // 🔴 תבנית שהמדיה בה משתנה פר נמען (המסמך מפריוריטי) דורשת קובץ חדש
+    // בכל שליחה. הקובץ ששמור בתבנית הוא **תעודת הדוגמה שהוגשה למטא**,
+    // ושליחתה ללקוח אמיתי היא תקלה חמורה, ולכן כאן לא נופלים אחורה אליו.
     // ⭐ מדיה **קבועה** (סרטון הדרכה) נשלחת כמו שהיא: הקובץ כבר ב-heyy.
     if (template.mediaPerMessage) {
-      return res.status(400).json({
-        ok: false,
-        error: 'document_not_wired',
-        message: 'שליחת מסמך עוד לא מחוברת. המסמך עצמו עדיין לא מופק מפריוריטי.',
-      });
+      const raw = String(body.documentUrl ?? '').trim();
+      if (!raw) {
+        return res.status(400).json({
+          ok: false,
+          error: 'document_required',
+          message: 'התבנית הזאת שולחת מסמך, ולא הגיעה כתובת מסמך.',
+        });
+      }
+      const bad = documentUrlError(raw);
+      if (bad) {
+        return res.status(400).json({ ok: false, error: 'document_url_rejected', message: bad });
+      }
+      if (!template.attachmentId) {
+        return res.status(400).json({
+          ok: false,
+          error: 'template_missing_attachment',
+          message: 'לתבנית אין מזהה קובץ מ-heyy. הרץ סנכרון תבניות במסך הניהול.',
+        });
+      }
+      documentUrl = raw;
     }
 
     const built = buildVariables(template, body.values ?? {});
@@ -116,6 +174,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     variables = built.variables;
   }
 
+  // ── המסמך: פריוריטי מפיקה בדפדפן, ההעלאה ל-heyy קורית כאן ────
+  //
+  // ⭐ שני מזהים שונים, וחסר אחד מהם והמדיה פשוט לא מצורפת:
+  // `id` הוא הקובץ המצורף **בתוך הגדרת התבנית**, ו-`fileId` הוא הקובץ
+  // שהועלה בפועל בשליחה הזאת.
+  let attachments: Array<{ id: string; fileId: string }> | undefined;
+  if (template) {
+    if (documentUrl) {
+      try {
+        const up = await uploadFileFromUrl(documentUrl, safeFileName(body.documentName), 'document');
+        attachments = [{ id: template.attachmentId!, fileId: up.fileId }];
+      } catch (e) {
+        // 🔴 תבנית שמבטיחה מסמך לא יוצאת בלעדיו. עדיף כישלון גלוי
+        // מאשר הודעה שכתוב בה "מצורפת" ואין בה כלום.
+        // 🔴 שתי תקלות שונות לגמרי מסתתרות כאן, ולכן הן מופרדות:
+        // כשל במשיכת הקובץ מפריוריטי פירושו שהכתובת דורשת את הסשן של
+        // הדפדפן, וזה שינוי תכנון (התוסף ימשוך את הבייטים). כשל מול
+        // heyy הוא תקלה רגילה שאפשר לנסות שוב.
+        const detail = e instanceof Error ? e.message : String(e);
+        const fromSource = detail.startsWith('source file');
+        console.error('[wa-send] document upload failed', detail);
+        return res.status(502).json({
+          ok: false,
+          error: fromSource ? 'document_fetch_failed' : 'document_upload_failed',
+          detail,
+          message: fromSource
+            ? 'המסמך הופק בפריוריטי אבל השרת שלנו לא הצליח למשוך אותו. שום הודעה לא נשלחה.'
+            : 'המסמך נמשך אבל ההעלאה ל-heyy נכשלה. שום הודעה לא נשלחה.',
+        });
+      }
+    } else if (
+      template.attachmentId &&
+      template.attachmentFileId &&
+      template.attachmentKind !== 'button' &&
+      !template.mediaPerMessage
+    ) {
+      attachments = [{ id: template.attachmentId, fileId: template.attachmentFileId }];
+    }
+  }
+
   // 🔴 שני מסלולים ושתי גרסאות API. טקסט חופשי נשאר על v2.0 שעובד,
   // ותבנית עוברת ב-v3 כי רק שם אפשר לצרף מדיה.
   const result =
@@ -123,15 +221,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ? await heyySendText(e164, body.bodyText!.trim())
       : await (async () => {
           const t = template!;
-          const attach =
-            t.attachmentId && t.attachmentFileId && t.attachmentKind !== 'button' && !t.mediaPerMessage
-              ? [{ id: t.attachmentId, fileId: t.attachmentFileId }]
-              : undefined;
           const r = await sendTemplateV3({
             phoneE164: e164,
             templateId: t.heyyTemplateId,
             variables,
-            attachments: attach,
+            attachments,
           });
           return {
             ok: r.ok,

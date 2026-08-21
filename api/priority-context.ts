@@ -44,6 +44,19 @@ const SUBJECT_BY_FORM: Record<string, string> = {
   SERVCALLS: 'קריאת השירות',
 };
 
+/**
+ * שם המסמך כפי שהלקוח יקרא אותו בתבנית ("מצורפת תעודת משלוח מספר...").
+ * 🔴 בנפרד מ-`SUBJECT_BY_FORM`, כי שם הניסוח מיודע ("תעודת המשלוח")
+ * וכאן הוא חייב להיות סתמי, אחרת המשפט אצל הלקוח נשבר.
+ */
+const DOC_TYPE_BY_FORM: Record<string, string> = {
+  ORDERS: 'הזמנה',
+  DOCUMENTS_D: 'תעודת משלוח',
+  AINVOICES: 'חשבונית מס',
+  PORDERS: 'הזמנת רכש',
+  SERVCALLS: 'קריאת שירות',
+};
+
 const MAX_CANDIDATES = 120;
 const MAX_LEN = 60;
 
@@ -179,10 +192,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       preview: t.bodyPreview,
       category: t.category,
       // ⭐ מדיה **קבועה** (סרטון הדרכה) נשלחת כמו שהיא, כי הקובץ כבר
-      // ב-heyy. 🔴 מדיה **פר נמען** חסומה, כי הקובץ ששמור בתבנית הוא
-      // תעודת הדוגמה שהוגשה למטא, ושליחתה ללקוח אמיתי הייתה תקלה חמורה.
-      available: !t.mediaPerMessage,
-      unavailableReason: t.mediaPerMessage ? 'המסמך עדיין לא מופק מפריוריטי' : null,
+      // ב-heyy.
+      // ⭐ מדיה **פר נמען** כבר לא חסומה: התוסף מפיק את המסמך מפריוריטי
+      // ומעביר את כתובתו. 🔴 אבל היא דורשת מסך שנלמד, ולכן החלונית היא
+      // שמכריעה אם אפשר לשלוח כאן ועכשיו, והשרת דוחה שליחה בלי מסמך.
+      available: true,
+      needsDocument: t.mediaPerMessage,
+      unavailableReason: null,
     }));
   } catch (e) {
     // 🔴 כשל בטעינת המחסנית לא מפיל את הזיהוי. החלונית עדיין שווה משהו
@@ -198,6 +214,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     prefill: {
       customer_name: best.customerName ?? '',
       subject: SUBJECT_BY_FORM[String(body.form ?? '').toUpperCase()] ?? 'הפנייה',
+      // ⭐ מה שידוע מהמסך לא מוקלד ביד. מספר המסמך עדיין מוקלד, כי הוא
+      // לא נגזר מהזיהוי, והתצוגה המקדימה מראה בדיוק מה ייצא.
+      doc_type: DOC_TYPE_BY_FORM[String(body.form ?? '').toUpperCase()] ?? '',
     },
     // מוחזר רק כשבאמת יש יותר מאחד, כדי שהחלונית תוכל לשאול במקום לנחש.
     matches: matches.length > 1 ? matches : [],
