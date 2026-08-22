@@ -142,7 +142,19 @@ export async function uploadFileFromUrl(
     // שהייתה שולחת אותנו לשכתב את מסלול ההפקה בלי סיבה.
     headers: { 'User-Agent': BROWSER_UA },
   });
-  if (!src.ok) throw new Error(`source file ${src.status}`);
+  // 🔴 גם כאן: הקוד והגוף נשמרים. "לא הצלחנו למשוך" בלי מספר אינו ממצא,
+  // ו-403 מול 404 מול 410 הם שלוש בעיות שונות לגמרי (חסימה · הקובץ לא
+  // קיים · הקובץ נמחק), שכל אחת מהן שולחת אותנו למקום אחר.
+  if (!src.ok) {
+    const why = await src.text().catch(() => '');
+    console.error('[heyy] source fetch failed', {
+      status: src.status,
+      host: (() => { try { return new URL(url).hostname; } catch { return '?'; } })(),
+      contentType: src.headers.get('content-type') ?? '(ריק)',
+      body: why.slice(0, 300),
+    });
+    throw new Error(`source file ${src.status}${why ? ': ' + why.slice(0, 200) : ''}`);
+  }
   const raw = await src.blob();
 
   // 🔴 מטא חוסמת מסמך מעל 100MB, ומעשית כל דבר מעל כמה מגה מגיע לאט
