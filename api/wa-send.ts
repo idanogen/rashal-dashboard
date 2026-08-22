@@ -234,9 +234,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           ok: false,
           error: fromSource ? 'document_fetch_failed' : 'document_upload_failed',
           detail,
+          // ⭐ הסיבה של הספק נאמרת על המסך ולא רק בלוג. בסבב הראשון
+          // ההודעה אמרה רק "ההעלאה נכשלה", וכל אבחון דרש שליפת לוגים.
           message: fromSource
             ? 'המסמך הופק בפריוריטי אבל השרת שלנו לא הצליח למשוך אותו. שום הודעה לא נשלחה.'
-            : 'המסמך נמשך אבל ההעלאה ל-heyy נכשלה. שום הודעה לא נשלחה.',
+            : `המסמך נמשך אבל ההעלאה ל-heyy נכשלה. שום הודעה לא נשלחה. (${detail.slice(0, 200)})`,
         });
       }
     } else if (

@@ -112,6 +112,9 @@ export async function listTemplates(): Promise<HeyyTemplate[]> {
 
 export type HeyyFileType = 'image' | 'video' | 'audio' | 'document';
 
+/** סוג התוכן שנשלח ל-heyy פר סוג קובץ. ראה `uploadFileFromUrl`. */
+const MIME: Partial<Record<HeyyFileType, string>> = { document: 'application/pdf' };
+
 /**
  * מעלה קובץ ל-heyy ומחזיר את המזהה שלו.
  *
@@ -140,19 +143,48 @@ export async function uploadFileFromUrl(
     headers: { 'User-Agent': BROWSER_UA },
   });
   if (!src.ok) throw new Error(`source file ${src.status}`);
-  const blob = await src.blob();
+  const raw = await src.blob();
 
   // 🔴 מטא חוסמת מסמך מעל 100MB, ומעשית כל דבר מעל כמה מגה מגיע לאט
   // מאוד ללקוח. עדיף להיעצר כאן מאשר לגלות מהלקוח.
-  if (blob.size > 50 * 1024 * 1024) throw new Error('file too large');
+  if (raw.size > 50 * 1024 * 1024) throw new Error('file too large');
+
+  // 🔴 **סוג התוכן נקבע כאן ולא נלקח כפי שהוא מפריוריטי.**
+  // `FormData` גוזר את ה-`Content-Type` של החלק מ-`blob.type`, ופריוריטי
+  // עשויה להחזיר `application/octet-stream` או כלום. צד שני שבודק סוג
+  // דוחה את זה, וזה נראה כמו "הקובץ פסול" במקום "התווית שגויה".
+  const blob =
+    MIME[type] && raw.type !== MIME[type] ? new Blob([raw], { type: MIME[type] }) : raw;
 
   const form = new FormData();
   form.append('type', type);
   form.append('file', blob, filename);
 
   const res = await call('/files', { method: 'POST', headers: headers(false), body: form }, 60000);
-  const json = (await res.json().catch(() => ({}))) as { data?: { id?: string } };
-  if (!res.ok || !json.data?.id) throw new Error(`heyy upload ${res.status}`);
+  const body = await res.text();
+
+  let json: { data?: { id?: string } } = {};
+  try {
+    json = JSON.parse(body) as { data?: { id?: string } };
+  } catch {
+    /* גוף שאינו JSON נשאר בטקסט, וזה בדיוק מה שרוצים לראות בשגיאה */
+  }
+
+  // 🔴 **הסיבה של heyy נשמרת.** הגרסה הראשונה זרקה `heyy upload 400` בלבד,
+  // ואז אין מה לעשות עם זה חוץ מלנחש: איזה שדה, איזה סוג, איזו מגבלה.
+  // תשובת שגיאה של ספק היא הנתון היקר ביותר ברגע כזה, ואסור לזרוק אותה.
+  if (!res.ok || !json.data?.id) {
+    console.error('[heyy] upload rejected', {
+      status: res.status,
+      filename,
+      type,
+      size: raw.size,
+      sourceType: raw.type || '(ריק)',
+      sentType: blob.type,
+      body: body.slice(0, 500),
+    });
+    throw new Error(`heyy upload ${res.status}: ${body.slice(0, 300) || '(גוף ריק)'}`);
+  }
   return { fileId: json.data.id };
 }
 
