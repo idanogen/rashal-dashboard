@@ -5,6 +5,7 @@ import { heyySendText, isHeyyDemo } from './_lib/heyy-server.js';
 import { sendTemplate as sendTemplateV3, uploadFileBytes } from './_lib/heyy-v3.js';
 import { toE164, normalizePhone } from './_lib/phone.js';
 import { windowState } from './_lib/thread.js';
+import { normalizeEntity } from './_lib/doc-prefill.js';
 import {
   getTemplate,
   buildVariables,
@@ -115,6 +116,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!e164 || !local) {
     return res.status(400).json({ ok: false, error: 'invalid_phone', message: 'המספר לא תקין.' });
   }
+
+  // ⭐ שם הטופס וזיהוי המסמך, כפי שהחלונית ראתה אותם על המסך.
+  // 🔴 מספר המסמך נבדק בצורתו ולא מתקבל כטקסט חופשי: הוא מוצג ללקוח
+  // בשרשור ומשמש לחיפוש, ולכן ערך אקראי מהדפדפן היה מזהם את הנתונים
+  // בלי שאף אחד ישים לב. אותה בדיקה בדיוק שמכריעה את סוג המסמך.
+  const { entityType, entityKey } = normalizeEntity(body.entityType, body.entityKey);
 
   if (kind === 'text' && !body.bodyText?.trim()) {
     return res.status(400).json({ ok: false, error: 'empty_body', message: 'אין מה לשלוח.' });
@@ -334,6 +341,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (outErr) {
     console.error('[wa-send] outbound insert failed', outErr.message);
+  }
+
+  // ── מי שלח, ועל איזה מסמך ────────────────────────────────
+  //
+  // 🔴 עד 22/08/2026 שני הערכים האלה הגיעו לכאן מהחלונית **ולא נכתבו
+  // לשום מקום**. הם הוכרזו ב-`SendBody`, ההערה מעל הטבלה תיארה אותם
+  // כ"מה שהופך את השרשור לקריא בדיעבד", והמדידה אמרה 0 מתוך 34.
+  // הכתיבה היחידה שכן קרתה הייתה `triggered_by` לטבלה הישנה, שאף מסך
+  // חדש לא קורא ממנה.
+  //
+  // ⭐ הם לא נכתבים ישירות ל-`wa_messages`, כי **הוובהוק הוא הכותב
+  // היחיד לשם** וזו החלטה שנשארת. הם נרשמים בטבלת ייחוס, והוובהוק
+  // מושך אותם משם. ההסבר המלא ב-`20260822_wa_message_attribution.sql`.
+  //
+  // 🔴 **בלי מזהה אין למה לתלות את הייחוס.** זה בדיוק המצב שבו השליחה
+  // נכשלה, ואז אין הודעה בשרשור בכלל ואין מה לייחס.
+  if (result.waMessageId) {
+    const { error: attrErr } = await supabaseAdmin.rpc('wa_attribute_message', {
+      p_heyy_message_id: result.waMessageId,
+      p_author: `user:${user.email ?? user.id}`,
+      p_entity_type: entityType,
+      p_entity_key: entityKey,
+    });
+    // כישלון כאן לא מפיל שליחה שכבר יצאה ללקוח. הוא רק גורע מהתיעוד.
+    if (attrErr) console.error('[wa-send] attribution failed', attrErr.message);
   }
 
   return res.status(result.ok ? 200 : 502).json({

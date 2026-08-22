@@ -5,6 +5,7 @@ import {
   DOC_PREFIX_BY_FORM,
   DOC_TYPE_BY_PREFIX,
   DOC_TYPE_BY_FORM,
+  normalizeEntity,
 } from '../api/_lib/doc-prefill.ts';
 
 /**
@@ -167,4 +168,36 @@ test('כל קידומת שממופה למסך יודעת גם מה שמה', () =
       assert.ok(DOC_TYPE_BY_PREFIX[p], `לקידומת ${p} (${form}) אין כיתוב`);
     }
   }
+});
+
+// ── ההקשר שנרשם על ההודעה ───────────────────────────────────────────────
+// כל הבדיקות כאן מגנות על אותה נקודה: הערכים מגיעים מהדפדפן, ולכן שדה
+// שנראה מלא אינו שדה שנכתב נכון.
+
+test('normalizeEntity: שם הטופס עולה לאותיות גדולות ומספר תקין עובר', () => {
+  const r = normalizeEntity(' ainvoices ', ' in2600123 ');
+  assert.equal(r.entityType, 'AINVOICES');
+  assert.equal(r.entityKey, 'IN2600123');
+});
+
+test('normalizeEntity: מספר מסמך פסול נזרק ולא נשמר כטקסט', () => {
+  for (const bad of ['T14388', '0V2600987', 'לא מספר', '123456', 'SH123', '<script>']) {
+    assert.equal(normalizeEntity('ORDERS', bad).entityKey, null, bad);
+  }
+});
+
+test('normalizeEntity: חסר או ריק מוחזר null ולא מחרוזת ריקה', () => {
+  // 🔴 מחרוזת ריקה בעמודה גורמת ל-coalesce לחשוב שיש ערך, וכל תיקון
+  // מאוחר יותר היה נחסם על ידי ערך "קיים" שהוא בעצם כלום.
+  for (const empty of [undefined, null, '', '   ']) {
+    const r = normalizeEntity(empty, empty);
+    assert.equal(r.entityType, null);
+    assert.equal(r.entityKey, null);
+  }
+});
+
+test('normalizeEntity: מסך שלא מיפינו עובר כמו שהוא', () => {
+  // ⭐ אין רשימה לבנה של מסכים, במכוון. רשימה כזאת הייתה מחזירה את מרשם
+  // המסכים שביטלנו, רק בדלת האחורית.
+  assert.equal(normalizeEntity('WHATEVER_NEW_FORM', '').entityType, 'WHATEVER_NEW_FORM');
 });

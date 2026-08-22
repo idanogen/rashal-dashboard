@@ -161,3 +161,27 @@ export function pickDocument(rawForm: unknown, candidates: string[]): DocPrefill
     needs_measure: !DOC_PREFIX_BY_FORM[form],
   };
 }
+
+/** שם הטופס ומספר המסמך, אחרי נרמול ואחרי בדיקת צורה. */
+export interface EntityRef {
+  entityType: string | null;
+  entityKey: string | null;
+}
+
+/**
+ * ההקשר שנרשם על ההודעה: מאיזה מסך יצאה, ועל איזה מסמך.
+ *
+ * 🔴 **מספר המסמך נבדק בצורתו ואינו מתקבל כטקסט חופשי.** הוא מגיע
+ * מהדפדפן, הוא מוצג ללקוח בשרשור, ובהמשך ישמש לחיפוש "מה שלחנו על
+ * המסמך הזה". ערך שרירותי היה מזהם את הנתונים בשקט, בלי שאף אחד ישים
+ * לב, וזה בדיוק סוג התקלה שהכי קשה לאבחן חודשיים אחרי.
+ *
+ * ⭐ **שם הטופס דווקא לא נבדק מול רשימה סגורה, במכוון.** כל הרעיון של
+ * המוצר הוא שמסך חדש עובד בלי שנרשום אותו מראש (`needs_measure`), ורשימה
+ * לבנה כאן הייתה מחזירה בדלת האחורית בדיוק את מרשם המסכים שביטלנו.
+ */
+export function normalizeEntity(rawType: unknown, rawKey: unknown): EntityRef {
+  const entityType = String(rawType ?? '').trim().toUpperCase() || null;
+  const key = String(rawKey ?? '').trim().toUpperCase();
+  return { entityType, entityKey: DOC_NUMBER.test(key) ? key : null };
+}
