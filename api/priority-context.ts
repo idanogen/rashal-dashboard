@@ -69,7 +69,7 @@ function nameKey(s: string | null | undefined): string {
 }
 
 /**
- * ⭐ **מסך שאיננו מכירים נרשם, ולא נשכח.**
+ * ⭐ **מסך שאין לנו עליו מדידה נרשם, ולא נשכח.**
  *
  * הדוקטרינה של המוצר היא שהתוסף לומד ולא ממופה ידנית: פרוצדורת ההדפסה
  * נלמדת מהדפסה אחת, וזהות הלקוח נגזרת מהצלבה מול המחסן. הדבר היחיד
@@ -85,13 +85,13 @@ function nameKey(s: string | null | undefined): string {
  */
 const notedScreens = new Set<string>();
 
-async function noteUnknownScreen(rawForm: unknown, candidates: string[]): Promise<void> {
+async function noteScreenToMap(rawForm: unknown, candidates: string[]): Promise<void> {
   const form = String(rawForm ?? '').trim().toUpperCase();
   if (!form || notedScreens.has(form)) return;
   notedScreens.add(form);
   try {
     await supabaseAdmin.from('sync_debug').insert({
-      label: 'wa-panel/unknown-screen',
+      label: 'wa-panel/screen-to-map',
       status_code: form,
       body: JSON.stringify({
         form,
@@ -99,9 +99,9 @@ async function noteUnknownScreen(rawForm: unknown, candidates: string[]): Promis
         shaped: candidates.filter((c) => /^[A-Z]{2}\d{5,9}$/.test(c)).slice(0, 10),
       }),
     });
-    console.warn('[priority-context] מסך שאינו במפה:', form);
+    console.warn('[priority-context] מסך בלי קידומות שנמדדו:', form);
   } catch (e) {
-    console.warn('[priority-context] רישום מסך לא מוכר נכשל', e);
+    console.warn('[priority-context] רישום המסך נכשל', e);
   }
 }
 
@@ -219,7 +219,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const doc = pickDocument(body.form, candidates);
-  if (!doc.known_form) void noteUnknownScreen(body.form, candidates);
+  if (doc.needs_measure) void noteScreenToMap(body.form, candidates);
 
   return res.status(200).json({
     ok: true,

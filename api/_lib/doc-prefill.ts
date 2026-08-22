@@ -25,7 +25,7 @@ export const SUBJECT_BY_FORM: Record<string, string> = {
   DOCUMENTS_D: 'תעודת המשלוח',
   AINVOICES: 'החשבונית',
   CINVOICES: 'החשבונית',
-  TINVOICES: 'החשבונית',
+  EINVOICES: 'החשבונית',
   PORDERS: 'הזמנת הרכש',
   SERVCALLS: 'קריאת השירות',
 };
@@ -45,12 +45,12 @@ export const DOC_TYPE_BY_FORM: Record<string, string> = {
   DOCUMENTS_D: 'תעודת משלוח',
   AINVOICES: 'חשבונית מס',
   CINVOICES: 'חשבונית מרכזת',
-  // 🔴 **שם הטופס לא אומת.** `TINVOICES` קיים אצל ר.שעל (הגישוש מ-20/08
-  // החזיר `400: לא ניתן להפעיל API למסך זה`, כלומר המסך קיים אבל סגור
-  // ל-OData), והכיתוב כאן נשען על השם המקובל בפריוריטי ולא על מדידה.
-  // אם השם שגוי, הערך הזה פשוט לעולם לא נטען, וזו התנהגות בטוחה.
-  // ואם הוא נכון, העובד רואה אותו בתצוגה המקדימה לפני שהוא לוחץ שלח.
-  TINVOICES: 'חשבונית מס קבלה',
+  // שם הטופס נמסר על ידי עידן, 22/08/2026.
+  // 🟡 **הקידומת של המסמכים במסך הזה טרם נמדדה**, כי הוא סגור ל-OData
+  // אצל ר.שעל ואין לו טבלה במחסן. עד שתימדד, המספר נבחר לפי הכלל הכללי
+  // (מספר מסמך יחיד בשורה מנצח, שניים ומעלה משאירים ריק), והמסך רשום
+  // ל-`sync_debug` כדי שהקידומת תגיע אלינו מהשימוש הראשון.
+  EINVOICES: 'חשבונית מס קבלה',
   PORDERS: 'הזמנת רכש',
   SERVCALLS: 'קריאת שירות',
 };
@@ -110,8 +110,12 @@ export interface DocPrefill {
   subject: string;
   doc_type: string;
   doc_number: string;
-  /** false = המסך אינו מוכר לנו. משמש לרישום גילוי, לא לחסימה. */
-  known_form: boolean;
+  /**
+   * true = אין לנו קידומות שנמדדו למסך הזה, ולכן בחירת המספר נשענת על
+   * הכלל הכללי בלבד. משמש לרישום גילוי, לא לחסימה.
+   * 🔴 נכון גם למסך שיש לו כיתוב אבל אין לו מדידה, כמו `EINVOICES`.
+   */
+  needs_measure: boolean;
 }
 
 /**
@@ -139,6 +143,6 @@ export function pickDocument(rawForm: unknown, candidates: string[]): DocPrefill
     subject: SUBJECT_BY_FORM[form] ?? 'הפנייה',
     doc_type: DOC_TYPE_BY_PREFIX[number.slice(0, 2)] ?? DOC_TYPE_BY_FORM[form] ?? '',
     doc_number: number,
-    known_form: Boolean(SUBJECT_BY_FORM[form] || DOC_TYPE_BY_FORM[form]),
+    needs_measure: !DOC_PREFIX_BY_FORM[form],
   };
 }

@@ -79,9 +79,9 @@ test('🔴 טיוטה לא מקבלת מספר, ולכן לא יוצאת ללק�
   }
 });
 
-test('מסך שלא מיפינו: מסומן ככזה, ומספר יחיד עדיין נבחר', () => {
+test('מסך שלא מיפינו: מסומן לגילוי, ומספר יחיד עדיין נבחר', () => {
   const one = pickDocument('SOMETHING_NEW', ['101143', 'IR2600007']);
-  assert.equal(one.known_form, false);
+  assert.equal(one.needs_measure, true);
   assert.equal(one.doc_number, 'IR2600007');
   assert.equal(one.doc_type, '', 'הומצא כיתוב למסמך שלא ראינו מעולם');
   assert.equal(one.subject, 'הפנייה');
@@ -90,10 +90,25 @@ test('מסך שלא מיפינו: מסומן ככזה, ומספר יחיד עד�
   assert.equal(two.doc_number, '', 'נבחר אחד משניים בלי שום בסיס');
 });
 
-test('מסך מוכר מסומן כמוכר, ושם הטופס אינו רגיש לאותיות', () => {
+/**
+ * 🔴 **חשבונית מס קבלה היא המקרה שבו יש כיתוב אבל אין מדידה.**
+ * שם הטופס `EINVOICES` נמסר על ידי עידן (22/08/2026), אבל המסך סגור
+ * ל-OData אצל ר.שעל ואין לו טבלה במחסן, ולכן הקידומת של המסמכים שם
+ * לא נמדדה. מסך כזה **חייב** להמשיך להירשם לגילוי, אחרת הכיתוב היה
+ * מסתיר את העובדה שהמפה שם עדיין חלקית.
+ */
+test('🔴 חשבונית מס קבלה: יש כיתוב, ועדיין נרשמת לגילוי', () => {
+  const d = pickDocument('EINVOICES', ['101143', 'גונן יעל', 'EI2600014']);
+  assert.equal(d.doc_type, 'חשבונית מס קבלה');
+  assert.equal(d.subject, 'החשבונית');
+  assert.equal(d.doc_number, 'EI2600014', 'מספר יחיד בשורה נבחר גם בלי קידומת שנמדדה');
+  assert.equal(d.needs_measure, true, 'מסך בלי מדידה סומן כמופה, והקידומת שלו לא תגיע אלינו לעולם');
+});
+
+test('מסך שנמדד אינו נרשם לגילוי, ושם הטופס אינו רגיש לאותיות', () => {
   assert.equal(pickDocument('ainvoices', ['IN2600030']).doc_number, 'IN2600030');
-  assert.equal(pickDocument('DOCUMENTS_D', []).known_form, true);
-  assert.equal(pickDocument('', []).known_form, false);
+  assert.equal(pickDocument('DOCUMENTS_D', []).needs_measure, false);
+  assert.equal(pickDocument('', []).needs_measure, true);
   assert.equal(pickDocument(null, []).subject, 'הפנייה');
 });
 
