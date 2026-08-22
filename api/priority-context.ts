@@ -57,6 +57,49 @@ const DOC_TYPE_BY_FORM: Record<string, string> = {
   SERVCALLS: 'קריאת שירות',
 };
 
+/**
+ * הקידומת של מספר המסמך פר מסך, ומדידה שמאחוריה.
+ *
+ * ⭐ עידן, 22/08/2026: "למה בכלל יש שאלה מה מספר המסמך?" צודק. התוסף
+ * כבר שולח את כל ערכי השורה, ומספר המסמך נמצא ביניהם. אין שום סיבה
+ * שהעובד יקליד ביד מה שכתוב מולו על המסך.
+ *
+ * 🔴 **אבל בשורה יש יותר ממספר מסמך אחד.** בתעודת משלוח יושבים גם
+ * `SH2603398` (התעודה) וגם `SO2603044` (ההזמנה שממנה היא נוצרה), ושניהם
+ * בעלי אותה צורה בדיוק. בחירה לפי צורה בלבד הייתה שולחת ללקוח את מספר
+ * ההזמנה בהודעה שכתוב בה "תעודת משלוח מספר".
+ *
+ * הצורה והקידומות נמדדו מהמחסן המסונכרן (22/08/2026), ולא נוחשו:
+ * `SO` 3,044 הזמנות · `SH` 444 תעודות משלוח · `SC` 2,914 קריאות שירות,
+ * כולן שתי אותיות ואחריהן שבע ספרות.
+ * 🔴 הקידומות הן פר-לקוח, בדיוק כמו שמות הפרוצדורות. מסך בלי קידומת
+ * ידועה לא מנחש, ומשאיר את השדה ריק כדי שהעובד יקליד.
+ */
+const DOC_PREFIX_BY_FORM: Record<string, string> = {
+  ORDERS: 'SO',
+  DOCUMENTS_D: 'SH',
+  SERVCALLS: 'SC',
+};
+
+const DOC_NUMBER = /^[A-Z]{2}\d{5,9}$/;
+
+/**
+ * מספר המסמך מתוך ערכי השורה. **מחזיר ריק כשיש ספק**, כי שדה ריק
+ * שהעובד ממלא עדיף על מספר שגוי שיוצא בשם החברה.
+ */
+function pickDocNumber(form: string, candidates: string[]): string {
+  const shaped = [...new Set(candidates.filter((c) => DOC_NUMBER.test(c)))];
+  if (!shaped.length) return '';
+
+  const prefix = DOC_PREFIX_BY_FORM[form];
+  if (prefix) {
+    const exact = shaped.filter((c) => c.startsWith(prefix));
+    // בדיוק אחד. שניים פירושו שהמסך מציג שתי תעודות, וזה לא מקרה לנחש בו.
+    return exact.length === 1 ? exact[0] : '';
+  }
+  return shaped.length === 1 ? shaped[0] : '';
+}
+
 const MAX_CANDIDATES = 120;
 const MAX_LEN = 60;
 
@@ -214,9 +257,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     prefill: {
       customer_name: best.customerName ?? '',
       subject: SUBJECT_BY_FORM[String(body.form ?? '').toUpperCase()] ?? 'הפנייה',
-      // ⭐ מה שידוע מהמסך לא מוקלד ביד. מספר המסמך עדיין מוקלד, כי הוא
-      // לא נגזר מהזיהוי, והתצוגה המקדימה מראה בדיוק מה ייצא.
+      // ⭐ מה שידוע מהמסך לא מוקלד ביד, וזה כולל את מספר המסמך.
+      // הוא נשאר שדה שאפשר לערוך, והתצוגה המקדימה מראה בדיוק מה ייצא.
       doc_type: DOC_TYPE_BY_FORM[String(body.form ?? '').toUpperCase()] ?? '',
+      doc_number: pickDocNumber(String(body.form ?? '').toUpperCase(), candidates),
     },
     // מוחזר רק כשבאמת יש יותר מאחד, כדי שהחלונית תוכל לשאול במקום לנחש.
     matches: matches.length > 1 ? matches : [],
