@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireUser } from './_lib/require-user.js';
 import { supabaseAdmin } from './_lib/supabase-admin.js';
 import { heyySendText, isHeyyDemo } from './_lib/heyy-server.js';
-import { sendTemplate as sendTemplateV3, uploadFileFromUrl } from './_lib/heyy-v3.js';
+import { sendTemplate as sendTemplateV3, uploadFileBytes } from './_lib/heyy-v3.js';
 import { toE164, normalizePhone } from './_lib/phone.js';
 import { windowState } from './_lib/thread.js';
 import {
@@ -46,17 +46,24 @@ interface SendBody {
   customerNumber?: string;
   entityType?: string;
   entityKey?: string;
-  /** כתובת ה-PDF שפריוריטי הפיקה, לתבנית שנושאת מסמך פר נמען. */
+  /**
+   * 🔴 **הבייטים של ה-PDF, ב-base64, כפי שהתוסף משך אותם מפריוריטי.**
+   * הכתובת לבדה לא מספיקה: היא דורשת את הסשן של הדפדפן, ומהשרת שלנו
+   * היא מחזירה 200 עם דף ההתחברות. ההסבר המלא ב-`_lib/heyy-v3.ts`.
+   */
+  documentBase64?: string;
+  /** הכתובת שממנה נמשך הקובץ. לתיעוד ולאימות מקור בלבד, לא למשיכה. */
   documentUrl?: string;
   /** שם הקובץ שהלקוח יראה בוואטסאפ. */
   documentName?: string;
 }
 
 /**
- * 🔴 **כתובת המסמך מגיעה מהדפדפן, ולכן היא לא נאמנת.**
- * בלי הגבלת מארח, מי שמחזיק טוקן היה גורם לשרת שלנו למשוך קובץ מכל
- * כתובת בעולם, להעלות אותו לחשבון ה-heyy של עוגן, ולשלוח אותו מהמספר
- * הרשמי של הלקוח. מותר רק מה שהפריוריטי של ר.שעל עצמה הפיקה.
+ * 🔴 **מקור המסמך מגיע מהדפדפן, ולכן הוא לא נאמן.**
+ * מאז שהבייטים עצמם מגיעים מהדפדפן, הגבלת המארח כבר אינה ההגנה
+ * המרכזית והיא נשארה כראיה למקור. **ההגנה שבאמת עוצרת היא בדיקת
+ * הבייטים** (`%PDF-`) ותקרת הגודל, שתיהן ב-`uploadFileBytes`.
+ * מי שמחזיק טוקן הוא עובד מאומת של הלקוח, וזו הכרעה מודעת.
  */
 const DOC_HOSTS = (process.env.PRIORITY_DOC_HOSTS ?? 'p.priority-connect.online')
   .split(',')
@@ -151,6 +158,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   let template: WaTemplate | null = null;
   let variables: Record<string, string> = {};
   let documentUrl: string | null = null;
+  let documentBytes: Buffer | null = null;
 
   if (kind === 'template') {
     // 🔴 המפתח מתורגם לתבנית **בשרת, מול הטבלה**. מזהה שמגיע מהדפדפן
@@ -175,17 +183,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // ושליחתה ללקוח אמיתי היא תקלה חמורה, ולכן כאן לא נופלים אחורה אליו.
     // ⭐ מדיה **קבועה** (סרטון הדרכה) נשלחת כמו שהיא: הקובץ כבר ב-heyy.
     if (template.mediaPerMessage) {
-      const raw = String(body.documentUrl ?? '').trim();
-      if (!raw) {
+      const b64 = String(body.documentBase64 ?? '').trim();
+      if (!b64) {
         return res.status(400).json({
           ok: false,
           error: 'document_required',
-          message: 'התבנית הזאת שולחת מסמך, ולא הגיעה כתובת מסמך.',
+          message: 'התבנית הזאת שולחת מסמך, ולא הגיעו הבייטים של הקובץ.',
         });
       }
-      const bad = documentUrlError(raw);
-      if (bad) {
-        return res.status(400).json({ ok: false, error: 'document_url_rejected', message: bad });
+      // כתובת נבדקת כשהיא נשלחת, כראיה שהקובץ אכן הגיע מהפריוריטי שלהם.
+      const rawUrl = String(body.documentUrl ?? '').trim();
+      if (rawUrl) {
+        const bad = documentUrlError(rawUrl);
+        if (bad) {
+          return res.status(400).json({ ok: false, error: 'document_url_rejected', message: bad });
+        }
+        documentUrl = rawUrl;
       }
       if (!template.attachmentId) {
         return res.status(400).json({
@@ -194,7 +207,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           message: 'לתבנית אין מזהה קובץ מ-heyy. הרץ סנכרון תבניות במסך הניהול.',
         });
       }
-      documentUrl = raw;
+      // 🔴 גוף הבקשה ב-Vercel חסום ב-4.5MB, ו-base64 מנפח בשליש.
+      // עדיף להיעצר כאן עם הסבר מאשר לקבל שגיאת פלטפורמה סתומה.
+      documentBytes = Buffer.from(b64, 'base64');
+      if (!documentBytes.length) {
+        return res.status(400).json({
+          ok: false,
+          error: 'document_unreadable',
+          message: 'הקובץ שהגיע מהדפדפן ריק.',
+        });
+      }
+      if (documentBytes.length > 3 * 1024 * 1024) {
+        return res.status(413).json({
+          ok: false,
+          error: 'document_too_large',
+          message: 'המסמך גדול מ-3MB ולכן לא ניתן לשלוח אותו כך.',
+        });
+      }
     }
 
     const built = buildVariables(template, body.values ?? {});
@@ -209,36 +238,42 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     variables = built.variables;
   }
 
-  // ── המסמך: פריוריטי מפיקה בדפדפן, ההעלאה ל-heyy קורית כאן ────
+  // ── המסמך: פריוריטי מפיקה בדפדפן, **והדפדפן גם מוסר את הבייטים** ────
+  //
+  // 🔴🔴 עד 22/08/2026 השרת משך את הקובץ מהכתובת בעצמו, וזה לא עבד ולא
+  // יכול היה לעבוד: הכתובת של פריוריטי דורשת את הסשן, ובלעדיו היא
+  // מחזירה **200 עם דף ההתחברות** ולא שגיאה. ההסבר המלא ב-`heyy-v3.ts`.
   //
   // ⭐ שני מזהים שונים, וחסר אחד מהם והמדיה פשוט לא מצורפת:
   // `id` הוא הקובץ המצורף **בתוך הגדרת התבנית**, ו-`fileId` הוא הקובץ
   // שהועלה בפועל בשליחה הזאת.
   let attachments: Array<{ id: string; fileId: string }> | undefined;
   if (template) {
-    if (documentUrl) {
+    if (documentBytes) {
       try {
-        const up = await uploadFileFromUrl(documentUrl, safeFileName(body.documentName), 'document');
+        const up = await uploadFileBytes(documentBytes, safeFileName(body.documentName), 'document');
         attachments = [{ id: template.attachmentId!, fileId: up.fileId }];
       } catch (e) {
         // 🔴 תבנית שמבטיחה מסמך לא יוצאת בלעדיו. עדיף כישלון גלוי
         // מאשר הודעה שכתוב בה "מצורפת" ואין בה כלום.
-        // 🔴 שתי תקלות שונות לגמרי מסתתרות כאן, ולכן הן מופרדות:
-        // כשל במשיכת הקובץ מפריוריטי פירושו שהכתובת דורשת את הסשן של
-        // הדפדפן, וזה שינוי תכנון (התוסף ימשוך את הבייטים). כשל מול
-        // heyy הוא תקלה רגילה שאפשר לנסות שוב.
         const detail = e instanceof Error ? e.message : String(e);
-        const fromSource = detail.startsWith('source file');
-        console.error('[wa-send] document upload failed', detail);
+        const notPdf = detail.startsWith('not a pdf');
+        // ⭐ הכתובת נרשמת ליד הכשל. היא לא משמשת למשיכה, אבל בלעדיה אין
+        // דרך לדעת בדיעבד על איזה מסמך מדובר.
+        console.error('[wa-send] document upload failed', {
+          detail,
+          bytes: documentBytes.length,
+          from: documentUrl ?? '(לא נשלחה כתובת)',
+        });
         return res.status(502).json({
           ok: false,
-          error: fromSource ? 'document_fetch_failed' : 'document_upload_failed',
+          error: notPdf ? 'document_not_pdf' : 'document_upload_failed',
           detail,
           // ⭐ הסיבה של הספק נאמרת על המסך ולא רק בלוג. בסבב הראשון
           // ההודעה אמרה רק "ההעלאה נכשלה", וכל אבחון דרש שליפת לוגים.
-          message: fromSource
-            ? `המסמך הופק בפריוריטי אבל השרת שלנו לא הצליח למשוך אותו. שום הודעה לא נשלחה. (${detail.slice(0, 200)})`
-            : `המסמך נמשך אבל ההעלאה ל-heyy נכשלה. שום הודעה לא נשלחה. (${detail.slice(0, 200)})`,
+          message: notPdf
+            ? `מה שהתקבל מפריוריטי אינו PDF, ולכן שום הודעה לא נשלחה. (${detail.slice(0, 200)})`
+            : `ההעלאה ל-heyy נכשלה. שום הודעה לא נשלחה. (${detail.slice(0, 200)})`,
         });
       }
     } else if (

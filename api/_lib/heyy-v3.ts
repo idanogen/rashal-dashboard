@@ -11,13 +11,6 @@
  * כדי לא לשבור מסלול שעובד, ולכן שתי הגרסאות חיות זו לצד זו.
  */
 
-/**
- * כותרת הדפדפן שבה השרת מושך את המסמך מפריוריטי. ראה `uploadFileFromUrl`.
- */
-const BROWSER_UA =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
-  '(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
-
 const V3 = process.env.HEYY_V3_BASE_URL ?? 'https://api.heyy.io/v3';
 const KEY = process.env.HEYY_API_KEY ?? '';
 const CHANNEL = process.env.HEYY_CHANNEL_ID ?? '';
@@ -112,61 +105,49 @@ export async function listTemplates(): Promise<HeyyTemplate[]> {
 
 export type HeyyFileType = 'image' | 'video' | 'audio' | 'document';
 
-/** סוג התוכן שנשלח ל-heyy פר סוג קובץ. ראה `uploadFileFromUrl`. */
+/** סוג התוכן שנשלח ל-heyy פר סוג קובץ. ראה `uploadFileBytes`. */
 const MIME: Partial<Record<HeyyFileType, string>> = { document: 'application/pdf' };
 
 /**
- * מעלה קובץ ל-heyy ומחזיר את המזהה שלו.
+ * מעלה בייטים ל-heyy ומחזיר את מזהה הקובץ.
  *
- * ⭐ מקבל **כתובת** ולא בייטים, כי המקור שלנו הוא ה-PDF שפריוריטי מייצר
- * בכתובת זמנית. מושכים משם ודוחפים ל-heyy באותה נשימה.
+ * 🔴🔴 **הגרסה הקודמת קיבלה כתובת ומשכה אותה בעצמה, וזו הייתה טעות.**
+ * הכתובת שפריוריטי מחזירה
+ * (`/html/priority/netfiles/<ini>/<guid>.pdf`)
+ * **דורשת את הסשן של הדפדפן**, ובלעדיו היא מחזירה **200 עם דף ההתחברות
+ * של פריוריטי** ולא 401 ולא 403. נמדד חי 22/08/2026 על מסמך אמיתי:
+ * `status=200 · content-type=text/html · 16,563 בייט · priform · login`.
+ * בדיקת `res.ok` בלבד עברה, ולכן העלינו ל-heyy דף התחברות בשם
+ * `SH2603398.pdf`, ו-heyy דחתה ב-400. כלומר ההעלאה לא נכשלה, היא
+ * **הצליחה לשלוח זבל**, וזו אותה משפחת מלכודות שכבר עלתה לנו:
+ * **תשובת 200 אינה אימות.**
+ *
+ * ⭐ לכן הבייטים מגיעים מהתוסף, שרץ בתוך הסשן הפתוח וכן מקבל את הקובץ.
  */
-export async function uploadFileFromUrl(
-  url: string,
+export async function uploadFileBytes(
+  bytes: Buffer,
   filename: string,
   type: HeyyFileType = 'document',
 ): Promise<{ fileId: string }> {
   if (!KEY) throw new Error('missing HEYY_API_KEY');
 
-  const src = await fetch(url, {
-    signal: AbortSignal.timeout(20000),
-    // 🔴 **בלי כותרת דפדפן פריוריטי מחזירה 403 על כל נתיב.**
-    // נמדד חי (22/08/2026) על `p.priority-connect.online/netfiles/`:
-    // `curl` → 403 · `node` → 403 · בלי כותרת בכלל → 403 · ואפילו
-    // `Mozilla/5.0` לבדו → 403. מה שעובר הוא כותרת עם בלוק הפלטפורמה
-    // בסוגריים, למשל `Mozilla/5.0 (Macintosh) ...`, ואז 404 על קובץ
-    // שאינו קיים, כלומר הנתיב **פתוח ואינו דורש סשן**.
-    // המשמעות: הקובץ נגיש לשרת שלנו, וכל מה שחסם היה הכותרת.
-    // בלי התיקון הזה כל שליחת מסמך הייתה נופלת ב-`document_fetch_failed`,
-    // ונראית בדיוק כמו "הכתובת דורשת את הסשן של הדפדפן" — אבחנה שגויה
-    // שהייתה שולחת אותנו לשכתב את מסלול ההפקה בלי סיבה.
-    headers: { 'User-Agent': BROWSER_UA },
-  });
-  // 🔴 גם כאן: הקוד והגוף נשמרים. "לא הצלחנו למשוך" בלי מספר אינו ממצא,
-  // ו-403 מול 404 מול 410 הם שלוש בעיות שונות לגמרי (חסימה · הקובץ לא
-  // קיים · הקובץ נמחק), שכל אחת מהן שולחת אותנו למקום אחר.
-  if (!src.ok) {
-    const why = await src.text().catch(() => '');
-    console.error('[heyy] source fetch failed', {
-      status: src.status,
-      host: (() => { try { return new URL(url).hostname; } catch { return '?'; } })(),
-      contentType: src.headers.get('content-type') ?? '(ריק)',
-      body: why.slice(0, 300),
-    });
-    throw new Error(`source file ${src.status}${why ? ': ' + why.slice(0, 200) : ''}`);
+  // 🔴 **שער שאי אפשר לעקוף: או שזה PDF, או שכלום לא יוצא.**
+  // זו ההגנה שהייתה חסרה. היא לא בודקת שם קובץ ולא סוג מוצהר, אלא את
+  // הבייטים עצמם, ולכן דף התחברות, דף שגיאה או HTML כלשהו נעצרים כאן
+  // ולא מגיעים ללקוח בשם החברה.
+  if (type === 'document' && bytes.subarray(0, 5).toString('latin1') !== '%PDF-') {
+    const head = bytes.subarray(0, 120).toString('utf8').replace(/\s+/g, ' ');
+    console.error('[heyy] not a pdf', { filename, size: bytes.length, head });
+    throw new Error(`not a pdf (${bytes.length} bytes): ${head.slice(0, 120)}`);
   }
-  const raw = await src.blob();
 
   // 🔴 מטא חוסמת מסמך מעל 100MB, ומעשית כל דבר מעל כמה מגה מגיע לאט
   // מאוד ללקוח. עדיף להיעצר כאן מאשר לגלות מהלקוח.
-  if (raw.size > 50 * 1024 * 1024) throw new Error('file too large');
+  if (bytes.length > 20 * 1024 * 1024) throw new Error('file too large');
 
-  // 🔴 **סוג התוכן נקבע כאן ולא נלקח כפי שהוא מפריוריטי.**
-  // `FormData` גוזר את ה-`Content-Type` של החלק מ-`blob.type`, ופריוריטי
-  // עשויה להחזיר `application/octet-stream` או כלום. צד שני שבודק סוג
-  // דוחה את זה, וזה נראה כמו "הקובץ פסול" במקום "התווית שגויה".
-  const blob =
-    MIME[type] && raw.type !== MIME[type] ? new Blob([raw], { type: MIME[type] }) : raw;
+  // 🔴 סוג התוכן נקבע כאן ולא נגזר מהמקור: `FormData` לוקח אותו מה-blob,
+  // וצד שני שבודק סוג דוחה `application/octet-stream` בלי להסביר.
+  const blob = new Blob([new Uint8Array(bytes)], { type: MIME[type] ?? 'application/octet-stream' });
 
   const form = new FormData();
   form.append('type', type);
@@ -190,9 +171,7 @@ export async function uploadFileFromUrl(
       status: res.status,
       filename,
       type,
-      size: raw.size,
-      sourceType: raw.type || '(ריק)',
-      sentType: blob.type,
+      size: bytes.length,
       body: body.slice(0, 500),
     });
     throw new Error(`heyy upload ${res.status}: ${body.slice(0, 300) || '(גוף ריק)'}`);
