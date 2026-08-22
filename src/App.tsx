@@ -9,6 +9,7 @@ import { DispatchPage } from '@/pages/DispatchPage';
 import { InspectionsPage } from '@/pages/InspectionsPage';
 import { RouteNavigationPage } from '@/pages/RouteNavigationPage';
 import { WhatsAppPage } from '@/pages/WhatsAppPage';
+import { InboxPage } from '@/pages/InboxPage';
 import { AdminUsersPage } from '@/pages/AdminUsersPage';
 import { WhatsAppTemplatesPage } from '@/pages/WhatsAppTemplatesPage';
 import { DriverDashboardPage } from '@/pages/DriverDashboardPage';
@@ -97,6 +98,7 @@ function App() {
                         <Route path="/pickups" element={<Navigate to="/dispatch?tab=pickups" replace />} />
                         <Route path="/inspections" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><InspectionsPage /></RoleBasedRoute>} />
                         <Route path="/whatsapp" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><WhatsAppPage /></RoleBasedRoute>} />
+                        <Route path="/inbox" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><InboxPage /></RoleBasedRoute>} />
                         <Route
                           path="/admin/wa-templates"
                           element={

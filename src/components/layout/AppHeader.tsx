@@ -28,6 +28,7 @@ const TRACKED_KEYS = new Set([
 const PRIMARY_LINKS = [
   { to: '/dispatch', label: 'מסך סדרן' },
   { to: '/orders', label: 'דשבורד' },
+  { to: '/inbox', label: '💬 שיחות' },
   { to: '/feedback', label: '📝 הערות' },
 ];
 
