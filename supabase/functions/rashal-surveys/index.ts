@@ -16,6 +16,13 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 const SEND_URL = "https://rashal-dashboard.vercel.app/api/heyy-send";
 
+// 🔴 `api/heyy-send` נפרס בזמנו **בלי אימות בכלל**, וכל מי שהחזיק את הכתובת
+// יכול היה לשלוח וואטסאפ מהמספר הרשמי של הלקוח על חשבון עוגן. נסגר 22/08/2026.
+// מנוע הסקרים הוא קורא מכונתי ואין לו משתמש מחובר, ולכן הוא מזדהה בסוד משותף,
+// באותו דפוס בדיוק של `PRIORITY_SYNC_SECRET`.
+// ⭐ הסוד יושב בסודות של הפונקציה ולעולם לא בקוד.
+const SEND_SECRET = Deno.env.get("RASHAL_SEND_SECRET") ?? "";
+
 const sb = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -142,7 +149,10 @@ async function sendOne(row: DueRow, templateId: string): Promise<{ ok: true } | 
   try {
     const res = await fetch(SEND_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-send-secret": SEND_SECRET,
+      },
       body: JSON.stringify({
         kind: "template",
         phoneE164: row.phone_e164,

@@ -2,9 +2,20 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabaseAdmin } from './_lib/supabase-admin.js';
 import { heyySendTemplate, heyySendText, isHeyyDemo } from './_lib/heyy-server.js';
 import { toE164 } from './_lib/phone.js';
+import { requireCaller, warnIfSecretMissing } from './_lib/require-caller.js';
 
-// Send endpoint called from the browser. Wraps heyySendText / heyySendTemplate,
-// logs the result to whatsapp_outbound, and (for reminders) writes whatsapp_reminder_log.
+/**
+ * שליחה מהדשבורד וממנוע הסקרים. עוטף `heyySendText` / `heyySendTemplate`,
+ * רושם ל-`whatsapp_outbound`, ובתזכורות גם ל-`whatsapp_reminder_log`.
+ *
+ * 🔴🔴 **נקודת הקצה הזאת הייתה פתוחה לחלוטין עד 22/08/2026.** בלי אימות,
+ * בלי סוד, בלי כלום. מי שהחזיק את הכתובת יכול היה לשלוח וואטסאפ מהמספר
+ * הרשמי של ר.שעל, על חשבון ה-heyy של עוגן, לכל מספר שירצה ובכל נוסח.
+ * זה היה ידוע ונדחה במכוון שלושה סבבים, וזו בדיוק הסיבה שנבנתה
+ * `api/wa-send` נפרדת במקום לתקן כאן.
+ *
+ * ⭐ עכשיו: או משתמש מחובר, או סוד משותף לקורא מכונתי. ראה `require-caller`.
+ */
 
 interface SendBody {
   kind: 'text' | 'template';
@@ -31,8 +42,16 @@ function normalizeVariables(body: SendBody): Array<{ name: string; value: string
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  res.setHeader('Cache-Control', 'no-store');
+
   if (req.method !== 'POST') {
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
+  }
+
+  warnIfSecretMissing('heyy-send');
+  const caller = await requireCaller(req);
+  if (!caller) {
+    return res.status(401).json({ ok: false, error: 'unauthorized' });
   }
 
   const body = req.body as SendBody;
@@ -87,7 +106,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       status: result.status,
       status_detail: result.statusDetail,
       order_id: body.orderId ?? null,
-      triggered_by: body.triggeredBy ?? null,
+      // ⭐ מי שלח באמת, ולא רק מה שהקורא הצהיר. שדה שהדפדפן ממלא לבדו
+      // אינו תיעוד, כי אפשר לכתוב בו כל דבר.
+      triggered_by: body.triggeredBy ? `${body.triggeredBy} (${caller.label})` : caller.label,
       is_demo: isHeyyDemo,
     })
     .select()

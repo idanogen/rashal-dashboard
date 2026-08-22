@@ -103,21 +103,38 @@ async function sendInDemoMode(body: SendRequestBody): Promise<HeyySendResult> {
 }
 
 async function postSend(body: SendRequestBody): Promise<HeyySendResult> {
+  // 🔴 `/api/heyy-send` דורש הזדהות מ-22/08/2026. קודם היא הייתה פתוחה
+  // לחלוטין, וכל מי שהחזיק את הכתובת יכול היה לשלוח בשם הלקוח.
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
+  if (!token) {
+    return {
+      ok: false,
+      status: 'failed',
+      statusDetail: 'הסשן פג. רענן את הדף והתחבר מחדש.',
+      isDemo: false,
+    };
+  }
+
   const res = await fetch('/api/heyy-send', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
     body: JSON.stringify(body),
   });
   const json = (await res.json().catch(() => ({}))) as Partial<HeyySendResult> & {
     error?: string;
   };
   if (!res.ok || json.ok === false) {
-    return {
-      ok: false,
-      status: 'failed',
-      statusDetail: json.statusDetail ?? json.error ?? `HTTP ${res.status}`,
-      isDemo: json.isDemo ?? false,
-    };
+    // 🔴 401 אחרי פריסה פירושו לשונית ישנה שנשארה פתוחה מלפני הנעילה,
+    // ולעובד אין דרך לנחש את זה מ-"HTTP 401".
+    const detail =
+      res.status === 401
+        ? 'אין הרשאה לשלוח. רענן את הדף (Cmd+R) והתחבר מחדש.'
+        : json.statusDetail ?? json.error ?? `HTTP ${res.status}`;
+    return { ok: false, status: 'failed', statusDetail: detail, isDemo: json.isDemo ?? false };
   }
   return {
     ok: true,
