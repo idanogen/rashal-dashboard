@@ -121,6 +121,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ ok: false, error: 'no candidates' });
   }
 
+  // 🔴 **לפני כל יציאה מוקדמת, ובכוונה.**
+  // גרסה ראשונה חישבה את זה רק אחרי שנמצא לקוח, וזה בדיוק הפוך: מסך
+  // חדש שאיננו מכירים הוא גם המסך שסביר שהזיהוי ייכשל בו, ואז לא היינו
+  // לומדים עליו כלום. עכשיו עצם העמידה על המסך מספיקה.
+  const doc = pickDocument(body.form, candidates);
+  if (doc.needs_measure) void noteScreenToMap(body.form, candidates);
+
   // ── שלב א: מי מהמועמדים הוא מספר לקוח קיים ─────────────
   const { data: byNumber, error: numErr } = await supabaseAdmin
     .from('customer_directory')
@@ -217,9 +224,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // בלי תבניות, והיא תאמר "אין תבנית זמינה" במקום להיראות שבורה.
     console.error('[priority-context] templates failed', e);
   }
-
-  const doc = pickDocument(body.form, candidates);
-  if (doc.needs_measure) void noteScreenToMap(body.form, candidates);
 
   return res.status(200).json({
     ok: true,
