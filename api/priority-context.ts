@@ -4,6 +4,7 @@ import { supabaseAdmin } from './_lib/supabase-admin.js';
 import { loadThread } from './_lib/thread.js';
 import { normalizePhone } from './_lib/phone.js';
 import { listActiveTemplates } from './_lib/templates-store.js';
+import { pickDocument } from './_lib/doc-prefill.js';
 
 /**
  * "על מי אני עומד בפריוריטי", ואז כל השיחה איתו. קריאה אחת.
@@ -30,75 +31,6 @@ import { listActiveTemplates } from './_lib/templates-store.js';
  * אומרת את זה למשתמש במקום להעמיד פנים.
  */
 
-/**
- * מה כותבים ב"עדכון בנוגע ל..." לפי המסך שעליו עומדים.
- * 🟡 מילוי מראש בלבד, והמשתמש עורך. מסך שלא ברשימה מקבל ניסוח כללי,
- * ולא ניחוש שנשמע ודאי.
- */
-const SUBJECT_BY_FORM: Record<string, string> = {
-  CUSTOMERS: 'הפנייה',
-  ORDERS: 'ההזמנה',
-  DOCUMENTS_D: 'תעודת המשלוח',
-  AINVOICES: 'החשבונית',
-  PORDERS: 'הזמנת הרכש',
-  SERVCALLS: 'קריאת השירות',
-};
-
-/**
- * שם המסמך כפי שהלקוח יקרא אותו בתבנית ("מצורפת תעודת משלוח מספר...").
- * 🔴 בנפרד מ-`SUBJECT_BY_FORM`, כי שם הניסוח מיודע ("תעודת המשלוח")
- * וכאן הוא חייב להיות סתמי, אחרת המשפט אצל הלקוח נשבר.
- */
-const DOC_TYPE_BY_FORM: Record<string, string> = {
-  ORDERS: 'הזמנה',
-  DOCUMENTS_D: 'תעודת משלוח',
-  AINVOICES: 'חשבונית מס',
-  PORDERS: 'הזמנת רכש',
-  SERVCALLS: 'קריאת שירות',
-};
-
-/**
- * הקידומת של מספר המסמך פר מסך, ומדידה שמאחוריה.
- *
- * ⭐ עידן, 22/08/2026: "למה בכלל יש שאלה מה מספר המסמך?" צודק. התוסף
- * כבר שולח את כל ערכי השורה, ומספר המסמך נמצא ביניהם. אין שום סיבה
- * שהעובד יקליד ביד מה שכתוב מולו על המסך.
- *
- * 🔴 **אבל בשורה יש יותר ממספר מסמך אחד.** בתעודת משלוח יושבים גם
- * `SH2603398` (התעודה) וגם `SO2603044` (ההזמנה שממנה היא נוצרה), ושניהם
- * בעלי אותה צורה בדיוק. בחירה לפי צורה בלבד הייתה שולחת ללקוח את מספר
- * ההזמנה בהודעה שכתוב בה "תעודת משלוח מספר".
- *
- * הצורה והקידומות נמדדו מהמחסן המסונכרן (22/08/2026), ולא נוחשו:
- * `SO` 3,044 הזמנות · `SH` 444 תעודות משלוח · `SC` 2,914 קריאות שירות,
- * כולן שתי אותיות ואחריהן שבע ספרות.
- * 🔴 הקידומות הן פר-לקוח, בדיוק כמו שמות הפרוצדורות. מסך בלי קידומת
- * ידועה לא מנחש, ומשאיר את השדה ריק כדי שהעובד יקליד.
- */
-const DOC_PREFIX_BY_FORM: Record<string, string> = {
-  ORDERS: 'SO',
-  DOCUMENTS_D: 'SH',
-  SERVCALLS: 'SC',
-};
-
-const DOC_NUMBER = /^[A-Z]{2}\d{5,9}$/;
-
-/**
- * מספר המסמך מתוך ערכי השורה. **מחזיר ריק כשיש ספק**, כי שדה ריק
- * שהעובד ממלא עדיף על מספר שגוי שיוצא בשם החברה.
- */
-function pickDocNumber(form: string, candidates: string[]): string {
-  const shaped = [...new Set(candidates.filter((c) => DOC_NUMBER.test(c)))];
-  if (!shaped.length) return '';
-
-  const prefix = DOC_PREFIX_BY_FORM[form];
-  if (prefix) {
-    const exact = shaped.filter((c) => c.startsWith(prefix));
-    // בדיוק אחד. שניים פירושו שהמסך מציג שתי תעודות, וזה לא מקרה לנחש בו.
-    return exact.length === 1 ? exact[0] : '';
-  }
-  return shaped.length === 1 ? shaped[0] : '';
-}
 
 const MAX_CANDIDATES = 120;
 const MAX_LEN = 60;
@@ -134,6 +66,43 @@ function nameKey(s: string | null | undefined): string {
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
+}
+
+/**
+ * ⭐ **מסך שאיננו מכירים נרשם, ולא נשכח.**
+ *
+ * הדוקטרינה של המוצר היא שהתוסף לומד ולא ממופה ידנית: פרוצדורת ההדפסה
+ * נלמדת מהדפסה אחת, וזהות הלקוח נגזרת מהצלבה מול המחסן. הדבר היחיד
+ * שנשאר קשיח הוא הכיתוב פר מסך, ולכן זו הנקודה שבה לקוח חדש או מסך
+ * חדש נופלים בשקט אצל העובד ("למה הכפתור אפור").
+ *
+ * הרישום הזה סוגר את הפער: ברגע שמישהו עומד על מסך שלא מיפינו, השם
+ * הפנימי שלו ומספרי המסמכים שנראו בשורה נשמרים, ואפשר להשלים את המפה
+ * בלי לבקש מאף אחד לפתוח קונסולה.
+ *
+ * 🔴 לא חוסם ולא מאט: כשל ברישום נבלע, והתשובה לחלונית יוצאת בכל מקרה.
+ * 🔴 ופעם אחת לכל מסך בכל מופע, כי פריוריטי יורה את אותה שורה שוב ושוב.
+ */
+const notedScreens = new Set<string>();
+
+async function noteUnknownScreen(rawForm: unknown, candidates: string[]): Promise<void> {
+  const form = String(rawForm ?? '').trim().toUpperCase();
+  if (!form || notedScreens.has(form)) return;
+  notedScreens.add(form);
+  try {
+    await supabaseAdmin.from('sync_debug').insert({
+      label: 'wa-panel/unknown-screen',
+      status_code: form,
+      body: JSON.stringify({
+        form,
+        // רק מה שנראה כמספר מסמך. שם לקוח וטלפון לא נדרשים כדי להשלים מפה.
+        shaped: candidates.filter((c) => /^[A-Z]{2}\d{5,9}$/.test(c)).slice(0, 10),
+      }),
+    });
+    console.warn('[priority-context] מסך שאינו במפה:', form);
+  } catch (e) {
+    console.warn('[priority-context] רישום מסך לא מוכר נכשל', e);
+  }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -249,6 +218,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.error('[priority-context] templates failed', e);
   }
 
+  const doc = pickDocument(body.form, candidates);
+  if (!doc.known_form) void noteUnknownScreen(body.form, candidates);
+
   return res.status(200).json({
     ok: true,
     form: body.form ?? null,
@@ -256,11 +228,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     templates,
     prefill: {
       customer_name: best.customerName ?? '',
-      subject: SUBJECT_BY_FORM[String(body.form ?? '').toUpperCase()] ?? 'הפנייה',
-      // ⭐ מה שידוע מהמסך לא מוקלד ביד, וזה כולל את מספר המסמך.
-      // הוא נשאר שדה שאפשר לערוך, והתצוגה המקדימה מראה בדיוק מה ייצא.
-      doc_type: DOC_TYPE_BY_FORM[String(body.form ?? '').toUpperCase()] ?? '',
-      doc_number: pickDocNumber(String(body.form ?? '').toUpperCase(), candidates),
+      // ⭐ מה שידוע מהמסך לא מוקלד ביד, וזה כולל את סוג המסמך ומספרו.
+      // שניהם נשארים שדות שאפשר לערוך, והתצוגה המקדימה מראה בדיוק מה ייצא.
+      subject: doc.subject,
+      doc_type: doc.doc_type,
+      doc_number: doc.doc_number,
     },
     // מוחזר רק כשבאמת יש יותר מאחד, כדי שהחלונית תוכל לשאול במקום לנחש.
     matches: matches.length > 1 ? matches : [],
