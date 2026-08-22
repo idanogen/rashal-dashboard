@@ -112,6 +112,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (kind === 'text' && !body.bodyText?.trim()) {
     return res.status(400).json({ ok: false, error: 'empty_body', message: 'אין מה לשלוח.' });
   }
+
+  // ── אכיפת החלון ─────────────────────────────────────────
+  //
+  // 🔴 הבדיקה הזאת נכתבה ב-`ea5a5a3`, **ונפלה בשקט** בשכתוב של מחסנית
+  // התבניות (`202b3cc`). היא לא הוחלפה במשהו אחר: מ-202b3cc ועד כאן
+  // טקסט חופשי יצא ללקוח גם כשהחלון סגור, ו-heyy החזירה 200 על זה.
+  // ההערה למעלה המשיכה לתאר הגנה שלא הייתה בקוד, וזה הסוג הגרוע ביותר
+  // של תיעוד. מוחזרת כפי שהייתה, ועכשיו יש עליה בדיקה.
+  if (kind === 'text') {
+    const { data: conv, error } = await supabaseAdmin
+      .from('wa_conversations')
+      .select('last_inbound_at')
+      .eq('phone_local', local)
+      .order('last_message_at', { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[wa-send] window lookup failed', error.message);
+      return res.status(500).json({ ok: false, error: 'server_error' });
+    }
+
+    const win = windowState(conv?.last_inbound_at ?? null);
+    if (!win.open) {
+      return res.status(409).json({
+        ok: false,
+        error: 'window_closed',
+        window: win,
+        message: conv
+          ? 'החלון סגור. עברו 24 שעות מההודעה האחרונה של הלקוח, ולכן אפשר לשלוח רק תבנית מאושרת.'
+          : 'הלקוח עוד לא כתב לנו מעולם, ולכן ההודעה הראשונה חייבת להיות תבנית מאושרת.',
+      });
+    }
+  }
+
   // ── התבנית, ואימות מלא שלה בשרת ─────────────────────────
   let template: WaTemplate | null = null;
   let variables: Record<string, string> = {};

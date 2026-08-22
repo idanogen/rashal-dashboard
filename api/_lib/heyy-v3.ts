@@ -11,6 +11,13 @@
  * כדי לא לשבור מסלול שעובד, ולכן שתי הגרסאות חיות זו לצד זו.
  */
 
+/**
+ * כותרת הדפדפן שבה השרת מושך את המסמך מפריוריטי. ראה `uploadFileFromUrl`.
+ */
+const BROWSER_UA =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
+  '(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
+
 const V3 = process.env.HEYY_V3_BASE_URL ?? 'https://api.heyy.io/v3';
 const KEY = process.env.HEYY_API_KEY ?? '';
 const CHANNEL = process.env.HEYY_CHANNEL_ID ?? '';
@@ -118,7 +125,20 @@ export async function uploadFileFromUrl(
 ): Promise<{ fileId: string }> {
   if (!KEY) throw new Error('missing HEYY_API_KEY');
 
-  const src = await fetch(url, { signal: AbortSignal.timeout(20000) });
+  const src = await fetch(url, {
+    signal: AbortSignal.timeout(20000),
+    // 🔴 **בלי כותרת דפדפן פריוריטי מחזירה 403 על כל נתיב.**
+    // נמדד חי (22/08/2026) על `p.priority-connect.online/netfiles/`:
+    // `curl` → 403 · `node` → 403 · בלי כותרת בכלל → 403 · ואפילו
+    // `Mozilla/5.0` לבדו → 403. מה שעובר הוא כותרת עם בלוק הפלטפורמה
+    // בסוגריים, למשל `Mozilla/5.0 (Macintosh) ...`, ואז 404 על קובץ
+    // שאינו קיים, כלומר הנתיב **פתוח ואינו דורש סשן**.
+    // המשמעות: הקובץ נגיש לשרת שלנו, וכל מה שחסם היה הכותרת.
+    // בלי התיקון הזה כל שליחת מסמך הייתה נופלת ב-`document_fetch_failed`,
+    // ונראית בדיוק כמו "הכתובת דורשת את הסשן של הדפדפן" — אבחנה שגויה
+    // שהייתה שולחת אותנו לשכתב את מסלול ההפקה בלי סיבה.
+    headers: { 'User-Agent': BROWSER_UA },
+  });
   if (!src.ok) throw new Error(`source file ${src.status}`);
   const blob = await src.blob();
 
