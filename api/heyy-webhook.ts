@@ -3,6 +3,7 @@ import { supabaseAdmin } from './_lib/supabase-admin.js';
 import { extractMessage, parseCustomerReply } from './_lib/extract.js';
 import { normalizePhone, toE164 } from './_lib/phone.js';
 import { recordToThread } from './_lib/wa-thread.js';
+import { copyMediaForMessage } from './_lib/wa-media.js';
 
 /**
  * מקלט הוובהוקים של heyy.
@@ -149,6 +150,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (payload?.data) {
     const thread = await recordToThread(payload.data);
     if (!thread.ok) console.error('[heyy-webhook] thread record failed:', thread.error);
+
+    // ── עותק משלנו לקבצים ────────────────────────────────
+    //
+    // 🔴 הכתובות של heyy פגות אחרי 24 שעות, וזה מדוד ולא משוער. בלי
+    // עותק, כל שרשור שישן מיממה מציג ריבועים שבורים.
+    //
+    // ⭐ **וזה רץ על כל אירוע, לא רק על הראשון, וזו הנקודה.** heyy יורה
+    // `pending` ואז `delivered` ואז `read` על אותה הודעה, כלומר יש כאן
+    // שלוש עד חמש הזדמנויות חוזרות להעתיק קובץ שנפל, בתוך שניות
+    // ובלי שום תשתית תזמון נוספת. קובץ שכבר הועתק מדולג מיד.
+    //
+    // 🔴 והכישלון כאן בכוונה לא מפיל את הוובהוק: הודעה בלי קובץ עדיין
+    // הודעה, קובץ בלי הודעה הוא כלום.
+    const hasFiles = Array.isArray(payload.data?.content?.attachments)
+      && payload.data.content.attachments.length > 0;
+    if (thread.ok && hasFiles && waMessageId) {
+      try {
+        const media = await copyMediaForMessage(waMessageId);
+        if (media && media.state !== 'stored' && media.state !== 'none') {
+          console.error('[heyy-webhook] media not stored', { waMessageId, state: media.state });
+        }
+      } catch (e) {
+        console.error('[heyy-webhook] media copy threw', e instanceof Error ? e.message : e);
+      }
+    }
   }
 
   if (route === 'status') {
