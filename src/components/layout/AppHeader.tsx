@@ -208,6 +208,13 @@ export function AppHeader() {
                     </NavLink>
                   </DropdownMenuItem>
                 )}
+                {canManageUsers && (
+                  <DropdownMenuItem asChild>
+                    <NavLink to="/admin/permissions" className="cursor-pointer">
+                      🛡️ הרשאות
+                    </NavLink>
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </nav>

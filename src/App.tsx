@@ -18,7 +18,8 @@ import { FeedbackPage } from '@/pages/FeedbackPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { SurveyPage } from '@/pages/SurveyPage';
 import { AuthProvider } from '@/lib/auth-context';
-import { USER_MANAGER_ROLES } from '@/types/profile';
+import { screenAllow } from '@/lib/screen-access';
+import { PermissionsPage } from '@/pages/PermissionsPage';
 import { GlobalChatProvider } from '@/context/GlobalChatContext';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { ProtectedAdminRoute } from '@/components/ProtectedAdminRoute';
@@ -39,8 +40,8 @@ const queryClient = new QueryClient({
   },
 });
 
-// Non-driver roles use the full admin/dispatcher layout
-const STAFF_ROLES = ['admin', 'team_manager', 'dispatcher', 'viewer'] as const;
+// 🔴 מי מגיע לאיזה מסך יושב ב-`lib/screen-access.ts`, מקור יחיד שגם
+// הנתב וגם מסך ההרשאות קוראים ממנו.
 
 function App() {
   return (
@@ -89,22 +90,22 @@ function App() {
                     <AppShell>
                       <Routes>
                         {/* שורש: סדרן ממשיך למסך הסדרן, שאר הצוות רואה את הדשבורד */}
-                        <Route path="/" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><HomeByRole><DashboardPage /></HomeByRole></RoleBasedRoute>} />
+                        <Route path="/" element={<RoleBasedRoute allow={screenAllow('/')}><HomeByRole><DashboardPage /></HomeByRole></RoleBasedRoute>} />
                         {/* אותו דשבורד בכתובת קבועה, כדי שגם לסדרן תהיה דרך אליו */}
-                        <Route path="/orders" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><DashboardPage /></RoleBasedRoute>} />
-                        <Route path="/overview" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><ManagementDashboard /></RoleBasedRoute>} />
-                        <Route path="/dispatch" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><DispatchPage /></RoleBasedRoute>} />
+                        <Route path="/orders" element={<RoleBasedRoute allow={screenAllow('/orders')}><DashboardPage /></RoleBasedRoute>} />
+                        <Route path="/overview" element={<RoleBasedRoute allow={screenAllow('/overview')}><ManagementDashboard /></RoleBasedRoute>} />
+                        <Route path="/dispatch" element={<RoleBasedRoute allow={screenAllow('/dispatch')}><DispatchPage /></RoleBasedRoute>} />
                         {/* הראוטים הישנים מפנים למסך הסדרן המאוחד עם הטאב המתאים */}
                         <Route path="/routes" element={<Navigate to="/dispatch?tab=deliveries" replace />} />
                         <Route path="/service-calls" element={<Navigate to="/dispatch?tab=service" replace />} />
                         <Route path="/pickups" element={<Navigate to="/dispatch?tab=pickups" replace />} />
-                        <Route path="/inspections" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><InspectionsPage /></RoleBasedRoute>} />
-                        <Route path="/whatsapp" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><WhatsAppPage /></RoleBasedRoute>} />
-                        <Route path="/inbox" element={<RoleBasedRoute allow={[...STAFF_ROLES]}><InboxPage /></RoleBasedRoute>} />
+                        <Route path="/inspections" element={<RoleBasedRoute allow={screenAllow('/inspections')}><InspectionsPage /></RoleBasedRoute>} />
+                        <Route path="/whatsapp" element={<RoleBasedRoute allow={screenAllow('/whatsapp')}><WhatsAppPage /></RoleBasedRoute>} />
+                        <Route path="/inbox" element={<RoleBasedRoute allow={screenAllow('/inbox')}><InboxPage /></RoleBasedRoute>} />
                         <Route
                           path="/admin/wa-templates"
                           element={
-                            <ProtectedAdminRoute>
+                            <ProtectedAdminRoute allow={screenAllow('/admin/wa-templates')}>
                               <WhatsAppTemplatesPage />
                             </ProtectedAdminRoute>
                           }
@@ -112,20 +113,28 @@ function App() {
                         <Route
                           path="/admin/users"
                           element={
-                            <ProtectedAdminRoute allow={[...USER_MANAGER_ROLES]}>
+                            <ProtectedAdminRoute allow={screenAllow('/admin/users')}>
                               <AdminUsersPage />
+                            </ProtectedAdminRoute>
+                          }
+                        />
+                        <Route
+                          path="/admin/permissions"
+                          element={
+                            <ProtectedAdminRoute allow={screenAllow('/admin/permissions')}>
+                              <PermissionsPage />
                             </ProtectedAdminRoute>
                           }
                         />
                         <Route
                           path="/admin/team"
                           element={
-                            <ProtectedAdminRoute allow={[...USER_MANAGER_ROLES]}>
+                            <ProtectedAdminRoute allow={screenAllow('/admin/team')}>
                               <TeamPage />
                             </ProtectedAdminRoute>
                           }
                         />
-                        <Route path="/route-navigation" element={<RoleBasedRoute allow={[...STAFF_ROLES, 'driver']}><RouteNavigationPage /></RoleBasedRoute>} />
+                        <Route path="/route-navigation" element={<RoleBasedRoute allow={screenAllow('/route-navigation')}><RouteNavigationPage /></RoleBasedRoute>} />
                       </Routes>
                     </AppShell>
                     </GlobalChatProvider>
