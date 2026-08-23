@@ -206,6 +206,10 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE }: InboxBoardProps) {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
+  // 🔴 מתג חד-פעמי. בלעדיו כל רענון של הרשימה היה מחזיר את הלשונית
+  // ל"כל השיחות" גם אחרי שהעובד בחר במפורש "ממתינים", וזה נקרא כמו מסך
+  // שנלחם בך. מעבר אוטומטי הוא עזרה בפתיחה, לא כלל שרץ כל הזמן.
+  const autoSwitched = useRef(false);
   const qc = useQueryClient();
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -224,6 +228,14 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE }: InboxBoardProps) {
 
   const items = inbox.data?.items ?? [];
   const counts = inbox.data?.counts ?? { waiting: 0, all: 0 };
+
+  // ⭐ **אם אין מי שמחכה, אין טעם להציג לשונית ריקה.** נפתחים על כל
+  // השיחות, פעם אחת, ורק כשהתשובה מהשרת כבר הגיעה.
+  useEffect(() => {
+    if (autoSwitched.current || inbox.isLoading || !inbox.data) return;
+    autoSwitched.current = true;
+    if (inbox.data.counts.waiting === 0 && tab === 'waiting') setTab('all');
+  }, [inbox.isLoading, inbox.data, tab]);
 
   // ⭐ בחירה אוטומטית של הראשון, כדי שהמסך לא ייפתח ריק בצד אחד.
   useEffect(() => {
