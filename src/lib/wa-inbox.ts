@@ -123,6 +123,23 @@ export async function sendText(phone: string, bodyText: string): Promise<void> {
 }
 
 /**
+ * שליחת תבנית מאושרת.
+ *
+ * ⭐ **זו הדרך היחידה לפנות ללקוח שחלון 24 השעות שלו נסגר.** השרת כבר
+ * תמך בזה מהיום הראשון (מנוע הסקרים משתמש בו), ורק המסך לא הציע את זה.
+ */
+export async function sendTemplate(
+  phone: string,
+  templateKey: string,
+  values: Record<string, string>,
+): Promise<void> {
+  await authFetch('/api/wa-send', {
+    method: 'POST',
+    body: JSON.stringify({ phone, kind: 'template', templateKey, values }),
+  });
+}
+
+/**
  * כתובת חתומה לקובץ ששמור אצלנו.
  *
  * 🔴 לא הכתובת של heyy: היא פגה אחרי 24 שעות, והודעה מלפני יומיים הייתה

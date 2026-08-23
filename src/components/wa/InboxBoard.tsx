@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
+import { TemplateSendDialog } from '@/components/wa/TemplateSendDialog';
 import {
   Search,
   Clock,
@@ -12,6 +13,7 @@ import {
   Send,
   Lock,
   Loader2,
+  FileText,
 } from 'lucide-react';
 import {
   fetchInbox,
@@ -203,6 +205,7 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE }: InboxBoardProps) {
   const [selected, setSelected] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [templateOpen, setTemplateOpen] = useState(false);
   const qc = useQueryClient();
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -398,6 +401,13 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE }: InboxBoardProps) {
                       placeholder="כתוב תשובה…"
                       className="resize-none"
                     />
+                    <Button
+                      variant="outline"
+                      onClick={() => setTemplateOpen(true)}
+                      title="שליחת תבנית מאושרת"
+                    >
+                      <FileText className="h-4 w-4" />
+                    </Button>
                     <Button onClick={reply} disabled={sending || !draft.trim()}>
                       {sending ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -408,12 +418,20 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE }: InboxBoardProps) {
                     </Button>
                   </div>
                 ) : (
-                  /* 🔴 מבוי סתום נאמר עם מוצא. תבנית עם מסמך דורשת את הסשן
-                     של פריוריטי, ולכן היא נשלחת מהחלונית ולא מכאן. */
-                  <div className="rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-600">
-                    עברו <bdi>24</bdi> שעות מההודעה האחרונה של הלקוח, ולכן אפשר לשלוח רק תבנית
-                    מאושרת. שליחת תבנית עם מסמך נעשית מהחלונית שבתוך הפריוריטי, כי המסמך מופק
-                    משם.
+                  /* 🔴 **מבוי סתום נאמר עם מוצא, ועכשיו גם עם כפתור.** עד
+                     23/08/2026 הפסקה הזאת אמרה "אפשר לשלוח רק תבנית מאושרת"
+                     ולא נתנה דרך לשלוח אותה. רק תבנית שדורשת מסמך חדש בכל
+                     הודעה זקוקה לסשן של פריוריטי; השאר נשלחות מכאן. */
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-100 px-3 py-2">
+                    <span className="text-xs text-slate-600">
+                      עברו <bdi>24</bdi> שעות מההודעה האחרונה של הלקוח, ולכן אפשר לשלוח רק תבנית
+                      מאושרת. שליחת תעודה או חשבונית נעשית מהחלונית שבתוך הפריוריטי, כי המסמך
+                      מופק משם.
+                    </span>
+                    <Button size="sm" onClick={() => setTemplateOpen(true)}>
+                      <FileText className="me-1 h-4 w-4" />
+                      שלח תבנית
+                    </Button>
                   </div>
                 )}
               </div>
@@ -421,6 +439,17 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE }: InboxBoardProps) {
           )}
         </div>
       </div>
+
+      <TemplateSendDialog
+        open={templateOpen}
+        onOpenChange={setTemplateOpen}
+        phone={selected}
+        customerName={current?.title}
+        onSent={() => {
+          void qc.invalidateQueries({ queryKey: ['wa-thread', selected] });
+          void qc.invalidateQueries({ queryKey: ['wa-inbox'] });
+        }}
+      />
     </>
   );
 }
