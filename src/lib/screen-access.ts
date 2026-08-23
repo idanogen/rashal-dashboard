@@ -26,7 +26,9 @@ export const SCREEN_ACCESS: ScreenAccess[] = [
   { path: '/dispatch',         label: 'מסך סדרן',          group: 'daily', allow: STAFF },
   { path: '/inbox',            label: 'שיחות וואטסאפ',     group: 'daily', allow: STAFF },
   { path: '/feedback',         label: 'הערות',            group: 'daily', allow: [...STAFF, 'driver'] },
-  { path: '/overview',         label: 'דשבורד הנהלה',      group: 'admin', allow: STAFF },
+  // 🔴 מנהל מערכת בלבד (עידן, 23/08/2026). המסך מרכז מספרים של ההנהלה,
+  // ולא כל מי שרואה את מסך הסדרן אמור לראות אותם.
+  { path: '/overview',         label: 'דשבורד הנהלה',      group: 'admin', allow: ['admin'] },
   { path: '/inspections',      label: 'בדיקות מנופים',     group: 'admin', allow: STAFF },
   { path: '/whatsapp',         label: 'וואטסאפ (ישן)',     group: 'admin', allow: STAFF },
   { path: '/admin/users',      label: 'משתמשים',          group: 'admin', allow: MANAGERS },

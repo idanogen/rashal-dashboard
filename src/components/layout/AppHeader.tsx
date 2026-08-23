@@ -13,8 +13,9 @@ import { useState, useEffect, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
-import { useIsAdmin, useCanManageUsers, useCurrentProfile } from '@/hooks/useProfile';
+import { useCurrentProfile } from '@/hooks/useProfile';
 import { BrandMark } from '@/components/BrandMark';
+import { screenAllow } from '@/lib/screen-access';
 import { ROLE_LABELS } from '@/types/profile';
 
 // שאילתות הנתונים שהכותרת מדווחת עליהן.
@@ -26,7 +27,14 @@ const TRACKED_KEYS = new Set([
   'newCustomers',
 ]);
 
-/** מה שעושים כל יום. הסדר הוא סדר החשיבות, לא סדר הבנייה. */
+/**
+ * הקישורים בתפריט.
+ *
+ * 🔴 **הרשימה מסוננת לפי אותה מפה שהנתב עצמו קורא ממנה** (`screen-access`).
+ * קישור שמוביל למסך חסום הוא בדיוק אותה תקלה שחוזרת כאן: מסך שמבטיח
+ * פעולה שלא תקרה. עד 23/08/2026 "דשבורד הנהלה" הופיע לכולם, וכשהוא
+ * הוגבל למנהל מערכת הוא היה מוביל את השאר למסך "אין הרשאת גישה".
+ */
 const PRIMARY_LINKS = [
   { to: '/dispatch', label: 'מסך סדרן' },
   { to: '/orders', label: 'דשבורד' },
@@ -34,11 +42,14 @@ const PRIMARY_LINKS = [
   { to: '/feedback', label: '📝 הערות' },
 ];
 
-/** מה שנוגעים בו פעם בכמה שבועות. יושב בתפריט "ניהול". */
 const ADMIN_LINKS = [
   { to: '/overview', label: 'דשבורד הנהלה' },
   { to: '/inspections', label: 'בדיקות מנופים' },
   { to: '/whatsapp', label: 'וואטסאפ' },
+  { to: '/admin/wa-templates', label: '💬 תבניות וואטסאפ' },
+  { to: '/admin/users', label: '👥 משתמשים' },
+  { to: '/admin/team', label: '🚚 צוות השטח' },
+  { to: '/admin/permissions', label: '🛡️ הרשאות' },
 ];
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
@@ -75,9 +86,9 @@ function userInitial(name?: string): string {
 export function AppHeader() {
   const queryClient = useQueryClient();
   const { signOut } = useAuth();
-  const isAdmin = useIsAdmin();
-  const canManageUsers = useCanManageUsers();
   const { data: profile } = useCurrentProfile();
+  const role = profile?.role;
+  const canSee = (to: string) => !!role && screenAllow(to).includes(role);
   const [isRefreshing, setIsRefreshing] = useState(false);
   // 🔴 עד כה נמדד הזמן שעבר מאז שהטאב נפתח, וזה נקרא "עודכן". טאב שנשאר
   // פתוח לילה שלם הציג "עודכן לפני 2822 דקות" בזמן שהנתונים היו טריים.
@@ -163,7 +174,7 @@ export function AppHeader() {
               (דשבורד הנהלה, בדיקות מנופים, וואטסאפ, משתמשים) עבר לתפריט "ניהול",
               אחרי שבדיקה הראתה שהתפריט משרת בפועל סדרן אחד. */}
           <nav className="flex items-center gap-1">
-            {PRIMARY_LINKS.map((link) => (
+            {PRIMARY_LINKS.filter((l) => canSee(l.to)).map((link) => (
               <NavLink key={link.to} to={link.to} className={navLinkClass}>
                 {link.label}
               </NavLink>
@@ -180,41 +191,13 @@ export function AppHeader() {
                   ניהול והגדרות
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                {ADMIN_LINKS.map((link) => (
+                {ADMIN_LINKS.filter((l) => canSee(l.to)).map((link) => (
                   <DropdownMenuItem key={link.to} asChild>
                     <NavLink to={link.to} className="cursor-pointer">
                       {link.label}
                     </NavLink>
                   </DropdownMenuItem>
                 ))}
-                {isAdmin && (
-                  <DropdownMenuItem asChild>
-                    <NavLink to="/admin/wa-templates" className="cursor-pointer">
-                      💬 תבניות וואטסאפ
-                    </NavLink>
-                  </DropdownMenuItem>
-                )}
-                {canManageUsers && (
-                  <DropdownMenuItem asChild>
-                    <NavLink to="/admin/users" className="cursor-pointer">
-                      👥 משתמשים
-                    </NavLink>
-                  </DropdownMenuItem>
-                )}
-                {canManageUsers && (
-                  <DropdownMenuItem asChild>
-                    <NavLink to="/admin/team" className="cursor-pointer">
-                      🚚 צוות השטח
-                    </NavLink>
-                  </DropdownMenuItem>
-                )}
-                {canManageUsers && (
-                  <DropdownMenuItem asChild>
-                    <NavLink to="/admin/permissions" className="cursor-pointer">
-                      🛡️ הרשאות
-                    </NavLink>
-                  </DropdownMenuItem>
-                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </nav>
