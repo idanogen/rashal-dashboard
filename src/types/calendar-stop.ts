@@ -59,7 +59,14 @@ export interface CalendarStop {
   // Status
   status: StopStatus;
   completedAt?: string;
+  /** תיאור המשימה, כפי שנרשם בהקמה. */
   notes?: string;
+  /**
+   * מה שהנהג רשם כשסימן בוצע או לא בוצע.
+   * 🔴 עמודה נפרדת מ-`notes` מאז 23/08/2026: עד אז הסיבה נכתבה לתוך
+   * `notes` ודרסה את תיאור המשימה. 27 משימות כבר איבדו אותו כך.
+   */
+  resolutionNote?: string;
 
   // Coordination (WhatsApp / phone)
   coordinationStatus?: CoordinationStatus;

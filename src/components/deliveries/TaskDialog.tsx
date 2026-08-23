@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -11,6 +11,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { type AssigneeName } from '@/types/route';
 import { useAssignees } from '@/hooks/useAssignees';
+import { useFieldSuggestions } from '@/hooks/useFieldSuggestions';
+import { SuggestInput } from '@/components/SuggestInput';
 import { ClipboardList } from 'lucide-react';
 
 interface TaskDialogProps {
@@ -41,6 +43,15 @@ export function TaskDialog({
 }: TaskDialogProps) {
   const team = useAssignees();
   const assignees = assigneesProp ?? team.assignable;
+  // ⭐ מה שכבר נרשם במערכת מוצע כאן. ראה `lib/suggestions.ts` להסבר למה
+  // ה"זיכרון" שהיה פעם נעלם: הוא היה של הדפדפן, לא שלנו.
+  const suggest = useFieldSuggestions();
+  // "סוג כיסא" ושאר התיאורים החוזרים יושבים בשני מקומות: הערות של משימות
+  // קודמות, ושמות המכשירים מקריאות השירות.
+  const noteOptions = useMemo(
+    () => [...suggest.notes, ...suggest.devices],
+    [suggest.notes, suggest.devices],
+  );
   const [driver, setDriver] = useState<AssigneeName>('');
   // 🔴 **נגזר ולא אפקט.** הרשימה מגיעה מהשרת ועשויה להגיע אחרי הפתיחה;
   // setState בתוך אפקט היה מייצר רינדור נוסף על כל פתיחה, וזה בדיוק סוג
@@ -123,12 +134,12 @@ export function TaskDialog({
             <Label htmlFor="task-customer" className="text-xs">
               שם הלקוח / תיאור המשימה *
             </Label>
-            <Input
+            <SuggestInput
               id="task-customer"
               value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
+              onChange={setCustomerName}
+              options={suggest.customers}
               placeholder="לדוגמה: איסוף ציוד מהספק"
-              autoFocus
             />
           </div>
 
@@ -137,10 +148,11 @@ export function TaskDialog({
               <Label htmlFor="task-city" className="text-xs">
                 עיר
               </Label>
-              <Input
+              <SuggestInput
                 id="task-city"
                 value={city}
-                onChange={(e) => setCity(e.target.value)}
+                onChange={setCity}
+                options={suggest.cities}
               />
             </div>
             <div className="space-y-1.5">
@@ -160,10 +172,11 @@ export function TaskDialog({
             <Label htmlFor="task-address" className="text-xs">
               כתובת
             </Label>
-            <Input
+            <SuggestInput
               id="task-address"
               value={address}
-              onChange={(e) => setAddress(e.target.value)}
+              onChange={setAddress}
+              options={suggest.addresses}
             />
           </div>
 
@@ -171,10 +184,11 @@ export function TaskDialog({
             <Label htmlFor="task-notes" className="text-xs">
               הערות
             </Label>
-            <Input
+            <SuggestInput
               id="task-notes"
               value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              onChange={setNotes}
+              options={noteOptions}
             />
           </div>
         </div>

@@ -21,6 +21,7 @@ const stop = (o) => ({
   status: o.status ?? 'not_completed',
   completedAt: o.at,
   notes: o.notes,
+  resolutionNote: o.resolutionNote,
 });
 
 test('הסיבה שהנהג רשם מגיעה עם הישות', () => {
@@ -57,6 +58,23 @@ test('🔴 אותו יום: מכריעה שעת הסימון', () => {
   const evening = stop({ id: 's2', date: '2026-08-19', callId: 'c1', at: '2026-08-19T13:20:00Z', notes: 'ערב' });
   assert.equal(buildReturnedMap([morning, evening], 'service').get('c1').note, 'ערב');
   assert.equal(buildReturnedMap([evening, morning], 'service').get('c1').note, 'ערב');
+});
+
+test('🔴 הסיבה מגיעה מ-resolutionNote, ותיאור המשימה לא מתחזה לה', () => {
+  const map = buildReturnedMap(
+    [stop({ id: 's1', date: '2026-08-19', callId: 'c1',
+            notes: 'אספקת כיסא גלגלים', resolutionNote: 'הלקוח ביטל' })],
+    'service',
+  );
+  assert.equal(map.get('c1').note, 'הלקוח ביטל');
+});
+
+test('עצירה היסטורית בלי resolutionNote נופלת אחורה ל-notes', () => {
+  const map = buildReturnedMap(
+    [stop({ id: 's1', date: '2026-08-12', callId: 'c1', notes: 'טופל על ידי ישראל' })],
+    'service',
+  );
+  assert.equal(map.get('c1').note, 'טופל על ידי ישראל');
 });
 
 test('עצירה ישנה בלי סיבה מחזירה null, לא מחרוזת ריקה', () => {

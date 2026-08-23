@@ -752,10 +752,17 @@ function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve, resolv
           </a>
         )}
 
-        {/* Notes (if any) */}
+        {/* תיאור המשימה, כפי שנרשם בהקמה */}
         {stop.notes && (
           <div className="text-xs text-muted-foreground italic bg-muted/40 rounded p-2">
             📝 {stop.notes}
+          </div>
+        )}
+
+        {/* מה שנרשם בסימון. שורה נפרדת, כי היא כבר לא דורסת את התיאור. */}
+        {stop.resolutionNote && (
+          <div className="rounded bg-amber-50 p-2 text-xs text-amber-800">
+            ✍️ {stop.resolutionNote}
           </div>
         )}
 

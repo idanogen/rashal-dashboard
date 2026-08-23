@@ -57,7 +57,10 @@ export function buildReturnedMap(
 
     out.set(id, {
       stopId: stop.id,
-      note: stop.notes?.trim() || null,
+      // 🔴 `resolutionNote` קודם, ו-`notes` הוא נפילה לאחור להיסטוריה:
+      // עד 23/08/2026 הסיבה נכתבה לתוך `notes`, ולכן עצירות ישנות
+      // מחזיקות אותה שם ואין להן `resolutionNote`.
+      note: stop.resolutionNote?.trim() || stop.notes?.trim() || null,
       driver: stop.driver,
       deliveryDate: stop.deliveryDate,
     });

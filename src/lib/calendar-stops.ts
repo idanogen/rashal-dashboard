@@ -26,6 +26,7 @@ type CalendarStopRow = {
   status: StopStatus;
   completed_at: string | null;
   notes: string | null;
+  resolution_note: string | null;
   coordination_status: CoordinationStatus | null;
   coordination_method: CoordinationMethod | null;
   coordinated_at: string | null;
@@ -78,6 +79,7 @@ function rowToStop(row: CalendarStopRow): CalendarStop {
     status: row.status,
     completedAt: row.completed_at ?? undefined,
     notes: row.notes ?? undefined,
+    resolutionNote: row.resolution_note ?? undefined,
     coordinationStatus: row.coordination_status ?? undefined,
     coordinationMethod: row.coordination_method ?? undefined,
     coordinatedAt: row.coordinated_at ?? undefined,
@@ -407,7 +409,9 @@ export async function resolveStop(
     status,
     completed_at: new Date().toISOString(),
   };
-  if (notes != null) row.notes = notes;
+  // 🔴 **לעמודה שלה, לא לתוך `notes`.** עד 23/08/2026 הסיבה נכתבה לתוך
+  // `notes` ומחקה את תיאור המשימה שנרשם בהקמה, בלי שאיש ידע.
+  if (notes != null) row.resolution_note = notes;
 
   const { data, error } = await supabase
     .from('calendar_stops')
