@@ -2,11 +2,12 @@ import { MessageCircle, RefreshCw } from 'lucide-react';
 import { useQueryClient, useIsFetching } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { InboxBoard } from '@/components/wa/InboxBoard';
+import { WA_INBOX_KEY } from '@/lib/wa-inbox-query';
 
 /** הדף המלא. הלוח עצמו משותף עם החלונית הצפה. */
 export function InboxPage() {
   const qc = useQueryClient();
-  const fetching = useIsFetching({ queryKey: ['wa-inbox'] }) > 0;
+  const fetching = useIsFetching({ queryKey: [WA_INBOX_KEY] }) > 0;
 
   return (
     <div className="space-y-4">
@@ -25,7 +26,7 @@ export function InboxPage() {
         <Button
           variant="outline"
           size="sm"
-          onClick={() => qc.invalidateQueries({ queryKey: ['wa-inbox'] })}
+          onClick={() => qc.invalidateQueries({ queryKey: [WA_INBOX_KEY] })}
           disabled={fetching}
         >
           <RefreshCw className={`h-4 w-4 ${fetching ? 'animate-spin' : ''}`} />

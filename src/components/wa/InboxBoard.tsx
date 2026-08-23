@@ -25,6 +25,13 @@ import {
   type InboxItem,
   type WaMessage,
 } from '@/lib/wa-inbox';
+import {
+  inboxKey,
+  threadKey,
+  WA_INBOX_KEY,
+  WA_INBOX_POLL_MS,
+  WA_THREAD_POLL_MS,
+} from '@/lib/wa-inbox-query';
 
 /**
  * תיבת השיחות של ר.שעל.
@@ -39,8 +46,6 @@ import {
  * לכן כאן יש מענה בטקסט חופשי כשהחלון פתוח, וכשהוא סגור המסך אומר
  * במפורש שצריך לעבור לחלונית שבפריוריטי.
  */
-
-const POLL_MS = 30_000;
 
 function timeText(iso: string | null): string {
   if (!iso) return '';
@@ -213,17 +218,21 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE }: InboxBoardProps) {
   const qc = useQueryClient();
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // 🔴 **אותו מפתח בדיוק שהכפתור הצף משתמש בו.** קודם היו שני מפתחות
+  // לאותם נתונים, ולכן יצאו שתי בקשות זהות לשרת על כל סבב.
   const inbox = useQuery({
-    queryKey: ['wa-inbox', tab, q],
+    queryKey: inboxKey(tab, q),
     queryFn: () => fetchInbox(tab, q),
-    refetchInterval: POLL_MS,
+    refetchInterval: WA_INBOX_POLL_MS,
   });
 
+  // ⭐ השרשור מרוענן הרבה יותר מהר מהרשימה, וזה מכוון: כאן יושב עובד
+  // ומחכה לתשובה של לקוח, ושם רק נספר מי ממתין.
   const thread = useQuery({
-    queryKey: ['wa-thread', selected],
+    queryKey: threadKey(selected),
     queryFn: () => fetchThread(selected as string),
     enabled: Boolean(selected),
-    refetchInterval: POLL_MS,
+    refetchInterval: WA_THREAD_POLL_MS,
   });
 
   const items = inbox.data?.items ?? [];
@@ -263,8 +272,8 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE }: InboxBoardProps) {
       await sendText(selected, text);
       setDraft('');
       toast.success('יצא אל heyy. הסטטוס יתעדכן כאן.');
-      await qc.invalidateQueries({ queryKey: ['wa-thread', selected] });
-      await qc.invalidateQueries({ queryKey: ['wa-inbox'] });
+      await qc.invalidateQueries({ queryKey: threadKey(selected) });
+      await qc.invalidateQueries({ queryKey: [WA_INBOX_KEY] });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'השליחה נכשלה');
     } finally {
@@ -458,8 +467,8 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE }: InboxBoardProps) {
         phone={selected}
         customerName={current?.title}
         onSent={() => {
-          void qc.invalidateQueries({ queryKey: ['wa-thread', selected] });
-          void qc.invalidateQueries({ queryKey: ['wa-inbox'] });
+          void qc.invalidateQueries({ queryKey: threadKey(selected) });
+          void qc.invalidateQueries({ queryKey: [WA_INBOX_KEY] });
         }}
       />
     </>

@@ -1,9 +1,10 @@
-import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { WaGlyph } from '@/components/wa/WaGlyph';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { InboxBoard, HEIGHT_DOCK } from '@/components/wa/InboxBoard';
 import { fetchInbox } from '@/lib/wa-inbox';
+import { inboxKey, readWaitingCount, WA_INBOX_POLL_MS } from '@/lib/wa-inbox-query';
 import { useCurrentProfile } from '@/hooks/useProfile';
 import { screenAllow } from '@/lib/screen-access';
 import { cn } from '@/lib/utils';
@@ -20,25 +21,39 @@ import { cn } from '@/lib/utils';
  * 🔴 **והגישה נגזרת מאותה מפה של המסכים.** כפתור שנפתח למי שאין לו
  * הרשאה היה מציג רשימה ריקה או שגיאה, ושניהם נראים כמו תקלה.
  */
-const POLL_MS = 60_000;
-
 export function WaDock() {
   const [open, setOpen] = useState(false);
   const { data: profile } = useCurrentProfile();
   const allowed = !!profile && !profile.disabled && screenAllow('/inbox').includes(profile.role);
+  const qc = useQueryClient();
 
-  const waiting = useQuery({
-    queryKey: ['wa-inbox-waiting-badge'],
+  // 🔴 **הכפתור שואל רק כשהתיבה סגורה.** כשהיא פתוחה `InboxBoard` כבר
+  // מושך את אותה רשימה בדיוק, ושאילתה שנייה הייתה בקשה כפולה על אותם
+  // נתונים. המפתח משותף, ולכן כששניהם על לשונית "ממתינים" react-query
+  // מאחד אותם מעצמו גם ברגע המעבר.
+  useQuery({
+    queryKey: inboxKey('waiting', ''),
     queryFn: () => fetchInbox('waiting', ''),
-    refetchInterval: POLL_MS,
-    enabled: allowed,
+    refetchInterval: WA_INBOX_POLL_MS,
+    enabled: allowed && !open,
     retry: false,
   });
 
-  if (!allowed) return null;
+  // ⭐ המונה נקרא מהמטמון ולא מהשאילתה שלמעלה, כדי שגם כשהתיבה פתוחה על
+  // לשונית אחרת התג ימשיך להתעדכן מהמשיכות שלה. כל תשובה של הרשימה
+  // נושאת `counts.waiting`, בלי קשר ללשונית שביקשה אותה.
+  const [count, setCount] = useState<number>(() => readWaitingCount(qc) ?? 0);
+  useEffect(() => {
+    const cache = qc.getQueryCache();
+    const read = () => {
+      const next = readWaitingCount(qc);
+      if (next !== null) setCount(next);
+    };
+    read();
+    return cache.subscribe(read);
+  }, [qc]);
 
-  // 🔴 שרשרת מלאה. תשובה חלקית לא תפיל את כל המסך בגלל תג על כפתור.
-  const count = waiting.data?.counts?.waiting ?? 0;
+  if (!allowed) return null;
 
   return (
     <>
