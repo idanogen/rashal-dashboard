@@ -1,16 +1,11 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import type { Session, User } from '@supabase/supabase-js';
+import { useContext, useEffect, useState, type ReactNode } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import { usernameToEmail } from '@/lib/username';
+import { AuthContext } from './auth-context-object';
 
-interface AuthContextValue {
-  user: User | null;
-  session: Session | null;
-  loading: boolean;
-  /** Accepts either a real email or a bare username (the synthetic domain is appended automatically). */
-  signIn: (handle: string, password: string) => Promise<{ error: Error | null }>;
-  signOut: () => Promise<void>;
-}
+export { AuthContext };
+export type { AuthContextValue } from './auth-context-object';
 
 async function resolveEmail(handle: string): Promise<string> {
   const trimmed = handle.trim();
@@ -19,8 +14,6 @@ async function resolveEmail(handle: string): Promise<string> {
   // English) is mapped to its synthetic ASCII email.
   return trimmed.includes('@') ? trimmed : usernameToEmail(trimmed);
 }
-
-const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);

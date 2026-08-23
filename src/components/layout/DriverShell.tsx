@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Package, LogOut, RefreshCw, MessageSquarePlus } from 'lucide-react';
+import { LogOut, RefreshCw, MessageSquarePlus } from 'lucide-react';
+import { BrandMark } from '@/components/BrandMark';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth-context';
 import { useQueryClient } from '@tanstack/react-query';
@@ -36,9 +37,7 @@ export function DriverShell({ children }: DriverShellProps) {
       <header className="sticky top-0 z-50 border-b bg-card/90 backdrop-blur-sm">
         <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500 text-white">
-              <Package className="h-5 w-5" />
-            </div>
+            <BrandMark className="h-9 w-9" />
             <div>
               <h1 className="text-sm font-bold leading-tight">ר.שעל ציוד רפואי</h1>
               <p className="text-[10px] text-muted-foreground">מסלול הנהג</p>

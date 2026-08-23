@@ -35,6 +35,11 @@ export function LoginPage() {
     <div dir="rtl" className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
       <Card className="w-full max-w-md">
         <CardHeader>
+          <img
+            src="/rashal-logo.png"
+            alt="ר.שעל ציוד רפואי"
+            className="mx-auto mb-2 h-24 w-auto object-contain"
+          />
           <CardTitle className="text-2xl text-center">ר.שעל ציוד רפואי</CardTitle>
           <p className="text-center text-sm text-slate-500 mt-2">התחברות למערכת</p>
         </CardHeader>

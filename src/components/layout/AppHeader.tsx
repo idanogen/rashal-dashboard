@@ -1,4 +1,4 @@
-import { RefreshCw, Package, LogOut, Settings, ChevronDown } from 'lucide-react';
+import { RefreshCw, LogOut, Settings, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -13,7 +13,9 @@ import { useState, useEffect, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
-import { useIsAdmin, useCanManageUsers } from '@/hooks/useProfile';
+import { useIsAdmin, useCanManageUsers, useCurrentProfile } from '@/hooks/useProfile';
+import { BrandMark } from '@/components/BrandMark';
+import { ROLE_LABELS } from '@/types/profile';
 
 // שאילתות הנתונים שהכותרת מדווחת עליהן.
 const TRACKED_KEYS = new Set([
@@ -64,11 +66,18 @@ function formatAgo(ms: number): string {
   return `לפני ${days} ימים`;
 }
 
+/** האות הראשונה לעיגול. מדלגת על תווים שאינם אות, כדי ש-"ר.שעל" לא ייתן נקודה. */
+function userInitial(name?: string): string {
+  const m = (name ?? '').match(/[\p{L}\p{N}]/u);
+  return m ? m[0].toUpperCase() : '?';
+}
+
 export function AppHeader() {
   const queryClient = useQueryClient();
   const { signOut } = useAuth();
   const isAdmin = useIsAdmin();
   const canManageUsers = useCanManageUsers();
+  const { data: profile } = useCurrentProfile();
   const [isRefreshing, setIsRefreshing] = useState(false);
   // 🔴 עד כה נמדד הזמן שעבר מאז שהטאב נפתח, וזה נקרא "עודכן". טאב שנשאר
   // פתוח לילה שלם הציג "עודכן לפני 2822 דקות" בזמן שהנתונים היו טריים.
@@ -142,9 +151,7 @@ export function AppHeader() {
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-              <Package className="h-5 w-5" />
-            </div>
+            <BrandMark className="h-9 w-9" />
             <div className="hidden sm:block">
               <h1 className="text-lg font-bold leading-tight">דשבורד הזמנות</h1>
               <p className="text-xs text-muted-foreground">ר.שעל ציוד רפואי</p>
@@ -207,6 +214,26 @@ export function AppHeader() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* מי מחובר. 🔴 עד 23/08/2026 לא הופיע כאן שום שם, ולכן במחשב
+              משותף אי אפשר היה לדעת בשם מי נרשמת הפעולה. */}
+          {profile && (
+            <div className="hidden items-center gap-2 md:flex">
+              <div
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary"
+                aria-hidden
+              >
+                {userInitial(profile.fullName ?? profile.username)}
+              </div>
+              <div className="leading-tight">
+                <p className="text-xs font-semibold">
+                  {profile.fullName || profile.username || 'משתמש'}
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  {ROLE_LABELS[profile.role] ?? profile.role}
+                </p>
+              </div>
+            </div>
+          )}
           <span
             className={cn(
               'hidden text-xs sm:block',
@@ -225,7 +252,12 @@ export function AppHeader() {
             <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
             <span className="hidden sm:inline">רענון</span>
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => signOut()} title="התנתק">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => signOut()}
+            title={profile ? `התנתקות מהחשבון של ${profile.fullName || profile.username}` : 'התנתק'}
+          >
             <LogOut className="h-4 w-4" />
           </Button>
         </div>
