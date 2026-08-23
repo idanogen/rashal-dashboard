@@ -80,8 +80,19 @@ async function authFetch(path: string, init?: RequestInit) {
       ...(init?.headers ?? {}),
     },
   });
-  const json = await res.json().catch(() => ({}));
-  // 🔴 ההודעה מהשרת עדיפה על "HTTP 409". השרת יודע **למה** נדחתה השליחה
+  // 🔴 **200 אינו אימות.** תשובה שאינה JSON מגיעה כשהבקשה נענתה על ידי
+  // משהו אחר: שרת הפיתוח שמחזיר את ה-HTML של האפליקציה, פרוקסי, או דף
+  // התחברות. הקוד הקודם בלע את זה (`catch` שהחזיר אובייקט ריק), החזיר
+  // הצלחה, והמסך קרס אחר כך על שדה חסר. אותה משפחה כמו כתובת המסמך של
+  // פריוריטי שהחזירה 200 עם דף התחברות.
+  const type = res.headers.get('content-type') ?? '';
+  if (!type.includes('application/json')) {
+    throw new Error(`התשובה מהשרת אינה JSON (HTTP ${res.status}). ייתכן שהסשן פג.`);
+  }
+  const json = await res.json().catch(() => null);
+  if (json === null) throw new Error(`תשובה פגומה מהשרת (HTTP ${res.status})`);
+
+  // ההודעה מהשרת עדיפה על "HTTP 409". השרת יודע **למה** נדחתה השליחה
   // (חלון סגור, שדה חסר), והמסך צריך להגיד את זה ולא קוד מספרי.
   if (!res.ok || json.ok === false) {
     throw new Error(json.message || json.error || `HTTP ${res.status}`);
