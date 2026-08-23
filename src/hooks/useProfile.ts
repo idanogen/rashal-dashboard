@@ -11,6 +11,7 @@ import {
   type AdminAction,
   type AdminResponse,
 } from '@/lib/profiles';
+import { USER_MANAGER_ROLES } from '@/types/profile';
 
 export function useCurrentProfile() {
   const { user } = useAuth();
@@ -25,6 +26,16 @@ export function useCurrentProfile() {
 export function useIsAdmin(): boolean {
   const { data: profile } = useCurrentProfile();
   return profile?.role === 'admin' && !profile.disabled;
+}
+
+/**
+ * מי רשאי לנהל משתמשים ואת צוות השטח: מנהל מערכת ומנהל צוות.
+ * 🔴 שער ויזואלי בלבד. האכיפה האמיתית ב-`api/admin-users.ts` וב-RLS.
+ */
+export function useCanManageUsers(): boolean {
+  const { data: profile } = useCurrentProfile();
+  if (!profile || profile.disabled) return false;
+  return USER_MANAGER_ROLES.includes(profile.role);
 }
 
 export function useAllProfiles() {

@@ -2,11 +2,9 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import type { CalendarDelivery, CalendarStop } from '@/types/delivery';
 import { assigneeStyle } from '@/types/delivery';
-import { DRIVERS, TECHNICIANS, type AssigneeName } from '@/types/route';
+import { useAssignees } from '@/hooks/useAssignees';
 import { compareStopsByTime } from '@/lib/stop-order';
 
-// סדר תצוגה אחיד של משובצים (נהגים ואז טכנאים; דוד מופיע פעם אחת).
-const ASSIGNEE_ORDER: AssigneeName[] = Array.from(new Set<AssigneeName>([...DRIVERS, ...TECHNICIANS]));
 import { Button } from '@/components/ui/button';
 import {
   SortableContext,
@@ -428,6 +426,8 @@ export function DeliveryCalendar({
   hiddenByFilter,
   onShowAllTypes,
 }: DeliveryCalendarProps) {
+  // סדר תצוגה אחיד של המשובצים, מטבלת הצוות ולא מרשימה בקוד.
+  const { order: assigneeOrder } = useAssignees();
   const [currentDate, setCurrentDate] = useState(new Date());
   /** ימי עבר מוצגים כעמודה צרה. לחיצה פותחת יום מסוים לרוחב מלא. */
   const [expandedPastDays, setExpandedPastDays] = useState<Set<string>>(new Set());
@@ -604,7 +604,7 @@ export function DeliveryCalendar({
           // קיבוץ לפי משובץ — לפי סדר התצוגה האחיד (נהגים ואז טכנאים)
           const dayDeliveries = getDeliveriesForDate(dateStr).sort(
             (a, b) =>
-              ASSIGNEE_ORDER.indexOf(a.driver) - ASSIGNEE_ORDER.indexOf(b.driver)
+              assigneeOrder.indexOf(a.driver) - assigneeOrder.indexOf(b.driver)
           );
           const isTodayFlag = isToday(day);
           const isPast = isPastDay(day);

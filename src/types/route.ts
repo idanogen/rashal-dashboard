@@ -1,29 +1,13 @@
-// נהגי חלוקה (מסך משלוחים). דוד הוא גם טכנאי.
-export type DriverName = 'דוד' | 'רודי' | 'מוחמד' | 'מוהנד';
-// טכנאי שירות (מסך קריאות שירות). דוד מופיע גם כאן.
-export type TechnicianName = 'אולג' | 'ישראל' | 'אבי' | 'דוד';
-// כל ערכי ה-enum `driver_name` ב-DB — assignee של עצירה (נהג או טכנאי).
-export type AssigneeName = DriverName | TechnicianName;
+/**
+ * 🔴 **שמות הצוות אינם טיפוס יותר.** עד 23/08/2026 ישבה כאן רשימה סגורה
+ * של שבעה שמות, וקליטת נהג או טכנאי חדש חייבה שינוי קוד ופריסה. הרשימה
+ * עברה לטבלת `assignees` ולמסך הצוות, וכאן נשאר רק הכינוי לשם.
+ *
+ * מי שצריך את הרשימה החיה קורא ל-`useAssignees()`.
+ */
+export type AssigneeName = string;
 
 export type RouteStatus = 'מאושר' | 'בביצוע' | 'הושלם' | 'בוטל';
-
-export const DRIVERS: DriverName[] = ['דוד', 'רודי', 'מוחמד', 'מוהנד'];
-export const TECHNICIANS: TechnicianName[] = ['אולג', 'ישראל', 'אבי', 'דוד'];
-/** כל ה-assignees לבחירה (נהגים + טכנאים) ללא כפילות — דוד מופיע פעם אחת. לקישור משתמש. */
-export const ASSIGNEES: AssigneeName[] = ['דוד', 'רודי', 'מוחמד', 'מוהנד', 'אולג', 'ישראל', 'אבי'];
-/** טכנאים שאינם נהגים — לניתוב משימות (task) למסך הנכון. דוד (נהג+טכנאי) משויך למשלוחים. */
-export const TECHNICIAN_ONLY = new Set<AssigneeName>(['אולג', 'ישראל', 'אבי']);
-
-/** טלפונים — לשמירה בלבד (ללא תצוגה כרגע). */
-export const ASSIGNEE_PHONES: Record<AssigneeName, string> = {
-  דוד: '058-5868780',
-  רודי: '050-8334248',
-  מוחמד: '0522906066',
-  מוהנד: '052-5079808',
-  אולג: '050-4466123',
-  ישראל: '054-9018939',
-  אבי: '058-6699369',
-};
 
 export const ROUTE_STATUS_OPTIONS = [
   { value: 'מאושר' as const, label: 'מאושר', color: 'blue' },
@@ -44,7 +28,7 @@ export interface RouteStop {
 export interface ApprovedRoute {
   id: string;
   routeName: string;
-  driver: DriverName;
+  driver: AssigneeName;
   deliveryDate: string;
   status: RouteStatus;
   orderIds: string[];

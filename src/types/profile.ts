@@ -1,11 +1,20 @@
 import type { AssigneeName } from './route';
 
-export type UserRole = 'admin' | 'dispatcher' | 'driver' | 'viewer';
+export type UserRole = 'admin' | 'team_manager' | 'dispatcher' | 'driver' | 'viewer';
 
-export const ALLOWED_ROLES: UserRole[] = ['admin', 'dispatcher', 'driver', 'viewer'];
+/**
+ * ⭐ **`team_manager` הוא סדרן ועוד.** הוא רואה ועושה כל מה שסדרן עושה,
+ * ובנוסף מנהל משתמשים ואת צוות השטח. הוא **אינו** מנהל מערכת: אין לו
+ * מחיקת משתמש, אין לו תבניות וואטסאפ, ואסור לו לגעת במנהל מערכת או
+ * להעניק את התפקיד. שלושת האיסורים נאכפים ב-`api/admin-users.ts`.
+ */
+export const USER_MANAGER_ROLES: UserRole[] = ['admin', 'team_manager'];
+
+export const ALLOWED_ROLES: UserRole[] = ['admin', 'team_manager', 'dispatcher', 'driver', 'viewer'];
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'מנהל מערכת',
+  team_manager: 'מנהל צוות',
   dispatcher: 'שולח (מנהל משלוחים)',
   driver: 'נהג',
   viewer: 'צפייה בלבד',
@@ -20,7 +29,7 @@ export interface Profile {
   fullName?: string;
   role: UserRole;
   disabled: boolean;
-  /** When role='driver', links this user to a driver_name enum value (delivery driver or service technician). */
+  /** כשהתפקיד הוא 'driver', מקשר את המשתמש לשורה בטבלת `assignees` (נהג או טכנאי). */
   linkedDriver?: AssigneeName;
   createdAt: string;
   updatedAt?: string;

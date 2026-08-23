@@ -20,7 +20,8 @@ import { toast } from 'sonner';
 import { useAllProfiles, useAdminMutation, useCurrentProfile } from '@/hooks/useProfile';
 import { ALLOWED_ROLES, ROLE_LABELS, USERNAME_PATTERN, type UserRole } from '@/types/profile';
 import { normalizeUsername } from '@/lib/username';
-import { ASSIGNEES, TECHNICIAN_ONLY, type AssigneeName } from '@/types/route';
+import { type AssigneeName } from '@/types/route';
+import { useAssignees } from '@/hooks/useAssignees';
 import { Truck, Wrench } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -54,6 +55,7 @@ import type { Profile } from '@/types/profile';
 
 const ROLE_BADGE_STYLES: Record<UserRole, string> = {
   admin: 'bg-purple-50 text-purple-700 border-purple-200',
+  team_manager: 'bg-indigo-50 text-indigo-700 border-indigo-200',
   dispatcher: 'bg-blue-50 text-blue-700 border-blue-200',
   driver: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   viewer: 'bg-gray-50 text-gray-600 border-gray-200',
@@ -66,6 +68,7 @@ function displayHandle(p: Profile): string {
 
 export function AdminUsersPage() {
   const { data: profiles, isLoading } = useAllProfiles();
+  const { assignable } = useAssignees();
   const { data: currentProfile } = useCurrentProfile();
   const adminMutation = useAdminMutation();
   const [search, setSearch] = useState('');
@@ -104,8 +107,8 @@ export function AdminUsersPage() {
         .filter((p) => p.linkedDriver && !p.disabled)
         .map((p) => p.linkedDriver as AssigneeName)
     );
-    return ASSIGNEES.filter((d) => !taken.has(d));
-  }, [profiles]);
+    return assignable.filter((d) => !taken.has(d));
+  }, [profiles, assignable]);
 
   async function handleToggleDisabled(userId: string, currentlyDisabled: boolean) {
     const res = await adminMutation.mutateAsync({
@@ -253,6 +256,7 @@ function UserRow({
   onSetPassword,
   onDelete,
 }: UserRowProps) {
+  const { isTechnicianOnly } = useAssignees();
   const driverChoices = profile.linkedDriver && !availableDrivers.includes(profile.linkedDriver)
     ? [...availableDrivers, profile.linkedDriver]
     : availableDrivers;
@@ -317,7 +321,7 @@ function UserRow({
               <SelectValue>
                 {profile.linkedDriver ? (
                   <span className="inline-flex items-center gap-1 text-[11px]">
-                    {TECHNICIAN_ONLY.has(profile.linkedDriver) ? (
+                    {isTechnicianOnly(profile.linkedDriver) ? (
                       <Wrench className="h-3 w-3 text-orange-600" />
                     ) : (
                       <Truck className="h-3 w-3 text-emerald-600" />
@@ -334,7 +338,7 @@ function UserRow({
               {driverChoices.map((d) => (
                 <SelectItem key={d} value={d}>
                   <span className="inline-flex items-center gap-1.5">
-                    {TECHNICIAN_ONLY.has(d) ? (
+                    {isTechnicianOnly(d) ? (
                       <Wrench className="h-3 w-3 text-orange-600" />
                     ) : (
                       <Truck className="h-3 w-3 text-emerald-600" />
@@ -418,6 +422,7 @@ function generateClientPassword(): string {
 function CreateUserDialog({ open, onOpenChange, onCreated }: CreateUserDialogProps) {
   const adminMutation = useAdminMutation();
   const { data: profiles } = useAllProfiles();
+  const { assignable, isTechnicianOnly } = useAssignees();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -438,8 +443,8 @@ function CreateUserDialog({ open, onOpenChange, onCreated }: CreateUserDialogPro
         .filter((p) => p.linkedDriver && !p.disabled)
         .map((p) => p.linkedDriver as AssigneeName)
     );
-    return ASSIGNEES.filter((d) => !taken.has(d));
-  }, [profiles]);
+    return assignable.filter((d) => !taken.has(d));
+  }, [profiles, assignable]);
 
   function reset() {
     setUsername('');
@@ -609,14 +614,14 @@ function CreateUserDialog({ open, onOpenChange, onCreated }: CreateUserDialogPro
                     {availableDrivers.map((d) => (
                       <SelectItem key={d} value={d}>
                         <span className="inline-flex items-center gap-1.5">
-                          {TECHNICIAN_ONLY.has(d) ? (
+                          {isTechnicianOnly(d) ? (
                             <Wrench className="h-3 w-3 text-orange-600" />
                           ) : (
                             <Truck className="h-3 w-3 text-emerald-600" />
                           )}
                           {d}
                           <span className="text-[10px] text-muted-foreground">
-                            {TECHNICIAN_ONLY.has(d) ? '(טכנאי)' : '(נהג)'}
+                            {isTechnicianOnly(d) ? '(טכנאי)' : '(נהג)'}
                           </span>
                         </span>
                       </SelectItem>

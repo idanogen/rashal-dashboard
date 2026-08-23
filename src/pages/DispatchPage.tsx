@@ -85,7 +85,7 @@ import type { ServiceCall } from '@/types/service-call';
 import type { Pickup } from '@/types/pickup';
 import type { NewCustomer } from '@/types/customer';
 import { isBareCustomer } from '@/types/customer';
-import { ASSIGNEES, type AssigneeName } from '@/types/route';
+import { type AssigneeName } from '@/types/route';
 import type {
   CalendarDelivery,
   CalendarStopSource,
@@ -1511,7 +1511,6 @@ export function DispatchPage() {
 
       {/* בורר עובד — שיבוץ (גרירה / תזמון bulk) */}
       <DriverSelector
-        assignees={ASSIGNEES}
         title={pendingSchedule ? KIND_LABELS[pendingSchedule.kind].pickerTitle : undefined}
         open={driverPickerOpen}
         onClose={() => {
@@ -1537,7 +1536,6 @@ export function DispatchPage() {
 
       {/* בורר עובד — שיבוץ מחדש (גרירת stop קיים ליום אחר) */}
       <DriverSelector
-        assignees={ASSIGNEES}
         title="בחר עובד"
         open={!!pendingReschedule}
         onClose={() => setPendingReschedule(null)}
@@ -1567,7 +1565,6 @@ export function DispatchPage() {
 
       {/* "העבר ליום אחר" — בורר עובד */}
       <DriverSelector
-        assignees={ASSIGNEES}
         title="העבר ליום אחר — בחר עובד"
         open={!!pendingMove}
         onClose={() => setPendingMove(null)}
@@ -1585,7 +1582,6 @@ export function DispatchPage() {
         open={taskDialogDate !== null}
         onClose={() => setTaskDialogDate(null)}
         date={taskDialogDate}
-        assignees={ASSIGNEES}
         onSubmit={handleCreateTask}
       />
 

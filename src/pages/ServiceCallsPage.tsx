@@ -45,7 +45,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, AlertCircle, Wrench, CalendarDays } from 'lucide-react';
 import type { ServiceCall } from '@/types/service-call';
-import { ASSIGNEES, type AssigneeName } from '@/types/route';
+import { type AssigneeName } from '@/types/route';
 import { buildCalendarDeliveries } from '@/lib/calendar-view';
 import type { CalendarDelivery } from '@/types/delivery';
 import { toast } from 'sonner';
@@ -721,7 +721,6 @@ export function ServiceCallsPage() {
 
       {/* Move-to-another-day — worker picker */}
       <DriverSelector
-        assignees={ASSIGNEES}
         title="העבר ליום אחר — בחר עובד"
         open={!!pendingMove}
         onClose={() => setPendingMove(null)}
@@ -735,7 +734,6 @@ export function ServiceCallsPage() {
       />
 
       <DriverSelector
-        assignees={ASSIGNEES}
         title="בחר עובד"
         open={driverPickerOpen}
         onClose={() => {
@@ -759,7 +757,6 @@ export function ServiceCallsPage() {
 
       {/* Reschedule driver picker (drag existing service stop to another day) */}
       <DriverSelector
-        assignees={ASSIGNEES}
         title="בחר עובד"
         open={!!pendingReschedule}
         onClose={() => setPendingReschedule(null)}
@@ -775,7 +772,6 @@ export function ServiceCallsPage() {
         open={taskDialogDate !== null}
         onClose={() => setTaskDialogDate(null)}
         date={taskDialogDate}
-        assignees={ASSIGNEES}
         assigneeLabel="טכנאי"
         onSubmit={handleCreateTask}
       />

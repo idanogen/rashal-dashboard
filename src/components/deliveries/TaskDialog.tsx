@@ -9,14 +9,15 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ASSIGNEES, type AssigneeName } from '@/types/route';
+import { type AssigneeName } from '@/types/route';
+import { useAssignees } from '@/hooks/useAssignees';
 import { ClipboardList } from 'lucide-react';
 
 interface TaskDialogProps {
   open: boolean;
   onClose: () => void;
   date: string | null;
-  /** רשימת המשובצים — ברירת מחדל נהגים; למסך שירות יועברו טכנאים. */
+  /** רשימת המשובצים. ברירת המחדל היא כל הצוות הפעיל מטבלת `assignees`. */
   assignees?: AssigneeName[];
   /** תווית השדה — ברירת מחדל "נהג". */
   assigneeLabel?: string;
@@ -34,11 +35,17 @@ export function TaskDialog({
   open,
   onClose,
   date,
-  assignees = ASSIGNEES,
+  assignees: assigneesProp,
   assigneeLabel = 'עובד',
   onSubmit,
 }: TaskDialogProps) {
-  const [driver, setDriver] = useState<AssigneeName>(assignees[0]);
+  const team = useAssignees();
+  const assignees = assigneesProp ?? team.assignable;
+  const [driver, setDriver] = useState<AssigneeName>('');
+  // 🔴 **נגזר ולא אפקט.** הרשימה מגיעה מהשרת ועשויה להגיע אחרי הפתיחה;
+  // setState בתוך אפקט היה מייצר רינדור נוסף על כל פתיחה, וזה בדיוק סוג
+  // הקוד שהפיל כאן פעם את המיקוד בשדה.
+  const selected = driver || assignees[0] || '';
   const [customerName, setCustomerName] = useState('');
   const [address, setAddress] = useState('');
   const [city, setCity] = useState('');
@@ -47,7 +54,7 @@ export function TaskDialog({
 
   useEffect(() => {
     if (open) {
-      setDriver(assignees[0]);
+      setDriver('');
       setCustomerName('');
       setAddress('');
       setCity('');
@@ -57,9 +64,9 @@ export function TaskDialog({
   }, [open]);
 
   const handleSubmit = () => {
-    if (!customerName.trim()) return;
+    if (!customerName.trim() || !selected) return;
     onSubmit({
-      driver,
+      driver: selected,
       customerName: customerName.trim(),
       address: address.trim() || undefined,
       city: city.trim() || undefined,
@@ -101,7 +108,7 @@ export function TaskDialog({
                   type="button"
                   onClick={() => setDriver(d)}
                   className={`rounded-lg border px-3 py-2 text-sm transition-all ${
-                    driver === d
+                    selected === d
                       ? 'border-primary bg-primary/10 font-semibold'
                       : 'hover:bg-muted'
                   }`}

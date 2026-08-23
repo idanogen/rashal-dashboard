@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useCalendarStops } from '@/hooks/useCalendarStops';
 import { assigneeStyle } from '@/types/delivery';
-import { ASSIGNEES, type AssigneeName } from '@/types/route';
+import { useAssignees } from '@/hooks/useAssignees';
 import type { CalendarStop, StopSourceType } from '@/types/calendar-stop';
 import { compareStopsByTime } from '@/lib/stop-order';
 import { Card, CardContent } from '@/components/ui/card';
@@ -44,11 +44,13 @@ function dayLabel(yyyyMmDd: string): string {
   return `יום ${dayNames[d.getDay()]}, ${d.toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric' })}`;
 }
 
-type AssigneeFilter = AssigneeName | 'all';
+type AssigneeFilter = string | 'all';
 type TypeFilter = StopSourceType | 'all';
 
 export function ScheduledOverview() {
   const { data: allStops = [], isLoading } = useCalendarStops();
+  // הצוות מגיע מהטבלה: שבבי הסינון הם הפעילים, והמיון לפי הסדר המלא.
+  const { assignable, order: assigneeOrder } = useAssignees();
   const [assigneeFilter, setAssigneeFilter] = useState<AssigneeFilter>('all');
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('all');
 
@@ -84,7 +86,7 @@ export function ScheduledOverview() {
         }
         const groups = Array.from(byAssignee.entries())
           .sort(
-            (a, b) => ASSIGNEES.indexOf(a[0] as AssigneeName) - ASSIGNEES.indexOf(b[0] as AssigneeName)
+            (a, b) => assigneeOrder.indexOf(a[0]) - assigneeOrder.indexOf(b[0])
           )
           .map(([driver, list]) => ({
             driver,
@@ -93,9 +95,9 @@ export function ScheduledOverview() {
           }));
         return { date, count: stops.length, groups };
       });
-  }, [filtered]);
+  }, [filtered, assigneeOrder]);
 
-  // ספירות לפי סוג — לתגיות הפילטר.
+// ספירות לפי סוג — לתגיות הפילטר.
   const typeCounts = useMemo(() => {
     const active = allStops.filter(
       (s) =>
@@ -147,7 +149,7 @@ export function ScheduledOverview() {
           onClick={() => setAssigneeFilter('all')}
           label="כל העובדים"
         />
-        {ASSIGNEES.map((name) => {
+        {assignable.map((name) => {
           const style = assigneeStyle(name);
           return (
             <button

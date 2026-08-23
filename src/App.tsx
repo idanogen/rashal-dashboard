@@ -11,12 +11,14 @@ import { RouteNavigationPage } from '@/pages/RouteNavigationPage';
 import { WhatsAppPage } from '@/pages/WhatsAppPage';
 import { InboxPage } from '@/pages/InboxPage';
 import { AdminUsersPage } from '@/pages/AdminUsersPage';
+import { TeamPage } from '@/pages/TeamPage';
 import { WhatsAppTemplatesPage } from '@/pages/WhatsAppTemplatesPage';
 import { DriverDashboardPage } from '@/pages/DriverDashboardPage';
 import { FeedbackPage } from '@/pages/FeedbackPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { SurveyPage } from '@/pages/SurveyPage';
 import { AuthProvider } from '@/lib/auth-context';
+import { USER_MANAGER_ROLES } from '@/types/profile';
 import { GlobalChatProvider } from '@/context/GlobalChatContext';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { ProtectedAdminRoute } from '@/components/ProtectedAdminRoute';
@@ -38,7 +40,7 @@ const queryClient = new QueryClient({
 });
 
 // Non-driver roles use the full admin/dispatcher layout
-const STAFF_ROLES = ['admin', 'dispatcher', 'viewer'] as const;
+const STAFF_ROLES = ['admin', 'team_manager', 'dispatcher', 'viewer'] as const;
 
 function App() {
   return (
@@ -110,8 +112,16 @@ function App() {
                         <Route
                           path="/admin/users"
                           element={
-                            <ProtectedAdminRoute>
+                            <ProtectedAdminRoute allow={[...USER_MANAGER_ROLES]}>
                               <AdminUsersPage />
+                            </ProtectedAdminRoute>
+                          }
+                        />
+                        <Route
+                          path="/admin/team"
+                          element={
+                            <ProtectedAdminRoute allow={[...USER_MANAGER_ROLES]}>
+                              <TeamPage />
                             </ProtectedAdminRoute>
                           }
                         />

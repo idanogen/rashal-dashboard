@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import type { CalendarStop } from '@/types/delivery';
 import { assigneeStyle } from '@/types/delivery';
-import { DRIVERS, TECHNICIANS, type AssigneeName } from '@/types/route';
+import { type AssigneeName } from '@/types/route';
+import { useAssignees } from '@/hooks/useAssignees';
 import { RouteMap } from './RouteMap';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -60,7 +61,6 @@ interface DayMapDialogProps {
   onOptimize?: (driver: AssigneeName, orderedIds: string[]) => void;
 }
 
-const DRIVER_ORDER: AssigneeName[] = Array.from(new Set<AssigneeName>([...DRIVERS, ...TECHNICIANS]));
 
 const sourceConfig = {
   delivery: { Icon: Package, color: 'text-blue-600', bg: 'bg-blue-50', label: 'משלוח' },
@@ -71,7 +71,10 @@ const sourceConfig = {
 } as const;
 
 export function DayMapDialog({ open, onClose, date, stops, onOptimize }: DayMapDialogProps) {
-  const [activeDriver, setActiveDriver] = useState<AssigneeName>(DRIVER_ORDER[0]);
+  // סדר המשובצים מגיע מטבלת הצוות, כולל מי שכבר לא פעיל, כדי שיום ישן
+  // עם עצירות שלו עדיין ייפתח בטאב שלו.
+  const { order: driverOrder } = useAssignees();
+  const [activeDriver, setActiveDriver] = useState<AssigneeName>('');
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [celebration, setCelebration] = useState<{
     show: boolean;
@@ -82,7 +85,7 @@ export function DayMapDialog({ open, onClose, date, stops, onOptimize }: DayMapD
   // Group stops for this day by driver, filtering cancelled.
   const stopsByDriver = useMemo(() => {
     const map = new Map<AssigneeName, CalendarStop[]>();
-    DRIVER_ORDER.forEach((d) => map.set(d, []));
+    driverOrder.forEach((d) => map.set(d, []));
     stops
       .filter((s) => s.status !== 'cancelled')
       // סדר קנוני משותף: שעת תיאום ראשי (sequence שובר-שוויון, נסמך על סדר הקלט).
@@ -92,16 +95,16 @@ export function DayMapDialog({ open, onClose, date, stops, onOptimize }: DayMapD
         if (list) list.push(s);
       });
     return map;
-  }, [stops]);
+  }, [stops, driverOrder]);
 
   // Auto-select a driver that has stops.
   const effectiveDriver = useMemo(() => {
     if ((stopsByDriver.get(activeDriver)?.length ?? 0) > 0) return activeDriver;
-    for (const d of DRIVER_ORDER) {
+    for (const d of driverOrder) {
       if ((stopsByDriver.get(d)?.length ?? 0) > 0) return d;
     }
     return activeDriver;
-  }, [activeDriver, stopsByDriver]);
+  }, [activeDriver, stopsByDriver, driverOrder]);
 
   const activeStops = stopsByDriver.get(effectiveDriver) ?? [];
 
@@ -171,7 +174,7 @@ export function DayMapDialog({ open, onClose, date, stops, onOptimize }: DayMapD
 
           {/* Driver tabs — only assignees that have stops this day */}
           <div className="flex flex-shrink-0 items-center gap-1">
-            {DRIVER_ORDER.filter(
+            {driverOrder.filter(
               (d) => (stopsByDriver.get(d)?.length ?? 0) > 0 || d === effectiveDriver
             ).map((driver) => {
               const cfg = assigneeStyle(driver);
@@ -308,7 +311,7 @@ export function DayMapDialog({ open, onClose, date, stops, onOptimize }: DayMapD
           {/* Side panel — stops list */}
           <div className="flex-1 overflow-y-auto border-t lg:w-80 lg:flex-none lg:border-s lg:border-t-0 xl:w-96">
             <div className="flex flex-col gap-2 p-3">
-              {DRIVER_ORDER.map((driver) => {
+              {driverOrder.map((driver) => {
                 const cfg = assigneeStyle(driver);
                 const ds = stopsByDriver.get(driver) ?? [];
                 const isActive = effectiveDriver === driver;

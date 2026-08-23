@@ -5,7 +5,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { ASSIGNEES, type AssigneeName } from '@/types/route';
+import { type AssigneeName } from '@/types/route';
+import { useAssignees } from '@/hooks/useAssignees';
 import { Truck, Package } from 'lucide-react';
 
 interface DriverSelectorProps {
@@ -14,7 +15,7 @@ interface DriverSelectorProps {
   onSelectDriver: (driver: AssigneeName) => void;
   orderInfo?: string;
   customerName?: string;
-  /** רשימת המשובצים להצגה — ברירת מחדל: נהגי חלוקה. למסך שירות יועברו טכנאים. */
+  /** רשימת המשובצים להצגה. ברירת המחדל היא כל הצוות הפעיל מטבלת `assignees`. */
   assignees?: AssigneeName[];
   /** כותרת הדיאלוג — ברירת מחדל "בחר נהג למשלוח". */
   title?: string;
@@ -26,9 +27,11 @@ export function DriverSelector({
   onSelectDriver,
   orderInfo,
   customerName,
-  assignees = ASSIGNEES,
+  assignees,
   title = 'בחר עובד',
 }: DriverSelectorProps) {
+  const team = useAssignees();
+  const list = assignees ?? team.assignable;
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-md" dir="rtl">
@@ -53,7 +56,7 @@ export function DriverSelector({
         )}
 
         <div className="grid grid-cols-2 gap-3 py-2">
-          {assignees.map((name) => (
+          {list.map((name) => (
             <button
               key={name}
               className="group relative flex h-24 flex-col items-center justify-center gap-2.5 rounded-xl border border-primary/20 bg-gradient-to-br from-primary/10 to-primary/5 transition-all duration-200 hover:shadow-md hover:ring-2 hover:ring-primary/30 active:scale-[0.97]"

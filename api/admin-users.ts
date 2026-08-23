@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createHash } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { supabaseAdmin } from './_lib/supabase-admin.js';
+import { checkUserAdminPolicy } from './_lib/user-admin-policy.js';
 
 // Admin user-management endpoint. Single POST endpoint with `action` switch.
 //
@@ -34,15 +35,23 @@ const USERNAME_DOMAIN = 'rashal.internal';
 // 3-30 chars: Latin letters, Hebrew letters (א-ת incl. finals), digits, . _ - .
 const USERNAME_PATTERN = /^[a-zA-Z0-9._א-ת-]{3,30}$/u;
 
-type AllowedRole = 'admin' | 'dispatcher' | 'driver' | 'viewer';
-const ALLOWED_ROLES: AllowedRole[] = ['admin', 'dispatcher', 'driver', 'viewer'];
+type AllowedRole = 'admin' | 'team_manager' | 'dispatcher' | 'driver' | 'viewer';
+const ALLOWED_ROLES: AllowedRole[] = ['admin', 'team_manager', 'dispatcher', 'driver', 'viewer'];
 
-// Any value of the `driver_name` enum may be linked to a user. The enum holds
-// both delivery drivers and service technicians (a user with role='driver' gets
-// the field dashboard, and RLS filters their stops by the linked assignee).
-// MUST stay in sync with the driver_name enum in the DB and AssigneeName in src/types/route.ts.
-type DriverName = 'רודי' | 'מוחמד' | 'דוד' | 'מוהנד' | 'אולג' | 'ישראל' | 'אבי';
-const ALLOWED_DRIVERS: DriverName[] = ['רודי', 'מוחמד', 'דוד', 'מוהנד', 'אולג', 'ישראל', 'אבי'];
+// 🔴 **הרשימה הקבועה של השמות נמחקה ב-23/08/2026.** היא הייתה עותק שלישי
+// של אותה רשימה (טיפוס במסד + src/types/route.ts + כאן), ושכחה לעדכן
+// אחד מהם הייתה שולחת "invalid driver" על עובד שקיים. מקור האמת היחיד
+// הוא טבלת `assignees`, והשיוך נבדק מולה בזמן אמת.
+type DriverName = string;
+
+async function isKnownAssignee(name: string): Promise<boolean> {
+  const { data } = await supabaseAdmin
+    .from('assignees')
+    .select('name')
+    .eq('name', name)
+    .maybeSingle();
+  return !!data;
+}
 
 interface AdminAction {
   action:
@@ -100,7 +109,9 @@ function validateUsername(raw: unknown): { ok: true; value: string } | { ok: fal
   return { ok: true, value: norm };
 }
 
-async function requireAdmin(req: VercelRequest): Promise<{ userId: string } | { error: string; status: number }> {
+async function requireUserManager(
+  req: VercelRequest,
+): Promise<{ userId: string; role: string } | { error: string; status: number }> {
   const auth = req.headers.authorization ?? req.headers.Authorization;
   const token = typeof auth === 'string' && auth.startsWith('Bearer ')
     ? auth.slice('Bearer '.length).trim()
@@ -124,9 +135,9 @@ async function requireAdmin(req: VercelRequest): Promise<{ userId: string } | { 
     .maybeSingle();
   if (profErr || !profile) return { error: 'profile not found', status: 403 };
   if (profile.disabled) return { error: 'user disabled', status: 403 };
-  if (profile.role !== 'admin') return { error: 'caller is not admin', status: 403 };
 
-  return { userId: userData.user.id };
+  // ההכרעה עצמה יושבת ב-`_lib/user-admin-policy.ts`, שם יש עליה בדיקות.
+  return { userId: userData.user.id, role: profile.role as string };
 }
 
 /** Returns true if any other profile already owns the given username (case-insensitive). */
@@ -144,11 +155,33 @@ async function usernameTaken(username: string, excludeUserId?: string): Promise<
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const guard = await requireAdmin(req);
+  const guard = await requireUserManager(req);
   if ('error' in guard) return res.status(guard.status).json({ ok: false, error: guard.error });
 
   const body = req.body as AdminAction;
   if (!body?.action) return res.status(400).json({ ok: false, error: 'missing action' });
+
+  // 🔴 **התפקיד של היעד נקרא מהמסד ולא מהבקשה.** לקוח יכול להצהיר כל
+  // דבר, וההגנה "אסור לגעת במנהל מערכת" הייתה נופלת על הצהרה שקרית.
+  let targetRole: string | null = null;
+  if (body.userId) {
+    const { data: target } = await supabaseAdmin
+      .from('profiles')
+      .select('role')
+      .eq('id', body.userId)
+      .maybeSingle();
+    targetRole = (target?.role as string) ?? null;
+  }
+
+  const policy = checkUserAdminPolicy({
+    callerRole: guard.role,
+    callerId: guard.userId,
+    action: body.action,
+    targetId: body.userId ?? null,
+    targetRole,
+    newRole: body.role ?? null,
+  });
+  if (!policy.ok) return res.status(policy.status).json({ ok: false, error: policy.error });
 
   try {
     switch (body.action) {
@@ -160,9 +193,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return res.status(409).json({ ok: false, error: `שם המשתמש ${username} כבר תפוס` });
         }
         const role = body.role && ALLOWED_ROLES.includes(body.role) ? body.role : 'viewer';
-        const linkedDriver = role === 'driver' && body.linkedDriver && ALLOWED_DRIVERS.includes(body.linkedDriver)
-          ? body.linkedDriver
-          : null;
+        const linkedDriver =
+          role === 'driver' && body.linkedDriver && (await isKnownAssignee(body.linkedDriver))
+            ? body.linkedDriver
+            : null;
         const password = body.password?.trim() ? body.password.trim() : generateTempPassword();
         if (password.length < 6) {
           return res.status(400).json({ ok: false, error: 'password must be at least 6 chars' });
@@ -249,7 +283,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       case 'set_linked_driver': {
         if (!body.userId) return res.status(400).json({ ok: false, error: 'missing userId' });
-        const driver = body.linkedDriver && ALLOWED_DRIVERS.includes(body.linkedDriver) ? body.linkedDriver : null;
+        const driver =
+          body.linkedDriver && (await isKnownAssignee(body.linkedDriver)) ? body.linkedDriver : null;
         const { error } = await supabaseAdmin
           .from('profiles')
           .update({ linked_driver: driver, updated_at: new Date().toISOString() })

@@ -13,7 +13,7 @@ import { useState, useEffect, useRef } from 'react';
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/lib/auth-context';
-import { useIsAdmin } from '@/hooks/useProfile';
+import { useIsAdmin, useCanManageUsers } from '@/hooks/useProfile';
 
 // שאילתות הנתונים שהכותרת מדווחת עליהן.
 const TRACKED_KEYS = new Set([
@@ -68,6 +68,7 @@ export function AppHeader() {
   const queryClient = useQueryClient();
   const { signOut } = useAuth();
   const isAdmin = useIsAdmin();
+  const canManageUsers = useCanManageUsers();
   const [isRefreshing, setIsRefreshing] = useState(false);
   // 🔴 עד כה נמדד הזמן שעבר מאז שהטאב נפתח, וזה נקרא "עודכן". טאב שנשאר
   // פתוח לילה שלם הציג "עודכן לפני 2822 דקות" בזמן שהנתונים היו טריים.
@@ -186,10 +187,17 @@ export function AppHeader() {
                     </NavLink>
                   </DropdownMenuItem>
                 )}
-                {isAdmin && (
+                {canManageUsers && (
                   <DropdownMenuItem asChild>
                     <NavLink to="/admin/users" className="cursor-pointer">
                       👥 משתמשים
+                    </NavLink>
+                  </DropdownMenuItem>
+                )}
+                {canManageUsers && (
+                  <DropdownMenuItem asChild>
+                    <NavLink to="/admin/team" className="cursor-pointer">
+                      🚚 צוות השטח
                     </NavLink>
                   </DropdownMenuItem>
                 )}
