@@ -47,8 +47,11 @@ export function useRescheduleStop() {
         rescheduledBy: userName,
       });
 
-      // הודעת מערכת בצ'אט — רק לעצירה מתואמת (order/service, לא task).
+      // הודעת מערכת בצ'אט לעצירה מתואמת (order/service, לא task).
+      // 🔴 **ורק כשהתאריך זז.** החלפת טכנאי באותו יום לא נוגעת בתיאום מול
+      // הלקוח, והודעה כזאת הייתה שולחת מישהו להתקשר בלי סיבה.
       if (
+        stop.deliveryDate !== newDate &&
         stop.coordinationStatus &&
         stop.sourceType !== 'task' &&
         stop.sourceId
@@ -90,7 +93,11 @@ export function useRescheduleStop() {
       if (vars.stop.sourceId) {
         queryClient.invalidateQueries({ queryKey: ['timeline', vars.stop.sourceId] });
       }
-      toast.success(`העצירה הועברה ל-${vars.newDriver}`);
+      toast.success(
+        vars.stop.deliveryDate === vars.newDate
+          ? `הועבר ל${vars.newDriver}`
+          : `העצירה הועברה ל-${vars.newDriver}`,
+      );
     },
     onError: (err) => {
       console.error('[useRescheduleStop]', err);

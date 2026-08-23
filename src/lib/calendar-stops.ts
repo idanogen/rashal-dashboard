@@ -291,6 +291,17 @@ export async function rescheduleStop(
   if (seqErr) throw new Error(`rescheduleStop (sequence): ${seqErr.message}`);
   const sequence = ((existing?.[0]?.sequence as number) ?? -1) + 1;
 
+  // 🔴 **התאריך הנוכחי נדרש כדי לדעת אם התיאום נשבר.** החלפת טכנאי באותו
+  // יום ובאותה שעה אינה שוברת שום דבר מול הלקוח: הוא קיבל חלון זמן, לא
+  // שם. סימון "יש לבטל תיאום" במקרה כזה הוא התראת שווא שמייצרת עבודה.
+  const { data: before, error: beforeErr } = await supabase
+    .from('calendar_stops')
+    .select('delivery_date')
+    .eq('id', stopId)
+    .maybeSingle();
+  if (beforeErr) throw new Error(`rescheduleStop (before): ${beforeErr.message}`);
+  const dateChanged = (before?.delivery_date as string | undefined) !== opts.newDate;
+
   const patch: Record<string, unknown> = {
     delivery_date: opts.newDate,
     driver: opts.newDriver,
@@ -308,8 +319,8 @@ export async function rescheduleStop(
   if (error) throw new Error(`rescheduleStop: ${error.message}`);
   const stop = rowToStop(data as CalendarStopRow);
 
-  // עצירה מתואמת ששובצה מחדש → לסמן שצריך לבטל את התיאום מול הלקוח.
-  if (stop.coordinationStatus && !stop.coordinationNeedsCancel) {
+  // עצירה מתואמת שהתאריך שלה זז → לסמן שצריך לבטל את התיאום מול הלקוח.
+  if (dateChanged && stop.coordinationStatus && !stop.coordinationNeedsCancel) {
     const { data: data2, error: err2 } = await supabase
       .from('calendar_stops')
       .update({ coordination_needs_cancel: true })

@@ -669,7 +669,17 @@ export function DispatchPage() {
         startReschedule(active.id as string, overDate);
         return;
       }
-      if (srcDriver !== overDriver) return;
+      // ⭐ **נפל על עובד אחר באותו יום, כלומר העברה.** עד 23/08/2026 השורה
+      // הזאת הייתה `return` ריק: הגרירה לא עשתה כלום ולא אמרה כלום, ולכן
+      // לא הייתה שום דרך במערכת להחליף טכנאי בלי להזיז גם את התאריך.
+      // אין דיאלוג כאן בכוונה: היעד ידוע מהשחרור עצמו.
+      if (srcDriver !== overDriver) {
+        const ref = buildRescheduleRef(active.id as string);
+        if (ref) {
+          rescheduleStopMut.mutate({ stop: ref, newDate: srcDate, newDriver: overDriver });
+        }
+        return;
+      }
 
       const groupObjs = calendarStops.filter(
         (s) =>
@@ -924,6 +934,49 @@ export function DispatchPage() {
     },
     [pendingSchedule, runSchedule]
   );
+
+  /**
+   * מעביר את השיבוץ **הקיים** ליום ולעובד שנבחרו, במקום ליצור שיבוץ שני.
+   *
+   * 🔴 **זה מה שהיה חסר.** הדיאלוג חסם, ואמר לעובד ללכת ליום אחר ביומן,
+   * למחוק שם שורה, ולחזור. במדידה מ-23/08/2026: 295 מתוך 296 העצירות
+   * ה"פתוחות" יושבות בתאריך שכבר עבר, כלומר כמעט כל חסימה כזאת היא
+   * שארית ולא ביקור אמיתי.
+   *
+   * לכל לקוח יש לכל היותר עצירה פעילה אחת (אינדקס ייחודי חלקי במסד),
+   * ולכן `existing[0]` הוא כל מה שיש להעביר.
+   */
+  const moveExistingStops = async (
+    conflicts: DuplicateConflict[],
+    driver: AssigneeName,
+    date: string,
+  ) => {
+    for (const c of conflicts) {
+      const s = c.existing[0];
+      if (!s) continue;
+      try {
+        // ברצף ולא במקביל: המספר הסידורי נגזר מהעצירה האחרונה של אותו
+        // עובד באותו יום, ושתי כתיבות בו-זמנית היו מקבלות אותו מספר.
+        await rescheduleStopMut.mutateAsync({
+          stop: {
+            stopId: s.id,
+            sourceId: s.orderId ?? s.serviceCallId ?? s.pickupId ?? s.id,
+            sourceType: s.sourceType,
+            deliveryDate: s.deliveryDate,
+            driver: s.driver as AssigneeName,
+            coordinationStatus: s.coordinationStatus,
+            timeWindowStart: s.timeWindowStart,
+            timeWindowEnd: s.timeWindowEnd,
+          },
+          newDate: date,
+          newDriver: driver,
+        });
+      } catch (err) {
+        console.error('[moveExistingStops]', s.id, err);
+      }
+    }
+    setPendingSchedule(null);
+  };
 
   // ─── פעולות על עצירות ביומן ───
   const handleRemoveFromCalendar = async (stopId: string) => {
@@ -1471,6 +1524,7 @@ export function DispatchPage() {
         }}
         conflicts={duplicateState?.conflicts ?? []}
         nonConflictingCount={duplicateState?.nonConflicting.length ?? 0}
+        targetDate={duplicateState?.date}
         onCancel={() => {
           setDuplicateState(null);
           setPendingSchedule(null);
@@ -1482,6 +1536,16 @@ export function DispatchPage() {
           if (nonConflicting.length > 0) {
             void runSchedule(kind, nonConflicting, driver, date);
           }
+        }}
+        onReschedule={() => {
+          if (!duplicateState) return;
+          const { conflicts, nonConflicting, kind, driver, date } = duplicateState;
+          setDuplicateState(null);
+          void moveExistingStops(conflicts, driver, date).then(() => {
+            if (nonConflicting.length > 0) {
+              void runSchedule(kind, nonConflicting, driver, date);
+            }
+          });
         }}
       />
 

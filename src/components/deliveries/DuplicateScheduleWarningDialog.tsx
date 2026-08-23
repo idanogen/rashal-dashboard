@@ -31,6 +31,14 @@ interface DuplicateScheduleWarningDialogProps {
   nonConflictingCount?: number;
   /** Schedule only the items that were not in conflict (skip the conflicting ones). */
   onScheduleOthers?: () => void;
+  /**
+   * מעביר את השיבוץ **הקיים** ליום ולעובד שנבחרו, במקום ליצור שיבוץ שני.
+   * 🔴 בלי זה הדיאלוג הוא מבוי סתום: הוא חוסם ושולח את העובד לנווט ליום
+   * אחר ביומן, למחוק שם שורה, ולחזור.
+   */
+  onReschedule?: () => void;
+  /** התאריך שנבחר, לניסוח הכפתור. */
+  targetDate?: string;
 }
 
 export function DuplicateScheduleWarningDialog({
@@ -40,6 +48,8 @@ export function DuplicateScheduleWarningDialog({
   onCancel,
   nonConflictingCount = 0,
   onScheduleOthers,
+  onReschedule,
+  targetDate,
 }: DuplicateScheduleWarningDialogProps) {
   const multiple = conflicts.length > 1;
 
@@ -49,12 +59,12 @@ export function DuplicateScheduleWarningDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-amber-700">
             <AlertTriangle className="h-5 w-5" />
-            {multiple ? 'כפילויות — שיבוץ נחסם' : 'הלקוח כבר משובץ — שיבוץ נחסם'}
+            {multiple ? 'כמה מהלקוחות כבר משובצים' : 'הלקוח כבר משובץ ביומן'}
           </DialogTitle>
           <DialogDescription>
             {multiple
-              ? `${conflicts.length} מהלקוחות שניסית לשבץ כבר משובצים פעילים ביומן. השיבוץ הכפול נחסם כדי שלא יישלח טכנאי פעמיים לאותו לקוח.`
-              : 'הלקוח הזה כבר משובץ פעיל ביומן. השיבוץ הכפול נחסם כדי שלא יישלח טכנאי פעמיים לאותו לקוח.'}
+              ? `${conflicts.length} מהלקוחות שניסית לשבץ מחזיקים כבר שיבוץ פתוח ביומן. שיבוץ נוסף היה שולח עובד פעמיים לאותו לקוח.`
+              : 'ללקוח הזה כבר יש שיבוץ פתוח ביומן. שיבוץ נוסף היה שולח עובד פעמיים לאותו לקוח.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -88,11 +98,28 @@ export function DuplicateScheduleWarningDialog({
         <div className="flex items-start gap-2 rounded-md bg-muted/40 p-3 text-xs text-muted-foreground">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
-            אם זה באמת ביקור שני נפרד — מחק קודם את העצירה הקיימת ביומן (כפתור ה-X), ואז נסה לשבץ שוב.
+            ברוב המקרים השיבוץ הפתוח הוא שארית מתאריך שכבר עבר.{' '}
+            <span className="font-semibold text-foreground">
+              &quot;העבר את השיבוץ הקיים&quot;
+            </span>{' '}
+            מזיז אותו ליום ולעובד שבחרת, ולא נשארת כפילות.
           </span>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="gap-2 sm:gap-2">
+          {onReschedule && (
+            <Button
+              variant="default"
+              onClick={() => {
+                onReschedule();
+                onOpenChange(false);
+              }}
+            >
+              {multiple
+                ? `העבר את ${conflicts.length} השיבוצים הקיימים`
+                : `העבר את השיבוץ הקיים${targetDate ? ` ל-${fmtShort(targetDate)}` : ''}`}
+            </Button>
+          )}
           {nonConflictingCount > 0 && onScheduleOthers && (
             <Button
               variant="outline"
@@ -105,18 +132,24 @@ export function DuplicateScheduleWarningDialog({
             </Button>
           )}
           <Button
-            variant="default"
+            variant="ghost"
             onClick={() => {
               onCancel();
               onOpenChange(false);
             }}
           >
-            הבנתי
+            ביטול
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
+}
+
+/** תאריך קצר לכפתור. */
+function fmtShort(iso: string): string {
+  const [, m, d] = iso.split('-');
+  return `${d}/${m}`;
 }
 
 function fmtDate(iso: string): string {
