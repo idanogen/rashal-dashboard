@@ -48,6 +48,7 @@ import {
   silentAnnouncements,
   silentScreenReaderInstructions,
 } from '@/lib/dnd-animations';
+import { buildReturnedMap, returnedIdSet } from '@/lib/returned-from-route';
 
 // Collision detection: כשגוררים הזמנה (order) — נעדיף את ה-day שהמצביע ממש מעליו,
 // ונסנן החוצה sortable-stops שנמצאים בעמודות אחרות (חמישי וכו').
@@ -224,15 +225,8 @@ export function DeliveriesPage() {
   );
 
   // הזמנות שחזרו מהקו — קיים להן stop בסטטוס "לא בוצע".
-  const returnedOrderIds = useMemo(
-    () =>
-      new Set<string>(
-        calendarStops
-          .filter((s) => s.status === 'not_completed' && s.sourceType === 'delivery' && s.orderId)
-          .map((s) => s.orderId as string)
-      ),
-    [calendarStops]
-  );
+  const returnedOrderInfo = useMemo(() => buildReturnedMap(calendarStops, 'delivery'), [calendarStops]);
+  const returnedOrderIds = useMemo(() => returnedIdSet(returnedOrderInfo), [returnedOrderInfo]);
 
   // יומן מאוחד — כל הסוגים יחד (משלוחים + שירות + איסופים + משימות),
   // כדי שהיומן התחתון יראה את כל הקווים בכל המסכים.
@@ -589,6 +583,7 @@ export function DeliveriesPage() {
           pendingScheduleIds={pendingScheduleIds}
           groupSize={ordersGroupSize}
           returnedIds={returnedOrderIds}
+                returnedInfo={returnedOrderInfo}
           handledOrders={[...scheduledOrders, ...deliveredOrders]}
         />
 

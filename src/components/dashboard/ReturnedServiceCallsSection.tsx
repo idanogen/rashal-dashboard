@@ -5,17 +5,21 @@ import { OrderChatButton } from '@/components/OrderChatButton';
 import { DoubleConfirmDialog } from '@/components/DoubleConfirmDialog';
 import { useUpdateServiceCall } from '@/hooks/useUpdateServiceCall';
 import { useActivityLogger } from '@/hooks/useActivityLogger';
+import { ReturnedNote } from '@/components/ReturnedNote';
+import type { ReturnedInfo } from '@/lib/returned-from-route';
 
 interface ReturnedServiceCallsSectionProps {
   /** Service calls that came back from the route (a not_completed stop exists). */
   calls: ServiceCall[];
+  /** מזהה קריאה ⟵ הסיבה שהנהג רשם. בלעדיו הכרטיס אומר "חזר" ולא "למה". */
+  info?: Map<string, ReturnedInfo>;
 }
 
 /**
  * "חזרו מהקו" עבור קריאות שירות — מקביל ל-ReturnedFromRouteSection של הזמנות.
  * קריאות שסומנו "לא בוצע" וחזרו לממתינות. כל כרטיס עם ביטול (אישור כפול).
  */
-export function ReturnedServiceCallsSection({ calls }: ReturnedServiceCallsSectionProps) {
+export function ReturnedServiceCallsSection({ calls, info }: ReturnedServiceCallsSectionProps) {
   const [cancelTarget, setCancelTarget] = useState<ServiceCall | null>(null);
   const updateServiceCall = useUpdateServiceCall();
   const log = useActivityLogger();
@@ -51,10 +55,11 @@ export function ReturnedServiceCallsSection({ calls }: ReturnedServiceCallsSecti
         {calls.map((call) => (
           <div
             key={call.id}
-            className="flex items-center justify-between gap-2 rounded-lg border border-red-200 bg-background/80 p-2 dark:border-red-900/50"
+            className="flex items-start justify-between gap-2 rounded-lg border border-red-200 bg-background/80 p-2 dark:border-red-900/50"
           >
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold">{call.customerName}</p>
+              <ReturnedNote info={info?.get(call.id)} />
               {(call.address || call.city) && (
                 <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-muted-foreground">
                   <MapPin className="h-2.5 w-2.5 flex-shrink-0" />

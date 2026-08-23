@@ -6,10 +6,14 @@ import { OrderDetailDialog } from '@/components/orders/OrderDetailDialog';
 import { DoubleConfirmDialog } from '@/components/DoubleConfirmDialog';
 import { useUpdateOrder } from '@/hooks/useUpdateOrder';
 import { useActivityLogger } from '@/hooks/useActivityLogger';
+import { ReturnedNote } from '@/components/ReturnedNote';
+import type { ReturnedInfo } from '@/lib/returned-from-route';
 
 interface ReturnedFromRouteSectionProps {
   /** Orders that came back from the route (a not_completed stop exists). */
   orders: Order[];
+  /** מזהה הזמנה ⟵ הסיבה שהנהג רשם. */
+  info?: Map<string, ReturnedInfo>;
 }
 
 /**
@@ -17,7 +21,7 @@ interface ReturnedFromRouteSectionProps {
  * marked "לא בוצע" and bounced back to pending. Clicking a card opens its detail.
  * Each card has a "ביטול" action (double-confirm) for orders that are no longer relevant.
  */
-export function ReturnedFromRouteSection({ orders }: ReturnedFromRouteSectionProps) {
+export function ReturnedFromRouteSection({ orders, info }: ReturnedFromRouteSectionProps) {
   const [selected, setSelected] = useState<Order | null>(null);
   const [cancelTarget, setCancelTarget] = useState<Order | null>(null);
   const updateOrder = useUpdateOrder();
@@ -55,10 +59,11 @@ export function ReturnedFromRouteSection({ orders }: ReturnedFromRouteSectionPro
           <div
             key={order.id}
             onClick={() => setSelected(order)}
-            className="flex cursor-pointer items-center justify-between gap-2 rounded-lg border border-red-200 bg-background/80 p-2 transition-colors hover:bg-red-50 dark:border-red-900/50 dark:hover:bg-red-950/20"
+            className="flex cursor-pointer items-start justify-between gap-2 rounded-lg border border-red-200 bg-background/80 p-2 transition-colors hover:bg-red-50 dark:border-red-900/50 dark:hover:bg-red-950/20"
           >
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold">{order.customerName}</p>
+              <ReturnedNote info={info?.get(order.id)} />
               {(order.address || order.city) && (
                 <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-muted-foreground">
                   <MapPin className="h-2.5 w-2.5 flex-shrink-0" />

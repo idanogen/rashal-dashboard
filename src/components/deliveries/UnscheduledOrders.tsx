@@ -4,6 +4,7 @@ import { Package } from 'lucide-react';
 import { buildOrderItems } from '@/components/dispatch/items';
 import { UnscheduledPanel, type HandledMatch } from '@/components/dispatch/UnscheduledPanel';
 import type { Order } from '@/types/order';
+import type { ReturnedInfo } from '@/lib/returned-from-route';
 
 interface UnscheduledOrdersProps {
   orders: Order[];
@@ -24,6 +25,8 @@ interface UnscheduledOrdersProps {
   groupSize?: Map<string, number>;
   /** orderIds that came back from the route (a not_completed stop exists). */
   returnedIds?: Set<string>;
+  /** ישות ⟵ הסיבה שהנהג רשם. עובר יחד עם returnedIds ולא בנפרד. */
+  returnedInfo?: Map<string, ReturnedInfo>;
   /** הזמנות שכבר טופלו (תואמה אספקה / סופק) — לחיווי "כבר משובץ" כשחיפוש ריק בממתינים. */
   handledOrders?: Order[];
   /** חיפוש ואזורים משותפים למסך הסדרן. כשמועברים, הפאנל לא מצייר אותם בעצמו. */
@@ -43,6 +46,7 @@ export function UnscheduledOrders({
   pendingScheduleIds,
   groupSize,
   returnedIds,
+  returnedInfo,
   handledOrders,
   search,
   selectedZones,
@@ -81,6 +85,7 @@ export function UnscheduledOrders({
       onBulkSchedule={onBulkSchedule}
       pendingScheduleIds={pendingScheduleIds}
       returnedIds={returnedIds}
+      returnedInfo={returnedInfo}
       handled={handled}
       search={search}
       selectedZones={selectedZones}

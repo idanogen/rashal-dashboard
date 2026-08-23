@@ -42,6 +42,7 @@ import { ASSIGNEES, type AssigneeName } from '@/types/route';
 import type { CalendarDelivery } from '@/types/delivery';
 import { buildCalendarDeliveries } from '@/lib/calendar-view';
 import { toast } from 'sonner';
+import { buildReturnedMap, returnedIdSet } from '@/lib/returned-from-route';
 
 // גרירת איסוף — נעדיף את היום שהמצביע מעליו; drop מחוץ ליום לא עושה כלום.
 const collisionDetection: CollisionDetection = (args) => {
@@ -111,15 +112,8 @@ export function PickupsPage() {
     [pickups]
   );
 
-  const returnedIds = useMemo(
-    () =>
-      new Set<string>(
-        calendarStops
-          .filter((s) => s.status === 'not_completed' && s.sourceType === 'pickup' && s.pickupId)
-          .map((s) => s.pickupId as string)
-      ),
-    [calendarStops]
-  );
+  const returnedInfo = useMemo(() => buildReturnedMap(calendarStops, 'pickup'), [calendarStops]);
+  const returnedIds = useMemo(() => returnedIdSet(returnedInfo), [returnedInfo]);
 
   const pendingScheduleIds = useMemo(
     () => new Set<string>(pendingSchedule?.pickups.map((p) => p.id) ?? []),
@@ -412,6 +406,7 @@ export function PickupsPage() {
               onBulkSchedule={handleBulkSchedule}
               pendingScheduleIds={pendingScheduleIds}
               returnedIds={returnedIds}
+                returnedInfo={returnedInfo}
               onShowDetails={setDetailPickup}
             />
             <DeliveryCalendar

@@ -92,6 +92,7 @@ import type {
   CalendarStop as CalendarStopView,
 } from '@/types/delivery';
 import { toast } from 'sonner';
+import { buildReturnedMap, returnedIdSet } from '@/lib/returned-from-route';
 
 // ─── סוגי פעילות ─────────────────────────────────────────────
 type ActivityKind = 'delivery' | 'service' | 'pickup' | 'customer';
@@ -511,33 +512,12 @@ export function DispatchPage() {
   );
 
   // "חזרו מהקו" — קיים stop בסטטוס "לא בוצע" עבור המקור
-  const returnedOrderIds = useMemo(
-    () =>
-      new Set<string>(
-        calendarStops
-          .filter((s) => s.status === 'not_completed' && s.sourceType === 'delivery' && s.orderId)
-          .map((s) => s.orderId as string)
-      ),
-    [calendarStops]
-  );
-  const returnedCallIds = useMemo(
-    () =>
-      new Set<string>(
-        calendarStops
-          .filter((s) => s.status === 'not_completed' && s.sourceType === 'service' && s.serviceCallId)
-          .map((s) => s.serviceCallId as string)
-      ),
-    [calendarStops]
-  );
-  const returnedPickupIds = useMemo(
-    () =>
-      new Set<string>(
-        calendarStops
-          .filter((s) => s.status === 'not_completed' && s.sourceType === 'pickup' && s.pickupId)
-          .map((s) => s.pickupId as string)
-      ),
-    [calendarStops]
-  );
+  const returnedOrderInfo = useMemo(() => buildReturnedMap(calendarStops, 'delivery'), [calendarStops]);
+  const returnedOrderIds = useMemo(() => returnedIdSet(returnedOrderInfo), [returnedOrderInfo]);
+  const returnedCallInfo = useMemo(() => buildReturnedMap(calendarStops, 'service'), [calendarStops]);
+  const returnedCallIds = useMemo(() => returnedIdSet(returnedCallInfo), [returnedCallInfo]);
+  const returnedPickupInfo = useMemo(() => buildReturnedMap(calendarStops, 'pickup'), [calendarStops]);
+  const returnedPickupIds = useMemo(() => returnedIdSet(returnedPickupInfo), [returnedPickupInfo]);
 
   // ─── Selection (פר סוג) ───
   const toggleId = (prev: Set<string>, id: string) => {
@@ -1169,6 +1149,7 @@ export function DispatchPage() {
                 pendingScheduleIds={pendingScheduleIds}
                 groupSize={ordersGroupSize}
                 returnedIds={returnedOrderIds}
+                returnedInfo={returnedOrderInfo}
                 handledOrders={[...scheduledOrders, ...deliveredOrders]}
                 search={filterSearch}
                 selectedZones={filterZones}
@@ -1211,6 +1192,7 @@ export function DispatchPage() {
                 onBulkSchedule={handleBulkSchedule}
                 pendingScheduleIds={pendingScheduleIds}
                 returnedIds={returnedCallIds}
+                returnedInfo={returnedCallInfo}
                 handledCalls={[...scheduledCalls, ...completedCalls]}
                 search={filterSearch}
                 selectedZones={filterZones}
@@ -1258,6 +1240,7 @@ export function DispatchPage() {
                 onBulkSchedule={handleBulkSchedule}
                 pendingScheduleIds={pendingScheduleIds}
                 returnedIds={returnedPickupIds}
+                returnedInfo={returnedPickupInfo}
                 onShowDetails={setDetailPickup}
                 search={filterSearch}
                 selectedZones={filterZones}

@@ -4,6 +4,7 @@ import { Undo2 } from 'lucide-react';
 import { buildPickupItems } from '@/components/dispatch/items';
 import { UnscheduledPanel } from '@/components/dispatch/UnscheduledPanel';
 import type { Pickup } from '@/types/pickup';
+import type { ReturnedInfo } from '@/lib/returned-from-route';
 
 interface UnscheduledPickupsProps {
   pickups: Pickup[];
@@ -15,6 +16,8 @@ interface UnscheduledPickupsProps {
   pendingScheduleIds: Set<string>;
   /** איסופים שחזרו מהקו (סטטוס עצירה "לא בוצע"). */
   returnedIds?: Set<string>;
+  /** ישות ⟵ הסיבה שהנהג רשם. עובר יחד עם returnedIds ולא בנפרד. */
+  returnedInfo?: Map<string, ReturnedInfo>;
   onShowDetails: (pickup: Pickup) => void;
   /** חיפוש ואזורים משותפים למסך הסדרן. כשמועברים, הפאנל לא מצייר אותם בעצמו. */
   search?: string;
@@ -30,6 +33,7 @@ export function UnscheduledPickups({
   onBulkSchedule,
   pendingScheduleIds,
   returnedIds,
+  returnedInfo,
   onShowDetails,
   search,
   selectedZones,
@@ -56,6 +60,7 @@ export function UnscheduledPickups({
       onBulkSchedule={onBulkSchedule}
       pendingScheduleIds={pendingScheduleIds}
       returnedIds={returnedIds}
+      returnedInfo={returnedInfo}
       search={search}
       selectedZones={selectedZones}
     />

@@ -49,6 +49,7 @@ import { ASSIGNEES, type AssigneeName } from '@/types/route';
 import { buildCalendarDeliveries } from '@/lib/calendar-view';
 import type { CalendarDelivery } from '@/types/delivery';
 import { toast } from 'sonner';
+import { buildReturnedMap, returnedIdSet } from '@/lib/returned-from-route';
 
 // כשגוררים קריאת שירות — נעדיף את ה-day שהמצביע ממש מעליו,
 // ונסנן החוצה sortable-stops שנמצאים ביום אחר. אם לא ממש על יום —
@@ -232,15 +233,8 @@ export function ServiceCallsPage() {
   );
 
   // קריאות שחזרו מהקו — קיים להן stop בסטטוס "לא בוצע".
-  const returnedCallIds = useMemo(
-    () =>
-      new Set<string>(
-        calendarStops
-          .filter((s) => s.status === 'not_completed' && s.sourceType === 'service' && s.serviceCallId)
-          .map((s) => s.serviceCallId as string)
-      ),
-    [calendarStops]
-  );
+  const returnedCallInfo = useMemo(() => buildReturnedMap(calendarStops, 'service'), [calendarStops]);
+  const returnedCallIds = useMemo(() => returnedIdSet(returnedCallInfo), [returnedCallInfo]);
 
   // יומן מאוחד — כל הסוגים יחד (משלוחים + שירות + איסופים + משימות).
   const calendarDeliveries: CalendarDelivery[] = useMemo(
@@ -591,6 +585,7 @@ export function ServiceCallsPage() {
               onBulkSchedule={handleBulkSchedule}
               pendingScheduleIds={pendingScheduleIds}
               returnedIds={returnedCallIds}
+                returnedInfo={returnedCallInfo}
               handledCalls={[...scheduledCalls, ...completedCalls]}
             />
 

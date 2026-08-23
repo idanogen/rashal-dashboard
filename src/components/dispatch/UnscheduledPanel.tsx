@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 
 import { CustomerHistoryButton, type HistoryCustomerRef } from '@/components/CustomerHistoryButton';
+import { ReturnedNote } from '@/components/ReturnedNote';
+import type { ReturnedInfo } from '@/lib/returned-from-route';
 import { ZoneFilter } from '@/components/deliveries/ZoneFilter';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -96,6 +98,8 @@ interface DispatchCardProps {
   isSelected?: boolean;
   isPending?: boolean;
   isReturned?: boolean;
+  /** מה שהנהג רשם כשסימן "לא בוצע". נוסע עם החיווי, לא במקומו. */
+  returnedInfo?: ReturnedInfo;
   onExclude?: (id: string) => void;
   onRestore?: (id: string) => void;
   onToggleSelect?: (id: string) => void;
@@ -108,6 +112,7 @@ function DispatchCard({
   isSelected,
   isPending,
   isReturned,
+  returnedInfo,
   onExclude,
   onRestore,
   onToggleSelect,
@@ -208,13 +213,18 @@ function DispatchCard({
               {isReturned && (
                 <span
                   className="ms-1 inline-flex h-4 items-center gap-0.5 rounded bg-red-100 px-1 text-[10px] font-bold text-red-700"
-                  title="רשומה זו סומנה 'לא בוצע' וחזרה מהקו"
+                  title={
+                    returnedInfo?.note
+                      ? `סומן "לא בוצע" · ${returnedInfo.note}`
+                      : "רשומה זו סומנה 'לא בוצע' וחזרה מהקו"
+                  }
                 >
                   <Undo2 className="h-2.5 w-2.5" />
                   חזר מהקו
                 </span>
               )}
             </p>
+            {isReturned && <ReturnedNote info={returnedInfo} />}
             {vm.customerNumber && (
               <p className="mt-0.5 text-[11px] text-muted-foreground" dir="ltr">
                 מס' לקוח: {vm.customerNumber}
@@ -304,6 +314,8 @@ interface UnscheduledPanelProps {
   onBulkSchedule?: () => void;
   pendingScheduleIds?: Set<string>;
   returnedIds?: Set<string>;
+  /** ישות ⟵ הסיבה שהנהג רשם. `buildReturnedMap` מייצר את שניהם יחד. */
+  returnedInfo?: Map<string, ReturnedInfo>;
   /** רשומות שכבר טופלו — מוצגות כשהחיפוש לא מחזיר ממתינים */
   handled?: HandledMatch[];
   /** תיבת הסבר מעל הפאנל */
@@ -336,6 +348,7 @@ export function UnscheduledPanel({
   onBulkSchedule,
   pendingScheduleIds,
   returnedIds,
+  returnedInfo,
   handled,
   intro,
   toolbarExtra,
@@ -483,6 +496,7 @@ export function UnscheduledPanel({
       vm={vm}
       accentBorder={accentBorder}
       isReturned={opts?.returned}
+      returnedInfo={returnedInfo?.get(vm.id)}
       isExcluded={excludedIds.has(vm.id)}
       isSelected={selectedIds.has(vm.id)}
       isPending={pendingScheduleIds?.has(vm.id)}

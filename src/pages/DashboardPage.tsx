@@ -22,6 +22,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Loader2, AlertCircle, Truck, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { buildReturnedMap } from '@/lib/returned-from-route';
 
 export function DashboardPage() {
   const {
@@ -44,29 +45,34 @@ export function DashboardPage() {
   } = useZonedServiceCalls();
   const { data: calendarStops = [] } = useCalendarStops();
 
+  // ⭐ המפה נושאת גם את הסיבה שהנהג רשם, ולא רק מי חזר. ראה
+  // `lib/returned-from-route.ts` — עד 19/08/2026 הסיבה נבלעה במסכי המנהל.
+  const returnedOrderInfo = useMemo(
+    () => buildReturnedMap(calendarStops, 'delivery'),
+    [calendarStops]
+  );
+  const returnedCallInfo = useMemo(
+    () => buildReturnedMap(calendarStops, 'service'),
+    [calendarStops]
+  );
+
   // הזמנות שחזרו מהקו — קיים stop "לא בוצע", וההזמנה עדיין ממתינה לתאום.
-  const returnedOrders = useMemo(() => {
-    const returnedIds = new Set(
-      calendarStops
-        .filter((s) => s.status === 'not_completed' && s.sourceType === 'delivery' && s.orderId)
-        .map((s) => s.orderId as string)
-    );
-    return (orders ?? []).filter(
-      (o) => returnedIds.has(o.id) && o.orderStatus === 'ממתין לתאום'
-    );
-  }, [calendarStops, orders]);
+  const returnedOrders = useMemo(
+    () =>
+      (orders ?? []).filter(
+        (o) => returnedOrderInfo.has(o.id) && o.orderStatus === 'ממתין לתאום'
+      ),
+    [returnedOrderInfo, orders]
+  );
 
   // קריאות שירות שחזרו מהקו — קיים stop "לא בוצע", והקריאה חזרה ל"קריאה חדשה".
-  const returnedCalls = useMemo(() => {
-    const returnedIds = new Set(
-      calendarStops
-        .filter((s) => s.status === 'not_completed' && s.sourceType === 'service' && s.serviceCallId)
-        .map((s) => s.serviceCallId as string)
-    );
-    return (allCalls ?? []).filter(
-      (c) => returnedIds.has(c.id) && c.serviceCallStatus === 'קריאה חדשה'
-    );
-  }, [calendarStops, allCalls]);
+  const returnedCalls = useMemo(
+    () =>
+      (allCalls ?? []).filter(
+        (c) => returnedCallInfo.has(c.id) && c.serviceCallStatus === 'קריאה חדשה'
+      ),
+    [returnedCallInfo, allCalls]
+  );
 
   const [filters, setFilters] = useState<OrderFiltersState>({
     search: '',
@@ -156,7 +162,7 @@ export function DashboardPage() {
 
         {/* Orders Tab */}
         <TabsContent value="orders" className="space-y-6">
-          <ReturnedFromRouteSection orders={returnedOrders} />
+          <ReturnedFromRouteSection orders={returnedOrders} info={returnedOrderInfo} />
           <StaleOrdersAlert orders={orders ?? []} onShowStale={handleShowStale} />
           <StatsCards stats={stats} />
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -178,7 +184,7 @@ export function DashboardPage() {
 
         {/* Service Calls Tab */}
         <TabsContent value="service-calls" className="space-y-6">
-          <ReturnedServiceCallsSection calls={returnedCalls} />
+          <ReturnedServiceCallsSection calls={returnedCalls} info={returnedCallInfo} />
           <ServiceCallStatsCards
             pending={pendingCalls.length}
             scheduled={scheduledCalls.length}
