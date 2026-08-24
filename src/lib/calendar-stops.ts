@@ -451,7 +451,17 @@ export async function geocodeStopAddress(stop: {
   if (!stop.address || !stop.address.trim()) return false;
   try {
     const result = await geocodeAddress(stop.address, { city: stop.city });
-    if (!result) return false;
+    if (!result) {
+      // 🔴 **כישלון נרשם.** בלי החותמת הזאת אותה כתובת נוסתה שוב בכל טעינת
+      // מסך, לנצח, כי "לא נמצא" לא הותיר שום עקבה. רק `geocoded_at` נכתב:
+      // הקואורדינטות נשארות ריקות ולכן המפה לא משתנה, ו-`geocoded_address`
+      // נשאר ריק ולכן ברור שזה לא הצליח.
+      await supabase
+        .from('calendar_stops')
+        .update({ geocoded_at: new Date().toISOString() })
+        .eq('id', stop.id);
+      return false;
+    }
     const { error } = await supabase
       .from('calendar_stops')
       .update({
