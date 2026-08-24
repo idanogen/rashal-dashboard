@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { TemplateSendDialog } from '@/components/wa/TemplateSendDialog';
+import { CustomerCardButton } from '@/components/customer/CustomerCardSheet';
 import {
   Search,
   Clock,
@@ -529,7 +530,15 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE }: InboxBoardProps) {
             <>
               <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-white px-4 py-2.5">
                 <div>
-                  <div className="font-semibold text-slate-900">{current.title}</div>
+                  <div className="flex items-center gap-1 font-semibold text-slate-900">
+                    {current.title}
+                    {/* ⭐ מי כתב, ומה פתוח אצלו. אותו כרטיס בדיוק שבמסך הייעודי. */}
+                    <CustomerCardButton
+                      customerNumber={current.customerNumber}
+                      phone={current.phone}
+                      name={current.title}
+                    />
+                  </div>
                   <div className="text-xs text-muted-foreground">
                     {current.customerNumber && (
                       <>

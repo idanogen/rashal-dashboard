@@ -289,10 +289,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.error('[priority-context] templates failed', e);
   }
 
+  // ⭐⭐ **מה פתוח אצל הלקוח, בתוך פריוריטי.** עובד שעומד על לקוח לא
+  // צריך לעבור לדשבורד כדי לדעת אם ההזמנה שובצה.
+  //
+  // ⭐ אותה פונקציה בדיוק שהמסך הייעודי והמגירה קוראים לה. ההכרעה
+  // "שובץ" נגזרת מהעצירה ביומן, במקום אחד, ולא מחושבת שוב כאן.
+  // 🔴 כשל שלה אינו מפיל את הזיהוי: החלונית שווה משהו גם בלי הרצועה.
+  let open: unknown = null;
+  try {
+    const { data, error } = await supabaseAdmin.rpc('customer_card', {
+      p_customer: best.customerNumber ?? null,
+      p_phone: best.phone ?? null,
+    });
+    if (error) throw new Error(error.message);
+    const card = data as { open?: unknown } | null;
+    open = card?.open ?? null;
+  } catch (e) {
+    console.error('[priority-context] card failed', e instanceof Error ? e.message : e);
+  }
+
   return res.status(200).json({
     ok: true,
     form: body.form ?? null,
     customer: best,
+    open,
     procs: await loadProcs(),
     templates,
     prefill: {

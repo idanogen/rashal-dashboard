@@ -37,6 +37,7 @@ import {
 } from '@/components/ui/select';
 import { usePersistedCollapse } from '@/hooks/usePersistedCollapse';
 import { getDaysColor, getDaysSinceCreated, cn } from '@/lib/utils';
+import { CustomerCardButton } from '@/components/customer/CustomerCardSheet';
 import { NO_ADDRESS_ZONE, ZONES, getZoneById } from '@/types/zone';
 
 /**
@@ -210,6 +211,13 @@ function DispatchCard({
                 </span>
               )}
               {vm.nameBadge}
+              {/* ⭐ כרטיס הלקוח מכל רשימה, בלי לעזוב את מסך הסדרן. */}
+              <CustomerCardButton
+                customerNumber={vm.customerNumber}
+                phone={vm.phone}
+                name={vm.customerName}
+                className="ms-1 align-middle"
+              />
               {isReturned && (
                 <span
                   className="ms-1 inline-flex h-4 items-center gap-0.5 rounded bg-red-100 px-1 text-[10px] font-bold text-red-700"

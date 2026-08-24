@@ -39,6 +39,8 @@ const PRIMARY_LINKS = [
   { to: '/dispatch', label: 'מסך סדרן' },
   { to: '/orders', label: 'דשבורד' },
   { to: '/inbox', label: '💬 שיחות' },
+  // ⭐ נקודת הכניסה כשלקוח מתקשר, ולכן היא בשורה הראשית ולא בתפריט הניהול.
+  { to: '/customer', label: '🪪 כרטיס לקוח' },
   { to: '/feedback', label: '📝 הערות' },
 ];
 

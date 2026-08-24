@@ -25,6 +25,10 @@ export const SCREEN_ACCESS: ScreenAccess[] = [
   { path: '/orders',           label: 'דשבורד הזמנות',     group: 'daily', allow: STAFF },
   { path: '/dispatch',         label: 'מסך סדרן',          group: 'daily', allow: STAFF },
   { path: '/inbox',            label: 'שיחות וואטסאפ',     group: 'daily', allow: STAFF },
+  // ⭐ נקודת הכניסה כשלקוח מתקשר. 🔴 נהג אינו נכלל: הוא רואה את הנסיעה
+  // שלו, לא את התיק המלא של הלקוח. אותה הכרעה נאכפת גם ב-`is_office_staff`
+  // שבמסד, כי מסך שרק מסתיר כפתורים אינו הגנה.
+  { path: '/customer',         label: 'כרטיס לקוח',        group: 'daily', allow: STAFF },
   { path: '/feedback',         label: 'הערות',            group: 'daily', allow: [...STAFF, 'driver'] },
   // 🔴 מנהל מערכת בלבד (עידן, 23/08/2026). המסך מרכז מספרים של ההנהלה,
   // ולא כל מי שרואה את מסך הסדרן אמור לראות אותם.
