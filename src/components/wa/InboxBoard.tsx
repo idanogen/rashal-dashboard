@@ -22,6 +22,7 @@ import {
   fetchInbox,
   fetchThread,
   sendText,
+  markThreadRead,
   attachmentUrl,
   authorLabel,
   waitLabel,
@@ -349,6 +350,23 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE }: InboxBoardProps) {
     if (!selected && items.length) setSelected(items[0].phone);
   }, [items, selected]);
 
+  /**
+   * פתיחת שיחה בלחיצה, ולא בחירה אוטומטית.
+   *
+   * 🔴 **הסימון תלוי כאן ולא ב-`selected`.** השורה הראשונה נבחרת לבד
+   * כשהמסך נפתח, ובחירה כזאת אינה קריאה. סימון על כל `selected` היה
+   * מוריד מרשימת הממתינים בדיוק את השיחה הוותיקה ביותר, בכל פתיחה של
+   * המסך, בלי שאיש הסתכל עליה.
+   */
+  const openConversation = (phone: string | null) => {
+    setSelected(phone);
+    if (!phone) return;
+    void markThreadRead(phone).then(() => {
+      // ⭐ הרשימה נשאלת מחדש כדי שהתג הכתום והמונה ירדו מיד.
+      void qc.invalidateQueries({ queryKey: [WA_INBOX_KEY] });
+    });
+  };
+
   const current = useMemo(
     () => items.find((i) => i.phone === selected) ?? null,
     [items, selected],
@@ -433,7 +451,7 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE }: InboxBoardProps) {
                 key={i.id}
                 item={i}
                 active={i.phone === selected}
-                onClick={() => setSelected(i.phone)}
+                onClick={() => openConversation(i.phone)}
               />
             ))}
           </div>

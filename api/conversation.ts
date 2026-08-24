@@ -5,6 +5,7 @@ import { loadThread, windowState } from './_lib/thread.js';
 import { listActiveTemplates } from './_lib/templates-store.js';
 import { toPanelTemplates, type PanelTemplate } from './_lib/panel-templates.js';
 import { toItem, sortItems, matchesQuery, type ConversationRow } from './_lib/inbox.js';
+import { normalizePhone } from './_lib/phone.js';
 
 /**
  * השיחה המלאה מול לקוח אחד, לצריכה מהדשבורד.
@@ -37,7 +38,7 @@ const HARD_CAP = 1000;
 const LIST_COLUMNS =
   'id, phone_local, phone_e164, contact_name, customer_number, customer_name, ' +
   'last_inbound_at, last_message_at, last_message_preview, last_message_direction, ' +
-  'unanswered_since, message_count';
+  'unanswered_since, message_count, read_at';
 
 async function listInbox(req: VercelRequest, res: VercelResponse) {
   const tab = req.query.tab === 'all' ? 'all' : 'waiting';
@@ -60,7 +61,9 @@ async function listInbox(req: VercelRequest, res: VercelResponse) {
 
   // ⭐ הספירות נגזרות מאותה רשימה ולא משאילתה שנייה, שיכולה לרוץ על מצב
   // אחר בשבריר שנייה. מונה שמשקר גרוע ממונה שחסר.
-  const waitingAll = all.filter((i) => i.unansweredSince);
+  // ⭐ "מחכה" ולא "לא נענה". שיחה שנפתחה ונקראה יורדת מכאן גם בלי תשובה,
+  // וההכרעה יושבת ב-`isWaiting` שהוא המקום היחיד שמחזיק אותה.
+  const waitingAll = all.filter((i) => i.waitingMinutes != null);
   const pool = tab === 'waiting' ? waitingAll : all;
   const filtered = q ? pool.filter((i) => matchesQuery(i, q)) : pool;
 
@@ -73,6 +76,43 @@ async function listInbox(req: VercelRequest, res: VercelResponse) {
     items: sortItems(filtered, tab).slice(0, limit),
   });
 }
+/**
+ * מסמן שמישהו פתח את השיחה, ורק את זה.
+ *
+ * 🔴 **`read_at` ולא מחיקת `unanswered_since`.** "נקרא" ו"נענה" הם שני
+ * דברים: הלקוח עדיין ממתין לתשובה גם אחרי שקראנו, וזו עובדה שלא נרצה
+ * למחוק. [[label_and_math_from_two_mechanisms]]
+ */
+async function markRead(
+  res: VercelResponse,
+  email: string | null,
+  phone: string | null,
+  customer: string | null,
+) {
+  let q = supabaseAdmin
+    .from('wa_conversations')
+    .update({ read_at: new Date().toISOString(), read_by: email ?? null });
+
+  if (phone) {
+    // 🔴 אותו נרמול בדיוק כמו בטעינת השרשור. שתי צורות נרמול על אותו
+    // מספר פירושן סימון שנרשם על שיחה אחרת, או על אף אחת.
+    const norm = normalizePhone(phone);
+    if (!norm) return res.status(400).json({ ok: false, error: 'invalid phone' });
+    q = q.eq('phone_local', norm);
+  } else if (customer) {
+    q = q.eq('customer_number', customer);
+  } else {
+    return res.status(400).json({ ok: false, error: 'need phone or customer' });
+  }
+
+  const { error } = await q;
+  if (error) {
+    console.error('[conversation] markRead failed', error.message);
+    return res.status(500).json({ ok: false, error: 'server_error' });
+  }
+  return res.status(200).json({ ok: true, read: true });
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Cache-Control', 'no-store');
 
@@ -87,6 +127,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const customer = typeof req.query.customer === 'string' ? req.query.customer : null;
 
   try {
+    // ⭐⭐ **סימון "נקראה", על אותה נקודת קצה.** לא כי זה יפה אלא כי
+    // הפרויקט על תקרת שתים-עשרה הפונקציות של Vercel, והקובץ ה-13 מפיל
+    // את הפריסה בשלב `Deploying outputs` עם לוג בנייה נקי.
+    // [[vercel_hobby_twelve_function_cap]]
+    //
+    // 🔴 **רק לפי בקשה מפורשת, ואף פעם לא כתופעת לוואי של טעינה.**
+    // החלונית בפריוריטי טוענת שרשור לבד בכל פעם שעומדים על שורה, ורענון
+    // שקט רץ כל עשרים שניות. אם טעינה הייתה מסמנת קריאה, שיחה שאיש לא
+    // ראה הייתה יורדת מהרשימה בשקט, וזה בדיוק הכשל שהמסך נועד למנוע.
+    // [[render_is_not_a_user_event]]
+    if (req.query.markRead === '1') return await markRead(res, user.email, phone, customer);
+
     // בלי מזהה לקוח, הבקשה היא לרשימה ולא לשרשור בודד.
     if (!phone && !customer) return await listInbox(req, res);
 

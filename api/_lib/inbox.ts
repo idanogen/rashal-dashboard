@@ -37,6 +37,7 @@ export interface ConversationRow {
   last_message_direction: string | null;
   unanswered_since: string | null;
   message_count: number | null;
+  read_at: string | null;
 }
 
 export interface InboxItem {
@@ -51,8 +52,13 @@ export interface InboxItem {
   lastMessageAt: string | null;
   lastMessageDirection: string | null;
   unansweredSince: string | null;
-  /** כמה דקות הלקוח מחכה. null כשאין חוב מענה. */
+  /**
+   * כמה דקות הלקוח מחכה. null כשאין חוב מענה, **וגם כשמישהו כבר קרא**.
+   * ראה `isWaiting`.
+   */
   waitingMinutes: number | null;
+  /** מישהו פתח את השיחה אחרי ההודעה הנכנסת האחרונה. */
+  read: boolean;
   messageCount: number;
   window: WindowState;
 }
@@ -73,6 +79,28 @@ export function waitLabel(minutes: number | null): string {
   return days === 1 ? 'יום' : days === 2 ? 'יומיים' : `${days} ימים`;
 }
 
+/**
+ * האם השיחה עדיין מחכה לעובד.
+ *
+ * 🔴🔴 **שני תנאים, ולא אחד.** עד 24/08/2026 היה כאן תנאי יחיד,
+ * `unanswered_since`, כלומר הדרך היחידה להוריד שיחה מהרשימה הייתה
+ * **לשלוח תשובה**. עידן פתח שיחה, קרא אותה, והיא המשיכה לצעוק "מחכה 27
+ * דקות". רשימה שלא מתרוקנת ממה שכבר טופל מפסיקה להיות רשימת מטלות
+ * ונקראת כרעש. [[form_removal_does_not_close_intake]]
+ *
+ * 🔴 **וההשוואה היא מול ההודעה הנכנסת האחרונה, לא דגל.** דגל "נקרא"
+ * היה נשאר דלוק גם אחרי שהלקוח כתב שוב, כלומר לקוח שהמתין באמת היה
+ * נעלם מהמסך בשקט. זה בדיוק הכשל שהמסך הזה נועד למנוע.
+ */
+export function isWaiting(row: ConversationRow): boolean {
+  if (!row.unanswered_since) return false;
+  if (!row.read_at) return true;
+  // ⭐ ההודעה הקובעת היא האחרונה שנכנסה. כשאין כזאת, נופלים לרגע שבו
+  // נפתח חוב המענה, שהוא אותו דבר בפועל.
+  const since = row.last_inbound_at ?? row.unanswered_since;
+  return new Date(row.read_at).getTime() < new Date(since).getTime();
+}
+
 export function toItem(row: ConversationRow, win: WindowState, now = Date.now()): InboxItem {
   // ⭐ שם הלקוח מפריוריטי גובר. שם פרופיל הוואטסאפ הוא מה שהלקוח בחר
   // לעצמו, והוא לא בהכרח מה שהעובד מזהה. כשאין לקוח מזוהה, מה שיש הוא
@@ -84,9 +112,11 @@ export function toItem(row: ConversationRow, win: WindowState, now = Date.now())
     row.phone_local ||
     'לא מזוהה';
 
-  const waitingMinutes = row.unanswered_since
-    ? Math.max(0, Math.floor((now - new Date(row.unanswered_since).getTime()) / 60_000))
-    : null;
+  const waiting = isWaiting(row);
+  const waitingMinutes =
+    waiting && row.unanswered_since
+      ? Math.max(0, Math.floor((now - new Date(row.unanswered_since).getTime()) / 60_000))
+      : null;
 
   return {
     id: row.id,
@@ -99,6 +129,7 @@ export function toItem(row: ConversationRow, win: WindowState, now = Date.now())
     lastMessageDirection: row.last_message_direction,
     unansweredSince: row.unanswered_since,
     waitingMinutes,
+    read: Boolean(row.unanswered_since) && !waiting,
     messageCount: Number(row.message_count ?? 0),
     window: win,
   };

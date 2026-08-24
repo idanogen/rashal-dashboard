@@ -1,6 +1,7 @@
 import { supabaseAdmin } from './supabase-admin.js';
 import { normalizePhone } from './phone.js';
 import { describeAttachments } from './attachments.js';
+import { isWaiting } from './inbox.js';
 
 /**
  * טעינת שרשור השיחה של לקוח אחד, ומצב חלון 24 השעות של מטא.
@@ -57,6 +58,9 @@ export interface ThreadResult {
     messageCount: number | null;
     lastMessageAt: string | null;
     unansweredSince: string | null;
+    /** עדיין מחכה לעובד: יש חוב מענה ואיש לא פתח מאז ההודעה האחרונה. */
+    waiting: boolean;
+    readAt: string | null;
   } | null;
   window: WindowState;
   messages: unknown[];
@@ -111,6 +115,11 @@ export async function loadThread(by: { phone?: string | null; customer?: string 
       messageCount: conv.message_count,
       lastMessageAt: conv.last_message_at,
       unansweredSince: conv.unanswered_since,
+      // ⭐ אותה הכרעה בדיוק שהרשימה משתמשת בה. שני מנגנונים על אותו
+      // מסך היו נותנים נקודה כתומה על שיחה שכבר ירדה מהרשימה.
+      // [[label_and_math_from_two_mechanisms]]
+      waiting: isWaiting(conv),
+      readAt: conv.read_at ?? null,
     },
     window: windowState(conv.last_inbound_at),
     // 🔴 **המצורפים עוברים תרגום ולא נמסרים כמו שהם.** ראה

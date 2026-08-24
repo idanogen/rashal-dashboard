@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { toItem, sortItems, matchesQuery, waitLabel } from '../api/_lib/inbox.ts';
+import { toItem, sortItems, matchesQuery, waitLabel, isWaiting } from '../api/_lib/inbox.ts';
 
 /**
  * 🔴 מה שנבדק כאן הוא **הסדר**, וזה לב המסך. מסך שנקרא "מי מחכה לתשובה"
@@ -113,4 +113,69 @@ test('זמן ההמתנה נאמר בעברית תקינה, ובלי "0 דקות
 test('חוב מענה מתורגם לדקות המתנה, ובלי חוב אין מספר', () => {
   assert.equal(item({ id: 'a', waiting: ago(45) }).waitingMinutes, 45);
   assert.equal(item({ id: 'b' }).waitingMinutes, null);
+});
+
+/**
+ * 🔴🔴 "שיחה שקראתי עדיין ב'ממתינים'" (עידן, 24/08/2026).
+ * עד אז הדרך היחידה להוריד שיחה מהרשימה הייתה **לשלוח תשובה**, ולכן
+ * "תודה" של לקוח נשאר תלוי ברשימה לנצח.
+ */
+test('שיחה בלי חוב מענה אינה ממתינה, גם בלי שנקראה', () => {
+  assert.equal(isWaiting({ unanswered_since: null, last_inbound_at: '2026-08-24T12:00:00Z', read_at: null }), false);
+});
+
+test('חוב מענה שלא נקרא הוא ממתין', () => {
+  assert.equal(isWaiting({ unanswered_since: '2026-08-24T12:00:00Z', last_inbound_at: '2026-08-24T12:00:00Z', read_at: null }), true);
+});
+
+test('🔴 קריאה אחרי ההודעה מורידה מהרשימה, גם בלי לענות', () => {
+  assert.equal(isWaiting({
+    unanswered_since: '2026-08-24T12:00:00Z',
+    last_inbound_at: '2026-08-24T12:00:00Z',
+    read_at: '2026-08-24T12:05:00Z',
+  }), false);
+});
+
+test('🔴 הודעה חדשה אחרי הקריאה מחזירה את השיחה לרשימה', () => {
+  // זה מה שדגל בוליאני "נקרא" היה מפספס: הלקוח כתב שוב, ואיש לא ידע.
+  assert.equal(isWaiting({
+    unanswered_since: '2026-08-24T14:00:00Z',
+    last_inbound_at: '2026-08-24T14:00:00Z',
+    read_at: '2026-08-24T12:05:00Z',
+  }), true);
+});
+
+test('קריאה באותו רגע בדיוק אינה מספיקה', () => {
+  // גבול: `<` ולא `<=`. שווה נחשב נקרא, כי הסימון נרשם אחרי הצפייה.
+  assert.equal(isWaiting({
+    unanswered_since: '2026-08-24T12:00:00Z',
+    last_inbound_at: '2026-08-24T12:00:00Z',
+    read_at: '2026-08-24T12:00:00Z',
+  }), false);
+});
+
+test('בלי last_inbound_at נופלים לרגע פתיחת החוב', () => {
+  assert.equal(isWaiting({ unanswered_since: '2026-08-24T12:00:00Z', last_inbound_at: null, read_at: '2026-08-24T12:30:00Z' }), false);
+  assert.equal(isWaiting({ unanswered_since: '2026-08-24T12:00:00Z', last_inbound_at: null, read_at: '2026-08-24T11:30:00Z' }), true);
+});
+
+test('🔴 שעון ההמתנה נעלם משורה שנקראה, ולא רק הסינון', () => {
+  // התג הכתום "מחכה 27 דקות" הוא מה שעידן ראה. הוא נגזר מ-waitingMinutes.
+  const base = {
+    id: 'c1', phone_local: '0523694547', phone_e164: null, contact_name: 'עוגן עידן',
+    customer_number: null, customer_name: null, last_message_at: '2026-08-24T12:00:00Z',
+    last_message_preview: 'תודה', last_message_direction: 'in', message_count: 4,
+    unanswered_since: '2026-08-24T12:00:00Z', last_inbound_at: '2026-08-24T12:00:00Z',
+  };
+  const win = { open: true, expiresAt: null, minutesLeft: 1000, reason: null };
+  const now = new Date('2026-08-24T12:27:00Z').getTime();
+
+  const unread = toItem({ ...base, read_at: null }, win, now);
+  assert.equal(unread.waitingMinutes, 27);
+  assert.equal(unread.read, false);
+
+  const read = toItem({ ...base, read_at: '2026-08-24T12:05:00Z' }, win, now);
+  assert.equal(read.waitingMinutes, null, 'שעון ההמתנה נשאר על שיחה שנקראה');
+  assert.equal(read.read, true);
+  assert.equal(read.unansweredSince, base.unanswered_since, 'חוב המענה נמחק, והוא עובדה שצריכה לשרוד');
 });

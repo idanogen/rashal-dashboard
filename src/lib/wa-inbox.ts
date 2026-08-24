@@ -26,6 +26,7 @@ export interface InboxItem {
   lastMessageDirection: string | null;
   unansweredSince: string | null;
   waitingMinutes: number | null;
+  read: boolean;
   messageCount: number;
   window: WaWindow;
 }
@@ -154,6 +155,25 @@ export async function fetchInbox(
 
 export async function fetchThread(phone: string): Promise<ThreadResponse> {
   return authFetch(`/api/conversation?phone=${encodeURIComponent(phone)}`);
+}
+
+/**
+ * מסמן שהעובד פתח את השיחה במפורש.
+ *
+ * 🔴🔴 **רק מלחיצה של אדם, אף פעם לא מטעינה.** השרשור נטען גם בבחירה
+ * אוטומטית של השורה הראשונה, וגם ברענון כל כמה שניות. אם אלה היו
+ * מסמנים קריאה, שיחה שאיש לא ראה הייתה יורדת מרשימת הממתינים בשקט,
+ * וזה בדיוק הכשל שהרשימה נועדה למנוע. [[render_is_not_a_user_event]]
+ *
+ * ⭐ ונכשל בשקט. סימון שלא נרשם אינו סיבה להפריע לעובד באמצע עבודה,
+ * והשיחה פשוט תישאר ברשימה.
+ */
+export async function markThreadRead(phone: string): Promise<void> {
+  try {
+    await authFetch(`/api/conversation?phone=${encodeURIComponent(phone)}&markRead=1`);
+  } catch {
+    /* לא מפריעים */
+  }
 }
 
 export async function sendText(phone: string, bodyText: string): Promise<void> {
