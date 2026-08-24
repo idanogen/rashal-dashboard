@@ -124,7 +124,9 @@ export function ManagementDashboard() {
 
           🔴 והלוגו וסמל התפריט חזרו על מה שכבר יושב בכותרת הראשית,
           כשסמל התפריט אפילו לא היה לחיץ. */}
-      <div className="mb-5 rounded-2xl border bg-white px-5 py-3 shadow-sm" style={{ borderColor: '#eef1f6' }}>
+      {/* ⭐ ובלי כרטיס מסביב. אחרי שהפקדים ירדו נשארה רצועה לבנה שרובה
+          ריקה, וזו בדיוק אותה משפחה: שטח שנתפס בלי שהוא אומר משהו. */}
+      <div className="mb-5 px-1">
         <div className="text-xl font-extrabold" style={{ color: NAVY }}>דשבורד הנהלה</div>
         <div className="text-[11px] text-slate-400">תמונת מצב כללית{loading ? ' · טוען…' : ''}</div>
       </div>
