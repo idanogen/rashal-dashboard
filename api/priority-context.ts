@@ -181,6 +181,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const candidates = cleanCandidates(body.candidates);
   if (!candidates.length) {
+    // ⭐ **בקשה שכל תוכנה הוא מה שנלמד על מסך ההדפסה היא בקשה תקינה.**
+    // 🔴 נתפס ב-24/08/2026: הלמידה נסעה על גבה של בקשת הזיהוי, ובמסך
+    // שאין בו לקוח (הזמנת רכש, שיש בה ספק) היא לא יצאה לעולם. לפרוצדורת
+    // ההדפסה אין שום קשר ללקוח, ולכן אסור לה להיות תלויה בזיהוי.
+    if (body.learnedProc !== undefined) {
+      return res.status(200).json({ ok: true, learnedOnly: true, procs: await loadProcs() });
+    }
     return res.status(400).json({ ok: false, error: 'no candidates' });
   }
 
