@@ -31,6 +31,7 @@ import {
   WA_INBOX_KEY,
   WA_INBOX_POLL_MS,
   WA_THREAD_POLL_MS,
+  WA_LIST_FOCUS_STALE_MS,
 } from '@/lib/wa-inbox-query';
 
 /**
@@ -224,15 +225,37 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE }: InboxBoardProps) {
     queryKey: inboxKey(tab, q),
     queryFn: () => fetchInbox(tab, q),
     refetchInterval: WA_INBOX_POLL_MS,
+    // ⭐ ראה את ההערה על השרשור. הרשימה מתרעננת גם היא בחזרה לחלון,
+    // אבל רק אם עברה חצי דקה, כי סדר השורות משתנה לאט.
+    refetchOnWindowFocus: true,
+    staleTime: WA_LIST_FOCUS_STALE_MS,
   });
 
-  // ⭐ השרשור מרוענן הרבה יותר מהר מהרשימה, וזה מכוון: כאן יושב עובד
-  // ומחכה לתשובה של לקוח, ושם רק נספר מי ממתין.
+  // ⭐⭐ **השרשור מרוענן מהר, וברגע שחוזרים לחלון הוא נשאל מיד.**
+  //
+  // 🔴 נתפס אצל עידן 24/08/2026: הוא שלח הודעה מהטלפון, חזר לדשבורד,
+  // ונאלץ לרענן את הדף ביד. בחלונית שבתוך פריוריטי זה הופיע לבד, ולכן
+  // זה נראה כאילו הדשבורד שבור.
+  //
+  // השורש לא היה הקצב אלא `refetchOnWindowFocus: false` שמוגדר גלובלית
+  // ב-`App.tsx`. ההגדרה הזאת נכונה לכל שאר המסכים, ושגויה בדיוק במסך
+  // אחד: זה שבו אדם יושב ומחכה לתשובה של לקוח.
+  //
+  // 🔴 **ו-`staleTime: 0` הוא חלק מהתיקון ולא קישוט.** `refetchOnWindowFocus`
+  // מרענן רק שאילתה **מיושנת**, ו-`staleTime` הגלובלי הוא דקה. בלי
+  // האיפוס, חזרה לחלון בתוך אותה דקה לא הייתה עושה כלום, וזה בדיוק
+  // המקרה של מי שקופץ לטלפון ובחזרה.
+  //
+  // ⭐ והמחיר זול: רענון בחזרה לחלון קורה רק כשאדם באמת מסתכל, ולכן הוא
+  // חסום על ידי התנהגות אנושית ולא על ידי טיימר. זה גם למה לא קיצרתי
+  // את הקצב עצמו, שנקבע אחרי שהחשבון נאכל ב-348 קריאות בשעה.
   const thread = useQuery({
     queryKey: threadKey(selected),
     queryFn: () => fetchThread(selected as string),
     enabled: Boolean(selected),
     refetchInterval: WA_THREAD_POLL_MS,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
   });
 
   const items = inbox.data?.items ?? [];

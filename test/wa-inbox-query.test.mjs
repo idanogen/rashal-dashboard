@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import {
   WA_INBOX_KEY,
@@ -101,4 +102,22 @@ test('הרשימה נשאלת כל שלוש דקות, והשרשור נשאר מ
     WA_THREAD_POLL_MS < WA_INBOX_POLL_MS,
     'השרשור הפתוח חייב להתרענן מהר מהרשימה: שם יושב עובד ומחכה לתשובה',
   );
+});
+
+test('🔴 חזרה לחלון מרעננת, וזה דורש גם איפוס הטריות', () => {
+  // נתפס אצל עידן 24/08/2026: הוא שלח הודעה מהטלפון, חזר לדשבורד, ולא
+  // קרה כלום עד רענון ידני. השורש היה `refetchOnWindowFocus: false`
+  // גלובלי, ו-`staleTime` של דקה שהיה בולע את התיקון גם אחרי שהופעל.
+  const board = readFileSync(new URL('../src/components/wa/InboxBoard.tsx', import.meta.url), 'utf8');
+
+  const threadBlock = board.slice(board.indexOf('const thread = useQuery'), board.indexOf('const items ='));
+  assert.match(threadBlock, /refetchOnWindowFocus: true/, 'השרשור אינו מתרענן בחזרה לחלון');
+  assert.match(threadBlock, /staleTime: 0/, '🔴 בלי איפוס הטריות הרענון נבלע בדקה הגלובלית');
+
+  const listBlock = board.slice(board.indexOf('const inbox = useQuery'), board.indexOf('const thread = useQuery'));
+  assert.match(listBlock, /refetchOnWindowFocus: true/, 'הרשימה אינה מתרעננת בחזרה לחלון');
+
+  // ⭐ והקצב עצמו לא קוצר. הוא נקבע אחרי שהחשבון נאכל ב-348 קריאות בשעה.
+  assert.equal(WA_INBOX_POLL_MS, 180_000);
+  assert.equal(WA_THREAD_POLL_MS, 30_000);
 });
