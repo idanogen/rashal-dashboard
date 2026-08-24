@@ -1,6 +1,6 @@
 import { supabaseAdmin } from './supabase-admin.js';
 import { normalizePhone } from './phone.js';
-import { describeAttachments } from './attachments.js';
+import { describeAttachments, describeButtons } from './attachments.js';
 import { isWaiting } from './inbox.js';
 
 /**
@@ -128,6 +128,9 @@ export async function loadThread(by: { phone?: string | null; customer?: string 
     messages: (messages ?? []).map((m) => ({
       ...m,
       attachments: describeAttachments(m.attachments),
+      // ⭐ הכפתור שהלקוח קיבל, ואיתו הקישור עצמו. הוא יושב באותו מערך,
+      // והוא **לא** קובץ. ראה `describeButtons`.
+      buttons: describeButtons(m.attachments),
     })),
   };
 }

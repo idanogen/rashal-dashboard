@@ -90,3 +90,63 @@ export function describeAttachments(raw: unknown): PanelAttachment[] {
   }
   return out;
 }
+
+/**
+ * הכפתור שהלקוח קיבל מתחת להודעה.
+ *
+ * 🔴🔴 **עידן, 24/08/2026: "למה אני לא רואה את הקישור שהלקוח קיבל?"**
+ * תבנית עם כפתור שולחת ללקוח קישור, והוא יושב באותו מערך `attachments`
+ * שבו יושבים הקבצים. עד היום הוא הוצג כשורת "📎 קובץ מצורף" שלחיצה
+ * עליה נכשלת, כלומר הקישור עצמו לא נראה מעולם. `describeAttachments`
+ * מסננת אותו החוצה כי הוא אינו קובץ, וכאן הוא מקבל את הצורה שלו.
+ *
+ * ⭐ **מה שמוצג הוא היעד ולא העטיפה.** heyy עוטפת כל קישור בתבנית
+ * בכתובת מעקב משלה (`/public/redirect/wa?to=…`), ומי שמסתכל על השרשור
+ * רוצה לדעת לאן הלקוח נשלח, לא איך נספרה הקליקה.
+ */
+export interface MessageButton {
+  index: number;
+  text: string;
+  /** היעד הסופי. null כשאין כתובת תקינה, ואז מוצג רק הטקסט. */
+  url: string | null;
+}
+
+function finalUrl(raw: string): string | null {
+  if (!raw) return null;
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return null;
+  }
+  // 🔴 http/https בלבד. הכתובת מגיעה מצד שלישי, ו-`javascript:` בתוך
+  // `href` הוא הרצת קוד בדף שמציג שיחות של מטופלים.
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+
+  const to = parsed.searchParams.get('to');
+  if (to) {
+    try {
+      const inner = new URL(to);
+      if (inner.protocol === 'http:' || inner.protocol === 'https:') return inner.toString();
+    } catch {
+      /* עטיפה שלא נפרסת: מציגים את מה שיש */
+    }
+  }
+  return parsed.toString();
+}
+
+export function describeButtons(raw: unknown): MessageButton[] {
+  if (!Array.isArray(raw)) return [];
+
+  const out: MessageButton[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const a = (raw[i] ?? {}) as Record<string, unknown>;
+    if (str(a.type).toLowerCase() !== 'button') continue;
+
+    const data = (a.data ?? {}) as Record<string, unknown>;
+    const url = finalUrl(str(data.url) + str(data.urlExtension));
+
+    out.push({ index: i, text: str(a.text) || 'קישור', url });
+  }
+  return out;
+}

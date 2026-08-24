@@ -17,6 +17,9 @@ import {
   Image as ImageIcon,
   Film,
   Mic,
+  Link2,
+  Copy,
+  Check,
 } from 'lucide-react';
 import {
   fetchInbox,
@@ -29,6 +32,7 @@ import {
   type InboxItem,
   type WaMessage,
   type WaAttachment,
+  type WaButton,
 } from '@/lib/wa-inbox';
 import {
   inboxKey,
@@ -174,9 +178,62 @@ function ImageThumb({ messageId, att }: { messageId: string; att: WaAttachment }
   );
 }
 
+/**
+ * הקישור שהלקוח קיבל, מוצג ולא לחיץ.
+ *
+ * 🔴🔴 **ובכוונה לא לחיץ.** קישור הסקר נושא טוקן אישי, ו-`GET /api/survey`
+ * חותם `opened_at` בפעם הראשונה שהוא נפתח. מנהל שלוחץ מכאן כדי "לראות
+ * מה הלקוח קיבל" היה מסמן שהלקוח פתח את הסקר, והופך את המדד היחיד
+ * שאומר אם הוא בכלל נגע בו לשקר. [[render_is_not_a_user_event]]
+ *
+ * ⭐ לכן יש העתקה במקום פתיחה: מי שבאמת רוצה לפתוח יעשה זאת במודע.
+ */
+function ButtonLink({ b }: { b: WaButton }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    if (!b.url) return;
+    try {
+      await navigator.clipboard.writeText(b.url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.error('לא הצלחתי להעתיק');
+    }
+  }
+
+  return (
+    <div className="mt-1.5 rounded-lg border border-slate-900/10 bg-white/70 px-2 py-1.5 text-xs">
+      <div className="flex items-center gap-1.5 font-medium text-slate-700">
+        <Link2 className="h-3 w-3 shrink-0" />
+        <span className="truncate">{b.text}</span>
+      </div>
+      {b.url && (
+        <div className="mt-1 flex items-center gap-1.5">
+          <bdi
+            dir="ltr"
+            className="min-w-0 flex-1 truncate font-mono text-[10px] text-muted-foreground"
+            title={b.url}
+          >
+            {b.url}
+          </bdi>
+          <button
+            onClick={copy}
+            title="העתק · פתיחה מכאן הייתה מסמנת שהלקוח פתח את הסקר"
+            className="shrink-0 rounded p-0.5 text-muted-foreground transition hover:bg-slate-900/5 hover:text-slate-700"
+          >
+            {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Bubble({ m }: { m: WaMessage }) {
   const out = m.direction === 'out';
   const atts = Array.isArray(m.attachments) ? m.attachments : [];
+  const btns = Array.isArray(m.buttons) ? m.buttons : [];
   const who = out ? authorLabel(m.author) : '';
 
   return (
@@ -195,6 +252,9 @@ function Bubble({ m }: { m: WaMessage }) {
             <AttachmentPill key={a.index} messageId={m.id} att={a} />
           ),
         )}
+        {btns.map((b) => (
+          <ButtonLink key={b.index} b={b} />
+        ))}
         <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground">
           <span>{timeText(m.sent_at)}</span>
           {out && m.status && <span>· {STATUS_TEXT[m.status] ?? m.status}</span>}

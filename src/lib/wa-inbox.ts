@@ -56,11 +56,24 @@ export interface WaAttachment {
   sizeBytes: number | null;
 }
 
+/**
+ * כפתור שנשלח ללקוח מתוך תבנית, ואיתו הקישור עצמו.
+ *
+ * ⭐ `url` הוא **היעד** ולא כתובת המעקב של heyy. מי שמסתכל על השרשור
+ * רוצה לדעת לאן הלקוח נשלח.
+ */
+export interface WaButton {
+  index: number;
+  text: string;
+  url: string | null;
+}
+
 export interface WaMessage {
   id: string;
   direction: 'in' | 'out';
   body: string | null;
   attachments: WaAttachment[];
+  buttons: WaButton[];
   status: string | null;
   template_id: string | null;
   entity_type: string | null;

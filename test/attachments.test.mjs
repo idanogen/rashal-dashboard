@@ -27,7 +27,7 @@ const button = {
   type: 'button',
   text: 'למילוי הסקר',
   buttonType: 'url',
-  data: { url: 'https://api.heyy.io/public/redirect/wa', type: 'dynamic_url' },
+  data: { url: 'https://api.heyy.io/public/redirect/wa', type: 'dynamic_url', urlExtension: '?to=https://rashal-dashboard.vercel.app/s/b5493f086e274c61925ce17b400fbd11' },
   stored_error: 'אין כתובת לקובץ',
 };
 
@@ -93,4 +93,48 @@ test('קלט שאינו מערך אינו מפיל', () => {
   assert.deepEqual(describeAttachments(null), []);
   assert.deepEqual(describeAttachments(undefined), []);
   assert.deepEqual(describeAttachments('x'), []);
+});
+
+/**
+ * 🔴 "למה אני לא רואה את הקישור שהלקוח קיבל?" (עידן, 24/08/2026).
+ * הכפתור אינו קובץ, ולכן הוא נשמט מרשימת המצורפים. הקישור עצמו נשלח
+ * ללקוח בפועל, והוא צריך להיראות בשרשור.
+ */
+import { describeButtons } from '../api/_lib/attachments.ts';
+
+test('כפתור תבנית מוצג עם היעד הסופי, ולא עם כתובת המעקב של heyy', () => {
+  const [b] = describeButtons([button]);
+  assert.equal(b.text, 'למילוי הסקר');
+  assert.equal(b.url, 'https://rashal-dashboard.vercel.app/s/b5493f086e274c61925ce17b400fbd11');
+});
+
+test('קובץ אינו כפתור, ולהפך', () => {
+  assert.deepEqual(describeButtons([image, pdf]), []);
+  assert.deepEqual(describeAttachments([button]), []);
+});
+
+test('🔴 כתובת שאינה http נדחית ומשאירה רק את הטקסט', () => {
+  // הכתובת מגיעה מצד שלישי, ו-javascript: בתוך href הוא הרצת קוד בדף
+  // שמציג שיחות של מטופלים.
+  const [b] = describeButtons([{ type: 'button', text: 'לחץ', data: { url: 'javascript:alert(1)' } }]);
+  assert.equal(b.url, null);
+  assert.equal(b.text, 'לחץ');
+});
+
+test('🔴 גם עטיפה שהיעד שבתוכה אינו http נדחית', () => {
+  const [b] = describeButtons([{
+    type: 'button', text: 'לחץ',
+    data: { url: 'https://api.heyy.io/public/redirect/wa', urlExtension: '?to=javascript:alert(1)' },
+  }]);
+  assert.equal(b.url, 'https://api.heyy.io/public/redirect/wa?to=javascript:alert(1)', 'העטיפה עצמה תקינה ולכן מוצגת, בלי לפרוס יעד מסוכן');
+});
+
+test('כפתור בלי טקסט מקבל תווית קריאה', () => {
+  const [b] = describeButtons([{ type: 'button', data: { url: 'https://example.com' } }]);
+  assert.equal(b.text, 'קישור');
+});
+
+test('האינדקס נשמר גם בכפתורים', () => {
+  const [b] = describeButtons([pdf, button]);
+  assert.equal(b.index, 1);
 });
