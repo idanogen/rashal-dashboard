@@ -122,7 +122,15 @@ function Section({
   );
 }
 
-export function CustomerCardBody({ data }: { data: CustomerCardData }) {
+/**
+ * 🔴 **המגירה צרה, אבל נקודות השבירה של Tailwind נמדדות מול חלון
+ * הדפדפן ולא מול המיכל.** במסך 1284 פיקסלים `lg:` חל גם בתוך מגירה
+ * ברוחב 764, ולכן שתי העמודות נדחסו שם. `layout` הוא מה שמכריע, ולא
+ * הרוחב שנראה על המסך. [[responsive_breakpoint_silently_reverts_feature]]
+ */
+export function CustomerCardBody({
+  data, layout = 'page',
+}: { data: CustomerCardData; layout?: 'page' | 'drawer' }) {
   const c = data.customer;
   const orders = data.open?.orders ?? [];
   const calls = data.open?.calls ?? [];
@@ -190,7 +198,7 @@ export function CustomerCardBody({ data }: { data: CustomerCardData }) {
 
       {/* ── פתוחים ── */}
       {(orders.length > 0 || calls.length > 0 || pickups.length > 0) && (
-        <div className="grid gap-2 md:grid-cols-2">
+        <div className={`grid gap-2 ${layout === 'page' ? 'md:grid-cols-2' : ''}`}>
           {orders.length > 0 && (
             <Section title="משלוחים פתוחים" icon={Truck} count={orders.length}>
               <div className="space-y-2">{orders.map((o) => <OpenRow key={o.id} item={o} icon={Truck} />)}</div>
@@ -209,7 +217,7 @@ export function CustomerCardBody({ data }: { data: CustomerCardData }) {
         </div>
       )}
 
-      <div className="grid gap-2 lg:grid-cols-[1.6fr_1fr]">
+      <div className={`grid gap-2 ${layout === 'page' ? 'lg:grid-cols-[1.6fr_1fr]' : ''}`}>
         {/* ── ציר הפעילות ── */}
         <Section title="ציר הפעילות" icon={Clock} count={data.timeline?.length ?? 0}>
           {(data.timeline ?? []).length === 0 ? (
@@ -335,8 +343,8 @@ export function CustomerCardBody({ data }: { data: CustomerCardData }) {
  * העבודה, לא ציור המסך. [[render_must_not_start_work]]
  */
 export function CustomerCard({
-  customerNumber, phone,
-}: { customerNumber: string | null; phone: string | null }) {
+  customerNumber, phone, layout = 'page',
+}: { customerNumber: string | null; phone: string | null; layout?: 'page' | 'drawer' }) {
   const q = useQuery({
     queryKey: customerCardKey(customerNumber, phone),
     queryFn: () => fetchCustomerCard(customerNumber, phone),
@@ -365,5 +373,5 @@ export function CustomerCard({
       </div>
     );
   }
-  return <CustomerCardBody data={q.data} />;
+  return <CustomerCardBody data={q.data} layout={layout} />;
 }

@@ -28,7 +28,7 @@ export function CustomerCardSheet({
           <SheetTitle className="text-start">{title || 'כרטיס לקוח'}</SheetTitle>
         </SheetHeader>
         <div className="mt-3">
-          {open && <CustomerCard customerNumber={customerNumber} phone={phone} />}
+          {open && <CustomerCard customerNumber={customerNumber} phone={phone} layout="drawer" />}
         </div>
       </SheetContent>
     </Sheet>
