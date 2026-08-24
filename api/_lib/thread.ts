@@ -1,5 +1,6 @@
 import { supabaseAdmin } from './supabase-admin.js';
 import { normalizePhone } from './phone.js';
+import { describeAttachments } from './attachments.js';
 
 /**
  * טעינת שרשור השיחה של לקוח אחד, ומצב חלון 24 השעות של מטא.
@@ -112,6 +113,12 @@ export async function loadThread(by: { phone?: string | null; customer?: string 
       unansweredSince: conv.unanswered_since,
     },
     window: windowState(conv.last_inbound_at),
-    messages: messages ?? [],
+    // 🔴 **המצורפים עוברים תרגום ולא נמסרים כמו שהם.** ראה
+    // `describeAttachments`: המטען הגולמי מכיל כתובת S3 ציבורית לכל
+    // קובץ ואת הנתיב הפנימי שלנו, ומכיל גם כפתורי תבנית שאינם קבצים.
+    messages: (messages ?? []).map((m) => ({
+      ...m,
+      attachments: describeAttachments(m.attachments),
+    })),
   };
 }

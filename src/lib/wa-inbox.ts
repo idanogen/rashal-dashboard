@@ -39,11 +39,27 @@ export interface InboxResponse {
   items: InboxItem[];
 }
 
+/**
+ * קובץ שעבר בשיחה, כפי שהשרת מתאר אותו.
+ *
+ * 🔴 **המבנה נקבע בשרת ב-`api/_lib/attachments.ts`, לא כאן.** הדפדפן
+ * לא מקבל את המטען הגולמי של heyy (כתובת S3 ציבורית לכל קובץ, ונתיב
+ * פנימי בדלי), ולא מכריע בעצמו מה נחשב קובץ. אותה רשימה בדיוק מגיעה גם
+ * לחלונית שבתוך פריוריטי.
+ */
+export interface WaAttachment {
+  index: number;
+  name: string;
+  kind: 'image' | 'pdf' | 'video' | 'audio' | 'file';
+  ready: boolean;
+  sizeBytes: number | null;
+}
+
 export interface WaMessage {
   id: string;
   direction: 'in' | 'out';
   body: string | null;
-  attachments: unknown[];
+  attachments: WaAttachment[];
   status: string | null;
   template_id: string | null;
   entity_type: string | null;

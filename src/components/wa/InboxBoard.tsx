@@ -14,6 +14,9 @@ import {
   Lock,
   Loader2,
   FileText,
+  Image as ImageIcon,
+  Film,
+  Mic,
 } from 'lucide-react';
 import {
   fetchInbox,
@@ -24,6 +27,7 @@ import {
   waitLabel,
   type InboxItem,
   type WaMessage,
+  type WaAttachment,
 } from '@/lib/wa-inbox';
 import {
   inboxKey,
@@ -76,14 +80,42 @@ const STATUS_TEXT: Record<string, string> = {
   failed: 'נכשל',
 };
 
-function AttachmentButton({ message }: { message: WaMessage }) {
+/**
+ * ⭐ **הכתובת החתומה נשמרת במטמון של react-query ולא נמשכת בכל ציור.**
+ * השרשור מתרענן כל כמה שניות, ובלי מטמון כל רענון היה מבקש חתימה חדשה
+ * לכל תמונה, והתמונה הייתה מהבהבת. החתימה חיה חמש דקות, ולכן היא נחשבת
+ * טרייה ארבע: העדכון תמיד מקדים את הפקיעה.
+ */
+const MEDIA_STALE_MS = 4 * 60 * 1000;
+
+function useAttachmentUrl(messageId: string, index: number, enabled: boolean) {
+  return useQuery({
+    queryKey: ['wa-media', messageId, index],
+    queryFn: () => attachmentUrl(messageId, index),
+    enabled,
+    staleTime: MEDIA_STALE_MS,
+    gcTime: MEDIA_STALE_MS,
+    refetchOnWindowFocus: false,
+    retry: 1,
+  });
+}
+
+const KIND_ICON = {
+  pdf: FileText,
+  image: ImageIcon,
+  video: Film,
+  audio: Mic,
+  file: Paperclip,
+} as const;
+
+function AttachmentPill({ messageId, att }: { messageId: string; att: WaAttachment }) {
   const [busy, setBusy] = useState(false);
-  const label = message.entity_key ? `${message.entity_key}.pdf` : 'קובץ מצורף';
+  const Icon = KIND_ICON[att.kind] ?? Paperclip;
 
   async function open() {
     setBusy(true);
     try {
-      const url = await attachmentUrl(message.id, 0);
+      const url = await attachmentUrl(messageId, att.index);
       window.open(url, '_blank', 'noopener');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'לא הצלחתי לפתוח את הקובץ');
@@ -96,10 +128,47 @@ function AttachmentButton({ message }: { message: WaMessage }) {
     <button
       onClick={open}
       disabled={busy}
-      className="mt-1.5 flex w-full items-center gap-1.5 rounded-lg border border-slate-900/10 bg-white/70 px-2 py-1 text-xs transition hover:bg-white disabled:opacity-60"
+      title={att.ready ? 'פתח את הקובץ' : 'הקובץ לא הועתק אלינו'}
+      className={`mt-1.5 flex w-full items-center gap-1.5 rounded-lg border border-slate-900/10 px-2 py-1 text-xs transition hover:bg-white disabled:opacity-60 ${
+        att.ready ? 'bg-white/70' : 'bg-white/40 text-muted-foreground'
+      }`}
     >
-      {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Paperclip className="h-3 w-3" />}
-      <span className="truncate">{label}</span>
+      {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Icon className="h-3 w-3 shrink-0" />}
+      <bdi className="truncate">{att.name}</bdi>
+    </button>
+  );
+}
+
+/**
+ * תמונה מוצגת קטנה בתוך הבועה, ולא כשורת אטב.
+ *
+ * 🔴 **"קובץ מצורף" על תמונה הוא מסך שמסתיר את מה שהלקוח שלח.** לקוח
+ * ששולח צילום של תקלה, של מד מונה או של חתימה מצפה שיראו אותו, ולחיצה
+ * שפותחת לשונית חדשה בשביל כל תמונה היא מס על כל שיחה.
+ *
+ * ⭐ ואם החתימה נכשלה או שהתמונה לא נטענה, יורדים חזרה לשורת האטב.
+ * ריבוע שבור הוא בדיוק סוג הכשל השקט שמלמד לא לסמוך על המסך.
+ */
+function ImageThumb({ messageId, att }: { messageId: string; att: WaAttachment }) {
+  const [broken, setBroken] = useState(false);
+  const { data: url, isError } = useAttachmentUrl(messageId, att.index, !broken);
+
+  if (isError || broken) return <AttachmentPill messageId={messageId} att={att} />;
+  if (!url) return <div className="mt-1.5 h-28 w-40 animate-pulse rounded-lg bg-slate-900/5" />;
+
+  return (
+    <button
+      onClick={() => window.open(url, '_blank', 'noopener')}
+      title="פתח בגודל מלא"
+      className="mt-1.5 block overflow-hidden rounded-lg border border-slate-900/10 transition hover:opacity-90"
+    >
+      <img
+        src={url}
+        alt={att.name}
+        loading="lazy"
+        onError={() => setBroken(true)}
+        className="max-h-56 w-auto max-w-full object-contain"
+      />
     </button>
   );
 }
@@ -117,8 +186,14 @@ function Bubble({ m }: { m: WaMessage }) {
         }`}
       >
         {who && <div className="mb-0.5 text-[11px] font-semibold text-emerald-700">{who}</div>}
-        <div className="whitespace-pre-wrap leading-relaxed">{m.body}</div>
-        {atts.length > 0 && <AttachmentButton message={m} />}
+        {m.body && <div className="whitespace-pre-wrap leading-relaxed">{m.body}</div>}
+        {atts.map((a) =>
+          a.kind === 'image' && a.ready ? (
+            <ImageThumb key={a.index} messageId={m.id} att={a} />
+          ) : (
+            <AttachmentPill key={a.index} messageId={m.id} att={a} />
+          ),
+        )}
         <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground">
           <span>{timeText(m.sent_at)}</span>
           {out && m.status && <span>· {STATUS_TEXT[m.status] ?? m.status}</span>}
