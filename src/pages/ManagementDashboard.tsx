@@ -4,7 +4,7 @@ import {
 } from 'recharts';
 import {
   Truck, Wrench, PackageOpen, Smile, Clock, Box, Frown, TrendingUp, MapPin, Users,
-  Calendar, MapPinned, Menu, FileText, Receipt,
+  FileText, Receipt,
 } from 'lucide-react';
 import { ActivityHeatMap } from '@/components/dashboard/ActivityHeatMap';
 import { useOrders } from '@/hooks/useOrders';
@@ -109,24 +109,24 @@ export function ManagementDashboard() {
 
   return (
     <div style={{ background: '#f5f7fb' }} className="-mx-4 -my-6 min-h-screen px-4 py-5 sm:-mx-6 sm:px-6">
-      {/* Header בסגנון המוקאפ */}
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-white px-5 py-3 shadow-sm" style={{ borderColor: '#eef1f6' }}>
-        <div className="flex items-center gap-3">
-          <span className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs text-slate-600" style={{ borderColor: '#e6ebf3' }}>
-            <Calendar className="h-3.5 w-3.5" /> נתונים חיים
-          </span>
-          <span className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs text-slate-600" style={{ borderColor: '#e6ebf3' }}>
-            <MapPinned className="h-3.5 w-3.5" /> כל הסניפים
-          </span>
-        </div>
-        <div className="text-center">
-          <div className="text-xl font-extrabold" style={{ color: NAVY }}>דשבורד הנהלה</div>
-          <div className="text-[11px] text-slate-400">תמונת מצב כללית{loading ? ' · טוען…' : ''}</div>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-lg font-black" style={{ color: GREEN }}>ר.<span style={{ color: NAVY }}>שעל</span></span>
-          <Menu className="h-5 w-5 text-slate-400" />
-        </div>
+      {/* ⭐ **כותרת בלבד.** בגרסה הראשונה ישבו כאן גם תג "נתונים חיים", גם
+          בורר "כל הסניפים", וגם הלוגו עם סמל תפריט. שלושתם הועתקו
+          מהמוקאפ ואף אחד מהם לא היה אמיתי:
+
+          🔴 "נתונים חיים" היה טקסט קבוע, ולא חיווי. מי שקורא אותו לומד
+          שהנתונים טריים בלי שאיש בדק, וכשהטעינה תיתקע הוא ימשיך להצהיר
+          את זה. הטריות האמיתית כבר מוצגת בכותרת הראשית ("עודכן …"),
+          שנגזרת מזמן העדכון בפועל. [[label_and_math_from_two_mechanisms]]
+
+          🔴 "כל הסניפים" נראה כמו בורר ולא היה לחיץ, ולר.שעל יש סניף
+          אחד. פקד שמרמז על סינון שאינו קיים הוא הבטחה שנכשלת.
+          יחזור ביום שבו יהיה סניף שני, ואז כבורר אמיתי.
+
+          🔴 והלוגו וסמל התפריט חזרו על מה שכבר יושב בכותרת הראשית,
+          כשסמל התפריט אפילו לא היה לחיץ. */}
+      <div className="mb-5 rounded-2xl border bg-white px-5 py-3 shadow-sm" style={{ borderColor: '#eef1f6' }}>
+        <div className="text-xl font-extrabold" style={{ color: NAVY }}>דשבורד הנהלה</div>
+        <div className="text-[11px] text-slate-400">תמונת מצב כללית{loading ? ' · טוען…' : ''}</div>
       </div>
 
       {/* KPI row */}
