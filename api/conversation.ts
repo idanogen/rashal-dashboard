@@ -2,6 +2,8 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireUser } from './_lib/require-user.js';
 import { supabaseAdmin } from './_lib/supabase-admin.js';
 import { loadThread, windowState } from './_lib/thread.js';
+import { listActiveTemplates } from './_lib/templates-store.js';
+import { toPanelTemplates, type PanelTemplate } from './_lib/panel-templates.js';
 import { toItem, sortItems, matchesQuery, type ConversationRow } from './_lib/inbox.js';
 
 /**
@@ -89,7 +91,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!phone && !customer) return await listInbox(req, res);
 
     const thread = await loadThread({ phone, customer });
-    return res.status(200).json({ ok: true, ...thread });
+
+    // ⭐⭐ **מה אפשר לשלוח מכאן, ולא רק מה נאמר.** עד 24/08/2026 השרשור
+    // חזר בלי תבניות, ולכן החלונית שנפתחת מהתיבה אמרה "החלון סגור, תבנית
+    // נשלחת מהלקוח שעל המסך בפריוריטי" וזה כל מה שהיה. כלומר מבוי סתום,
+    // בזמן ששתי תבניות מאושרות היו זמינות לשליחה מיד. [[form_removal_does_not_close_intake]]
+    //
+    // 🔴 **`allowDocument: false`, כי כאן אין שורה בפריוריטי.** תעודה או
+    // חשבונית מופקות מהסשן של המסך, ולכן הן אינן מוצעות כאן. שאר התבניות
+    // כן. הכלל עצמו יושב ב-`toPanelTemplates` ונאמר פעם אחת.
+    let templates: PanelTemplate[] = [];
+    try {
+      templates = toPanelTemplates(await listActiveTemplates(), { allowDocument: false });
+    } catch (e) {
+      // 🔴 כשל בטעינת המחסנית אינו מפיל את השרשור. הוא שווה משהו גם בלי
+      // תבניות, ואומר "אין תבנית זמינה" במקום להיראות שבור.
+      console.error('[conversation] templates failed', e instanceof Error ? e.message : e);
+    }
+
+    return res.status(200).json({ ok: true, ...thread, templates });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg === 'invalid phone') return res.status(400).json({ ok: false, error: msg });

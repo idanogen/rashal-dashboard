@@ -4,6 +4,7 @@ import { supabaseAdmin } from './_lib/supabase-admin.js';
 import { loadThread } from './_lib/thread.js';
 import { normalizePhone } from './_lib/phone.js';
 import { listActiveTemplates } from './_lib/templates-store.js';
+import { toPanelTemplates, type PanelTemplate } from './_lib/panel-templates.js';
 import { pickDocument } from './_lib/doc-prefill.js';
 
 /**
@@ -202,23 +203,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // במסך, וכל הצוות מקבל אותה בלי לעדכן גרסה של התוסף.
   // 🔴 לא מסננים לפי קטגוריה: תבנית שיווק היא עדיין תבנית שאפשר לשלוח,
   // והחלונית אומרת שהיא עולה יותר במקום שהמחיר יתגלה בחשבונית.
-  let templates: Array<Record<string, unknown>> = [];
+  // ⭐ **`allowDocument: true`, כי כאן יש שורה בפריוריטי.** מדיה פר-נמען
+  // אינה חסומה: התוסף מפיק את המסמך מהסשן ומעביר את כתובתו. 🔴 אבל היא
+  // דורשת מסך שנלמד, ולכן החלונית מכריעה אם אפשר לשלוח כאן ועכשיו, והשרת
+  // דוחה שליחה בלי מסמך. הכלל עצמו יושב ב-`toPanelTemplates`, פעם אחת.
+  let templates: PanelTemplate[] = [];
   try {
-    templates = (await listActiveTemplates()).map((t) => ({
-      key: t.key,
-      label: t.label,
-      variables: t.variables,
-      preview: t.bodyPreview,
-      category: t.category,
-      // ⭐ מדיה **קבועה** (סרטון הדרכה) נשלחת כמו שהיא, כי הקובץ כבר
-      // ב-heyy.
-      // ⭐ מדיה **פר נמען** כבר לא חסומה: התוסף מפיק את המסמך מפריוריטי
-      // ומעביר את כתובתו. 🔴 אבל היא דורשת מסך שנלמד, ולכן החלונית היא
-      // שמכריעה אם אפשר לשלוח כאן ועכשיו, והשרת דוחה שליחה בלי מסמך.
-      available: true,
-      needsDocument: t.mediaPerMessage,
-      unavailableReason: null,
-    }));
+    templates = toPanelTemplates(await listActiveTemplates(), { allowDocument: true });
   } catch (e) {
     // 🔴 כשל בטעינת המחסנית לא מפיל את הזיהוי. החלונית עדיין שווה משהו
     // בלי תבניות, והיא תאמר "אין תבנית זמינה" במקום להיראות שבורה.

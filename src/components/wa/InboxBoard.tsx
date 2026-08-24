@@ -462,6 +462,8 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE }: InboxBoardProps) {
       </div>
 
       <TemplateSendDialog
+        templates={thread.data?.templates}
+        loading={thread.isLoading}
         open={templateOpen}
         onOpenChange={setTemplateOpen}
         phone={selected}

@@ -52,6 +52,29 @@ export interface WaMessage {
   sent_at: string;
 }
 
+/**
+ * תבנית שאפשר לשלוח מהתיבה.
+ *
+ * 🔴🔴 **מגיעה מהשרת, ולא נבחרת שוב בדפדפן.** עד 24/08/2026 הקובץ
+ * `lib/wa-templates.ts` שאל את Supabase ישירות וסינן כאן
+ * `heyy_status === 'active' && !media_per_message`, בזמן שהשרת הצהיר את
+ * אותו כלל בעצמו. שני מימושים של החלטה אחת, ואחד מהם כבר נפרד: החלונית
+ * בפריוריטי לא הציעה תבנית כלל כשהחלון היה סגור. הכלל היחיד יושב עכשיו
+ * ב-`api/_lib/templates-store.ts`, ב-`toPanelTemplates`.
+ * [[screen_and_sender_must_share_one_module]]
+ */
+export interface SendableTemplate {
+  key: string;
+  label: string;
+  variables: string[];
+  preview: string;
+  category: string;
+  attachmentKind: string | null;
+  available: boolean;
+  needsDocument: boolean;
+  unavailableReason: string | null;
+}
+
 export interface ThreadResponse {
   ok: true;
   conversation: {
@@ -67,6 +90,8 @@ export interface ThreadResponse {
   } | null;
   window: WaWindow;
   messages: WaMessage[];
+  /** ריק כשהשרת לא הצליח לטעון את המחסנית. אין תבניות אינו שגיאה. */
+  templates?: SendableTemplate[];
 }
 
 async function authFetch(path: string, init?: RequestInit) {

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Loader2, Send, FileText, Video } from 'lucide-react';
 import {
@@ -8,9 +7,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { fetchSendableTemplates, type SendableTemplate } from '@/lib/wa-templates';
 import { renderPreview, missingVariables } from '@/lib/template-render';
-import { sendTemplate } from '@/lib/wa-inbox';
+import { sendTemplate, type SendableTemplate } from '@/lib/wa-inbox';
 import { cn } from '@/lib/utils';
 
 /**
@@ -24,6 +22,10 @@ import { cn } from '@/lib/utils';
  * ⭐ **התצוגה המקדימה היא הנוסח האמיתי.** מה שרואים כאן הוא מה שהלקוח
  * יקבל, כי שני הצדדים מחליפים את המשתנים באותו ביטוי בדיוק, ויש על כך
  * בדיקה שמשווה את שני הקבצים.
+ *
+ * 🔴 **הרשימה נמסרת מבחוץ ואינה נטענת כאן.** מי מכריע מה אפשר לשלוח
+ * מאיפה הוא השרת, ב-`toPanelTemplates`, וגם החלונית שבתוך פריוריטי
+ * קוראת את אותה רשימה מאותה נקודת קצה. ראה `SendableTemplate`.
  */
 
 const VAR_LABELS: Record<string, string> = {
@@ -40,22 +42,22 @@ interface Props {
   onOpenChange: (v: boolean) => void;
   phone: string | null;
   customerName?: string;
+  /** מה שהשרשור החזיר. undefined = השרשור עוד נטען. */
+  templates?: SendableTemplate[];
+  loading?: boolean;
   onSent?: () => void;
 }
 
-export function TemplateSendDialog({ open, onOpenChange, phone, customerName, onSent }: Props) {
+export function TemplateSendDialog({
+  open, onOpenChange, phone, customerName, templates, loading, onSent,
+}: Props) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [sending, setSending] = useState(false);
 
-  const templates = useQuery({
-    queryKey: ['wa-sendable-templates'],
-    queryFn: fetchSendableTemplates,
-    staleTime: 10 * 60 * 1000,
-    enabled: open,
-  });
-
-  const list = useMemo(() => templates.data ?? [], [templates.data]);
+  // 🔴 מסננים לפי `available`, ולא מציגים תבנית שמטא לא אישרה כאילו
+  // אפשר לשלוח אותה. הסיבה חוזרת מהשרת ב-`unavailableReason`.
+  const list = useMemo(() => (templates ?? []).filter((t) => t.available), [templates]);
   const selected: SendableTemplate | null =
     list.find((t) => t.key === selectedKey) ?? null;
 
@@ -67,7 +69,7 @@ export function TemplateSendDialog({ open, onOpenChange, phone, customerName, on
   }, [open, customerName]);
 
   const missing = selected ? missingVariables(selected.variables, values) : [];
-  const preview = selected ? renderPreview(selected.bodyPreview, values) : '';
+  const preview = selected ? renderPreview(selected.preview, values) : '';
 
   async function send() {
     if (!selected || !phone || missing.length || sending) return;
@@ -94,13 +96,13 @@ export function TemplateSendDialog({ open, onOpenChange, phone, customerName, on
         </DialogHeader>
 
         <div className="space-y-3 py-1">
-          {templates.isLoading && (
+          {loading && (
             <div className="flex justify-center py-6">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
           )}
 
-          {!templates.isLoading && list.length === 0 && (
+          {!loading && list.length === 0 && (
             <p className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
               אין תבנית שאפשר לשלוח מכאן. תבניות מוצעות לצוות במסך תבניות הוואטסאפ.
             </p>
@@ -131,7 +133,7 @@ export function TemplateSendDialog({ open, onOpenChange, phone, customerName, on
                       {t.label}
                     </span>
                     <span className="mt-0.5 line-clamp-2 block text-[11px] text-muted-foreground">
-                      {t.bodyPreview}
+                      {t.preview}
                     </span>
                   </button>
                 ))}
