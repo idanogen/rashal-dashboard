@@ -4,6 +4,7 @@ import { supabaseAdmin } from './_lib/supabase-admin.js';
 import { loadThread } from './_lib/thread.js';
 import { normalizePhone } from './_lib/phone.js';
 import { listActiveTemplates } from './_lib/templates-store.js';
+import { normalizeLearnedProc, procsToMap } from './_lib/print-procs.js';
 import { toPanelTemplates, type PanelTemplate } from './_lib/panel-templates.js';
 import { pickDocument } from './_lib/doc-prefill.js';
 
@@ -106,6 +107,56 @@ async function noteScreenToMap(rawForm: unknown, candidates: string[]): Promise<
   }
 }
 
+/**
+ * שומר פרוצדורת הדפסה שהתוסף למד.
+ *
+ * 🔴 **התוסף שולח רק מה שהוכיח את עצמו.** `printer.js` צורב פרוצדורה
+ * למועמדת רק אחרי שאותה הרצה באמת החזירה קובץ, ולכן מה שמגיע לכאן כבר
+ * עבר סינון אחד. האימות כאן הוא השני, והוא זה שמגן על שאר העובדים.
+ */
+async function recordLearnedProc(raw: unknown, email: string | null) {
+  const r = normalizeLearnedProc(raw);
+  if (!r.ok || !r.value) {
+    console.warn('[priority-context] פרוצדורת הדפסה נדחתה:', r.reason);
+    return;
+  }
+  const v = r.value;
+  try {
+    const { error } = await supabaseAdmin.from('priority_print_procs').upsert(
+      {
+        form: v.form,
+        ename: v.ename,
+        table_name: v.table,
+        avoidmessages: v.avoidmessages,
+        print_args: v.printArgs,
+        learned_by: email,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'form' },
+    );
+    if (error) console.error('[priority-context] שמירת פרוצדורה נכשלה', error.message);
+  } catch (e) {
+    console.error('[priority-context] שמירת פרוצדורה נפלה', e);
+  }
+}
+
+/** כל מה שנלמד עד היום, לכל המסכים. התוסף ממזג את זה למה שיש לו. */
+async function loadProcs() {
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('priority_print_procs')
+      .select('form, ename, table_name, avoidmessages, print_args');
+    if (error) {
+      console.error('[priority-context] טעינת פרוצדורות נכשלה', error.message);
+      return {};
+    }
+    return procsToMap(data);
+  } catch {
+    // 🔴 כשל כאן אינו מפיל את הזיהוי. התוסף ימשיך עם מה שלמד מקומית.
+    return {};
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Cache-Control', 'no-store');
 
@@ -116,7 +167,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const user = await requireUser(req);
   if (!user) return res.status(401).json({ ok: false, error: 'unauthorized' });
 
-  const body = (req.body ?? {}) as { form?: string; candidates?: unknown };
+  const body = (req.body ?? {}) as { form?: string; candidates?: unknown; learnedProc?: unknown };
+
+  // ── מה שהתוסף למד על מסך ההדפסה ────────────────────────
+  //
+  // ⭐⭐ **נלמד פעם אחת, לכל החברה.** עד 24/08/2026 זה נשמר ב-
+  // `chrome.storage`, כלומר פר דפדפן: כל עובד חדש התחיל מאפס, והכפתור
+  // היה אפור בפעם הראשונה בכל סוג מסמך. זה ידע של החברה ולא של המשתמש.
+  //
+  // 🔴 נשמר **לפני** כל יציאה מוקדמת, בדיוק כמו רישום המסך: מסך שהזיהוי
+  // נכשל בו הוא עדיין מסך שלמדנו להדפיס.
+  if (body.learnedProc !== undefined) void recordLearnedProc(body.learnedProc, user.email ?? null);
+
   const candidates = cleanCandidates(body.candidates);
   if (!candidates.length) {
     return res.status(400).json({ ok: false, error: 'no candidates' });
@@ -178,7 +240,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (!matches.length) {
-    return res.status(200).json({ ok: true, form: body.form ?? null, customer: null, matches: [] });
+    return res.status(200).json({
+      ok: true, form: body.form ?? null, customer: null, matches: [],
+      // ⭐ גם כשלא זוהה לקוח. מה שנלמד על המסך אינו תלוי בזיהוי.
+      procs: await loadProcs(),
+    });
   }
 
   const rank: Record<Confidence, number> = { verified: 0, probable: 1, phone: 2 };
@@ -220,6 +286,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ok: true,
     form: body.form ?? null,
     customer: best,
+    procs: await loadProcs(),
     templates,
     prefill: {
       customer_name: best.customerName ?? '',
