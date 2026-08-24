@@ -115,8 +115,12 @@ export function answerLine(
       .filter((d): d is number => d != null)
       .sort((a, b) => b - a)[0];
     const wait = oldest == null ? '' : ` ממתין ${oldest === 1 ? 'יום' : `${oldest} ימים`}.`;
-    const many = orders.length > 1 ? `${orders.length} משלוחים פתוחים` : 'יש משלוח פתוח';
-    return { text: `${many}, עדיין לא שובצו לאספקה.${wait}`, tone: 'warn' };
+    // ⭐ יחיד ורבים. "יש משלוח פתוח, עדיין לא שובצו" הוא בדיוק סוג
+    // המשפט שמסגיר שהמסך נכתב על ידי מכונה.
+    const many = orders.length > 1
+      ? `יש ${orders.length} משלוחים פתוחים, עדיין לא שובצו לאספקה.`
+      : 'יש משלוח פתוח, עדיין לא שובץ לאספקה.';
+    return { text: `${many}${wait}`, tone: 'warn' };
   }
 
   const callScheduled = calls.find((c) => c.scheduled);

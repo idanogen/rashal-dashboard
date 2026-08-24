@@ -30,13 +30,13 @@ test('🔴 משלוח פתוח שלא שובץ: המשפט אומר כמה זמ�
   // גיל ההמתנה הוא מה שמאפשר לנציג להבחין בין עבודה חיה לשארית.
   const a = answerLine([order()], [], NOW);
   assert.equal(a.tone, 'warn');
-  assert.match(a.text, /לא שובצו/);
+  assert.match(a.text, /לא שובץ לאספקה/, 'יחיד ורבים');
   assert.match(a.text, /12 ימים/);
 });
 
 test('כמה משלוחים פתוחים: הגיל נלקח מהוותיק ביותר', () => {
   const a = answerLine([order({ created: '2026-08-22T08:00:00Z' }), order({ id: 'o2', created: '2026-06-01T08:00:00Z' })], [], NOW);
-  assert.match(a.text, /2 משלוחים פתוחים/);
+  assert.match(a.text, /יש 2 משלוחים פתוחים, עדיין לא שובצו/);
   assert.match(a.text, /84 ימים/);
 });
 
