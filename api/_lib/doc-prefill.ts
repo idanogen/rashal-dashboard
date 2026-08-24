@@ -28,6 +28,10 @@ export const SUBJECT_BY_FORM: Record<string, string> = {
   EINVOICES: 'החשבונית',
   PORDERS: 'הזמנת הרכש',
   SERVCALLS: 'קריאת השירות',
+  // ⭐ אצל ר.שעל מסך קריאות השירות הוא `DOCUMENTS_Q`, כלומר טבלת
+  // `DOCUMENTS` עם `TYPE='Q'`, ולא `SERVCALLS`. אומת ב-24/08/2026
+  // כשעידן הדפיס משם ומה שנלמד הגיע תחת השם הזה.
+  DOCUMENTS_Q: 'קריאת השירות',
 };
 
 /**
@@ -50,6 +54,7 @@ export const DOC_TYPE_BY_FORM: Record<string, string> = {
   EINVOICES: 'חשבונית מס קבלה',
   PORDERS: 'הזמנת רכש',
   SERVCALLS: 'קריאת שירות',
+  DOCUMENTS_Q: 'קריאת שירות',
 };
 
 /**
@@ -83,6 +88,9 @@ export const DOC_PREFIX_BY_FORM: Record<string, string[]> = {
   ORDERS: ['SO'],
   DOCUMENTS_D: ['SH'],
   SERVCALLS: ['SC'],
+  // ✅ אומת על הנתונים של ר.שעל ב-24/08/2026: 2,966 קריאות שירות,
+  // מ-`SC2600001` ועד `SC2602966`, כולן בקידומת אחת.
+  DOCUMENTS_Q: ['SC'],
   AINVOICES: ['IN', 'IK'],
   CINVOICES: ['SI'],
   // ⭐ `OV` נמדד חי על המסך של ר.שעל (`OV2600987`, 22/08/2026).

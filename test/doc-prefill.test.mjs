@@ -201,3 +201,16 @@ test('normalizeEntity: מסך שלא מיפינו עובר כמו שהוא', () 
   // המסכים שביטלנו, רק בדלת האחורית.
   assert.equal(normalizeEntity('WHATEVER_NEW_FORM', '').entityType, 'WHATEVER_NEW_FORM');
 });
+
+test('🔴 מסך קריאות השירות אצל ר.שעל הוא DOCUMENTS_Q ולא SERVCALLS', () => {
+  // ⭐ נמדד ב-24/08/2026: עידן הדפיס קריאת שירות, ומה שנלמד הגיע תחת
+  // `DOCUMENTS_Q`, כלומר טבלת `DOCUMENTS` עם `TYPE='Q'`. המפה הכירה רק
+  // את `SERVCALLS`, ולכן המסך הזה נחשב "לא נמדד" והתבנית יצאה בלי סוג
+  // מסמך ובלי מספר.
+  // ✅ הקידומת אומתה על 2,966 קריאות במחסן: SC2600001 עד SC2602966.
+  const r = pickDocument('DOCUMENTS_Q', ['SC2602966', '511941213']);
+  assert.equal(r.needs_measure, false, '🔴 המסך עדיין נחשב לא מוכר');
+  assert.equal(r.doc_number, 'SC2602966');
+  assert.equal(r.doc_type, 'קריאת שירות');
+  assert.equal(r.subject, 'קריאת השירות');
+});
