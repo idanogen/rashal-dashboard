@@ -276,6 +276,29 @@ async function handleInbound(payload: any, finish: Finish, res: VercelResponse) 
   const phoneE164 = toE164(extracted.rawPhone);
   const phoneLocal = normalizePhone(extracted.rawPhone);
 
+  // 🔴🔴 **הודעה עם קובץ ובלי טקסט אינה כישלון.**
+  //
+  // עד 24/08/2026 היא נרשמה כאן כ-`failed` עם "missing phone or text",
+  // והוובהוק סומן `handled: false`. זה קרה באמת ב-20/08, כשנכנסה תמונה
+  // בלי מילה. **השרשור עצמו כן קיבל אותה** (`recordToThread` רץ לפני
+  // הפיצול למסלולים), אבל הלוג הכריז על אובדן שלא קרה.
+  //
+  // ⭐ וזה הסוג הגרוע של רעש: מי שיסרוק את הלוג יחפש הודעה אבודה שלא
+  // אבדה, ויתעלם בפעם הבאה גם מכישלון אמיתי. לוג שמכריז על כשל שגוי
+  // שוחק את הערך של כל שאר השורות בו.
+  //
+  // 🔴 המסלול הישן עצמו באמת דורש טקסט, כי כל תפקידו הוא לפרש תשובת
+  // לקוח על הזמנה ("מתאים" / "מחר בבוקר"). תמונה אינה תשובה כזאת, ולכן
+  // היא מדולגת בכוונה, ונאמר במפורש שהיא כבר בשרשור.
+  const hasAttachments = Array.isArray(payload?.data?.content?.attachments)
+    && payload.data.content.attachments.length > 0;
+
+  if (phoneE164 && !extracted.rawText && hasAttachments) {
+    return finish(true, 'קובץ בלי טקסט: נרשם בשרשור, ואינו תשובת לקוח לפירוש', {
+      skipped: 'media_without_text',
+    });
+  }
+
   if (!phoneE164 || !extracted.rawText) {
     await supabaseAdmin.from('whatsapp_inbound').insert({
       provider_message_id: extracted.providerId,
