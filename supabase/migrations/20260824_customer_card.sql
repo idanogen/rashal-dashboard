@@ -57,7 +57,11 @@ comment on function public.is_office_staff() is
 --
 -- ⭐ **מספר מסמך הוא נקודת כניסה אמיתית ולא קישוט:** לקוח מתקשר עם
 -- תעודה ביד ומקריא את המספר שעליה.
-create or replace function public.customer_search(p_query text, p_limit int default 12)
+-- 🔴 ברירת המחדל הועלתה מ-12 ל-25 ב-25/08/2026. עידן: "בחיפוש
+-- קורן אני מצפה גם למצוא שלומי קורן." יש 28 לקוחות שהשם שלהם מכיל
+-- "קורן", 15 מהם מתחילים בו, והתקרה של 12 חתכה בדיוק את מי שהשם
+-- הפרטי שלו קדם. **הדירוג היה נכון והתקרה הסתירה אותו.**
+create or replace function public.customer_search(p_query text, p_limit int default 25)
 returns table (
   customer_number text,
   customer_name   text,
@@ -125,11 +129,23 @@ begin
            )
 
     union all
-    -- שם. 🔴 מתחיל-ב קודם להכיל, כי מי שמקליד "כה" מחפש את "כהן"
-    -- ולא את "מכהן".
+    -- שם.
+    --
+    -- 🔴🔴 **תחילת מילה, ולא תחילת שורה.** עידן, 25/08/2026: "בחיפוש
+    -- קורן אני מצפה גם למצוא שלומי קורן." הדירוג הקודם נתן 70 רק למי
+    -- שהשם שלו **מתחיל** ב"קורן", ו-50 לכל השאר. ומכיוון שיש עשרות
+    -- לקוחות בשם "קורן משהו", הם מילאו את כל שתים-עשרה השורות
+    -- ו"שלומי קורן" לא הופיע לעולם. הדירוג היה נכון והתקרה הסתירה אותו.
+    --
+    -- ⭐ בעברית שם מלא הוא שתי מילים בשני סדרים ("קורן אורית" מול
+    -- "שלומי קורן"), ולכן ההתאמה הנכונה היא לתחילת **כל מילה**.
     select d.customer_number, d.customer_name, d.phone, d.phone_local, d.city,
            'name',
-           case when d.customer_name ilike q || '%' then 70 else 50 end
+           case
+             when d.customer_name ilike q || '%' then 72
+             when d.customer_name ~* ('(^|\s)' || regexp_replace(q, '([.^$*+?()\[\]{}|\\])', '\\\1', 'g')) then 70
+             else 50
+           end
       from public.customer_directory d
      where length(q) >= 2 and d.customer_name ilike '%' || q || '%'
 
@@ -139,8 +155,9 @@ begin
     select d.customer_number, d.customer_name, d.phone, d.phone_local, d.city,
            'phone-part', 60
       from public.customer_directory d
+     -- ⭐ על העמודה המחושבת שבמחסן, כדי שהאינדקס יעבוד.
      where length(digits) between 4 and 9
-       and regexp_replace(coalesce(d.phone, ''), '\D', '', 'g') like '%' || digits || '%'
+       and d.phone_digits like '%' || digits || '%'
   )
   select h.customer_number, h.customer_name, h.phone, h.phone_local, h.city,
          (array_agg(h.match_kind order by h.score desc))[1],

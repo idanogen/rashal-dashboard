@@ -82,7 +82,7 @@ export interface CustomerCardData {
 export async function searchCustomers(query: string): Promise<CustomerHit[]> {
   const q = query.trim();
   if (!q) return [];
-  const { data, error } = await supabase.rpc('customer_search', { p_query: q });
+  const { data, error } = await supabase.rpc('customer_search', { p_query: q, p_limit: 25 });
   if (error) throw new Error(error.message);
   return (data ?? []) as CustomerHit[];
 }

@@ -168,7 +168,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (typeof req.query.search === 'string' && req.query.search.trim().length >= 2) {
       const { data, error: sErr } = await supabaseAdmin.rpc('customer_search', {
         p_query: req.query.search.trim(),
-        p_limit: 12,
+        p_limit: 25,
       });
       if (sErr) {
         console.error('[conversation] search failed', sErr.message);
