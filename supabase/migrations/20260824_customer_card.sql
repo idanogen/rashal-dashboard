@@ -77,10 +77,14 @@ security definer
 set search_path to 'public'
 as $$
 declare
-  q      text := btrim(coalesce(p_query, ''));
-  digits text;
-  norm   text;
-  lim    int  := least(greatest(coalesce(p_limit, 12), 1), 50);
+  q        text := btrim(coalesce(p_query, ''));
+  digits   text;
+  norm     text;
+  lim      int  := least(greatest(coalesce(p_limit, 12), 1), 50);
+  q_re     text;
+  qwords   text[];
+  qwords_re text[];
+  multi    boolean := false;
 begin
   if public.is_office_staff() is not true then
     raise exception 'not authorized';
@@ -91,6 +95,22 @@ begin
 
   digits := regexp_replace(q, '\D', '', 'g');
   norm   := public.wa_normalize_phone(q);
+  q_re   := regexp_replace(q, '([.^$*+?()\[\]{}|\\])', '\\\1', 'g');
+
+  -- 🔴🔴 **שם מלא הוא מילים בלי סדר.** עידן, 25/08/2026: חיפוש
+  -- "שלומי קורן" לא מצא את "קורן שלומי-שלמה", כי ההתאמה הייתה למחרוזת
+  -- **רצופה** אחת. בפריוריטי אין סדר קבוע בין שם פרטי למשפחה, וזה
+  -- מתועד אצלנו מזמן, ולכן חצי מהחיפושים של שם מלא נכשלים בשקט
+  -- ומחזירים "אין תוצאות" על לקוח שקיים.
+  -- [[priority_customer_name_has_no_order]]
+  select array_agg(w) into qwords
+    from unnest(regexp_split_to_array(q, '\s+')) w
+   where length(w) >= 2;
+  multi := coalesce(array_length(qwords, 1), 0) > 1;
+  if multi then
+    select array_agg(regexp_replace(w, '([.^$*+?()\[\]{}|\\])', '\\\1', 'g'))
+      into qwords_re from unnest(qwords) w;
+  end if;
 
   return query
   with hits as (
@@ -143,11 +163,40 @@ begin
            'name',
            case
              when d.customer_name ilike q || '%' then 72
-             when d.customer_name ~* ('(^|\s)' || regexp_replace(q, '([.^$*+?()\[\]{}|\\])', '\\\1', 'g')) then 70
+             when d.customer_name ~* ('(^|[\s\-])' || q_re) then 70
              else 50
            end
       from public.customer_directory d
      where length(q) >= 2 and d.customer_name ilike '%' || q || '%'
+
+    union all
+    -- שם שמורכב מכמה מילים, **בכל סדר**.
+    --
+    -- ⭐ ענף נפרד ולא `or` בענף שמעליו, כדי שהאינדקס הטריגרמי יישאר
+    -- בשימוש: התנאי המוביל הוא מילה בודדת, ומה שנשאר מסונן על התוצאה.
+    -- קפיצה ל-`seq scan` על 42,757 שורות בכל הקלדה היא בדיוק מה
+    -- שתיקנו הבוקר. [[view_that_fit_at_5k_breaks_at_42k]]
+    --
+    -- 🔴 **התאמה מלאה של כל המילים, לא אחת מהן.** "שלומי כהן" חייב
+    -- למצוא את "כהן שלומי" ולא את כל הכהנים ואת כל השלומים.
+    select d.customer_number, d.customer_name, d.phone, d.phone_local, d.city,
+           'name',
+           -- 71 כשכל מילה יושבת בתחילת מילה בשם, אחרת 62: מתחת להתאמה
+           -- הרצופה שמעל, ומעל התאמה חלקית באמצע מילה.
+           case
+             when not exists (
+                    select 1 from unnest(qwords_re) w
+                     where d.customer_name !~* ('(^|[\s\-])' || w)
+                  ) then 71
+             else 62
+           end
+      from public.customer_directory d
+     where multi
+       and d.customer_name ilike '%' || qwords[1] || '%'
+       and not exists (
+             select 1 from unnest(qwords) w
+              where d.customer_name not ilike '%' || w || '%'
+           )
 
     union all
     -- חלק ממספר טלפון. 🔴 לפחות ארבע ספרות: שלוש מחזירות חצי מהתיבה
