@@ -144,6 +144,70 @@ async function handleGet(res: VercelResponse) {
   });
 }
 
+/**
+ * אנשי הקשר של הלקוח, מתת-הטופס `CUSTPERSONNEL_SUBFORM`.
+ *
+ * 🔴🔴 **הטלפון של בן המשפחה שכותב בוואטסאפ יושב כאן ולא בכרטיס
+ * הלקוח.** אצל ר.שעל הלקוח הוא מטופל. נמדד 25/08/2026: שליש מהשיחות
+ * בתיבה היו "לא מזוהות" בגלל זה.
+ *
+ * 🔴 **`PHONE` בתת-הטופס הוא מזהה שורה פנימי, לא טלפון.** הטלפון
+ * האמיתי ב-`CELLPHONE` / `PHONENUM` / `OFFICEPHONE`. לקח מאומת של רוני.
+ *
+ * 🔴 **ומחיקה היא רק בהיקף הלקוחות שבאמת הגיעו עם תת-טופס.** לקוח
+ * שנמשך בלי `$expand` אינו לקוח שאנשי הקשר שלו נמחקו.
+ */
+async function upsertContacts(rows: Row[]): Promise<{ customers: number; rows: number } | null> {
+  type Sub = Record<string, unknown>;
+  const byCustomer = new Map<string, Sub[]>();
+  for (const r of rows) {
+    const custname = s(r.CUSTNAME);
+    const sub = (r as Row).CUSTPERSONNEL_SUBFORM;
+    if (!custname || !Array.isArray(sub)) continue;
+    byCustomer.set(custname, sub as Sub[]);
+  }
+  if (!byCustomer.size) return null;
+
+  const mapped: Row[] = [];
+  for (const [custname, sub] of byCustomer) {
+    for (const c of sub) {
+      const name = s(c.NAME) ?? '';
+      const cell = s(c.CELLPHONE);
+      const land = s(c.PHONENUM);
+      const office = s(c.OFFICEPHONE);
+      // ⭐ איש קשר בלי שם ובלי אף טלפון אינו איש קשר.
+      if (!name && !cell && !land && !office) continue;
+      mapped.push({
+        custname,
+        name,
+        position_des: s(c.POSITIONDES),
+        cellphone: cell,
+        phonenum: land,
+        officephone: office,
+        email: s(c.EMAIL),
+        status_des: s(c.STATDES),
+        synced_at: new Date().toISOString(),
+      });
+    }
+  }
+
+  // 🔴 **מחיקה לפני כתיבה, בהיקף הלקוחות של הדף הזה בלבד.** איש קשר
+  // שהוסר בפריוריטי חייב להיעלם גם אצלנו, אחרת נתקשר לטלפון שהמשפחה
+  // כבר ביקשה להסיר.
+  const names = [...byCustomer.keys()];
+  for (let i = 0; i < names.length; i += 200) {
+    const { error } = await supabaseAdmin
+      .from('priority_contacts').delete().in('custname', names.slice(i, i + 200));
+    if (error) throw new Error(`contacts delete: ${error.message}`);
+  }
+  for (let i = 0; i < mapped.length; i += 500) {
+    const { error } = await supabaseAdmin
+      .from('priority_contacts').insert(mapped.slice(i, i + 500));
+    if (error) throw new Error(`contacts insert: ${error.message}`);
+  }
+  return { customers: byCustomer.size, rows: mapped.length };
+}
+
 // ---------------------------------------------------------------------------
 // customers → priority_customers cache (plain upsert by custname)
 // ---------------------------------------------------------------------------
@@ -199,9 +263,16 @@ async function upsertCustomers(rows: Row[], backfill = false) {
     wm = bumped.toISOString().replace(/\.\d{3}Z$/, 'Z');
   }
   if (wm && !backfill) await setWatermark('customers', wm);
+
+  // ⭐⭐ **אנשי הקשר, כשהם הגיעו.** רק המשיכה עם `$expand` נושאת אותם,
+  // ולכן זה מסלול אופציונלי: הסנכרון החי (בלי expand) לא נוגע בהם ולא
+  // מוחק אותם. 🔴 בלי התנאי הזה, כל ריצה רגילה הייתה מרוקנת את הטבלה.
+  const contacts = await upsertContacts(rows);
+
   return {
     received: rows.length,
     upserted: changedCustomers.length,
+    contacts,
     unchanged: mapped.length - changedCustomers.length,
     backfill,
     watermark: backfill ? null : wm,
