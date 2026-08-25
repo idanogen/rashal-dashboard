@@ -699,6 +699,51 @@ async function probeFields(): Promise<Record<string, unknown>> {
   return out;
 }
 
+/**
+ * איזה שדה תאריך באמת זז כשעורכים רשומה קיימת.
+ *
+ * 🔴🔴 **השאלה הזאת עלתה בדם.** עידן עדכן טלפון ללקוח קיים ב-25/08/2026,
+ * והעדכון לא הגיע אלינו ולא היה מגיע לעולם: המשיכה השוטפת של הלקוחות
+ * מסננת `CREATEDDATE ge <watermark>`, ו-`CREATEDDATE` הוא תאריך **פתיחת**
+ * הלקוח ואינו זז בעריכה. כלומר כל עריכה של כרטיס לקוח קיים, טלפון,
+ * כתובת או עיר, נופלת בשקט.
+ *
+ * ⭐ **וזו בדיקה ולא הנחה.** מחזירה, לכל שדה תאריך, כמה רשומות השתנו
+ * מאז `since` והאם רשומה מסוימת שאנחנו יודעים שנערכה נמצאת ביניהן.
+ * `expect` הוא הבקרה החיובית: ספירה גבוהה בלי הרשומה שנערכה פירושה
+ * שהשדה זז מסיבה אחרת ואינו מה שחיפשנו. [[silence_needs_a_positive_control]]
+ */
+async function probeDateField(
+  entity: string,
+  key: string,
+  fields: string[],
+  since: string,
+  expect: string | null,
+): Promise<Record<string, unknown>> {
+  const auth = { headers: { Authorization: basicAuth(), "User-Agent": UA, Accept: "application/json" } };
+  const out: Record<string, unknown> = { entity, key, since, expect };
+
+  for (const f of fields) {
+    try {
+      const url = `${PRIORITY}/${entity}?$select=${key},${fields.join(",")}` +
+        `&$filter=${encodeURIComponent(`${f} ge ${since}`)}` +
+        `&$orderby=${f}%20desc&$top=1000`;
+      const res = await fetch(url, auth);
+      const body = await res.text();
+      if (!res.ok) { out[f] = `HTTP ${res.status}: ${body.slice(0, 300)}`; continue; }
+      const rows = JSON.parse(body)?.value ?? [];
+      out[f] = {
+        rows: rows.length,
+        expect_found: expect
+          ? rows.some((r: Record<string, unknown>) => String(r[key] ?? "") === expect)
+          : null,
+        sample: rows.slice(0, 3),
+      };
+    } catch (e) { out[f] = String(e).slice(0, 200); }
+  }
+  return out;
+}
+
 // ─── ריצת השוואה (reconcile) ────────────────────────────────────────────────
 // המשיכות הרגילות הן הפרשיות בלבד: כל אחת שואלת רק על מה שזז מאז הווטרמרק.
 // רשומה שנוצרה לפני שהסנכרון התחיל, או שהווטרמרק דילג עליה, לא תיכנס לעולם,
@@ -907,6 +952,15 @@ Deno.serve(async (req: Request) => {
   }
   if (job === "probe-fields") {
     return new Response(JSON.stringify(await probeFields(), null, 2), { headers: { "Content-Type": "application/json" } });
+  }
+  if (job === "probe-datefield") {
+    const entity = String(body?.entity ?? "CUSTOMERS");
+    const key = String(body?.key ?? "CUSTNAME");
+    const fields = Array.isArray(body?.fields) ? (body.fields as unknown[]).map(String) : ["CREATEDDATE", "STATUSDATE"];
+    const since = String(body?.since ?? new Date(Date.now() - 86_400_000).toISOString().slice(0, 19) + "Z");
+    const expect = body?.expect ? String(body.expect) : null;
+    return new Response(JSON.stringify(await probeDateField(entity, key, fields, since, expect), null, 2),
+      { headers: { "Content-Type": "application/json" } });
   }
   if (job === "reconcile-daily") {
     const days = Number(body?.days ?? 30);
