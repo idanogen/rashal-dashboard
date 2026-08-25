@@ -167,6 +167,18 @@ const BACKFILL_Q: Record<string, { kind: string; url: (f: string, t: string) => 
       `&$filter=${encodeURIComponent(`IVDATE ge ${f} and IVDATE lt ${t}`)}` +
       `&$orderby=IVDATE%20asc&$top=4000`,
   },
+  // ⭐ הלקוחות עם אנשי הקשר שלהם. עידן, 25/08/2026: "הגיע הזמן למשוך
+  // את כל אנשי הקשר למערכת." 🔴 השדה `PHONE` בתת-הטופס הוא מזהה שורה
+  // פנימי ולא טלפון (לקח מאומת של רוני, 12/07). הטלפון האמיתי יושב
+  // ב-CELLPHONE / PHONENUM / OFFICEPHONE.
+  customers_contacts: {
+    kind: "customers",
+    url: (f, t) =>
+      `/CUSTOMERS?$select=CUSTNAME,CUSTDES,ADDRESS,STATE,PHONE,FAX,AGENTNAME,MCUSTDES,OWNERLOGIN,CREATEDDATE` +
+      `&$expand=${encodeURIComponent("CUSTPERSONNEL_SUBFORM($select=NAME,POSITIONDES,CELLPHONE,PHONENUM,OFFICEPHONE,EMAIL,STATDES)")}` +
+      `&$filter=${encodeURIComponent(`CREATEDDATE ge ${f} and CREATEDDATE lt ${t}`)}` +
+      `&$orderby=CREATEDDATE%20asc&$top=4000`,
+  },
   pickups_addresses: {
     kind: "pickups",
     url: (f, t) =>
@@ -191,12 +203,25 @@ async function runBackfill(entity: string, from: string, to: string, dry: boolea
   if (!res.ok) return { entity, from, to, error: `HTTP ${res.status}`, detail: body.slice(0, 300) };
 
   let fetched = 0;
-  try { fetched = (JSON.parse(body)?.value ?? []).length; } catch { /* best effort */ }
+  // ⭐ **גם כמה שורות-בן חזרו, ולא רק כמה מסמכים.** מונה הקריאה של
+  // פריוריטי סופר שורות תת-טופס, וגם השאלה "כמה מהלקוחות בכלל יש להם
+  // אנשי קשר" נענית רק ככה. בלי זה `fetched` מדווח מסמכים ונראה זול.
+  let sub = 0, withSub = 0;
+  try {
+    const rows = JSON.parse(body)?.value ?? [];
+    fetched = rows.length;
+    for (const r of rows) {
+      for (const k of Object.keys(r)) {
+        if (!k.endsWith("_SUBFORM") || !Array.isArray(r[k])) continue;
+        if (r[k].length) { sub += r[k].length; withSub++; }
+      }
+    }
+  } catch { /* best effort */ }
 
   // 2,000 בדיוק = כמעט בוודאות קיטום שקט, לא סוף אמיתי של החלון.
   const truncated = fetched >= 2000;
 
-  if (dry) return { entity, from, to, fetched, truncated, dry: true };
+  if (dry) return { entity, from, to, fetched, subRows: sub, withSub, truncated, dry: true };
 
   const post = await fetch(`${INBOX}?kind=${cfg.kind}&backfill=1`, {
     method: "POST",

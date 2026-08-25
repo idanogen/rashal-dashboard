@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { TemplateSendDialog } from '@/components/wa/TemplateSendDialog';
 import { CustomerCardButton } from '@/components/customer/CustomerCardSheet';
+import { searchCustomers, customerSearchKey } from '@/lib/customer-card';
 import {
   Search,
   Clock,
@@ -368,6 +369,26 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE }: InboxBoardProps) {
     staleTime: WA_LIST_FOCUS_STALE_MS,
   });
 
+  /**
+   * ⭐⭐ **לקוחות שעדיין לא דיברנו איתם.**
+   *
+   * עידן, 25/08/2026: "ומה לגבי לקוחות שעדיין לא נשלחה להם הודעה?"
+   * הוא חיפש "שלומי" וקיבל "אין שיחה שמתאימה לחיפוש".
+   *
+   * 🔴 **והוא חשב שצריך למשוך נתונים, אבל הם כבר כאן.** התיבה מחפשת
+   * בתוך 42 השיחות בלבד, בזמן ש-`customer_search` מכירה **25,772
+   * לקוחות**. זו הייתה שאלה על נתונים, והתשובה הייתה מסך.
+   *
+   * 🔴 **חיפוש קצר מדי לא נשלח:** אות אחת מחזירה מאות שורות ומייצרת
+   * בקשה על כל הקלדה.
+   */
+  const people = useQuery({
+    queryKey: customerSearchKey(q),
+    queryFn: () => searchCustomers(q),
+    enabled: q.trim().length >= 2,
+    staleTime: 60_000,
+  });
+
   // ⭐⭐ **השרשור מרוענן מהר, וברגע שחוזרים לחלון הוא נשאל מיד.**
   //
   // 🔴 נתפס אצל עידן 24/08/2026: הוא שלח הודעה מהטלפון, חזר לדשבורד,
@@ -395,7 +416,15 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE }: InboxBoardProps) {
     staleTime: 0,
   });
 
-  const items = inbox.data?.items ?? [];
+  // ⭐ ממומו, אחרת `??` מייצר מערך חדש בכל ציור ומריץ מחדש כל תלות בו.
+  const items = useMemo(() => inbox.data?.items ?? [], [inbox.data]);
+
+  // 🔴 **לקוח שכבר מופיע כשיחה לא מוצג פעמיים.** הרשימה השנייה נועדה
+  // להשלים את הראשונה, לא לשכפל אותה.
+  const otherPeople = useMemo(() => {
+    const seen = new Set(items.map((i) => i.phone).filter(Boolean));
+    return (people.data ?? []).filter((c) => !c.phone_local || !seen.has(c.phone_local));
+  }, [people.data, items]);
   const counts = inbox.data?.counts ?? { waiting: 0, all: 0 };
 
   // ⭐ **אם אין מי שמחכה, אין טעם להציג לשונית ריקה.** נפתחים על כל
@@ -515,6 +544,41 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE }: InboxBoardProps) {
                 onClick={() => openConversation(i.phone)}
               />
             ))}
+
+            {/* ⭐ לקוחות שאין איתם שיחה. מה שהופך את החיפוש מחיפוש
+                בתיבה לחיפוש בכל בסיס הלקוחות. */}
+            {q.trim().length >= 2 && otherPeople.length > 0 && (
+              <div className="pt-2">
+                <div className="px-1 pb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  לקוחות בלי שיחה ({otherPeople.length})
+                </div>
+                <div className="space-y-1">
+                  {otherPeople.map((c) => (
+                    <div
+                      key={`${c.customer_number ?? ''}-${c.phone_local ?? ''}`}
+                      className="flex items-center justify-between gap-2 rounded-xl border bg-white px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate text-[13px] font-semibold text-slate-900">
+                          {c.customer_name || 'לקוח'}
+                        </div>
+                        <div className="truncate text-[11px] text-muted-foreground">
+                          {c.customer_number && <>לקוח <bdi>{c.customer_number}</bdi></>}
+                          {c.phone_local && <> · <bdi>{c.phone_local}</bdi></>}
+                          {c.city && <> · {c.city}</>}
+                        </div>
+                      </div>
+                      <CustomerCardButton
+                        customerNumber={c.customer_number}
+                        phone={c.phone_local}
+                        name={c.customer_name}
+                        compact
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

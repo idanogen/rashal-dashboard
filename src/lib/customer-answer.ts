@@ -69,15 +69,20 @@ export function dayLabel(iso: string | null | undefined): string {
   const names = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
   const dd = String(d.getDate()).padStart(2, '0');
   const mm = String(d.getMonth() + 1).padStart(2, '0');
-  return `יום ${names[d.getDay()]} ${dd}/${mm}`;
+  // 🔴🔴 **השנה נוספה ב-25/08/2026.** עידן: "חסר לי חיווי של שנה
+  // בתאריך." מה שהפך את זה מנוחות לתקלה הוא הייבוא ההיסטורי של אותו
+  // יום: עד אז כל מה שהמערכת הכירה היה 2026, והשנה הייתה מובנת מאליה.
+  // עכשיו יש בציר אירועים מ-2014, ו-"02/01" נקרא כאילו הוא מהחודש שעבר.
+  return `יום ${names[d.getDay()]} ${dd}/${mm}/${d.getFullYear()}`;
 }
 
-/** dd/mm, לאירוע שכבר קרה. */
+/** dd/mm/yy, לאירוע שכבר קרה. 🔴 עם שנה, ראה `dayLabel`. */
 export function shortDate(iso: string | null | undefined): string {
   if (!iso) return '';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
-  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${
+    String(d.getFullYear()).slice(2)}`;
 }
 
 /** חלון השעות, כשיש. */

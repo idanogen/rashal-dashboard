@@ -148,3 +148,21 @@ test('🔴 הפרדת המשפט לא שינתה את הניסוח שכבר או
   assert.equal(devicePhrase(null), null);
   assert.match(devicePhrase([device()], NOW), /^יש לו G175, מספר סידורי 17517098728, באחריות עד/);
 });
+
+test('🔴🔴 כל תאריך נושא שנה, אחרי שנכנסו 12 שנות היסטוריה', async () => {
+  // עידן, 25/08/2026: "חסר לי חיווי של שנה בתאריך."
+  // 🔴 עד הייבוא ההיסטורי של אותו יום כל מה שהמערכת הכירה היה 2026,
+  // והשנה הייתה מובנת מאליה. עכשיו יש בציר אירועים מ-2014, ו-"02/01"
+  // נקרא כאילו הוא מהחודש שעבר.
+  const { dayLabel, shortDate, answerLine } = await import('../src/lib/customer-answer.ts');
+  assert.equal(dayLabel('2026-08-26T00:00:00Z'), 'יום רביעי 26/08/2026');
+  assert.equal(shortDate('2014-01-02T00:00:00Z'), '02/01/14');
+  assert.equal(shortDate('2026-05-26T00:00:00Z'), '26/05/26');
+  // 🔴 ומשפט שנאמר ללקוח בטלפון נושא שנה מלאה: הוא לא רואה את המסך.
+  const sched = answerLine(
+    [{ id: 'o1', ref: 'S1', status: 'תואמה', created: '2026-08-20T09:00:00Z', match: 'number',
+       scheduled: true, date: '2026-08-26', driver: 'רודי' }], [], NOW);
+  assert.match(sched.text, /26\/08\/2026/);
+  assert.equal(shortDate(null), '');
+  assert.equal(dayLabel('בלגן'), '');
+});
