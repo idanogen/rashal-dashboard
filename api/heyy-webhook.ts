@@ -364,6 +364,26 @@ async function handleInbound(payload: any, finish: Finish, res: VercelResponse) 
     await supabaseAdmin.from('orders').update(orderUpdate).eq('id', orderId);
   }
 
+  // ── תשובת הלקוח חוזרת אל העצירה ביומן ──────────────────
+  //
+  // 🔴🔴 **עד 25/08/2026 זה לא קרה בפרודקשן בכלל.** התשובה נכתבה
+  // ל-`orders` בלבד, ורק הסימולטור שבדפדפן עדכן את `calendar_stops`.
+  // לכן בדמו הלולאה נראתה סגורה, ובשטח הסדרן היה רואה "WA נשלח" לנצח.
+  //
+  // ⭐ ההתאמה נעשית במסד (`wa_apply_coordination_reply`), כי שם יושב
+  // הנרמול של הטלפון, ושם נאכף שזו עצירה ששלחנו עליה שאלה ובחלון זמן
+  // סביר. אין התאמה אינה שגיאה: רוב ההודעות הנכנסות אינן תשובת תיאום.
+  if (parsed.status) {
+    const { data: stopId, error: coordErr } = await supabaseAdmin.rpc(
+      'wa_apply_coordination_reply',
+      { p_phone: phoneE164, p_status: parsed.status },
+    );
+    // נכשל בשקט בלוג בלבד: אסור שכשל כאן יגרום ל-heyy לשלוח שוב את
+    // ההודעה, כי היא כבר נקלטה.
+    if (coordErr) console.error('[heyy-webhook] coordination reply', coordErr.message);
+    else if (stopId) console.log('[heyy-webhook] coordination', parsed.status, stopId);
+  }
+
   await supabaseAdmin
     .from('whatsapp_inbound')
     .update({ status: 'processed', processed_at: new Date().toISOString() })

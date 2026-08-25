@@ -12,13 +12,16 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { MessageCircle, Phone, Calendar, Clock, MapPin, User, CheckCircle2 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import type { CalendarStop } from '@/types/delivery';
-import { useSendReminder } from '@/hooks/useWhatsAppSend';
 import { useUpdateStopCoordination } from '@/hooks/useUpdateStopCoordination';
 import { useActivityLogger } from '@/hooks/useActivityLogger';
-import { useAuth } from '@/lib/auth-context';
-import { getTemplate, isPlaceholderTemplate } from '@/lib/heyy/templates';
-import { isDemoMode } from '@/lib/heyy/client';
+import { fetchThread, sendTemplate } from '@/lib/wa-inbox';
+import {
+  COORDINATION_TEMPLATE_KEY, PURPOSES,
+  coordinationPreview, coordinationValues, hebrewDay,
+} from '@/lib/coordination-message';
 import { formatPhoneForDisplay } from '@/lib/heyy/phone';
 import { CoordinationStatusBadge } from './CoordinationStatusBadge';
 
@@ -33,15 +36,14 @@ interface ScheduleCoordinationDialogProps {
   queue?: { index: number; total: number; onFinishAll: () => void };
 }
 
-function formatHebrewDate(yyyyMmDd: string): string {
-  // "2026-05-26" → "יום ג', 26.5.2026"
-  const d = new Date(yyyyMmDd + 'T00:00:00');
-  if (Number.isNaN(d.getTime())) return yyyyMmDd;
-  const dayNames = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
-  const dayName = dayNames[d.getDay()];
-  const dateStr = d.toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric', year: 'numeric' });
-  return `יום ${dayName}, ${dateStr}`;
-}
+/**
+ * 🔴 **התאריך שעל המסך נגזר מאותה פונקציה שבונה את ההודעה.** היו כאן שתי
+ * גזירות, וכל אחת הייתה יכולה לזוז בנפרד. [[label_and_math_from_two_mechanisms]]
+ */
+const dateForScreen = (iso: string) => {
+  const v = hebrewDay(iso);
+  return v === iso ? iso : `יום ${v}`;
+};
 
 export function ScheduleCoordinationDialog({
   stop,
@@ -49,10 +51,9 @@ export function ScheduleCoordinationDialog({
   onOpenChange,
   queue,
 }: ScheduleCoordinationDialogProps) {
-  const { user } = useAuth();
-  const sendReminder = useSendReminder();
   const updateCoord = useUpdateStopCoordination();
   const log = useActivityLogger();
+  const [sending, setSending] = useState(false);
 
   /** הקשר אירוע תיאום ללוג — מי/על מי/באיזו דרך (למנהל). */
   const logCoordination = (action: string, method: string) => {
@@ -69,6 +70,8 @@ export function ScheduleCoordinationDialog({
   const [timeStart, setTimeStart] = useState('09:00');
   const [timeEnd, setTimeEnd] = useState('13:00');
   const [note, setNote] = useState('');
+  /** ⭐ ברירת המחדל נגזרת מסוג העצירה, כי זה מה שהיא בפועל. */
+  const [purpose, setPurpose] = useState<string>(PURPOSES[0].value);
 
   // Sync state when stop changes (dialog re-opens for a different stop)
   useEffect(() => {
@@ -76,60 +79,89 @@ export function ScheduleCoordinationDialog({
       setTimeStart(stop.timeWindowStart ?? '09:00');
       setTimeEnd(stop.timeWindowEnd ?? '13:00');
       setNote('');
+      setPurpose(
+        stop.sourceType === 'pickup' ? 'לאיסוף הציוד'
+          : stop.sourceType === 'service' ? 'לביקור טכנאי'
+            : 'לאספקת הציוד',
+      );
     }
   }, [stop?.stopId, stop]);
 
+  /**
+   * 🔴 **זמינות התבנית נקראת מהשרת ולא נקבעת כאן.** הכלל "מה מותר לשלוח"
+   * מוצהר פעם אחת ב-`toPanelTemplates`, ותבנית שמטא עוד לא אישרה חוזרת
+   * עם `available: false` ועם הסיבה, במקום להיעלם.
+   * [[screen_and_sender_must_share_one_module]]
+   */
+  const { data: thread } = useQuery({
+    queryKey: ['coordinationTemplate', stop?.phone ?? ''],
+    queryFn: () => fetchThread(stop!.phone!),
+    enabled: open && !!stop?.phone,
+    staleTime: 60_000,
+  });
+
   if (!stop) return null;
 
-  const triggeredBy = user?.email ? `user:${user.email}` : 'user:anonymous';
-  const demo = isDemoMode();
-  const tpl = getTemplate('schedule_coordination');
-  const dateLabel = formatHebrewDate(stop.deliveryDate);
+  const tpl = thread?.templates?.find((t) => t.key === COORDINATION_TEMPLATE_KEY);
+  const dateLabel = dateForScreen(stop.deliveryDate);
   const hasPhone = !!stop.phone;
-  const placeholder = isPlaceholderTemplate(tpl.templateId);
+  const canSend = Boolean(tpl?.available);
+  const blockedReason = !hasPhone
+    ? 'אין מספר טלפון'
+    : !tpl
+      ? 'תבנית התיאום עוד לא הודלקה במסך התבניות.'
+      : !tpl.available
+        ? (tpl.unavailableReason ?? 'התבנית אינה זמינה לשליחה.')
+        : null;
 
-  const previewBody = tpl.bodyPreview.replace(/\{\{(\d+)\}\}/g, (_, n) => {
-    const params = tpl.buildParams({
-      customerName: stop.customerName,
-      dateLabel,
-      timeStart,
-      timeEnd,
-      note,
-    });
-    return params[Number(n) - 1] ?? '';
+  const previewBody = coordinationPreview({
+    customerName: stop.customerName,
+    purpose,
+    date: stop.deliveryDate,
+    timeStart,
+    timeEnd,
   });
 
   async function handleSendWhatsApp() {
-    if (!stop || !hasPhone) return;
-    const result = await sendReminder.mutateAsync({
-      reminderKind: 'schedule_coordination',
-      phone: stop.phone!,
-      orderId: stop.sourceType === 'delivery' ? stop.sourceId : undefined,
-      params: {
-        customerName: stop.customerName,
-        dateLabel,
-        timeStart,
-        timeEnd,
-        note,
-      },
-      triggeredBy,
-    });
-    if (result.ok) {
-      await updateCoord.mutateAsync({
-        stopId: stop.stopId,
-        silent: true,
-        fields: {
-          coordinationStatus: 'whatsapp_sent',
-          coordinationMethod: 'whatsapp',
-          coordinatedAt: new Date().toISOString(),
-          timeWindowStart: timeStart,
-          timeWindowEnd: timeEnd,
-          coordinationNeedsCancel: false,
-        },
-      });
-      logCoordination('coordinate_whatsapp', 'whatsapp');
-      onOpenChange(false);
+    if (!stop || !hasPhone || !canSend || sending) return;
+    setSending(true);
+    try {
+      await sendTemplate(
+        stop.phone!,
+        COORDINATION_TEMPLATE_KEY,
+        coordinationValues({
+          customerName: stop.customerName,
+          purpose,
+          date: stop.deliveryDate,
+          timeStart,
+          timeEnd,
+        }),
+      );
+    } catch (e) {
+      // 🔴 **הכישלון נאמר, ולא מסומן כנשלח.** שליחה שנחסמה ברשימת
+      // המושתקים או מחוץ לחלון מחזירה שגיאה, וסימון "WA נשלח" עליה היה
+      // אומר לסדרן שהלקוח קיבל הודעה שמעולם לא יצאה.
+      toast.error(e instanceof Error ? e.message : 'השליחה נכשלה');
+      setSending(false);
+      return;
     }
+    await updateCoord.mutateAsync({
+      stopId: stop.stopId,
+      silent: true,
+      fields: {
+        coordinationStatus: 'whatsapp_sent',
+        coordinationMethod: 'whatsapp',
+        coordinatedAt: new Date().toISOString(),
+        timeWindowStart: timeStart,
+        timeWindowEnd: timeEnd,
+        notes: note || undefined,
+        coordinationNeedsCancel: false,
+      },
+    });
+    logCoordination('coordinate_whatsapp', 'whatsapp');
+    toast.success('הודעת התיאום נשלחה');
+    setSending(false);
+    onOpenChange(false);
   }
 
   async function handleMarkPhoneConfirmed() {
@@ -172,9 +204,16 @@ export function ScheduleCoordinationDialog({
           <DialogTitle className="flex items-center gap-2">
             <MessageCircle className="h-5 w-5 text-emerald-600" />
             תיאום משלוח / שירות עם הלקוח
-            {demo && (
-              <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[10px]">
-                דמו
+            {tpl && (
+              <Badge
+                variant="outline"
+                className={
+                  tpl.category === 'utility'
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]'
+                    : 'bg-amber-50 text-amber-700 border-amber-200 text-[10px]'
+                }
+              >
+                {tpl.category === 'utility' ? 'תבנית שירות' : 'תבנית שיווק'}
               </Badge>
             )}
           </DialogTitle>
@@ -257,9 +296,30 @@ export function ScheduleCoordinationDialog({
           </div>
         </div>
 
-        {/* Optional note */}
+        {/* לשם מה אנחנו מגיעים. רשימה סגורה, ראה `coordination-message.ts`. */}
         <div className="space-y-1.5">
-          <Label htmlFor="note" className="text-xs">הערה (אופציונלי — יתווסף להודעה / לתיעוד)</Label>
+          <Label className="text-xs">מטרת ההגעה</Label>
+          <div className="flex flex-wrap gap-1.5">
+            {PURPOSES.map((p) => (
+              <button
+                key={p.value}
+                type="button"
+                onClick={() => setPurpose(p.value)}
+                className={`rounded-lg border px-2.5 py-1 text-[11.5px] font-medium transition ${
+                  purpose === p.value
+                    ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 🔴 הערה פנימית בלבד. אין בתבנית חריץ לטקסט חופשי, במכוון. */}
+        <div className="space-y-1.5">
+          <Label htmlFor="note" className="text-xs">הערה לתיעוד (לא נשלחת ללקוח)</Label>
           <Input
             id="note"
             placeholder='לדוגמה: "נא להתקשר בכניסה"'
@@ -276,10 +336,13 @@ export function ScheduleCoordinationDialog({
               📱 תצוגה מקדימה של הודעת ה-WhatsApp
             </div>
             {previewBody}
-            {placeholder && (
+            <div className="mt-2 text-[10px] text-slate-500">
+              מתחת להודעה יופיעו שני כפתורים: "מתאים לי" ו"לא מתאים". לחיצה
+              מסמנת את העצירה ביומן בלי שאיש יצטרך לקרוא את התשובה.
+            </div>
+            {blockedReason && (
               <div className="mt-2 text-amber-700 text-[10px]">
-                ⚠ תבנית ההודעה ממתינה לאישור של מטא, ולכן אי אפשר לשלוח אותה עדיין.
-                עד שהאישור יגיע, סמנו "תואם טלפונית".
+                ⚠ {blockedReason} עד שזה ייפתר, סמנו "תואם טלפונית".
               </div>
             )}
           </div>
@@ -311,22 +374,11 @@ export function ScheduleCoordinationDialog({
             onClick={handleSendWhatsApp}
             // תבנית שממתינה לאישור מטא תיכשל בשליחה. עדיף כפתור מושבת עם הסבר
             // מאשר לחיצה שמחזירה שגיאה טכנית.
-            disabled={
-              !hasPhone ||
-              (placeholder && !demo) ||
-              sendReminder.isPending ||
-              updateCoord.isPending
-            }
+            disabled={!!blockedReason || sending || updateCoord.isPending}
             className="gap-1.5"
-            title={
-              !hasPhone
-                ? 'אין מספר טלפון'
-                : placeholder && !demo
-                  ? 'תבנית ההודעה ממתינה לאישור של מטא'
-                  : undefined
-            }
+            title={blockedReason ?? undefined}
           >
-            {sendReminder.isPending ? (
+            {sending ? (
               'שולח...'
             ) : (
               <>

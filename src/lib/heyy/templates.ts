@@ -46,6 +46,16 @@ export const TEMPLATES: Record<WhatsAppReminderKind, TemplateDef> = {
     paramLabels: ['שם הלקוח'],
     buildParams: (i) => [i.customerName ?? ''],
   },
+  /**
+   * 🔴🔴 **מת מ-25/08/2026. אין לו קורא, ואסור להחזיר אותו.**
+   * `templateId` כאן הוא מזהה מדומה שמעולם לא הוגש למטא, ולכן שבע
+   * ה"שליחות" שרשומות אצלנו לתיאום הגעה כולן `is_demo = true`: אף הודעת
+   * תיאום לא יצאה מכאן ללקוח מעולם.
+   *
+   * ⭐ **התחליף החי:** התבנית `rashal_visit_coordination` שאושרה במטא,
+   * שנשלחת דרך `api/wa-send` (שם יושבת בדיקת רשימת המושתקים, ולנתיב
+   * `api/heyy-send` שכאן אין אותה). הנוסח ב-`src/lib/coordination-message.ts`.
+   */
   schedule_coordination: {
     kind: 'schedule_coordination',
     templateId: 'DEMO-schedule-coordination',
