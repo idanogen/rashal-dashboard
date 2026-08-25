@@ -42,6 +42,13 @@ export interface CustomerCardData {
     customerNumber: string | null;
     name: string | null;
     phone: string | null;
+    /**
+     * 🔴 **איך הלקוח זוהה.** `survey` פירושו שהטלפון שכותב אינו הטלפון
+     * שרשום בפריוריטי, והחיבור נעשה דרך שם שנשמר על סקר ששלחנו לטלפון
+     * הזה. זה מספיק חזק כדי להציג, ולא מספיק חזק כדי לשתוק עליו.
+     */
+    identifiedBy?: 'number' | 'phone' | 'survey' | null;
+    identifiedHint?: string | null;
     city: string | null;
     address: string | null;
     healthFund: string | null;

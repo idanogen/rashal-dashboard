@@ -349,3 +349,23 @@ export function stockLine(stock: CustomerStock | null | undefined, now = Date.no
     tone: 'none',
   };
 }
+
+/**
+ * מה לומר כשהלקוח לא זוהה לפי הטלפון שממנו הוא כותב.
+ *
+ * 🔴🔴 **נתפס חי ב-25/08/2026:** לקוחה כתבה ממספר שאינו רשום בפריוריטי,
+ * והכרטיס אמר "לא מזוהה" ו"לא רשום אצלנו ציוד" על לקוחה שיש לה מנוף
+ * שסופק שבוע קודם. לקוחות ר.שעל הם מטופלים, ומי שכותב בוואטסאפ הוא
+ * לרוב בן משפחה עם טלפון אחר.
+ *
+ * ⭐ אבל החיבור נאמר בקול, כי הוא בין טלפון אחד לשם.
+ */
+export function identityNote(
+  c: { identifiedBy?: string | null; identifiedHint?: string | null; phone?: string | null } | null | undefined,
+): string | null {
+  if (!c || c.identifiedBy !== 'survey') return null;
+  // ⭐ "ל" נדבקת לשם, בלי מקף. "ל-אלחרר פרלה" נראה כמו טקסט שנתפר במכונה.
+  return `הטלפון הזה אינו רשום בפריוריטי. חיברנו אותו ${
+    c.identifiedHint ? `ל${c.identifiedHint}` : 'ללקוח'
+  } לפי סקר ששלחנו למספר הזה.`;
+}

@@ -10,7 +10,7 @@ import {
 } from '@/lib/customer-card';
 import {
   answerLine, mismatchNote, matchLabel, certaintyNote, agoLabel, dayLabel, windowLabel,
-  stockLine, warrantyState, itemTitle, itemSubtitle, sourceLabels,
+  stockLine, warrantyState, itemTitle, itemSubtitle, sourceLabels, identityNote,
   type OpenItem, type StockItem, type CustomerStock,
 } from '@/lib/customer-answer';
 
@@ -267,6 +267,7 @@ export function CustomerCardBody({
   const pickups = data.open?.pickups ?? [];
   const answer = answerLine(orders, calls);
   const certainty = certaintyNote(data.match);
+  const identity = identityNote(c);
 
   return (
     <div className="space-y-3">
@@ -317,6 +318,15 @@ export function CustomerCardBody({
         </div>
         <div className="mt-0.5 text-[15px] font-bold text-slate-900">{answer.text}</div>
       </div>
+
+      {/* 🔴 הטלפון שכותב אינו הטלפון שרשום בפריוריטי. נאמר לפני הציוד,
+          כי הנציגה עומדת להקריא ללקוח היסטוריה שחוברה אליו לפי שם. */}
+      {identity && (
+        <div className="flex items-start gap-1.5 rounded-lg bg-slate-50 px-3 py-2 text-[11.5px] text-muted-foreground">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+          <span>{identity}</span>
+        </div>
+      )}
 
       {/* ⭐ מה יש אצל הלקוח, מיד אחרי התשובה ולפני כל השאר. */}
       <StockPanel stock={data.stock} />

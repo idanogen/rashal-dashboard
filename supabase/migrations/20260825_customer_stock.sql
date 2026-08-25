@@ -34,6 +34,9 @@ declare
   v_addr  text;
   v_hf    text;
   v_agent text;
+  v_via   text;
+  v_hint  text;
+  v_hits  int;
   result  jsonb;
 begin
   if public.is_office_staff() is not true then
@@ -50,12 +53,55 @@ begin
       from public.customer_directory d
      where d.customer_number = v_num
      limit 1;
+    v_via := 'number';
   elsif v_phone is not null then
     select d.customer_number, d.customer_name, d.city
       into v_num, v_name, v_city
       from public.customer_directory d
      where d.phone_local = v_phone
      limit 1;
+    if v_num is not null then v_via := 'phone'; end if;
+  end if;
+
+  -- ── הטלפון שכותב אינו הטלפון שרשום בפריוריטי ──────────
+  --
+  -- 🔴🔴 **נתפס חי ב-25/08/2026, מצילום מסך של עידן.** לקוחה כתבה
+  -- מ-0527663357 והכרטיס אמר "לא מזוהה" ו"לא רשום אצלנו ציוד". היא
+  -- לקוחה מוכרת, מספר 8449321, **ויש לה מנוף שסופק ב-17/08**. הטלפון
+  -- שרשום בפריוריטי הוא 0522548868, כלומר מספר אחר לגמרי.
+  -- לקוחות ר.שעל הם מטופלים, ומי שכותב בוואטסאפ הוא לרוב בן משפחה.
+  --
+  -- ⭐ **והשם כבר היה אצלנו כל הזמן.** הסקר שאנחנו עצמנו שלחנו לטלפון
+  -- הזה נושא `customer_name`. זו אינה השערה משם: זו רשומה שאומרת
+  -- ששלחנו לטלפון הזה סקר על אספקה לאדם הזה.
+  -- נמדד: 9 מתוך 13 השיחות ה"לא מזוהות" נפתרות ככה, בלי אף קריאת API.
+  --
+  -- 🔴 **ורק כשיש התאמה אחת בדיוק.** שני לקוחות באותו שם היו נבלעים
+  -- זה בתיק של זה. נמדד: 25 חד-משמעיים, 1 דו-משמעי, 4 בלי התאמה.
+  -- האחד הדו-משמעי הוא בדיוק המקרה שבו זיהוי שגוי היה נראה נכון.
+  -- [[customer_360_identity_is_the_product]]
+  if v_num is null and v_phone is not null then
+    select btrim(s.customer_name) into v_hint
+      from public.customer_surveys s
+     where public.wa_normalize_phone(s.phone_e164) = v_phone
+       and nullif(btrim(coalesce(s.customer_name, '')), '') is not null
+     order by s.created_at desc
+     limit 1;
+
+    if v_hint is not null then
+      select count(*) into v_hits
+        from public.customer_directory d
+       where lower(btrim(d.customer_name)) = lower(v_hint);
+
+      if v_hits = 1 then
+        select d.customer_number, d.customer_name, d.city
+          into v_num, v_name, v_city
+          from public.customer_directory d
+         where lower(btrim(d.customer_name)) = lower(v_hint)
+         limit 1;
+        v_via := 'survey';
+      end if;
+    end if;
   end if;
 
   if v_num is null and v_phone is null then
@@ -426,6 +472,11 @@ begin
       'customerNumber', v_num,
       'name',           v_name,
       'phone',          v_phone,
+      -- 🔴 **איך זוהה הלקוח נאמר, ולא נבלע.** זיהוי דרך הסקר הוא חיבור
+      -- בין טלפון אחד לשם, והנציגה חייבת לדעת שזה מה שקרה לפני
+      -- שהיא מקריאה ללקוח את ההיסטוריה שלו.
+      'identifiedBy',   v_via,
+      'identifiedHint', case when v_via = 'survey' then v_hint end,
       'city',           v_city,
       'address',        v_addr,
       'healthFund',     v_hf,

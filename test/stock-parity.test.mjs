@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
-import { stockLine, warrantyState, itemTitle, itemSubtitle, sourceLabels } from '../src/lib/customer-answer.ts';
+import { stockLine, warrantyState, itemTitle, itemSubtitle, sourceLabels, identityNote } from '../src/lib/customer-answer.ts';
 
 /**
  * נעילת המשפט שנאמר ללקוח על הציוד שלו, בשני המימושים.
@@ -82,4 +82,15 @@ test('🔴 שם הפריט, התיאור והמקורות זהים', { skip: !av
   }
   const srcs = ['register', 'delivery', 'service'];
   assert.equal(S.stockFoot({ sources: srcs }).text, sourceLabels(srcs).join(' · '));
+});
+
+test('🔴 משפט הזיהוי זהה בשני המימושים', { skip: !available }, () => {
+  for (const c of [
+    { identifiedBy: 'survey', identifiedHint: 'אלחרר פרלה' },
+    { identifiedBy: 'survey', identifiedHint: null },
+    { identifiedBy: 'number' }, { identifiedBy: 'phone' }, null,
+  ]) {
+    assert.equal(S.identityNote(c), identityNote(c),
+      `🔴 התוסף והדשבורד אומרים דברים שונים על ${JSON.stringify(c)}`);
+  }
 });

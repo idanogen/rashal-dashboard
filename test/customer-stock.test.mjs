@@ -105,3 +105,16 @@ test('הגנה מפני קלט חסר: המשפט לא קורס', () => {
   assert.equal(typeof stockLine(undefined, NOW).text, 'string');
   assert.equal(stockLine({}, NOW).tone, 'none');
 });
+
+test('🔴🔴 זיהוי דרך הסקר נאמר בקול ולא נבלע', async () => {
+  const { identityNote } = await import('../src/lib/customer-answer.ts');
+  // זיהוי ודאי אינו דורש הסבר, ותגית על כל לקוח הייתה הופכת לרעש.
+  assert.equal(identityNote({ identifiedBy: 'number' }), null);
+  assert.equal(identityNote({ identifiedBy: 'phone' }), null);
+  assert.equal(identityNote(null), null);
+  // וזיהוי דרך שם שנשמר על סקר כן דורש.
+  const n = identityNote({ identifiedBy: 'survey', identifiedHint: 'אלחרר פרלה' });
+  assert.match(n, /אינו רשום בפריוריטי/);
+  assert.match(n, /אלחרר פרלה/);
+  assert.match(n, /סקר/);
+});

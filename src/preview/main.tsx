@@ -18,6 +18,9 @@ import { FIXTURE } from '@/preview/customer-fixture';
  */
 const EMPTY = {
   ...FIXTURE,
+  // 🔴 והמקרה שנתפס מצילום של עידן: טלפון שאינו רשום בפריוריטי, לקוחה
+  // מוכרת, וציוד שכן קיים. הכרטיס חייב לומר איך הוא זיהה אותה.
+  customer: { ...FIXTURE.customer, identifiedBy: 'survey' as const, identifiedHint: 'אלחרר פרלה' },
   stock: { devices: [], accessories: [], returned: [], since: '2026-01-01' },
 };
 
