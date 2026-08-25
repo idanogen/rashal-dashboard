@@ -158,6 +158,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ ok: true, card: data });
     }
 
+    // ⭐⭐ **חיפוש לקוח, גם כזה שמעולם לא דיברנו איתו.** עידן,
+    // 25/08/2026, מול צילום של מסך הלקוחות בפריוריטי: "למה אני לא
+    // רואה את כל השלומים האלה?" החיפוש בחלונית חיפש בתוך השיחות בלבד,
+    // כלומר בתוך 42 שורות, בזמן שבמחסן יושבים עשרות אלפי לקוחות.
+    //
+    // 🔴 על אותה נקודת קצה, כמו `markRead` ו-`card`, בגלל תקרת 12
+    // הפונקציות. [[vercel_hobby_twelve_function_cap]]
+    if (typeof req.query.search === 'string' && req.query.search.trim().length >= 2) {
+      const { data, error: sErr } = await supabaseAdmin.rpc('customer_search', {
+        p_query: req.query.search.trim(),
+        p_limit: 12,
+      });
+      if (sErr) {
+        console.error('[conversation] search failed', sErr.message);
+        return res.status(500).json({ ok: false, error: 'server_error' });
+      }
+      return res.status(200).json({ ok: true, people: data ?? [] });
+    }
+
     // בלי מזהה לקוח, הבקשה היא לרשימה ולא לשרשור בודד.
     if (!phone && !customer) return await listInbox(req, res);
 
