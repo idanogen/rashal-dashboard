@@ -161,7 +161,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.error('[conversation] templates failed', e instanceof Error ? e.message : e);
     }
 
-    return res.status(200).json({ ok: true, ...thread, templates });
+    // ⭐⭐ **מה פתוח אצל הלקוח, גם כשנכנסים מהשיחה ולא מהשורה בפריוריטי.**
+    // עידן, 25/08/2026: פתח שיחה מהתיבה ושאל איפה הרצועה. הוא צדק שזה
+    // המקום: לקוח שכותב בוואטסאפ הוא בדיוק מי שרוצים לדעת מה פתוח אצלו.
+    //
+    // 🔴 אותה פונקציה שהמסך הייעודי והחלונית קוראים לה, ולכן ההכרעה
+    // "שובץ" נגזרת מהעצירה ביומן במקום אחד. כשל שלה אינו מפיל את
+    // השרשור: הוא שווה משהו גם בלי הרצועה.
+    let open: unknown = null;
+    try {
+      const { data, error: cardErr } = await supabaseAdmin.rpc('customer_card', {
+        p_customer: thread.conversation?.customerNumber ?? null,
+        p_phone: thread.conversation?.phone ?? phone ?? null,
+      });
+      if (cardErr) throw new Error(cardErr.message);
+      open = (data as { open?: unknown } | null)?.open ?? null;
+    } catch (e) {
+      console.error('[conversation] card failed', e instanceof Error ? e.message : e);
+    }
+
+    return res.status(200).json({ ok: true, ...thread, templates, open });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg === 'invalid phone') return res.status(400).json({ ok: false, error: msg });
