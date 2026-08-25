@@ -713,6 +713,141 @@ async function probeFields(): Promise<Record<string, unknown>> {
  * `expect` הוא הבקרה החיובית: ספירה גבוהה בלי הרשומה שנערכה פירושה
  * שהשדה זז מסיבה אחרת ואינו מה שחיפשנו. [[silence_needs_a_positive_control]]
  */
+/**
+ * גילוי תת-טופס: האם השם קיים כ-`$expand` על ישות האב, והאם הוא קיים
+ * גם כישות עצמאית.
+ *
+ * ⭐ **שתי השאלות נשאלות יחד כי התשובה משנה את כל התכנון.** תת-טופס
+ * שהוא גם ישות עצמאית אפשר לשאול ישירות ("מה השתנה מאז X"), ותת-טופס
+ * שאינו עצמאי מחייב למשוך את האב ולהרחיב, וזה מחיר אחר לגמרי במונה
+ * הקריאות. `PORDERTRANS_SUBFORM` הוא דוגמה לשני.
+ *
+ * 🔴 שמות הישויות נבנים בשרת מרשימת מועמדים, ולא מתקבלים כנתיב חופשי
+ * מהקורא: הפונקציה הזאת עונה בלי טוקן.
+ */
+/**
+ * לוג השינויים של כרטיס הלקוח, `CHANGES_LOG_SUBFORM`.
+ *
+ * ⭐ **עידן, 25/08/2026: "יש לנו את המידע הזה במסך בן CHANGES_LOG".**
+ * זה השדה שחיפשנו: `CREATEDDATE` לא זז בעריכה ו-`STATUSDATE` נמדד ולא
+ * זז על עריכת טלפון, אבל לוג השינויים נושא `UDATE` פר שינוי.
+ *
+ * 🔴 **התת-טופס אינו ישות עצמאית** (404 בגישה ישירה), ולכן השאלה
+ * המכריעה היא אם אפשר לסנן את ישות האב לפיו. אם `any()` נתמך, "אילו
+ * לקוחות השתנו מאז X" היא קריאה אחת קטנה במקום משיכה מלאה.
+ */
+/**
+ * ניסוי ניסוחי `$filter` על CUSTOMERS, קריאה בלבד.
+ *
+ * 🔴 **403 מפריוריטי אינו תמיד "אין הרשאה".** הגוף שחזר על
+ * `any()` היה דף HTML של שער ה-CDN ולא שגיאת OData, כלומר הבקשה נחסמה
+ * לפני שהגיעה לפריוריטי. לכן בודקים כמה ניסוחים ולא מסיקים מהראשון.
+ * [[priority_403_is_user_agent]]
+ */
+async function probeFilters(filters: string[], mode = "encoded"): Promise<Record<string, unknown>> {
+  const auth = { headers: { Authorization: basicAuth(), "User-Agent": UA, Accept: "application/json" } };
+  const out: Record<string, unknown> = { mode };
+  // 🔴 `encodeURIComponent` משאיר סוגריים כמו שהם אבל מקודד נקודתיים
+  // ל-%3A. שער ה-CDN שלפני פריוריטי עלול לחסום דווקא על זה, ולכן
+  // המצב "spaces" מקודד רווחים בלבד.
+  const enc = (f: string) => mode === "spaces" ? f.replace(/ /g, "%20") : encodeURIComponent(f);
+  for (const f of filters.slice(0, 8)) {
+    try {
+      const res = await fetch(
+        `${PRIORITY}/CUSTOMERS?$select=CUSTNAME,PHONE&$filter=${enc(f)}&$top=200`, auth);
+      const body = await res.text();
+      out[f] = res.ok
+        ? { ok: true, rows: (JSON.parse(body)?.value ?? []).length,
+            sample: (JSON.parse(body)?.value ?? []).slice(0, 3) }
+        : { ok: false, status: res.status, is_html: body.trimStart().startsWith("<"), body: body.slice(0, 220) };
+    } catch (e) { out[f] = String(e).slice(0, 200); }
+  }
+  return out;
+}
+
+async function probeChanges(since: string, custname: string | null): Promise<Record<string, unknown>> {
+  const auth = { headers: { Authorization: basicAuth(), "User-Agent": UA, Accept: "application/json" } };
+  const out: Record<string, unknown> = { since, custname };
+  const SUB = "CHANGES_LOG_SUBFORM";
+
+  // 1. האם אפשר לסנן את האב לפי התת-טופס.
+  try {
+    const filter = `${SUB}/any(c: c/UDATE ge ${since})`;
+    const res = await fetch(
+      `${PRIORITY}/CUSTOMERS?$select=CUSTNAME,CUSTDES,PHONE,CREATEDDATE&$filter=${encodeURIComponent(filter)}&$top=1000`,
+      auth,
+    );
+    const body = await res.text();
+    if (!res.ok) {
+      out.any_filter = `HTTP ${res.status}: ${body.slice(0, 300)}`;
+    } else {
+      const rows = JSON.parse(body)?.value ?? [];
+      out.any_filter = {
+        supported: true,
+        rows: rows.length,
+        expect_found: custname
+          ? rows.some((r: Record<string, unknown>) => String(r.CUSTNAME ?? "") === custname)
+          : null,
+        sample: rows.slice(0, 5),
+      };
+    }
+  } catch (e) { out.any_filter = String(e).slice(0, 200); }
+
+  // 2. בקרה חיובית: לוג השינויים של הלקוח שאנחנו יודעים שנערך.
+  if (custname && /^[A-Za-z0-9_-]{1,30}$/.test(custname)) {
+    try {
+      const res = await fetch(
+        `${PRIORITY}/CUSTOMERS?$select=CUSTNAME,PHONE&$filter=${encodeURIComponent(`CUSTNAME eq '${custname}'`)}` +
+        `&$expand=${SUB}`,
+        auth,
+      );
+      const body = await res.text();
+      if (!res.ok) out.customer_log = `HTTP ${res.status}: ${body.slice(0, 300)}`;
+      else {
+        const row = JSON.parse(body)?.value?.[0] ?? {};
+        const log = Array.isArray(row[SUB]) ? row[SUB] : [];
+        out.customer_log = { phone_now: row.PHONE ?? null, entries: log.length, last: log.slice(-5) };
+      }
+    } catch (e) { out.customer_log = String(e).slice(0, 200); }
+  }
+
+  return out;
+}
+
+async function probeSubform(parent: string, names: string[]): Promise<Record<string, unknown>> {
+  const auth = { headers: { Authorization: basicAuth(), "User-Agent": UA, Accept: "application/json" } };
+  const out: Record<string, unknown> = { parent };
+  const safe = names.filter((n) => /^[A-Z0-9_]{2,60}$/.test(n)).slice(0, 12);
+
+  for (const n of safe) {
+    const one: Record<string, unknown> = {};
+    try {
+      const res = await fetch(`${PRIORITY}/${parent}?$top=1&$expand=${encodeURIComponent(n)}`, auth);
+      const body = await res.text();
+      one.as_expand = res.ok ? "ok" : `HTTP ${res.status}: ${body.slice(0, 160)}`;
+      if (res.ok) {
+        const row = JSON.parse(body)?.value?.[0] ?? {};
+        const sub = row[n];
+        const first = Array.isArray(sub) ? sub[0] : sub;
+        one.expand_fields = first ? Object.keys(first).sort() : "(ריק ברשומה הראשונה)";
+      }
+    } catch (e) { one.as_expand = String(e).slice(0, 160); }
+
+    try {
+      const res = await fetch(`${PRIORITY}/${n}?$top=1`, auth);
+      const body = await res.text();
+      one.as_entity = res.ok ? "ok" : `HTTP ${res.status}: ${body.slice(0, 160)}`;
+      if (res.ok) {
+        const row = JSON.parse(body)?.value?.[0] ?? {};
+        one.entity_fields = Object.keys(row).sort();
+      }
+    } catch (e) { one.as_entity = String(e).slice(0, 160); }
+
+    out[n] = one;
+  }
+  return out;
+}
+
 async function probeDateField(
   entity: string,
   key: string,
@@ -952,6 +1087,24 @@ Deno.serve(async (req: Request) => {
   }
   if (job === "probe-fields") {
     return new Response(JSON.stringify(await probeFields(), null, 2), { headers: { "Content-Type": "application/json" } });
+  }
+  if (job === "probe-filters") {
+    const filters = Array.isArray(body?.filters) ? (body.filters as unknown[]).map(String) : [];
+    const mode = String(body?.mode ?? "encoded");
+    return new Response(JSON.stringify(await probeFilters(filters, mode), null, 2),
+      { headers: { "Content-Type": "application/json" } });
+  }
+  if (job === "probe-changes") {
+    const since = String(body?.since ?? new Date(Date.now() - 86_400_000).toISOString().slice(0, 19) + "Z");
+    const custname = body?.custname ? String(body.custname) : null;
+    return new Response(JSON.stringify(await probeChanges(since, custname), null, 2),
+      { headers: { "Content-Type": "application/json" } });
+  }
+  if (job === "probe-subform") {
+    const parent = String(body?.parent ?? "CUSTOMERS");
+    const names = Array.isArray(body?.names) ? (body.names as unknown[]).map(String) : [];
+    return new Response(JSON.stringify(await probeSubform(parent, names), null, 2),
+      { headers: { "Content-Type": "application/json" } });
   }
   if (job === "probe-datefield") {
     const entity = String(body?.entity ?? "CUSTOMERS");
