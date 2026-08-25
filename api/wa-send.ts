@@ -127,6 +127,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ ok: false, error: 'empty_body', message: 'אין מה לשלוח.' });
   }
 
+  // ── רשימת המושתקים ──────────────────────────────────────
+  //
+  // 🔴🔴 **הדלת השלישית, ולפני כל השאר.** תבנית מאושרת ודרך יציאה
+  // שנשמעת אינן שוות כלום בלי בדיקה מולה לפני כל שליחה. מי שביקש
+  // להפסיק וממשיך לקבל הוא בדיוק מי שיחסום את המספר, וחסימות מורידות
+  // את דירוג האיכות של המספר **כולו**, גם לתיאומי אספקה.
+  // [[whatsapp_template_submission_traps]]
+  //
+  // ⭐ ולפני אכיפת החלון בכוונה: בקשת הסרה גוברת גם על שיחה פתוחה.
+  {
+    const { data: mute, error: muteErr } = await supabaseAdmin
+      .from('wa_suppressed')
+      .select('phone_local, reason, created_at')
+      .eq('phone_local', local)
+      .maybeSingle();
+    // 🔴 כשל בבדיקה **עוצר את השליחה** ולא מדלג עליה. שער שנפתח כשהוא
+    // שבור אינו שער. [[fetch_helper_swallows_non_json]]
+    if (muteErr) {
+      console.error('[wa-send] suppression check failed', muteErr.message);
+      return res.status(503).json({ ok: false, error: 'suppression_check_failed',
+        message: 'לא הצלחתי לבדוק את רשימת המושתקים, ולכן לא שלחתי.' });
+    }
+    if (mute) {
+      return res.status(409).json({ ok: false, error: 'suppressed',
+        message: 'הלקוח הזה ביקש שלא נפנה אליו בוואטסאפ.' });
+    }
+  }
+
   // ── אכיפת החלון ─────────────────────────────────────────
   //
   // 🔴 הבדיקה הזאת נכתבה ב-`ea5a5a3`, **ונפלה בשקט** בשכתוב של מחסנית

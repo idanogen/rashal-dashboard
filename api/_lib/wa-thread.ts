@@ -72,5 +72,22 @@ export async function recordToThread(
     console.error('[wa-thread] rpc failed:', error.message);
     return { ok: false, error: error.message };
   }
+
+  // ⭐⭐ **בקשת הסרה נקלטת ברגע שהיא נאמרת.** רשימת מושתקים שמתמלאת
+  // ביד היא רשימה שתישאר ריקה, ואז שורת ההסרה בתבנית היא הבטחה שאין
+  // מי שמקיים. [[whatsapp_template_submission_traps]]
+  //
+  // 🔴 **רק על הודעה נכנסת, ורק כשההודעה כולה היא הבקשה.** הזיהוי
+  // עצמו (`wa_is_optout`) הוא התאמה מלאה לרשימה סגורה, כי לקוח
+  // שהושתק בטעות נעלם מאיתנו בלי שאיש ידע.
+  if (direction === 'in' && data.content?.body) {
+    const { error: muteErr } = await supabaseAdmin.rpc('wa_note_optout', {
+      p_phone: phone,
+      p_body: data.content.body,
+    });
+    // 🔴 כשל כאן אינו מפיל את קליטת ההודעה: היא כבר נשמרה, וזה העיקר.
+    if (muteErr) console.error('[wa-thread] optout note failed:', muteErr.message);
+  }
+
   return { ok: true, conversationId: (convId as string) ?? undefined };
 }
