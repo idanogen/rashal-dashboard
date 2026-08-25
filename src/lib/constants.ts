@@ -65,8 +65,37 @@ export function dataWindowCutoff(): string {
   return d.toISOString();
 }
 
-/** PostgREST `or` clause: created inside the window, or touched inside it. */
-export function dataWindowFilter(): string {
+/**
+ * מסנן החלון של PostgREST.
+ *
+ * 🔴🔴 **"נגעו בשורה" אינו "עובדים על הרשומה", וזה מה שנשבר.**
+ * עידן, 25/08/2026: "אין סיכוי שאין הזמנות, והמסך עולה ממש לאט."
+ * הנוסח הקודם היה `created_at >= cutoff or updated_at >= cutoff`.
+ * הכוונה הייתה טובה: רשומה ישנה שעדיין מטפלים בה לא נעלמת מהמסך.
+ * אלא שהייבוא ההיסטורי של היום כתב מחדש **את כל** ההזמנות, ולכן
+ * `updated_at` של כולן הוא היום, וכולן נכנסו לחלון.
+ *
+ * **נמדד:** ‎40,402 הזמנות נטענו במקום 1,571, כלומר 41 סבבי רשת
+ * סדרתיים במקום 2. המסך נראה ריק עד שהם נגמרים, ומספיק שאחד נכשל
+ * כדי שהרשימה תישאר ריקה לגמרי. אותו דבר בקריאות: 13,894 במקום 2,376.
+ *
+ * ⭐ **התיקון מחזיר את הכוונה המקורית:** רשומה ישנה נשארת רק אם היא
+ * גם נגעו בה בחלון **וגם היא לא סגורה**. אומת שכל 735 ההזמנות
+ * הממתינות וכל 459 הקריאות הפתוחות נשמרות, אחת לאחת.
+ * [[silent_failure_needs_a_watchdog]]
+ */
+export function dataWindowFilter(statusColumn?: string, terminal?: readonly string[]): string {
   const cutoff = dataWindowCutoff();
-  return `created_at.gte.${cutoff},updated_at.gte.${cutoff}`;
+  if (!statusColumn || !terminal?.length) {
+    return `created_at.gte.${cutoff},updated_at.gte.${cutoff}`;
+  }
+  // 🔴 הערכים במרכאות כפולות: הם בעברית ומכילים רווחים, ובלי המרכאות
+  // PostgREST חותך את הרשימה על הפסיק.
+  const list = terminal.map((v) => `"${v}"`).join(',');
+  return `created_at.gte.${cutoff},and(updated_at.gte.${cutoff},${statusColumn}.not.in.(${list}))`;
 }
+
+/** סטטוסים סופיים. רשומה כזאת לא "עובדים עליה" גם אם נגעו בשורה. */
+export const ORDER_CLOSED = ['סופק', 'בוטל'] as const;
+export const CALL_CLOSED = ['בוצע', 'בוטל'] as const;
+export const PICKUP_CLOSED = ['בוצע', 'בוטל'] as const;

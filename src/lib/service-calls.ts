@@ -1,6 +1,6 @@
 import type { ServiceCall, ServiceCallStatus } from '@/types/service-call';
 import { supabase } from './supabase';
-import { dataWindowFilter } from './constants';
+import { dataWindowFilter, CALL_CLOSED } from './constants';
 
 type ServiceCallRow = {
   id: string;
@@ -78,7 +78,7 @@ export async function fetchAllServiceCalls(): Promise<ServiceCall[]> {
       .from('service_calls')
       .select('*')
       .is('archived_at', null)
-      .or(dataWindowFilter())
+      .or(dataWindowFilter('service_call_status', CALL_CLOSED))
       .order('created_at', { ascending: false })
       .range(from, from + PAGE - 1);
     if (error) throw new Error(`Supabase fetchAllServiceCalls: ${error.message}`);

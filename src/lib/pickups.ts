@@ -1,6 +1,6 @@
 import type { Pickup, PickupLine, PickupStatus } from '@/types/pickup';
 import { supabase } from './supabase';
-import { dataWindowFilter } from './constants';
+import { dataWindowFilter, PICKUP_CLOSED } from './constants';
 
 type PickupRow = {
   id: string;
@@ -77,7 +77,7 @@ export async function fetchAllPickups(): Promise<Pickup[]> {
       // כמו ב-orders וב-service_calls: ארכיון לא מוצג. בלי זה טיוטות ישנות
       // שסומנו בארכיון ממשיכות להיספר, והמסך מראה יותר ממה שבאמת ממתין.
       .is('archived_at', null)
-      .or(dataWindowFilter())
+      .or(dataWindowFilter('pickup_status', PICKUP_CLOSED))
       .order('pickup_date', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false })
       .range(from, from + PAGE - 1);

@@ -1,6 +1,6 @@
 import type { Order } from '@/types/order';
 import { supabase } from './supabase';
-import { dataWindowFilter } from './constants';
+import { dataWindowFilter, ORDER_CLOSED } from './constants';
 
 type OrderRow = {
   id: string;
@@ -86,7 +86,7 @@ export async function fetchAllOrders(): Promise<Order[]> {
       .from('orders')
       .select('*')
       .is('archived_at', null)
-      .or(dataWindowFilter())
+      .or(dataWindowFilter('order_status', ORDER_CLOSED))
       .order('created_at', { ascending: false })
       .range(from, from + PAGE - 1);
     if (error) throw new Error(`Supabase fetchAllOrders: ${error.message}`);

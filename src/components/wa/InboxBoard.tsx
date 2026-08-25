@@ -243,7 +243,9 @@ function Bubble({ m }: { m: WaMessage }) {
   return (
     <div className={`flex ${out ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[78%] rounded-2xl px-3 py-2 text-sm shadow-sm ${
+        className={`relative max-w-[78%] rounded-2xl px-3 py-2 text-sm shadow-sm ${
+          m.survey?.answeredAt ? 'mb-3.5 ' : ''
+        }${
           out ? 'rounded-ee-sm bg-emerald-100' : 'rounded-es-sm bg-white'
         }`}
       >
@@ -265,11 +267,7 @@ function Bubble({ m }: { m: WaMessage }) {
           ההצמדה לפי הטוקן שבכתובת הכפתור, ולכן גם שני סקרים לאותו לקוח
           לא מתבלבלים ביניהם.
         */}
-        {m.survey?.answeredAt && (
-          <div className="mt-1.5 rounded-lg border border-slate-900/10 bg-white/70 px-2 py-1">
-            <SurveyAnswerLine survey={m.survey} />
-          </div>
-        )}
+        {m.survey?.answeredAt && <SurveyReaction survey={m.survey} />}
         <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground">
           <span>{timeText(m.sent_at)}</span>
           {out && m.status && <span>· {STATUS_TEXT[m.status] ?? m.status}</span>}
@@ -312,26 +310,19 @@ function SurveyPill({ survey }: { survey?: InboxItem['survey'] }) {
  * ⭐ **וההערה מוצגת ולא רק נרמזת.** 13 מתוך התשובות נושאות טקסט חופשי,
  * וזה בדיוק מה שמעניין בהודעה עצמה. ברשימה אין לזה מקום, כאן יש.
  */
-function SurveyAnswerLine({ survey }: { survey: NonNullable<WaMessage['survey']> }) {
+function SurveyReaction({ survey }: { survey: NonNullable<WaMessage['survey']> }) {
   const mark = surveyMark(survey);
   if (!mark) return null;
+  const note = survey.comment?.trim();
   return (
-    <div className="space-y-0.5">
-      <div className="flex items-center gap-1 text-[11px] font-semibold">
-        <span
-          className={`inline-flex items-center gap-0.5 rounded-md border px-1 py-px leading-none ${SURVEY_TONE[mark.tone]}`}
-        >
-          <span aria-hidden>{mark.emoji}</span>
-          {mark.label}
-        </span>
-        <span className="text-slate-600">{mark.title}</span>
-      </div>
-      {survey.comment?.trim() && (
-        <div className="text-[11px] leading-snug text-slate-700">
-          <bdi>&ldquo;{survey.comment.trim()}&rdquo;</bdi>
-        </div>
-      )}
-    </div>
+    <span
+      title={note ? `${mark.title}\n\n"${note}"` : mark.title}
+      className={`absolute -bottom-2.5 start-2 inline-flex items-center gap-0.5 rounded-full border bg-white px-1.5 py-0.5 text-[11px] font-semibold leading-none shadow-sm ${SURVEY_TONE[mark.tone]}`}
+    >
+      <span aria-hidden>{mark.emoji}</span>
+      {mark.label}
+      <span className="sr-only">{mark.title}</span>
+    </span>
   );
 }
 
