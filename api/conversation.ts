@@ -77,6 +77,10 @@ async function listInbox(req: VercelRequest, res: VercelResponse) {
       .select('phone_e164, q1_satisfaction, answered_at, comment')
       .eq('status', 'answered')
       .not('answered_at', 'is', null)
+      // 🔴 **בלי רשומות בדיקה.** 7 מתוך 23 התשובות הראשונות היו בדיקות
+      // שלנו, וסקר בדיקה שמופיע כמשוב אמיתי על שורת לקוח הוא בדיוק מה
+      // שגורם להפסיק להאמין לחיווי.
+      .eq('is_test', false)
       .order('answered_at', { ascending: false })
       .limit(500);
     for (const s of (surveys ?? []) as Array<Record<string, unknown>>) {
