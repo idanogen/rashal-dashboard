@@ -17,6 +17,24 @@ import { useDeliveryNotes, useConsolidatedInvoices } from '@/hooks/useDocuments'
 import { computeSurveyMetrics, formatScore } from '@/lib/surveys';
 
 const NAVY = '#14223a';
+
+/**
+ * התאריך שמתחת להערה של הלקוח.
+ *
+ * ⭐ **"היום" ו"אתמול" במילים, ואחרת תאריך מלא עם שנה.** הרשימה ממוינת
+ * מהחדש לישן, ובלי חיווי זמן קל להניח שכל מה שרואים קרה השבוע.
+ */
+function commentDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const day = (x: Date) => `${x.getFullYear()}-${x.getMonth()}-${x.getDate()}`;
+  const now = new Date();
+  const yest = new Date(now.getTime() - 86_400_000);
+  const hm = d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+  if (day(d) === day(now)) return `היום ${hm}`;
+  if (day(d) === day(yest)) return `אתמול ${hm}`;
+  return `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`;
+}
 const BLUE = '#2b6cb0';
 const PURPLE = '#7c5cf0';
 const GREEN = '#16a34a';
@@ -398,6 +416,17 @@ export function ManagementDashboard() {
                       </span>
                     </div>
                     <p className="text-[12px] leading-relaxed text-slate-600">{s.comment}</p>
+                    {/*
+                      ⭐ עידן, 25/08/2026: "תוסיף בקטן גם תאריך."
+                      🔴 עם שנה. הערה מלפני שנתיים והערה מאתמול נראות
+                      אותו דבר בלעדיה, והרשימה ממוינת מהחדש לישן ולכן
+                      קל להניח שהכול טרי.
+                    */}
+                    {s.answeredAt && (
+                      <div className="mt-1 text-[10.5px] text-slate-400">
+                        <bdi>{commentDate(s.answeredAt)}</bdi>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

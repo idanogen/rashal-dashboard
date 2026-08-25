@@ -95,7 +95,17 @@ export function ActivityHeatMap({
   ];
 
   return (
-    <div className="rounded-2xl border bg-white p-5 shadow-sm" style={{ borderColor: '#eef1f6' }}>
+    /*
+      🔴🔴 **`isolate` ולא הורדת z-index של הרכיבים.** עידן, 25/08/2026:
+      "המפה עולה על הכותרת." Leaflet נותן לפקדים שלו `z-index: 1000`
+      משלו, והמקרא והבורר כאן יושבים על `z-[500]`, בזמן שכותרת האתר
+      היא `sticky z-50`. כלומר כל דבר במפה גבוה מהכותרת.
+      ⭐ `isolation: isolate` יוצר הקשר ערימה משלו, וכל ה-z-index
+      שבפנים נמדדים **בתוכו**. הכרטיס כולו יושב אז ברמה הטבעית של
+      הדף, מתחת לכותרת, בלי לגעת ברכיבים הפנימיים ובלי להילחם ב-CSS
+      של Leaflet בכל שדרוג גרסה.
+    */
+    <div className="isolate rounded-2xl border bg-white p-5 shadow-sm" style={{ borderColor: '#eef1f6' }}>
       <div className="mb-4 flex items-center gap-2">
         <span style={{ color: '#14223a' }}>📍</span>
         <h3 className="text-sm font-bold" style={{ color: '#14223a' }}>מפת פעילות ארצית</h3>
