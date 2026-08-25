@@ -35,6 +35,21 @@ const VAR_LABELS: Record<string, string> = {
   doc_type: 'סוג המסמך',
   doc_number: 'מספר המסמך',
   name: 'שם',
+  // תבנית תיאום ההגעה. ראה `src/lib/coordination-message.ts`.
+  purpose: 'מטרת ההגעה',
+  day: 'היום',
+  hours: 'חלון השעות',
+};
+
+/**
+ * 🔴 **דוגמה לכל שדה שהצורה שלו קובעת.** משתנה כמו `day` נכנס למשפט
+ * "ביום ..." שמוקפא אצל מטא, ולכן "26.8" או "יום רביעי" מייצרים משפט
+ * שבור אצל הלקוח. שדה ריק עם תווית בלבד מזמין בדיוק את זה.
+ */
+const VAR_HINTS: Record<string, string> = {
+  purpose: 'לאספקת הציוד · לאיסוף הציוד · לביקור טכנאי · להתקנת הציוד',
+  day: 'רביעי, 26.8.2026',
+  hours: '09:00 עד 13:00',
 };
 
 interface Props {
@@ -150,6 +165,7 @@ export function TemplateSendDialog({
                   </Label>
                   <Input
                     id={`tv-${v}`}
+                    placeholder={VAR_HINTS[v]}
                     value={values[v] ?? ''}
                     onChange={(e) => setValues((p) => ({ ...p, [v]: e.target.value }))}
                   />

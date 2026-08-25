@@ -22,6 +22,7 @@ import {
   Link2,
   Copy,
   Check,
+  PhoneOff,
 } from 'lucide-react';
 import {
   fetchInbox,
@@ -416,6 +417,24 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE }: InboxBoardProps) {
     staleTime: 0,
   });
 
+  /**
+   * פנייה יזומה ללקוח שאין לו שיחה בכלל.
+   *
+   * ⭐ **אותו דיאלוג תבניות בדיוק**, רק על טלפון אחר. עידן, 25/08/2026:
+   * "איך אני מוציא שיחה?" עד עכשיו התשובה הייתה שאי אפשר מכאן, כי
+   * "שלח תבנית" יושב בתוך שרשור קיים, כלומר רק אחרי שהלקוח כתב לנו.
+   *
+   * 🔴 **המפתח הוא `threadKey` ולא מפתח משלו**, ולכן מה שנטען כאן משרת
+   * גם את פתיחת השיחה מיד אחרי השליחה, בלי משיכה שנייה.
+   */
+  const [outreach, setOutreach] = useState<{ phone: string; name: string } | null>(null);
+  const outreachThread = useQuery({
+    queryKey: threadKey(outreach?.phone ?? null),
+    queryFn: () => fetchThread(outreach!.phone),
+    enabled: Boolean(outreach?.phone),
+    staleTime: 0,
+  });
+
   // ⭐ ממומו, אחרת `??` מייצר מערך חדש בכל ציור ומריץ מחדש כל תלות בו.
   const items = useMemo(() => inbox.data?.items ?? [], [inbox.data]);
 
@@ -567,13 +586,44 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE }: InboxBoardProps) {
                           {c.phone_local && <> · <bdi>{c.phone_local}</bdi></>}
                           {c.city && <> · {c.city}</>}
                         </div>
+                        {/*
+                          🔴 **"אין טלפון" נאמר, ולא מוסק מהיעדר כפתור.**
+                          נמדד 25/08/2026: 1,897 מתוך 42,757 הלקוחות (4.4%)
+                          בלי שום מספר בהזמנות, בקריאות ובאיסופים. שורה
+                          שנראית כמו כל השאר ופשוט אין בה כפתור נקראת
+                          כתקלה במסך. [[empty_state_must_speak]]
+                        */}
+                        {!c.phone_local && (
+                          <div className="mt-1 inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10.5px] font-medium text-amber-800">
+                            <PhoneOff className="h-3 w-3" />
+                            אין מספר טלפון, אי אפשר לשלוח
+                          </div>
+                        )}
                       </div>
-                      <CustomerCardButton
-                        customerNumber={c.customer_number}
-                        phone={c.phone_local}
-                        name={c.customer_name}
-                        compact
-                      />
+                      <div className="flex shrink-0 items-center gap-1">
+                        {c.phone_local && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 gap-1 px-2 text-[11px]"
+                            onClick={() =>
+                              setOutreach({
+                                phone: c.phone_local as string,
+                                name: c.customer_name || '',
+                              })
+                            }
+                          >
+                            <Send className="h-3 w-3" />
+                            שלח תבנית
+                          </Button>
+                        )}
+                        <CustomerCardButton
+                          customerNumber={c.customer_number}
+                          phone={c.phone_local}
+                          name={c.customer_name}
+                          compact
+                        />
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -720,6 +770,30 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE }: InboxBoardProps) {
         onSent={() => {
           void qc.invalidateQueries({ queryKey: threadKey(selected) });
           void qc.invalidateQueries({ queryKey: [WA_INBOX_KEY] });
+        }}
+      />
+
+      {/*
+        פנייה יזומה ללקוח בלי שיחה.
+        ⭐ **אחרי השליחה נפתחת השיחה שלו**, אחרת ההודעה נעלמת מהעין: שיחה
+        שנפתחה מהודעה יוצאת נשארת סגורה אצל heyy ואינה קופצת לראש הרשימה.
+        [[heyy_outbound_chat_stays_closed]]
+      */}
+      <TemplateSendDialog
+        templates={outreachThread.data?.templates}
+        loading={outreachThread.isLoading}
+        open={Boolean(outreach)}
+        onOpenChange={(v) => { if (!v) setOutreach(null); }}
+        phone={outreach?.phone ?? null}
+        customerName={outreach?.name || undefined}
+        onSent={() => {
+          const phone = outreach?.phone ?? null;
+          void qc.invalidateQueries({ queryKey: [WA_INBOX_KEY] });
+          if (phone) {
+            void qc.invalidateQueries({ queryKey: threadKey(phone) });
+            setTab('all');
+            setSelected(phone);
+          }
         }}
       />
     </>
