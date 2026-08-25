@@ -392,7 +392,15 @@ export function stockLine(stock: CustomerStock | null | undefined, now = Date.no
 export function identityNote(
   c: { identifiedBy?: string | null; identifiedHint?: string | null; phone?: string | null } | null | undefined,
 ): string | null {
-  if (!c || c.identifiedBy !== 'survey') return null;
+  // ⭐ **זיהוי ודאי אינו דורש הסבר.** הערה על כל לקוח הייתה הופכת לרעש,
+  // ואז גם ההערות שכן חשובות מפסיקות להיקרא.
+  if (!c) return null;
+  if (c.identifiedBy === 'document') {
+    // 🔴 חזק, אבל עדיין לא הטלפון הרשום של הלקוח: זה הטלפון שהסדרן
+    // הקליד על ההזמנה או על הקריאה, ושם הוא לצד מספר הלקוח.
+    return 'הטלפון הזה אינו רשום על כרטיס הלקוח. הוא מופיע על הזמנה או קריאה של הלקוח הזה.';
+  }
+  if (c.identifiedBy !== 'survey') return null;
   // ⭐ "ל" נדבקת לשם, בלי מקף. "ל-אלחרר פרלה" נראה כמו טקסט שנתפר במכונה.
   return `הטלפון הזה אינו רשום בפריוריטי. חיברנו אותו ${
     c.identifiedHint ? `ל${c.identifiedHint}` : 'ללקוח'

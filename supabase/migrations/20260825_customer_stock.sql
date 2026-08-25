@@ -63,6 +63,46 @@ begin
     if v_num is not null then v_via := 'phone'; end if;
   end if;
 
+  -- ── הטלפון שכותב יושב על המסמך, לא על כרטיס הלקוח ─────
+  --
+  -- ⭐⭐ **המקור החזק ביותר לזיהוי, ולא היה צריך למשוך בשבילו כלום.**
+  -- כשסדרן פותח הזמנה או קריאה הוא מקליד את הטלפון שעונים בו בפועל,
+  -- כלומר את הטלפון של בן המשפחה, **על מסמך שנושא גם את מספר הלקוח**.
+  -- זו עדות ישירה: אותה שורה מחזיקה את שני הצדדים של הקישור.
+  --
+  -- נמדד 25/08/2026 על 16 השיחות ה"לא מזוהות": 13 מהטלפונים מופיעים
+  -- בעצירות היומן, 12 בהזמנות, 9 בקריאות, **ו-0 בתת-טופס אנשי הקשר.**
+  -- 🔴 אנשי הקשר של ר.שעל הם פיזיותרפיסטים (960 מתוך 1,001), ולכן שם
+  -- טלפון אחד מצביע על עד שמונה מטופלים. [[contact_field_is_not_the_family]]
+  --
+  -- **11 מתוך 16 נפתרים מכאן, חד-משמעית.**
+  --
+  -- 🔴 **ורק כשכל המסמכים מצביעים על אותו לקוח אחד.** טלפון של מוסד או
+  -- של מטפל מופיע על מסמכים של כמה לקוחות, ואז הוא אינו מזהה איש.
+  if v_num is null and v_phone is not null then
+    select count(distinct t.cust), min(t.cust) into v_hits, v_num
+      from (
+        select nullif(o.customer_number, '') as cust
+          from public.orders o
+         where o.duplicate_of is null and public.wa_normalize_phone(o.phone) = v_phone
+           and nullif(o.customer_number, '') is not null
+        union
+        select nullif(c.customer_number, '')
+          from public.service_calls c
+         where c.duplicate_of is null and public.wa_normalize_phone(c.phone) = v_phone
+           and nullif(c.customer_number, '') is not null
+      ) t;
+
+    if v_hits = 1 then
+      select d.customer_name, d.city into v_name, v_city
+        from public.customer_directory d where d.customer_number = v_num limit 1;
+      v_via := 'document';
+    else
+      -- 🔴 יותר מאחד אינו זיהוי. מחזירים ל-null ונותנים למסלול הבא לנסות.
+      v_num := null;
+    end if;
+  end if;
+
   -- ── הטלפון שכותב אינו הטלפון שרשום בפריוריטי ──────────
   --
   -- 🔴🔴 **נתפס חי ב-25/08/2026, מצילום מסך של עידן.** לקוחה כתבה

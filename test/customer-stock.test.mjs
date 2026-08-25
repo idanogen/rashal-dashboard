@@ -112,6 +112,8 @@ test('🔴🔴 זיהוי דרך הסקר נאמר בקול ולא נבלע', as
   assert.equal(identityNote({ identifiedBy: 'number' }), null);
   assert.equal(identityNote({ identifiedBy: 'phone' }), null);
   assert.equal(identityNote(null), null);
+  // 🔴 והמסלול החזק אך לא-ודאי: הטלפון על ההזמנה, לא על כרטיס הלקוח.
+  assert.match(identityNote({ identifiedBy: 'document' }), /אינו רשום על כרטיס הלקוח/);
   // וזיהוי דרך שם שנשמר על סקר כן דורש.
   const n = identityNote({ identifiedBy: 'survey', identifiedHint: 'אלחרר פרלה' });
   assert.match(n, /אינו רשום בפריוריטי/);

@@ -88,6 +88,7 @@ test('🔴 משפט הזיהוי זהה בשני המימושים', { skip: !ava
   for (const c of [
     { identifiedBy: 'survey', identifiedHint: 'אלחרר פרלה' },
     { identifiedBy: 'survey', identifiedHint: null },
+    { identifiedBy: 'document' },
     { identifiedBy: 'number' }, { identifiedBy: 'phone' }, null,
   ]) {
     assert.equal(S.identityNote(c), identityNote(c),

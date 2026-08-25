@@ -47,7 +47,7 @@ export interface CustomerCardData {
      * שרשום בפריוריטי, והחיבור נעשה דרך שם שנשמר על סקר ששלחנו לטלפון
      * הזה. זה מספיק חזק כדי להציג, ולא מספיק חזק כדי לשתוק עליו.
      */
-    identifiedBy?: 'number' | 'phone' | 'survey' | null;
+    identifiedBy?: 'number' | 'phone' | 'document' | 'survey' | null;
     identifiedHint?: string | null;
     city: string | null;
     address: string | null;
