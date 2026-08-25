@@ -139,6 +139,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // [[render_is_not_a_user_event]]
     if (req.query.markRead === '1') return await markRead(res, user.email, phone, customer);
 
+    // ⭐⭐ **הכרטיס המלא, לחלונית שבתוך פריוריטי.** עידן, 25/08/2026:
+    // "איפה הכרטיס לקוח? ... זה כבר פרטים על הלקוח". הרצועה לבדה עונה
+    // רק על "מה פתוח", והוא ביקש את התיק.
+    //
+    // 🔴 על אותה נקודת קצה, כי הפרויקט על תקרת 12 הפונקציות של Vercel.
+    // ⭐ ואותה פונקציה במסד שהדשבורד קורא לה, כלומר אותו תוכן בשני
+    // המסכים גם כשהעיצוב שונה.
+    if (req.query.card === '1') {
+      const { data, error: cardErr } = await supabaseAdmin.rpc('customer_card', {
+        p_customer: customer,
+        p_phone: phone,
+      });
+      if (cardErr) {
+        console.error('[conversation] card failed', cardErr.message);
+        return res.status(500).json({ ok: false, error: 'server_error' });
+      }
+      return res.status(200).json({ ok: true, card: data });
+    }
+
     // בלי מזהה לקוח, הבקשה היא לרשימה ולא לשרשור בודד.
     if (!phone && !customer) return await listInbox(req, res);
 
