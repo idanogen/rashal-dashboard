@@ -1,0 +1,107 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  stockLine, warrantyState, itemTitle, itemSubtitle, sourceLabels,
+} from '../src/lib/customer-answer.ts';
+
+/**
+ * 🔴 **מה שנבדק כאן הוא מה שהנציגה תגיד ללקוח על הציוד שלו.**
+ * "אתה באחריות" שנאמר בטעות עולה כסף, ו"אין לך ציוד" שנאמר על לקוח
+ * שהציוד שלו פשוט ישן מהחלון שאנחנו מכסים הוא שקר מנומס.
+ */
+
+const NOW = new Date('2026-08-25T12:00:00Z').getTime();
+
+const device = (o = {}) => ({
+  part: 'G175', desc: 'מנוף חשמלי SUNRISE MEDICAL', qty: 1,
+  serials: ['17517098728'], installedAt: null, warrantyEnd: '2028-01-12',
+  lastSeen: '2026-07-07', sources: ['delivery', 'service'], match: 'number', ...o,
+});
+const stock = (o = {}) => ({ devices: [], accessories: [], returned: [], since: '2026-01-01', ...o });
+
+test('⭐ המשפט שעידן ביקש: איזה מוצר יש ללקוח, מיד', () => {
+  const a = stockLine(stock({ devices: [device()] }), NOW);
+  assert.equal(a.tone, 'ok');
+  assert.match(a.text, /יש לו G175/);
+  assert.match(a.text, /מספר סידורי 17517098728/);
+  assert.match(a.text, /באחריות עד 12\.01\.2028|באחריות עד 12\/01\/2028/);
+});
+
+test('🔴 יחיד ורבים: "ועוד מכשיר אחד", לא "ועוד 1"', () => {
+  const one = stockLine(stock({ devices: [device(), device({ part: 'G150' })] }), NOW);
+  assert.match(one.text, /ועוד מכשיר אחד\./);
+  assert.doesNotMatch(one.text, /ועוד 1/);
+  const many = stockLine(stock({ devices: [device(), device(), device()] }), NOW);
+  assert.match(many.text, /ועוד 2 מכשירים\./);
+});
+
+test('🔴 מספר סידורי נאמר רק כשהוא חד-משמעי', () => {
+  const two = stockLine(stock({ devices: [device({ serials: ['A1', 'B2'] })] }), NOW);
+  assert.doesNotMatch(two.text, /מספר סידורי/, 'שני סידוריים על אותו קוד אינם מזהים מכשיר אחד');
+  const none = stockLine(stock({ devices: [device({ serials: [] })] }), NOW);
+  assert.doesNotMatch(none.text, /מספר סידורי/);
+});
+
+test('🔴🔴 אחריות שפגה לא נאמרת כאילו היא בתוקף', () => {
+  const a = stockLine(stock({ devices: [device({ warrantyEnd: '2025-03-01' })] }), NOW);
+  assert.match(a.text, /האחריות כבר פגה/);
+  assert.doesNotMatch(a.text, /באחריות עד/);
+});
+
+test('🔴 סף האחריות: 60 יום, ולא צבע על כל פריט', () => {
+  assert.equal(warrantyState(null, NOW).tone, 'unknown');
+  assert.equal(warrantyState('2026-08-01', NOW).tone, 'expired');
+  assert.equal(warrantyState('2026-09-20', NOW).tone, 'ending', '26 יום קדימה');
+  assert.equal(warrantyState('2026-10-24', NOW).tone, 'ending', '60 יום בדיוק, עדיין מסומן');
+  assert.equal(warrantyState('2026-11-01', NOW).tone, 'active', '68 יום, כבר לא מסומן');
+  assert.equal(warrantyState('not-a-date', NOW).tone, 'unknown');
+});
+
+test('🔴 מצב ריק מסביר את עצמו ומצטט את גבול החלון מהמסד', () => {
+  const a = stockLine(stock(), NOW);
+  assert.match(a.text, /לא רשום אצלנו ציוד/);
+  assert.match(a.text, /01\.01\.2026|01\/01\/2026/, 'התאריך מגיע מ-since ולא קבוע בקוד');
+  assert.match(a.text, /קריאת שירות/, 'הנציגה צריכה לדעת איך ציוד ישן כן מתגלה');
+});
+
+test('🔴 "הכל נאסף בחזרה" אינו אותו דבר כמו "לא ידוע לנו כלום"', () => {
+  const a = stockLine(stock({ returned: [{ part: 'G175', desc: 'מנוף', at: '2026-05-26' }] }), NOW);
+  assert.match(a.text, /נאסף בחזרה/);
+  assert.match(a.text, /G175/);
+  assert.doesNotMatch(a.text, /לא רשום אצלנו ציוד/);
+});
+
+test('אביזרים בלי מכשיר נאמרים ככאלה', () => {
+  const a = stockLine(stock({
+    accessories: [
+      { ...device({ part: null, desc: 'חגורת פרפר', serials: [] }) },
+      { ...device({ part: null, desc: 'שולחן עץ', serials: [] }) },
+      { ...device({ part: null, desc: 'רצועות שוקיים', serials: [] }) },
+    ],
+  }), NOW);
+  assert.match(a.text, /אין מכשיר רשום/);
+  assert.match(a.text, /חגורת פרפר ו-שולחן עץ/);
+  assert.match(a.text, /ועוד 1 פריטים/);
+});
+
+test('🔴 פריט בלי קוד קטלוגי נופל לתיאור ולא לשורה ריקה', () => {
+  // 167 שורות בפריוריטי נושאות part = '*', כלומר טקסט חופשי.
+  assert.equal(itemTitle({ part: null, desc: 'חגורת פרפר' }), 'חגורת פרפר');
+  assert.equal(itemTitle({ part: null, desc: '' }), 'פריט');
+  assert.equal(itemTitle({ part: 'G175', desc: 'מנוף' }), 'G175');
+  assert.equal(itemSubtitle({ part: null, desc: 'חגורת פרפר' }), '', 'בלי כפילות של אותו טקסט');
+  assert.equal(itemSubtitle({ part: 'G175', desc: '"מנוף חשמלי"' }), 'מנוף חשמלי', 'המרכאות של פריוריטי מנוקות');
+});
+
+test('🔴 קריאת שירות נאמרת ראשונה, כי היא העדות החזקה ביותר', () => {
+  assert.deepEqual(sourceLabels(['register', 'delivery', 'service']),
+    ['קריאת שירות', 'אספקה', 'מרשם המנופים']);
+  assert.deepEqual(sourceLabels([]), []);
+  assert.deepEqual(sourceLabels(null), []);
+});
+
+test('הגנה מפני קלט חסר: המשפט לא קורס', () => {
+  assert.equal(typeof stockLine(null, NOW).text, 'string');
+  assert.equal(typeof stockLine(undefined, NOW).text, 'string');
+  assert.equal(stockLine({}, NOW).tone, 'none');
+});

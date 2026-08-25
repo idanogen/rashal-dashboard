@@ -67,10 +67,37 @@ export const FIXTURE: CustomerCardData = {
       { direction: 'in', body: 'מתאים, תודה', at: '2026-08-22T11:00:00Z', status: 'delivered' },
     ],
   },
-  equipment: [
-    { device: 'MR4001-00-242', model: 'כיסא ממונע', installedAt: '2024-02-14', warrantyEnd: '2027-02-01', match: 'phone' },
-    { device: 'G175', model: 'מנוף הרמה', installedAt: '2024-03-01', warrantyEnd: '2027-03-01', match: 'name' },
-  ],
+  // ⭐ הנתונים כאן מחקים מקרה אמיתי שנמדד (לקוח 055851927): מנוף אחד
+  // נשאר, וארבעה פריטים אחרים כבר נאספו בחזרה.
+  stock: {
+    devices: [
+      {
+        part: 'G175', desc: '"מנוף חשמלי SUNRISE MEDICAL למשקל עד 175 ק""ג"',
+        qty: 1, serials: ['17517098728'], installedAt: '2026-01-13',
+        warrantyEnd: '2028-01-12', lastSeen: '2026-07-07',
+        sources: ['delivery', 'service', 'register'], match: 'number',
+      },
+      {
+        // 🔴 אחריות שנגמרת בקרוב היא המקום היחיד שבו מופיע כתום.
+        part: 'MR4001-00-242', desc: 'כיסא ממונע', qty: 1,
+        serials: [], installedAt: '2024-02-14', warrantyEnd: '2026-09-20',
+        lastSeen: '2026-06-02', sources: ['service'], match: 'phone',
+      },
+    ],
+    accessories: [
+      {
+        // 🔴 פריט שנרשם בפריוריטי כטקסט חופשי, בלי קוד קטלוגי.
+        part: null, desc: 'חגורת פרפר', qty: 1, serials: [],
+        installedAt: null, warrantyEnd: null, lastSeen: '2026-03-15',
+        sources: ['delivery'], match: 'number',
+      },
+    ],
+    returned: [
+      { part: '2HD24RAFPS', desc: 'גרדיאן שלמות רוחב מושב 60', at: '2026-05-26' },
+      { part: 'CLRSHLEC2261', desc: 'זוג רגליות מתרוממות', at: '2026-03-17' },
+    ],
+    since: '2026-01-01',
+  },
   surveys: [
     { at: '2026-05-28T16:30:00Z', q1: 5, q2: 5, comment: 'הגיעו בזמן והסבירו הכל', driver: 'דוד' },
   ],

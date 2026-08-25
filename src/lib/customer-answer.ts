@@ -72,6 +72,14 @@ export function dayLabel(iso: string | null | undefined): string {
   return `יום ${names[d.getDay()]} ${dd}/${mm}`;
 }
 
+/** dd/mm, לאירוע שכבר קרה. */
+export function shortDate(iso: string | null | undefined): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
 /** חלון השעות, כשיש. */
 export function windowLabel(start?: string | null, end?: string | null): string {
   const cut = (v?: string | null) => (v ? String(v).slice(0, 5) : '');
@@ -188,4 +196,156 @@ export function certaintyNote(m: MatchCounts | null | undefined): string | null 
   if (m.byName) bits.push(`${m.byName} לפי שם`);
   const head = soft === 1 ? 'רשומה אחת כאן חוברה' : `${soft} רשומות כאן חוברו`;
   return `${head} ללקוח בלי מספר לקוח: ${bits.join(' ו-')}.`;
+}
+
+/* ───────────────────────────────────────────────────────────
+ * מה יש אצל הלקוח עכשיו
+ *
+ * ⭐ **הבקשה של עידן (25/08/2026):** "הייתי רוצה שישר יקפוץ לנציגה איזה
+ * מוצר יש ללקוח." לכן זה משפט, ולא רק רשימה: משפט אפשר לומר בטלפון.
+ * ─────────────────────────────────────────────────────────── */
+
+export type StockSource = 'delivery' | 'service' | 'register';
+
+export interface StockItem {
+  part: string | null;
+  desc: string | null;
+  qty: number;
+  serials: string[];
+  installedAt: string | null;
+  warrantyEnd: string | null;
+  lastSeen: string | null;
+  sources: StockSource[];
+  match: MatchKind | null;
+}
+
+export interface CustomerStock {
+  devices: StockItem[];
+  accessories: StockItem[];
+  returned: { part: string | null; desc: string | null; at: string | null }[];
+  since: string | null;
+}
+
+/**
+ * שם הפריט כפי שאומרים אותו.
+ *
+ * 🔴 **`part` הוא `null` כשבפריוריטי נרשם טקסט חופשי** (`'*'`), למשל
+ * "חגורת פרפר". 167 שורות כאלה. בלי הנפילה חזרה לתיאור, הנציגה הייתה
+ * רואה שורה ריקה.
+ */
+export function itemTitle(item: { part: string | null; desc: string | null }): string {
+  const desc = (item.desc ?? '').replace(/^"+|"+$/g, '').trim();
+  if (item.part) return item.part;
+  return desc || 'פריט';
+}
+
+/** התיאור, כשהוא מוסיף מידע מעבר לשם. */
+export function itemSubtitle(item: { part: string | null; desc: string | null }): string {
+  const desc = (item.desc ?? '').replace(/"{2,}/g, '"').replace(/^"+|"+$/g, '').trim();
+  if (!item.part) return '';
+  return desc;
+}
+
+export type WarrantyTone = 'active' | 'ending' | 'expired' | 'unknown';
+
+/**
+ * מצב האחריות.
+ *
+ * 🔴 **"נגמרת בקרוב" הוא סף ולא קישוט.** צבע שמופיע על כל פריט מפסיק
+ * להיות צבע, ואז שום דבר לא בולט. [[color_on_everything_is_not_color]]
+ * הסף כאן: 60 יום.
+ */
+export function warrantyState(
+  end: string | null | undefined,
+  now = Date.now(),
+): { tone: WarrantyTone; text: string } {
+  if (!end) return { tone: 'unknown', text: '' };
+  const t = new Date(end).getTime();
+  if (!Number.isFinite(t)) return { tone: 'unknown', text: '' };
+  const days = Math.floor((t - now) / DAY_MS);
+  const label = new Date(end).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  if (days < 0) return { tone: 'expired', text: `האחריות פגה ב-${label}` };
+  if (days <= 60) return { tone: 'ending', text: `האחריות נגמרת ב-${label}` };
+  return { tone: 'active', text: `באחריות עד ${label}` };
+}
+
+const SOURCE_TEXT: Record<StockSource, string> = {
+  service: 'קריאת שירות',
+  delivery: 'אספקה',
+  register: 'מרשם המנופים',
+};
+
+/**
+ * מאיפה אנחנו יודעים שהפריט שם.
+ *
+ * 🔴 **פריט בלי מקור הוא בדיוק מה שנציגה תגיד בביטחון ותיפול עליו.**
+ * קריאת שירות היא העדות החזקה ביותר (טכנאי ראה את המכשיר), ולכן היא
+ * נאמרת ראשונה.
+ */
+export function sourceLabels(sources: StockSource[] | null | undefined): string[] {
+  const order: StockSource[] = ['service', 'delivery', 'register'];
+  return order.filter((s) => (sources ?? []).includes(s)).map((s) => SOURCE_TEXT[s]);
+}
+
+/**
+ * המשפט על הציוד.
+ *
+ * ⭐ נאמר בקול: "יש לו מנוף G175, מספר סידורי 17517098728, באחריות עד
+ * 12/01/2028."
+ *
+ * 🔴 **וכשאין כלום, המשפט אומר למה.** רשימה ריקה נראית בדיוק כמו פיצ'ר
+ * שלא הותקן, והנציגה לא יכולה לדעת אם ללקוח אין ציוד או שאנחנו לא
+ * יודעים. [[empty_state_must_speak]]
+ */
+export function stockLine(stock: CustomerStock | null | undefined, now = Date.now()): AnswerLine {
+  const devices = stock?.devices ?? [];
+  const accessories = stock?.accessories ?? [];
+  const returned = stock?.returned ?? [];
+
+  if (devices.length) {
+    const first = devices[0];
+    const parts = [`יש לו ${itemTitle(first)}`];
+    if (first.serials.length === 1) parts.push(`מספר סידורי ${first.serials[0]}`);
+    const w = warrantyState(first.warrantyEnd, now);
+    if (w.tone === 'active' || w.tone === 'ending') parts.push(w.text);
+    else if (w.tone === 'expired') parts.push('האחריות כבר פגה');
+    const rest = devices.length - 1;
+    // ⭐ יחיד ורבים. "יש לו מנוף (ועוד 1)" אינו משפט שאדם אומר בטלפון.
+    const tail = rest === 0 ? '' : rest === 1 ? ' ועוד מכשיר אחד.' : ` ועוד ${rest} מכשירים.`;
+    return { text: `${parts.join(', ')}.${tail}`, tone: 'ok' };
+  }
+
+  if (accessories.length) {
+    const names = accessories.slice(0, 2).map(itemTitle).join(' ו-');
+    const rest = accessories.length - Math.min(2, accessories.length);
+    return {
+      text: `אין מכשיר רשום, יש ${names}${rest ? ` ועוד ${rest} פריטים` : ''}.`,
+      tone: 'none',
+    };
+  }
+
+  if (returned.length) {
+    const last = returned[0];
+    // 🔴 **תאריך בלבד, בלי יום בשבוע.** `dayLabel` נועד לתיאום עתידי
+    // ("שובץ ליום רביעי"), ובעבר הוא מייצר "ב-יום שלישי 26/05", שאיש
+    // לא אומר. אותו ניסוח בדיוק קיים בתוסף.
+    return {
+      text: `אין ציוד אצלו כרגע. מה שהיה נאסף בחזרה, האחרון ${itemTitle(last)}${
+        last.at ? ` ב-${shortDate(last.at)}` : ''
+      }.`,
+      tone: 'none',
+    };
+  }
+
+  // 🔴 הגבול נאמר במפורש, ומהמסד. תאריך קשיח כאן היה נשאר נכון עד
+  // לייבוא ההיסטורי ואז משקר בשקט.
+  const since = stock?.since
+    ? new Date(stock.since).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    : null;
+  return {
+    text: since
+      ? `לא רשום אצלנו ציוד. אנחנו יודעים מה סופק ומה נאסף מ-${since} ואילך, וציוד ישן יותר יופיע רק אם נפתחה עליו קריאת שירות.`
+      : 'לא רשום אצלנו ציוד אצל הלקוח הזה.',
+    tone: 'none',
+  };
 }

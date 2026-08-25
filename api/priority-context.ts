@@ -296,14 +296,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // "שובץ" נגזרת מהעצירה ביומן, במקום אחד, ולא מחושבת שוב כאן.
   // 🔴 כשל שלה אינו מפיל את הזיהוי: החלונית שווה משהו גם בלי הרצועה.
   let open: unknown = null;
+  let stock: unknown = null;
   try {
     const { data, error } = await supabaseAdmin.rpc('customer_card', {
       p_customer: best.customerNumber ?? null,
       p_phone: best.phone ?? null,
     });
     if (error) throw new Error(error.message);
-    const card = data as { open?: unknown } | null;
+    const card = data as { open?: unknown; stock?: unknown } | null;
     open = card?.open ?? null;
+    // ⭐⭐ **ומה יש אצל הלקוח.** עידן, 25/08/2026: "הייתי רוצה שישר
+    // יקפוץ לנציגה איזה מוצר יש ללקוח." זה המסך שהיא באמת עומדת מולו,
+    // ולכן זה חייב להיות כאן ולא רק בכרטיס המלא.
+    stock = card?.stock ?? null;
   } catch (e) {
     console.error('[priority-context] card failed', e instanceof Error ? e.message : e);
   }
@@ -313,6 +318,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     form: body.form ?? null,
     customer: best,
     open,
+    stock,
     procs: await loadProcs(),
     templates,
     prefill: {

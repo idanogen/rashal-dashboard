@@ -1,5 +1,8 @@
 import { supabase } from '@/lib/supabase';
-import type { MatchKind, OpenItem, MatchCounts } from '@/lib/customer-answer';
+// 🔴 **טיפוסי הציוד חיים במודול שנבדק ביחידה, ולא כאן.** שתי הגדרות
+// לאותה צורה נפרדות זו מזו בשקט, וזה בדיוק מה שקרה כאן פעם.
+import type { MatchKind, OpenItem, MatchCounts, CustomerStock } from '@/lib/customer-answer';
+export type { StockItem, CustomerStock } from '@/lib/customer-answer';
 
 /**
  * הכרטיס מגיע מהמסד בקריאה אחת.
@@ -59,10 +62,7 @@ export interface CustomerCardData {
     messageCount: number | null;
     messages: { direction: 'in' | 'out'; body: string | null; at: string; status: string | null }[];
   };
-  equipment: {
-    device: string | null; model: string | null;
-    installedAt: string | null; warrantyEnd: string | null; match: MatchKind;
-  }[];
+  stock: CustomerStock;
   surveys: { at: string; q1: number | null; q2: number | null; comment: string | null; driver: string | null }[];
   documents: {
     notes: { ref: string | null; date: string | null; status: string | null; invoiced: boolean | null; total: number | null }[];
