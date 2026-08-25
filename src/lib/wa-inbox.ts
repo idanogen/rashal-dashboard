@@ -91,6 +91,11 @@ export interface WaMessage {
   entity_key: string | null;
   author: string | null;
   sent_at: string;
+  /**
+   * תשובת הסקר **שנשלח בהודעה הזאת**, כשהלקוח ענה.
+   * ⭐ ההצמדה לפי הטוקן שבכתובת הכפתור, ולכן היא חד-חד-ערכית.
+   */
+  survey?: { score: number | null; answeredAt: string | null; comment: string | null };
 }
 
 /**
@@ -128,6 +133,9 @@ export interface ThreadResponse {
     messageCount: number | null;
     lastMessageAt: string | null;
     unansweredSince: string | null;
+    /** ⭐ אותה הכרעה בדיוק של הרשימה (`isWaiting`), ולא חישוב שני. */
+    waiting?: boolean;
+    readAt?: string | null;
   } | null;
   window: WaWindow;
   messages: WaMessage[];

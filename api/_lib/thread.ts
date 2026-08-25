@@ -104,6 +104,53 @@ export async function loadThread(by: { phone?: string | null; customer?: string 
 
   if (msgErr) throw new Error(msgErr.message);
 
+  // ── תשובת הסקר, על ההודעה שבה הוא נשלח ──────────────────
+  //
+  // ⭐ עידן, 25/08/2026: "את האימוג'י כאשר עונים תדביק גם להודעה
+  // שנשלחה לבן אדם בצ'אט עצמו." כלומר לא רק חיווי על הלקוח, אלא על
+  // **ההודעה הזאת** ומה יצא ממנה.
+  //
+  // ⭐ **ההצמדה לפי הטוקן, שהוא מזהה חד-חד-ערכי.** הטוקן יושב בכתובת
+  // של כפתור התבנית (`.../s/<token>`), ולכן אין כאן ניחוש לפי זמן או
+  // לפי נוסח, וגם כששלחנו לאותו לקוח שני סקרים כל אחד מקבל את שלו.
+  // 🔴 ובלי סינון `is_test` כאן, בניגוד לחיווי שברשימה: שם השאלה היא
+  // "כמה הלקוח מרוצה" ובדיקה היא רעש, וכאן השאלה היא "מה יצא מההודעה
+  // הזאת", ובדיקה היא התשובה הנכונה.
+  const tokens = new Set<string>();
+  for (const m of messages ?? []) {
+    const raw = JSON.stringify((m as { attachments?: unknown }).attachments ?? '');
+    for (const hit of raw.matchAll(/\/s\/([0-9a-zA-Z_-]{8,64})/g)) tokens.add(hit[1]);
+  }
+  const answered = new Map<string, { score: number | null; answeredAt: string | null; comment: string | null }>();
+  if (tokens.size) {
+    try {
+      const { data: rows } = await supabaseAdmin
+        .from('customer_surveys')
+        .select('token, q1_satisfaction, answered_at, comment')
+        .in('token', Array.from(tokens))
+        .not('answered_at', 'is', null);
+      for (const r of (rows ?? []) as Array<Record<string, unknown>>) {
+        answered.set(String(r.token), {
+          score: r.q1_satisfaction == null ? null : Number(r.q1_satisfaction),
+          answeredAt: (r.answered_at as string) ?? null,
+          comment: (r.comment as string) ?? null,
+        });
+      }
+    } catch (e) {
+      // 🔴 נכשל בשקט. חיווי סקר אינו סיבה להפיל שרשור שיחה.
+      console.error('[thread] surveys failed', e instanceof Error ? e.message : e);
+    }
+  }
+  const surveyFor = (attachments: unknown) => {
+    if (!answered.size) return undefined;
+    const raw = JSON.stringify(attachments ?? '');
+    for (const hit of raw.matchAll(/\/s\/([0-9a-zA-Z_-]{8,64})/g)) {
+      const found = answered.get(hit[1]);
+      if (found) return found;
+    }
+    return undefined;
+  };
+
   return {
     conversation: {
       id: conv.id,
@@ -131,6 +178,7 @@ export async function loadThread(by: { phone?: string | null; customer?: string 
       // ⭐ הכפתור שהלקוח קיבל, ואיתו הקישור עצמו. הוא יושב באותו מערך,
       // והוא **לא** קובץ. ראה `describeButtons`.
       buttons: describeButtons(m.attachments),
+      survey: surveyFor(m.attachments),
     })),
   };
 }

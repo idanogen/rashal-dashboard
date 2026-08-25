@@ -259,6 +259,17 @@ function Bubble({ m }: { m: WaMessage }) {
         {btns.map((b) => (
           <ButtonLink key={b.index} b={b} />
         ))}
+        {/*
+          ⭐ **מה יצא מההודעה הזאת.** עידן, 25/08/2026: "את האימוג'י
+          כאשר עונים תדביק גם להודעה שנשלחה לבן אדם בצ'אט עצמו."
+          ההצמדה לפי הטוקן שבכתובת הכפתור, ולכן גם שני סקרים לאותו לקוח
+          לא מתבלבלים ביניהם.
+        */}
+        {m.survey?.answeredAt && (
+          <div className="mt-1.5 rounded-lg border border-slate-900/10 bg-white/70 px-2 py-1">
+            <SurveyAnswerLine survey={m.survey} />
+          </div>
+        )}
         <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground">
           <span>{timeText(m.sent_at)}</span>
           {out && m.status && <span>· {STATUS_TEXT[m.status] ?? m.status}</span>}
@@ -292,6 +303,35 @@ function SurveyPill({ survey }: { survey?: InboxItem['survey'] }) {
       {mark.label}
       <span className="sr-only">{mark.title}</span>
     </span>
+  );
+}
+
+/**
+ * שורת התשובה על בועת ההודעה: אימוג'י, ציון, וההערה עצמה כשיש.
+ *
+ * ⭐ **וההערה מוצגת ולא רק נרמזת.** 13 מתוך התשובות נושאות טקסט חופשי,
+ * וזה בדיוק מה שמעניין בהודעה עצמה. ברשימה אין לזה מקום, כאן יש.
+ */
+function SurveyAnswerLine({ survey }: { survey: NonNullable<WaMessage['survey']> }) {
+  const mark = surveyMark(survey);
+  if (!mark) return null;
+  return (
+    <div className="space-y-0.5">
+      <div className="flex items-center gap-1 text-[11px] font-semibold">
+        <span
+          className={`inline-flex items-center gap-0.5 rounded-md border px-1 py-px leading-none ${SURVEY_TONE[mark.tone]}`}
+        >
+          <span aria-hidden>{mark.emoji}</span>
+          {mark.label}
+        </span>
+        <span className="text-slate-600">{mark.title}</span>
+      </div>
+      {survey.comment?.trim() && (
+        <div className="text-[11px] leading-snug text-slate-700">
+          <bdi>&ldquo;{survey.comment.trim()}&rdquo;</bdi>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -704,6 +744,34 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE }: InboxBoardProps) {
                     <bdi>{current.phone}</bdi>
                   </div>
                 </div>
+                <div className="flex items-center gap-2">
+                {/*
+                  🔴🔴 **סימון "נקרא" מתוך השרשור, לא רק מלחיצה על השורה.**
+                  עידן, 25/08/2026: "פתחתי כמה פעמים את התשובה של שלומי
+                  ועדיין יש לי שם 1." והוא צדק: השורה הראשונה **נבחרת
+                  לבד** כשהמסך נפתח, השרשור מצויר, הוא קרא אותו, ומעולם
+                  לא נלחצה השורה עצמה. הבחירה האוטומטית אינה קריאה
+                  בכוונה ([[render_is_not_a_user_event]]), ולכן חסר היה
+                  כפתור מפורש בדיוק במקום שבו הוא קורא.
+                  ⭐ מוצג רק כשהשיחה באמת ממתינה, אחרת הוא רעש.
+                */}
+                {thread.data?.conversation?.waiting && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 gap-1 px-2 text-[11px]"
+                    onClick={() => {
+                      if (!selected) return;
+                      void markThreadRead(selected).then(() => {
+                        void qc.invalidateQueries({ queryKey: [WA_INBOX_KEY] });
+                        void qc.invalidateQueries({ queryKey: threadKey(selected) });
+                      });
+                    }}
+                  >
+                    <Check className="h-3 w-3" />
+                    סמן כנקרא
+                  </Button>
+                )}
                 <Badge
                   variant="outline"
                   className={
@@ -724,6 +792,7 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE }: InboxBoardProps) {
                     </>
                   )}
                 </Badge>
+                </div>
               </div>
 
               <div ref={scrollRef} className="flex-1 space-y-2 overflow-y-auto p-4">
