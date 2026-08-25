@@ -167,6 +167,19 @@ const BACKFILL_Q: Record<string, { kind: string; url: (f: string, t: string) => 
       `&$filter=${encodeURIComponent(`IVDATE ge ${f} and IVDATE lt ${t}`)}` +
       `&$orderby=IVDATE%20asc&$top=4000`,
   },
+  // 🔴🔴 **לקוחות בלי תאריך יצירה.** סינון `CREATEDDATE ge X` מפיל
+  // רשומות שהשדה בהן ריק, בשקט ובלי שגיאה, והן פשוט לא קיימות אצלנו.
+  // נתפס 25/08/2026: עידן ראה במסך הלקוחות של פריוריטי שמות שלא הופיעו
+  // אצלנו, וארבעה מהם נשארו חסרים גם אחרי משיכה של כל השנים.
+  // ⭐ `from`/`to` מתעלמים כאן, והם נשארים בחתימה כדי שהחלון היחיד
+  // הזה ייקרא בדיוק כמו כל שאר החלונות.
+  customers_nodate: {
+    kind: "customers",
+    url: () =>
+      `/CUSTOMERS?$select=CUSTNAME,CUSTDES,ADDRESS,STATE,PHONE,FAX,AGENTNAME,MCUSTDES,OWNERLOGIN,CREATEDDATE` +
+      `&$filter=${encodeURIComponent("CREATEDDATE eq null")}` +
+      `&$orderby=CUSTNAME%20asc&$top=4000`,
+  },
   // ⭐ הלקוחות עם אנשי הקשר שלהם. עידן, 25/08/2026: "הגיע הזמן למשוך
   // את כל אנשי הקשר למערכת." 🔴 השדה `PHONE` בתת-הטופס הוא מזהה שורה
   // פנימי ולא טלפון (לקח מאומת של רוני, 12/07). הטלפון האמיתי יושב
