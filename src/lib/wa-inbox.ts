@@ -43,6 +43,12 @@ export interface InboxResponse {
   matched: number;
   truncated: boolean;
   items: InboxItem[];
+  /**
+   * 🔴 **כל הטלפונים שיש להם שיחה, כולל כאלה שסוננו מהתצוגה.**
+   * "לקוח בלי שיחה" נגזר מכאן ולא מ-`items`, אחרת לשונית או חיפוש
+   * שמסתירים את השיחה הופכים את הלקוח ל"בלי שיחה".
+   */
+  phones?: string[];
 }
 
 /**

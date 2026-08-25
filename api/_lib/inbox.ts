@@ -198,6 +198,17 @@ export function matchesQuery(item: InboxItem, raw: string): boolean {
     .toLowerCase();
 
   if (haystack.includes(q)) return true;
+
+  // 🔴🔴 **שם מלא מוקלד בכל סדר.** עידן, 25/08/2026: חיפוש "שלומי קורן"
+  // בתיבה לא מצא את השיחה של "קורן שלומי-שלמה", והלקוח הופיע במקום זה
+  // תחת "לקוחות בלי שיחה" עם הצעה לשלוח תבנית, בזמן שחלון 24 השעות שלו
+  // פתוח והשיחה ממתינה 56 דקות.
+  // ⭐ אותה תקלה בדיוק תוקנה היום ב-`customer_search` שבמסד, וזה מימוש
+  // שני שלה. [[priority_customer_name_has_no_order]]
+  // 🔴 **כל המילים ולא אחת מהן**, אחרת "שלומי כהן" מחזיר את כל הכהנים.
+  const words = q.split(/\s+/).filter((w) => w.length >= 2);
+  if (words.length > 1 && words.every((w) => haystack.includes(w))) return true;
+
   if (digits.length >= 3) {
     const numeric = [item.customerNumber, item.phone].filter(Boolean).join(' ').replace(/\D/g, '');
     if (numeric.includes(digits)) return true;

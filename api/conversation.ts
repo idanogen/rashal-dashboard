@@ -118,6 +118,12 @@ async function listInbox(req: VercelRequest, res: VercelResponse) {
     matched: filtered.length,
     truncated: rows.length >= HARD_CAP,
     items: sortItems(filtered, tab).slice(0, limit),
+    // 🔴🔴 **כל הטלפונים שיש להם שיחה, ולא רק אלה שנראים עכשיו.**
+    // המסך גוזר מכאן מי "לקוח בלי שיחה". כשהגזירה נעשתה מהרשימה
+    // המסוננת, לקוח שהשיחה שלו לא עברה את הלשונית או את החיפוש הוצג
+    // כמי שאין לו שיחה כלל, עם הצעה לשלוח תבנית, בזמן שחלון 24 השעות
+    // שלו פתוח ואפשר לכתוב לו חופשי. נתפס על ידי עידן, 25/08/2026.
+    phones: Array.from(new Set(all.map((i) => i.phone).filter(Boolean))),
   });
 }
 /**

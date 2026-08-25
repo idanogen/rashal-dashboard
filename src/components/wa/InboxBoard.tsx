@@ -471,10 +471,21 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE }: InboxBoardProps) {
 
   // 🔴 **לקוח שכבר מופיע כשיחה לא מוצג פעמיים.** הרשימה השנייה נועדה
   // להשלים את הראשונה, לא לשכפל אותה.
+  /**
+   * לקוחות שאין להם שיחה בכלל.
+   *
+   * 🔴🔴 **נגזר מכל השיחות ולא מהרשימה שעל המסך.** עידן, 25/08/2026:
+   * חיפוש "שלומי קורן" בחלונית הציג את הלקוח תחת "לקוחות בלי שיחה" עם
+   * כפתור "שלח תבנית", בזמן שהשיחה שלו פתוחה וממתינה 56 דקות. הסיבה
+   * הייתה ש-`items` הוא הרשימה **המסוננת**, ולכן שיחה שלא עברה את
+   * הלשונית או את החיפוש נעלמה גם מהחישוב הזה.
+   */
   const otherPeople = useMemo(() => {
-    const seen = new Set(items.map((i) => i.phone).filter(Boolean));
+    const seen = new Set(
+      (inbox.data?.phones ?? items.map((i) => i.phone)).filter(Boolean) as string[],
+    );
     return (people.data ?? []).filter((c) => !c.phone_local || !seen.has(c.phone_local));
-  }, [people.data, items]);
+  }, [people.data, items, inbox.data?.phones]);
   const counts = inbox.data?.counts ?? { waiting: 0, all: 0 };
 
   // ⭐ **אם אין מי שמחכה, אין טעם להציג לשונית ריקה.** נפתחים על כל
