@@ -182,6 +182,35 @@ const BACKFILL_Q: Record<string, { kind: string; url: (f: string, t: string) => 
   // אצלנו, וארבעה מהם נשארו חסרים גם אחרי משיכה של כל השנים.
   // ⭐ `from`/`to` מתעלמים כאן, והם נשארים בחתימה כדי שהחלון היחיד
   // הזה ייקרא בדיוק כמו כל שאר החלונות.
+  // ⭐ **כל הלקוחות, בלי חלון תאריכים.** עידן, 25/08/2026: אין דרך
+  // לשאול את פריוריטי מי השתנה (`CREATEDDATE` לא זז בעריכה,
+  // `STATUSDATE` נמדד ולא זז על עריכת שדה, ו-`any()` על יומן השינויים
+  // נחסם בשער ה-CDN), ולכן הדרך היחידה לתפוס עריכות היא לסרוק הכול
+  // פעם בשבועיים. `from`/`to` נקראים ומוזנחים, כדי שהחלון הזה ייקרא
+  // בדיוק כמו כל שאר החלונות.
+  //
+  // 🔴 מיון לפי `CUSTNAME`, שהוא המפתח הייחודי, ולא לפי תאריך: `$skip`
+  // מניח סדר יציב, וזה מה שהפיל 3,180 לקוחות בייבוא ההיסטורי.
+  customers_all: {
+    kind: "customers",
+    url: () =>
+      `/CUSTOMERS?$select=CUSTNAME,CUSTDES,ADDRESS,STATE,PHONE,FAX,AGENTNAME,MCUSTDES,OWNERLOGIN,CREATEDDATE` +
+      `&$orderby=CUSTNAME%20asc&$top=${PAGE_CAP}`,
+  },
+  // ⭐ **לקוחות ספציפיים לפי מספר**, ל"תמשוך לי את X עכשיו" ולסגירת
+  // פערים ממוקדת. הרשימה מגיעה ב-`from` כמחרוזת מופרדת בפסיקים.
+  // 🔴 כל מספר נבדק מול תבנית לפני שהוא נכנס ל-`$filter`, כי הוא נכנס
+  // למחרוזת שאילתה שנשלחת לפריוריטי.
+  customers_pick: {
+    kind: "customers",
+    url: (f) => {
+      const list = String(f ?? "").split(",").map((x) => x.trim())
+        .filter((x) => /^[A-Za-z0-9_-]{1,30}$/.test(x)).slice(0, 60);
+      const filter = list.map((c) => `CUSTNAME eq '${c}'`).join(" or ");
+      return `/CUSTOMERS?$select=CUSTNAME,CUSTDES,ADDRESS,STATE,PHONE,FAX,AGENTNAME,MCUSTDES,OWNERLOGIN,CREATEDDATE` +
+        `&$filter=${encodeURIComponent(filter)}&$orderby=CUSTNAME%20asc&$top=${PAGE_CAP}`;
+    },
+  },
   customers_nodate: {
     kind: "customers",
     url: () =>
@@ -221,11 +250,20 @@ const BACKFILL_Q: Record<string, { kind: string; url: (f: string, t: string) => 
 //
 // ⭐ **הפתרון הוא `$skip`, וזה מה שהופך את המנגנון לנכון ולא רק לגדול
 // יותר.** כל השאילתות כאן כבר נושאות `$orderby`, וזה תנאי לעימוד יציב.
-async function fetchPaged(baseUrl: string): Promise<{ rows: unknown[]; pages: number; body: string } | { error: string; detail: string }> {
+/**
+ * ⭐ `from`/`maxPages` נועדו לפצל סריקה מלאה לכמה ריצות.
+ * 🔴 **נמדד 25/08/2026: סריקת כל 42,752 הלקוחות ארכה 142 שניות**, מול
+ * תקרה של כ-150 שניות לפונקציית Edge. זה עבר, אבל בלי מרווח, וריצה
+ * מתוזמנת שנחתכת באמצע היא בדיוק סוג הכשל שלא רואים.
+ */
+async function fetchPaged(
+  baseUrl: string, startPage = 0, maxPages = 40,
+): Promise<{ rows: unknown[]; pages: number; body: string } | { error: string; detail: string }> {
   const all: unknown[] = [];
   let pages = 0, last = "";
   for (;;) {
-    const url = baseUrl + (pages ? `&$skip=${pages * PAGE_CAP}` : "");
+    const page = startPage + pages;
+    const url = baseUrl + (page ? `&$skip=${page * PAGE_CAP}` : "");
     const res = await fetch(url, {
       headers: { Authorization: basicAuth(), "User-Agent": UA, Accept: "application/json" },
     });
@@ -238,16 +276,19 @@ async function fetchPaged(baseUrl: string): Promise<{ rows: unknown[]; pages: nu
     // עמוד שאינו מלא הוא סוף אמיתי.
     if (rows.length < PAGE_CAP) break;
     // 🔴 גבול קשיח, כדי ששגיאה בשרת לא תהפוך ללולאה אינסופית.
-    if (pages >= 40) break;
+    if (pages >= maxPages) break;
   }
   return { rows: all, pages, body: JSON.stringify({ value: all }) };
 }
 
-async function runBackfill(entity: string, from: string, to: string, dry: boolean) {
+async function runBackfill(
+  entity: string, from: string, to: string, dry: boolean,
+  startPage = 0, maxPages = 40,
+) {
   const cfg = BACKFILL_Q[entity];
   if (!cfg) return { error: `unknown entity '${entity}'`, known: Object.keys(BACKFILL_Q) };
 
-  const paged = await fetchPaged(PRIORITY + cfg.url(from, to));
+  const paged = await fetchPaged(PRIORITY + cfg.url(from, to), startPage, maxPages);
   if ("error" in paged) return { entity, from, to, error: paged.error, detail: paged.detail };
   const body = paged.body;
   const pages = paged.pages;
@@ -269,9 +310,9 @@ async function runBackfill(entity: string, from: string, to: string, dry: boolea
   } catch { /* best effort */ }
 
   // ⭐ אחרי העימוד, "קטום" פירושו שנעצרנו בגבול הקשיח ולא שהחלון גדול.
-  const truncated = pages >= 40;
+  const truncated = pages >= maxPages;
 
-  if (dry) return { entity, from, to, fetched, pages, subRows: sub, withSub, truncated, dry: true };
+  if (dry) return { entity, from, to, startPage, fetched, pages, subRows: sub, withSub, truncated, dry: true };
 
   // 🔴🔴 **הכתיבה מפוצלת, כי לוורסל תקרת גוף בקשה של 4.5 מגה.**
   // אחרי שהעימוד נכנס, חלון אחד יכול להחזיק 10,641 רשומות, וזה עובר
@@ -293,7 +334,7 @@ async function runBackfill(entity: string, from: string, to: string, dry: boolea
     }
     try { stats.push(JSON.parse(postBody)); } catch { stats.push(postBody.slice(0, 200)); }
   }
-  return { entity, from, to, fetched, pages, truncated, chunks: stats.length, stats };
+  return { entity, from, to, startPage, fetched, pages, truncated, chunks: stats.length, stats };
 }
 
 // חלון מתגלגל 3 ימים לכתובות איסוף (כמו addDays(now;-3) ב-Make)
@@ -1153,7 +1194,11 @@ Deno.serve(async (req: Request) => {
       }), { status: 400, headers: { "Content-Type": "application/json" } });
     }
     try {
-      return new Response(JSON.stringify(await runBackfill(entity, from, to, dry), null, 2), { headers: { "Content-Type": "application/json" } });
+      const startPage = Math.max(0, Number(body?.startPage ?? 0) || 0);
+      const maxPages = Math.min(40, Math.max(1, Number(body?.maxPages ?? 40) || 40));
+      return new Response(
+        JSON.stringify(await runBackfill(entity, from, to, dry, startPage, maxPages), null, 2),
+        { headers: { "Content-Type": "application/json" } });
     } catch (e) {
       return new Response(JSON.stringify({ error: String(e).slice(0, 500) }), { status: 500, headers: { "Content-Type": "application/json" } });
     }
