@@ -162,8 +162,15 @@ async function upsertContacts(rows: Row[]): Promise<{ customers: number; rows: n
   const byCustomer = new Map<string, Sub[]>();
   for (const r of rows) {
     const custname = s(r.CUSTNAME);
-    const sub = (r as Row).CUSTPERSONNEL_SUBFORM;
-    if (!custname || !Array.isArray(sub)) continue;
+    if (!custname) continue;
+    // 🔴 **לא לנעוץ את שם תת-הטופס.** פריוריטי מחזירה אותו תחת המפתח
+    // שהוגדר ב-`$expand`, וכל שינוי בו היה מייצר כשל שקט: הבקשה
+    // מצליחה, הרשומות נכתבות, ואנשי הקשר פשוט לא מגיעים.
+    let sub: unknown = null;
+    for (const k of Object.keys(r)) {
+      if (k.endsWith('_SUBFORM') && Array.isArray((r as Row)[k])) { sub = (r as Row)[k]; break; }
+    }
+    if (!Array.isArray(sub)) continue;
     byCustomer.set(custname, sub as Sub[]);
   }
   if (!byCustomer.size) return null;
