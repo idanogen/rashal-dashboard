@@ -59,6 +59,46 @@ async function listInbox(req: VercelRequest, res: VercelResponse) {
   // ⭐ כלל 24 השעות מחושב מהמקום היחיד שמחזיק אותו.
   const all = rows.map((r) => toItem(r, windowState(r.last_inbound_at), now));
 
+  // ── מי ענה על הסקר, ומה הוא ענה ─────────────────────────
+  //
+  // ⭐ עידן, 25/08/2026: "אנחנו לא חייבים להסתמך רק על נתוני הווצאפ."
+  // נכון, ואצלנו יושב **הציון עצמו** ולא רק העובדה שנשלחה הודעה.
+  //
+  // 🔴 **שאילתה אחת לכל הרשימה, לא אחת לשורה.** הרשימה מגיעה עד 200
+  // שיחות ומתרעננת כל כמה שניות, ושאילתה פר-שורה הייתה הופכת מסך
+  // צפייה למאה קריאות. הכמות זעירה ממילא: 23 תשובות בסך הכול.
+  //
+  // 🔴 **וההצמדה לפי טלפון מנורמל.** הסקר שומר `phone_e164` והשיחה
+  // שומרת מקומי, והשוואה ישירה ביניהם הייתה מחזירה אפס בשקט.
+  const answers = new Map<string, { score: number | null; answeredAt: string | null; comment: string | null }>();
+  try {
+    const { data: surveys } = await supabaseAdmin
+      .from('customer_surveys')
+      .select('phone_e164, q1_satisfaction, answered_at, comment')
+      .eq('status', 'answered')
+      .not('answered_at', 'is', null)
+      .order('answered_at', { ascending: false })
+      .limit(500);
+    for (const s of (surveys ?? []) as Array<Record<string, unknown>>) {
+      const key = normalizePhone(String(s.phone_e164 ?? ''));
+      // ⭐ הראשון שנתקלים בו הוא העדכני, כי המיון יורד. סקר ישן יותר
+      // לאותו לקוח לא ידרוס את התשובה האחרונה.
+      if (!key || answers.has(key)) continue;
+      answers.set(key, {
+        score: s.q1_satisfaction == null ? null : Number(s.q1_satisfaction),
+        answeredAt: (s.answered_at as string) ?? null,
+        comment: (s.comment as string) ?? null,
+      });
+    }
+  } catch (e) {
+    // 🔴 נכשל בשקט: חיווי סקר אינו סיבה להפיל את תיבת השיחות כולה.
+    console.error('[conversation] surveys failed', e instanceof Error ? e.message : e);
+  }
+  for (const item of all) {
+    const a = item.phone ? answers.get(item.phone) : undefined;
+    if (a) item.survey = a;
+  }
+
   // ⭐ הספירות נגזרות מאותה רשימה ולא משאילתה שנייה, שיכולה לרוץ על מצב
   // אחר בשבריר שנייה. מונה שמשקר גרוע ממונה שחסר.
   // ⭐ "מחכה" ולא "לא נענה". שיחה שנפתחה ונקראה יורדת מכאן גם בלי תשובה,

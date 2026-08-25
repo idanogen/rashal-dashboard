@@ -61,6 +61,12 @@ export interface InboxItem {
   read: boolean;
   messageCount: number;
   window: WindowState;
+  /**
+   * תשובת הסקר האחרונה של הלקוח, כשיש.
+   * ⭐ מהנתונים שלנו (`customer_surveys`) ולא מוואטסאפ, ולכן היא נושאת
+   * את **הציון** ואת ההערה, ולא רק את העובדה שהודעה נשלחה.
+   */
+  survey?: { score: number | null; answeredAt: string | null; comment: string | null };
 }
 
 /**

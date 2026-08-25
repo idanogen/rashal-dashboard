@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { TemplateSendDialog } from '@/components/wa/TemplateSendDialog';
 import { CustomerCardButton } from '@/components/customer/CustomerCardSheet';
 import { searchCustomers, customerSearchKey } from '@/lib/customer-card';
+import { surveyMark, SURVEY_TONE } from '@/lib/survey-badge';
 import {
   Search,
   Clock,
@@ -272,6 +273,28 @@ function Bubble({ m }: { m: WaMessage }) {
   );
 }
 
+/**
+ * החיווי שהלקוח ענה על הסקר.
+ *
+ * 🔴 **לא סמיילי אחיד.** 20 מתוך 23 התשובות הראשונות היו 5, ואחת הייתה
+ * 2. סימן זהה לכולם היה קובר בדיוק את זו שצריך לטפל בה.
+ * ההכרעה ב-`src/lib/survey-badge.ts`, בלי ייבוא ולכן נבדקת ביחידה.
+ */
+function SurveyPill({ survey }: { survey?: InboxItem['survey'] }) {
+  const mark = surveyMark(survey);
+  if (!mark) return null;
+  return (
+    <span
+      title={mark.title}
+      className={`inline-flex shrink-0 items-center gap-0.5 rounded-md border px-1 py-px text-[10px] font-semibold leading-none ${SURVEY_TONE[mark.tone]}`}
+    >
+      <span aria-hidden>{mark.emoji}</span>
+      {mark.label}
+      <span className="sr-only">{mark.title}</span>
+    </span>
+  );
+}
+
 function Row({
   item,
   active,
@@ -294,7 +317,15 @@ function Row({
       }`}
     >
       <div className="flex items-baseline justify-between gap-2">
-        <span className="truncate text-sm font-semibold text-slate-900">{item.title}</span>
+        <span className="flex min-w-0 items-baseline gap-1">
+          <span className="truncate text-sm font-semibold text-slate-900">{item.title}</span>
+          {/*
+            ⭐ **החיווי צמוד לשם ולא בשורת התגיות.** מי שסורק את הרשימה
+            סורק שמות, ותג בשורה השלישית נבלע. והציון עצמו מוצג, כי
+            "ענה" בלי הציון מחזיר אותנו לשאלה שבגללה נכנסים.
+          */}
+          <SurveyPill survey={item.survey} />
+        </span>
         <span className="shrink-0 text-[11px] text-muted-foreground">
           {timeText(item.lastMessageAt)}
         </span>

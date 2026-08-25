@@ -29,6 +29,11 @@ export interface InboxItem {
   read: boolean;
   messageCount: number;
   window: WaWindow;
+  /**
+   * תשובת הסקר האחרונה של הלקוח, כשיש. מגיעה מהנתונים שלנו
+   * (`customer_surveys`) ולא מוואטסאפ, ולכן היא נושאת גם את הציון.
+   */
+  survey?: { score: number | null; answeredAt: string | null; comment: string | null };
 }
 
 export interface InboxResponse {
