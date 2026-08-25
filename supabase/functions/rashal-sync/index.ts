@@ -112,13 +112,22 @@ const Q = {
 //
 // שמות השדות מועתקים מילה במילה מ-Q למעלה. $select עם שדה לא קיים מחזיר 400
 // (לקח #1 של רוני), אז לא מנחשים ולא מקצרים.
+// 🔴 Priority Connect עוצרת על 2,000 שורות לקריאה, בלי קשר ל-`$top`.
+const PAGE_CAP = 2000;
+
 const BACKFILL_Q: Record<string, { kind: string; url: (f: string, t: string) => string }> = {
   customers: {
     kind: "customers",
     url: (f, t) =>
       `/CUSTOMERS?$select=CUSTNAME,CUSTDES,ADDRESS,STATE,PHONE,FAX,AGENTNAME,MCUSTDES,OWNERLOGIN,CREATEDDATE` +
       `&$filter=${encodeURIComponent(`CREATEDDATE ge ${f} and CREATEDDATE lt ${t}`)}` +
-      `&$orderby=CREATEDDATE%20asc&$top=4000`,
+      // 🔴🔴 **מיון לפי מפתח ייחודי, ולא לפי התאריך שסיננו לפיו.**
+      // `$skip` מניח סדר יציב. כשכל הרשומות בחלון נושאות את אותו
+      // `CREATEDDATE` (יום ייבוא המוני), הסדר בין העמודים אינו מובטח,
+      // העמודים חופפים, וחלק מהרשומות לא מופיע באף עמוד.
+      // נמדד 25/08/2026: החלון החזיר 10,641 רשומות ורק 7,461 היו
+      // ייחודיות. **3,180 לקוחות אבדו בשקט, בלי שום שגיאה.**
+      `&$orderby=CUSTNAME%20asc&$top=${PAGE_CAP}`,
   },
   orders: {
     kind: "orders",
@@ -204,16 +213,44 @@ const BACKFILL_Q: Record<string, { kind: string; url: (f: string, t: string) => 
 
 // חלון אחד, ישות אחת. קריאה מפריוריטי + כתיבה דרך ה-inbox במצב backfill.
 // ה-inbox במצב הזה לא מקדם את הווטרמרק, כך שהסנכרון החי לא מושפע בכלל.
+// 🔴🔴 **Priority Connect עוצרת על 2,000 שורות לקריאה, בלי קשר ל-`$top`,
+// ובלי להגיד.** נתפס 25/08/2026 מול דוח שעידן הפיק: 8,434 לקוחות חסרו
+// אצלנו, **כולם מחלון אחד** שהחזיר בדיוק 2,000 וסומן `truncated`.
+// יום ייבוא המוני אחד מחזיק כ-10,400 כרטיסי לקוח, ולכן צמצום החלון
+// אינו עוזר: כולם נושאים את אותו תאריך.
+//
+// ⭐ **הפתרון הוא `$skip`, וזה מה שהופך את המנגנון לנכון ולא רק לגדול
+// יותר.** כל השאילתות כאן כבר נושאות `$orderby`, וזה תנאי לעימוד יציב.
+async function fetchPaged(baseUrl: string): Promise<{ rows: unknown[]; pages: number; body: string } | { error: string; detail: string }> {
+  const all: unknown[] = [];
+  let pages = 0, last = "";
+  for (;;) {
+    const url = baseUrl + (pages ? `&$skip=${pages * PAGE_CAP}` : "");
+    const res = await fetch(url, {
+      headers: { Authorization: basicAuth(), "User-Agent": UA, Accept: "application/json" },
+    });
+    last = await res.text();
+    if (!res.ok) return { error: `HTTP ${res.status}`, detail: last.slice(0, 300) };
+    let rows: unknown[] = [];
+    try { rows = JSON.parse(last)?.value ?? []; } catch { return { error: "bad json", detail: last.slice(0, 300) }; }
+    all.push(...rows);
+    pages++;
+    // עמוד שאינו מלא הוא סוף אמיתי.
+    if (rows.length < PAGE_CAP) break;
+    // 🔴 גבול קשיח, כדי ששגיאה בשרת לא תהפוך ללולאה אינסופית.
+    if (pages >= 40) break;
+  }
+  return { rows: all, pages, body: JSON.stringify({ value: all }) };
+}
+
 async function runBackfill(entity: string, from: string, to: string, dry: boolean) {
   const cfg = BACKFILL_Q[entity];
   if (!cfg) return { error: `unknown entity '${entity}'`, known: Object.keys(BACKFILL_Q) };
 
-  const url = PRIORITY + cfg.url(from, to);
-  const res = await fetch(url, {
-    headers: { Authorization: basicAuth(), "User-Agent": UA, Accept: "application/json" },
-  });
-  const body = await res.text();
-  if (!res.ok) return { entity, from, to, error: `HTTP ${res.status}`, detail: body.slice(0, 300) };
+  const paged = await fetchPaged(PRIORITY + cfg.url(from, to));
+  if ("error" in paged) return { entity, from, to, error: paged.error, detail: paged.detail };
+  const body = paged.body;
+  const pages = paged.pages;
 
   let fetched = 0;
   // ⭐ **גם כמה שורות-בן חזרו, ולא רק כמה מסמכים.** מונה הקריאה של
@@ -231,22 +268,32 @@ async function runBackfill(entity: string, from: string, to: string, dry: boolea
     }
   } catch { /* best effort */ }
 
-  // 2,000 בדיוק = כמעט בוודאות קיטום שקט, לא סוף אמיתי של החלון.
-  const truncated = fetched >= 2000;
+  // ⭐ אחרי העימוד, "קטום" פירושו שנעצרנו בגבול הקשיח ולא שהחלון גדול.
+  const truncated = pages >= 40;
 
-  if (dry) return { entity, from, to, fetched, subRows: sub, withSub, truncated, dry: true };
+  if (dry) return { entity, from, to, fetched, pages, subRows: sub, withSub, truncated, dry: true };
 
-  const post = await fetch(`${INBOX}?kind=${cfg.kind}&backfill=1`, {
-    method: "POST",
-    headers: { "x-sync-secret": syncSecret(), "Content-Type": "application/json" },
-    body,
-  });
-  const postBody = await post.text();
-  if (!post.ok) return { entity, from, to, fetched, truncated, error: `inbox HTTP ${post.status}`, detail: postBody.slice(0, 300) };
-
-  let stats: unknown = postBody.slice(0, 400);
-  try { stats = JSON.parse(postBody); } catch { /* keep raw */ }
-  return { entity, from, to, fetched, truncated, stats };
+  // 🔴🔴 **הכתיבה מפוצלת, כי לוורסל תקרת גוף בקשה של 4.5 מגה.**
+  // אחרי שהעימוד נכנס, חלון אחד יכול להחזיק 10,641 רשומות, וזה עובר
+  // את התקרה. בקשה שנחתכת שם מחזירה שגיאה שנראית כמו תקלת רשת.
+  // [[vercel_upload_size_limit]]
+  const CHUNK = 1500;
+  const rows = paged.rows;
+  const stats: unknown[] = [];
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const post = await fetch(`${INBOX}?kind=${cfg.kind}&backfill=1`, {
+      method: "POST",
+      headers: { "x-sync-secret": syncSecret(), "Content-Type": "application/json" },
+      body: JSON.stringify({ value: rows.slice(i, i + CHUNK) }),
+    });
+    const postBody = await post.text();
+    if (!post.ok) {
+      return { entity, from, to, fetched, pages, truncated,
+               error: `inbox HTTP ${post.status}`, at: i, detail: postBody.slice(0, 300) };
+    }
+    try { stats.push(JSON.parse(postBody)); } catch { stats.push(postBody.slice(0, 200)); }
+  }
+  return { entity, from, to, fetched, pages, truncated, chunks: stats.length, stats };
 }
 
 // חלון מתגלגל 3 ימים לכתובות איסוף (כמו addDays(now;-3) ב-Make)
