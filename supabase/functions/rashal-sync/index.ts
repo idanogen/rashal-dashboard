@@ -744,17 +744,24 @@ async function probeFields(): Promise<Record<string, unknown>> {
  * לפני שהגיעה לפריוריטי. לכן בודקים כמה ניסוחים ולא מסיקים מהראשון.
  * [[priority_403_is_user_agent]]
  */
-async function probeFilters(filters: string[], mode = "encoded"): Promise<Record<string, unknown>> {
+async function probeFilters(filters: string[], mode = "encoded", expand = ""): Promise<Record<string, unknown>> {
   const auth = { headers: { Authorization: basicAuth(), "User-Agent": UA, Accept: "application/json" } };
-  const out: Record<string, unknown> = { mode };
+  const out: Record<string, unknown> = { mode, expand };
   // 🔴 `encodeURIComponent` משאיר סוגריים כמו שהם אבל מקודד נקודתיים
   // ל-%3A. שער ה-CDN שלפני פריוריטי עלול לחסום דווקא על זה, ולכן
   // המצב "spaces" מקודד רווחים בלבד.
-  const enc = (f: string) => mode === "spaces" ? f.replace(/ /g, "%20") : encodeURIComponent(f);
+  // 🔴 `encodeURIComponent` **אינו מקודד סוגריים**, ולכן `any(` עבר
+  // גולמי אל שער ה-CDN. מצב "strict" מקודד גם אותם, וגם `/` ו-`:`.
+  const strict = (f: string) =>
+    encodeURIComponent(f).replace(/[()!'*]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase());
+  const enc = (f: string) =>
+    mode === "spaces" ? f.replace(/ /g, "%20")
+      : mode === "strict" ? strict(f)
+      : encodeURIComponent(f);
   for (const f of filters.slice(0, 8)) {
     try {
       const res = await fetch(
-        `${PRIORITY}/CUSTOMERS?$select=CUSTNAME,PHONE&$filter=${enc(f)}&$top=200`, auth);
+        `${PRIORITY}/CUSTOMERS?$select=CUSTNAME,PHONE&$filter=${enc(f)}${expand ? `&$expand=${encodeURIComponent(expand)}` : ""}&$top=200`, auth);
       const body = await res.text();
       out[f] = res.ok
         ? { ok: true, rows: (JSON.parse(body)?.value ?? []).length,
@@ -1091,7 +1098,8 @@ Deno.serve(async (req: Request) => {
   if (job === "probe-filters") {
     const filters = Array.isArray(body?.filters) ? (body.filters as unknown[]).map(String) : [];
     const mode = String(body?.mode ?? "encoded");
-    return new Response(JSON.stringify(await probeFilters(filters, mode), null, 2),
+    const expand = String(body?.expand ?? "");
+    return new Response(JSON.stringify(await probeFilters(filters, mode, expand), null, 2),
       { headers: { "Content-Type": "application/json" } });
   }
   if (job === "probe-changes") {
