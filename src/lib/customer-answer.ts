@@ -102,6 +102,7 @@ export function answerLine(
   orders: OpenItem[],
   calls: OpenItem[],
   now = Date.now(),
+  stock?: CustomerStock | null,
 ): AnswerLine {
   const scheduled = orders.find((o) => o.scheduled);
   if (scheduled) {
@@ -148,6 +149,14 @@ export function answerLine(
       }.`,
       tone: 'warn',
     };
+  }
+  // 🔴🔴 **"אין שום פריט פתוח" לבד הוא חצי תשובה, והיא מבלבלת.**
+  // עידן, 25/08/2026: "רשום פה 'אין ללקוח הזה שום פריט פתוח', וזה מבלבל
+  // בגלל שיש אצלו מוצר." הקופסה העליונה אמרה "אין כלום" והרצועה שמתחתיה
+  // אמרה "יש לו מנוף", ושתיהן צדקו. תשובה שלמה אומרת את שתיהן.
+  const owned = devicePhrase(stock?.devices, now);
+  if (owned) {
+    return { text: `אין משלוח, קריאה או איסוף פתוחים. ${owned}`, tone: 'ok' };
   }
   return { text: 'אין ללקוח הזה שום פריט פתוח.', tone: 'none' };
 }
@@ -297,23 +306,38 @@ export function sourceLabels(sources: StockSource[] | null | undefined): string[
  * שלא הותקן, והנציגה לא יכולה לדעת אם ללקוח אין ציוד או שאנחנו לא
  * יודעים. [[empty_state_must_speak]]
  */
+/**
+ * המשפט על המכשירים בלבד, בלי המצבים האחרים.
+ *
+ * ⭐ **מחולץ כדי שגם "התשובה ללקוח" תוכל לומר אותו.** עידן, 25/08/2026:
+ * "רשום 'אין ללקוח הזה שום פריט פתוח', וזה מבלבל בגלל שיש אצלו מוצר."
+ * הוא צודק: שתי קופסאות זו מעל זו שאמרו דברים שנשמעים סותרים.
+ */
+export function devicePhrase(
+  devices: StockItem[] | null | undefined,
+  now = Date.now(),
+): string | null {
+  const list = devices ?? [];
+  if (!list.length) return null;
+  const first = list[0];
+  const parts = [`יש לו ${itemTitle(first)}`];
+  if (first.serials.length === 1) parts.push(`מספר סידורי ${first.serials[0]}`);
+  const w = warrantyState(first.warrantyEnd, now);
+  if (w.tone === 'active' || w.tone === 'ending') parts.push(w.text);
+  else if (w.tone === 'expired') parts.push('האחריות כבר פגה');
+  const rest = list.length - 1;
+  // ⭐ יחיד ורבים. "יש לו מנוף (ועוד 1)" אינו משפט שאדם אומר בטלפון.
+  const tail = rest === 0 ? '' : rest === 1 ? ' ועוד מכשיר אחד.' : ` ועוד ${rest} מכשירים.`;
+  return `${parts.join(', ')}.${tail}`;
+}
+
 export function stockLine(stock: CustomerStock | null | undefined, now = Date.now()): AnswerLine {
   const devices = stock?.devices ?? [];
   const accessories = stock?.accessories ?? [];
   const returned = stock?.returned ?? [];
 
-  if (devices.length) {
-    const first = devices[0];
-    const parts = [`יש לו ${itemTitle(first)}`];
-    if (first.serials.length === 1) parts.push(`מספר סידורי ${first.serials[0]}`);
-    const w = warrantyState(first.warrantyEnd, now);
-    if (w.tone === 'active' || w.tone === 'ending') parts.push(w.text);
-    else if (w.tone === 'expired') parts.push('האחריות כבר פגה');
-    const rest = devices.length - 1;
-    // ⭐ יחיד ורבים. "יש לו מנוף (ועוד 1)" אינו משפט שאדם אומר בטלפון.
-    const tail = rest === 0 ? '' : rest === 1 ? ' ועוד מכשיר אחד.' : ` ועוד ${rest} מכשירים.`;
-    return { text: `${parts.join(', ')}.${tail}`, tone: 'ok' };
-  }
+  const phrase = devicePhrase(devices, now);
+  if (phrase) return { text: phrase, tone: 'ok' };
 
   if (accessories.length) {
     const names = accessories.slice(0, 2).map(itemTitle).join(' ו-');

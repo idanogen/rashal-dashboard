@@ -35,6 +35,8 @@ const KIND_ICON: Record<TimelineEvent['kind'], typeof Truck> = {
   note: FileText,
   survey: Star,
   wa: MessageSquare,
+  equipment: Boxes,
+  returned: PackageOpen,
 };
 
 const KIND_COLOR: Record<TimelineEvent['kind'], string> = {
@@ -45,6 +47,9 @@ const KIND_COLOR: Record<TimelineEvent['kind'], string> = {
   note: 'bg-slate-400',
   survey: 'bg-amber-500',
   wa: 'bg-violet-500',
+  // ⭐ הציוד הוא מה שהלקוח מחזיק, ולכן הוא הנקודה הכהה על הציר.
+  equipment: 'bg-slate-800',
+  returned: 'bg-slate-300',
 };
 
 function MatchTag({ kind }: { kind: OpenItem['match'] }) {
@@ -204,10 +209,12 @@ function StockPanel({ stock }: { stock: CustomerStock | null | undefined }) {
         )}
       </div>
 
-      {/* המשפט שנאמר בטלפון, לפני הרשימה. */}
-      <div className={`text-[13px] ${nothing ? 'text-muted-foreground' : 'font-semibold text-slate-900'}`}>
-        {line.text}
-      </div>
+      {/* 🔴 **המשפט נאמר רק כשהוא מוסיף.** כשיש מכשירים, "התשובה ללקוח"
+          שמעל כבר אמרה אותם, והשורות שמתחת מפרטות. חזרה שלישית על אותה
+          עובדה היא בדיוק מה שעידן קרא לו "מידע מיותר". */}
+      {(nothing || returned.length > 0 || accessories.length > 0) && devices.length === 0 && (
+        <div className="text-[13px] text-muted-foreground">{line.text}</div>
+      )}
 
       {devices.length > 0 && (
         <div className="mt-2 space-y-1.5">
@@ -265,7 +272,8 @@ export function CustomerCardBody({
   const orders = data.open?.orders ?? [];
   const calls = data.open?.calls ?? [];
   const pickups = data.open?.pickups ?? [];
-  const answer = answerLine(orders, calls);
+  // ⭐ התשובה מכירה גם בציוד, כדי שלא תסתור את הרצועה שמתחתיה.
+  const answer = answerLine(orders, calls, undefined, data.stock);
   const certainty = certaintyNote(data.match);
   const identity = identityNote(c);
 

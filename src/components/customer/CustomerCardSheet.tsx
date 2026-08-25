@@ -36,15 +36,22 @@ export function CustomerCardSheet({
 }
 
 /**
- * כפתור קטן שנצמד לשם לקוח בכל רשימה.
+ * הכפתור שפותח את הכרטיס מכל רשימה.
+ *
+ * 🔴 **נושא כיתוב ולא רק אייקון.** עידן, 25/08/2026: "הכפתור של הכרטיס
+ * קטן מידי ולא מובן מספיק." אייקון בלבד מבקש מהמשתמש לנחש, ובמסך עמוס
+ * הוא פשוט לא נראה. אייקון עם מילה נקרא בלי לעצור.
+ *
+ * ⭐ `compact` לשורות צפופות (מסך הסדרן), שם "כרטיס" מספיק.
  */
 export function CustomerCardButton({
-  customerNumber, phone, name, className,
+  customerNumber, phone, name, className, compact = false,
 }: {
   customerNumber?: string | null;
   phone?: string | null;
   name?: string | null;
   className?: string;
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   if (!customerNumber && !phone) return null;
@@ -53,10 +60,13 @@ export function CustomerCardButton({
     <>
       <button
         onClick={(e) => { e.stopPropagation(); setOpen(true); }}
-        title="פתח כרטיס לקוח"
-        className={`inline-flex items-center rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 ${className ?? ''}`}
+        title="כל ההיסטוריה של הלקוח: מה יש אצלו, מה פתוח, ומה היה"
+        className={`inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 ${
+          compact ? 'px-1.5 py-0.5 text-[10.5px]' : 'px-2 py-1 text-[11.5px]'
+        } ${className ?? ''}`}
       >
-        <IdCard className="h-3.5 w-3.5" />
+        <IdCard className={compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
+        {compact ? 'כרטיס' : 'כרטיס לקוח'}
       </button>
       <CustomerCardSheet
         open={open}

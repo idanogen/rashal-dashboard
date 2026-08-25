@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync } from 'node:fs';
-import { stockLine, warrantyState, itemTitle, itemSubtitle, sourceLabels, identityNote } from '../src/lib/customer-answer.ts';
+import { stockLine, warrantyState, itemTitle, itemSubtitle, sourceLabels, identityNote, devicePhrase } from '../src/lib/customer-answer.ts';
 
 /**
  * נעילת המשפט שנאמר ללקוח על הציוד שלו, בשני המימושים.
@@ -92,5 +92,26 @@ test('🔴 משפט הזיהוי זהה בשני המימושים', { skip: !ava
   ]) {
     assert.equal(S.identityNote(c), identityNote(c),
       `🔴 התוסף והדשבורד אומרים דברים שונים על ${JSON.stringify(c)}`);
+  }
+});
+
+test('🔴 משפט המכשירים זהה בשני המימושים', { skip: !available }, () => {
+  // ⭐ זה המשפט שנכנס גם ל"התשובה ללקוח", ולכן פיצול בו נראה עכשיו
+  // בשתי קופסאות שונות בשני מסכים שונים.
+  const CASES = [
+    ['מכשיר אחד', [DEVICE]],
+    ['אחריות שפגה', [{ ...DEVICE, warrantyEnd: '2024-01-01' }]],
+    ['אחריות שנגמרת', [{ ...DEVICE, warrantyEnd: '2026-09-20' }]],
+    ['בלי אחריות', [{ ...DEVICE, warrantyEnd: null }]],
+    ['שני סידוריים', [{ ...DEVICE, serials: ['A', 'B'] }]],
+    ['שלושה מכשירים', [DEVICE, DEVICE, DEVICE]],
+    ['ריק', []],
+  ];
+  for (const [name, devices] of CASES) {
+    const panel = S.devicePhrase(devices, NOW);
+    const dash = devicePhrase(devices, NOW);
+    assert.equal(
+      panel == null ? panel : panel.replace(/(\d{2})\/(\d{2})\/(\d{4})/g, '$1.$2.$3'),
+      dash, `🔴 "${name}": התוסף והדשבורד אומרים דברים שונים`);
   }
 });

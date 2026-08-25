@@ -216,6 +216,7 @@ function DispatchCard({
                 customerNumber={vm.customerNumber}
                 phone={vm.phone}
                 name={vm.customerName}
+                compact
                 className="ms-1 align-middle"
               />
               {isReturned && (

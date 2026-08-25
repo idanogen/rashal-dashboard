@@ -28,7 +28,7 @@ export interface CustomerHit {
 
 export interface TimelineEvent {
   at: string;
-  kind: 'order' | 'call' | 'pickup' | 'stop' | 'note' | 'survey' | 'wa';
+  kind: 'order' | 'call' | 'pickup' | 'stop' | 'note' | 'survey' | 'wa' | 'equipment' | 'returned';
   title: string;
   ref: string | null;
   detail: string | null;

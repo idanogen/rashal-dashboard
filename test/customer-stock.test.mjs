@@ -118,3 +118,33 @@ test('🔴🔴 זיהוי דרך הסקר נאמר בקול ולא נבלע', as
   assert.match(n, /אלחרר פרלה/);
   assert.match(n, /סקר/);
 });
+
+test('🔴🔴 "אין שום פריט פתוח" לא נאמר על לקוח שיש לו מוצר', async () => {
+  // עידן, 25/08/2026: "רשום פה 'אין ללקוח הזה שום פריט פתוח', וזה מבלבל
+  // בגלל שיש אצלו מוצר." שתי קופסאות זו מעל זו אמרו דברים שנשמעו סותרים.
+  const { answerLine } = await import('../src/lib/customer-answer.ts');
+  const withDevice = answerLine([], [], NOW, stock({ devices: [device()] }));
+  assert.match(withDevice.text, /אין משלוח, קריאה או איסוף פתוחים/);
+  assert.match(withDevice.text, /יש לו G175/, 'התשובה חייבת לומר גם מה יש לו');
+  assert.equal(withDevice.tone, 'ok');
+
+  // ובלי ציוד, המשפט הישן נשאר בדיוק כמו שהיה.
+  const empty = answerLine([], [], NOW, stock());
+  assert.equal(empty.text, 'אין ללקוח הזה שום פריט פתוח.');
+  assert.equal(empty.tone, 'none');
+
+  // 🔴 ומשלוח פתוח עדיין מנצח: הוא מה שהלקוח מתקשר עליו.
+  const open = answerLine(
+    [{ id: 'o1', ref: 'S1', status: 'תואמה', created: '2026-08-20T09:00:00Z', match: 'number',
+       scheduled: true, date: '2026-08-26', driver: 'רודי' }],
+    [], NOW, stock({ devices: [device()] }));
+  assert.match(open.text, /יש משלוח פתוח/);
+  assert.doesNotMatch(open.text, /יש לו G175/, 'התשובה על משלוח לא נבלעת בציוד');
+});
+
+test('🔴 הפרדת המשפט לא שינתה את הניסוח שכבר אושר', async () => {
+  const { devicePhrase } = await import('../src/lib/customer-answer.ts');
+  assert.equal(devicePhrase([]), null);
+  assert.equal(devicePhrase(null), null);
+  assert.match(devicePhrase([device()], NOW), /^יש לו G175, מספר סידורי 17517098728, באחריות עד/);
+});

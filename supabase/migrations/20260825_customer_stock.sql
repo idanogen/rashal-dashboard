@@ -456,6 +456,40 @@ begin
            coalesce(s.q1_satisfaction::text, ''), s.comment, 'number', s.id
       from surveys s where s.answered_at is not null
     union all
+    -- ⭐⭐ **הציוד עצמו על הציר.** עידן, 25/08/2026: "בציר הפעילות אני
+    -- מצפה שתוסיף את המידע החדש, כלומר המוצר הישן שהיא קיבלה, ולתת
+    -- עליו מידע."
+    --
+    -- 🔴 **וזה לא כפילות של "הזמנה נפתחה".** ההזמנה אומרת שנפתח מסמך,
+    -- והאירוע הזה אומר איזה מכשיר הגיע ומה המספר הסידורי שלו. יותר
+    -- מזה: מכשיר שידוע לנו מקריאת שירות בלבד אין לו הזמנה אצלנו כלל,
+    -- והוא היה נעדר מהציר לגמרי.
+    --
+    -- 🔴 **התאריך הוא ההתקנה כשהיא ידועה, ואחרת הפעם האחרונה שראינו
+    -- את הפריט.** תאריך התקנה הוא מה שהלקוח זוכר, לא תאריך המסמך.
+    select coalesce(f.installed, f.last_seen)::timestamptz, 'equipment',
+           'מכשיר אצל הלקוח: ' || coalesce(f.part, nullif(f.descr, ''), 'פריט'),
+           coalesce(array_to_string(f.serials_list, ' · '), ''),
+           nullif(concat_ws(' · ',
+             case when f.part is not null then nullif(f.descr, '') end,
+             case when f.warranty is not null and f.warranty < current_date
+                  then 'האחריות פגה ב-' || to_char(f.warranty, 'DD/MM/YYYY')
+                  when f.warranty is not null
+                  then 'באחריות עד ' || to_char(f.warranty, 'DD/MM/YYYY') end
+           ), ''),
+           case f.match_rank when 1 then 'number' when 2 then 'phone' else 'name' end,
+           null::uuid
+      from stock_final f
+     where f.net > 0 and coalesce(f.installed, f.last_seen) is not null
+    union all
+    -- ומה שחזר למחסן. "היה לך מנוף והוא נאסף ב-26/05" היא תשובה
+    -- שלמה, ובלעדיה נשארת רק שתיקה.
+    select f.returned_at::timestamptz, 'returned',
+           'נאסף בחזרה: ' || coalesce(f.part, nullif(f.descr, ''), 'פריט'),
+           '', nullif(f.descr, ''), 'number', null::uuid
+      from stock_final f
+     where f.net <= 0 and f.returned_at is not null
+    union all
     -- הודעות וואטסאפ: רק האחרונות, אחרת שיחה ארוכה בולעת את הציר.
     select w.sent_at, 'wa',
            case when w.direction = 'in' then 'הודעה מהלקוח' else 'הודעה ללקוח' end,
