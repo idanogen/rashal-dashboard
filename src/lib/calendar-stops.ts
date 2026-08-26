@@ -3,6 +3,7 @@ import type {
   CoordinationMethod,
   CoordinationStatus,
   ScheduleStopInput,
+  StopSourceType,
   StopStatus,
 } from '@/types/calendar-stop';
 import { supabase } from './supabase';
@@ -191,6 +192,23 @@ export async function findActiveDuplicateStops(input: {
   phone?: string;
   address?: string;
   city?: string;
+  /**
+   * 🔴🔴 **סוג העצירה, ובלעדיו הבדיקה חוסמת עבודה לגיטימית.**
+   *
+   * עמי, 26/08/2026: "לקוח קיים פתח קריאה לביטול עסקה, לבוא לאסוף משהו
+   * שסיפקתי לו לפני שבוע, והמערכת לא נותנת לי לשבץ. זה לא אחד ולא שתיים."
+   *
+   * השורש: אספקה ואיסוף לאותו לקוח הם **שתי עבודות שונות**, ועד היום
+   * שתיהן נחשבו כאן לאותו דבר. נמדד לפני התיקון: **85 פריטים פתוחים**
+   * (45 איסופים, 27 הזמנות, 13 קריאות) שאי אפשר היה לשבץ.
+   *
+   * ⭐ ההגנה המקורית נשמרת במלואה: שתי אספקות לאותו לקוח עדיין נחסמות.
+   * מה שהשתנה הוא רק שסוגים שונים מפסיקים להתנגש זה בזה.
+   *
+   * 🔴 אופציונלי בכוונה, כדי לא לשבור קורא שטרם עודכן. בלעדיו ההתנהגות
+   * היא הישנה, וזה בדיוק המקרה שצריך להיעלם, ולכן כל הקוראים עודכנו.
+   */
+  sourceType?: StopSourceType;
 }): Promise<CalendarStop[]> {
   const target = {
     customerName: norm(input.customerName),
@@ -199,11 +217,15 @@ export async function findActiveDuplicateStops(input: {
     city: norm(input.city),
   };
 
-  const query = supabase
+  let query = supabase
     .from('calendar_stops')
     .select('*')
     .in('status', ['planned', 'in_progress'])
     .ilike('customer_name', input.customerName.trim());
+  // ⭐ מסונן בשרת ולא בדפדפן, כדי שהבדיקה תזהה בדיוק את מה שהמדד
+  // הייחודי שבמסד יחסום, ולא יותר. שתי אמיתות שמתפצלות כאן פירושן
+  // דיאלוג שקופץ על משהו שהיה עובר, או שיבוץ שנכשל בלי אזהרה.
+  if (input.sourceType) query = query.eq('source_type', input.sourceType);
   // Pull a wide candidate set (by customer name) and filter the rest client-side
   // so we don't have to construct case-insensitive ilike clauses for every column.
 

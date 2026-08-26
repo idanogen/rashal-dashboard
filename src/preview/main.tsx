@@ -11,6 +11,8 @@ import '@/index.css';
 import { CustomerCardBody } from '@/components/customer/CustomerCard';
 import { CustomerCardButton } from '@/components/customer/CustomerCardSheet';
 import { FIXTURE } from '@/preview/customer-fixture';
+import { DuplicateScheduleWarningDialog } from '@/components/deliveries/DuplicateScheduleWarningDialog';
+import type { CalendarStop } from '@/types/calendar-stop';
 
 /**
  * 🔴 **המצב הריק מצולם גם הוא, כי הוא המצב של רוב הלקוחות.** נמדד
@@ -36,6 +38,76 @@ const EMPTY = {
   stock: FIXTURE.stock,
 };
 
+/**
+ * ⭐ **דיאלוג הכפילות, שני המצבים שלו.**
+ *
+ * 🔴 הדיאלוג הזה הוא מודאל, ולכן אי אפשר לראות אותו במסך הרגיל בלי לשחזר
+ * קונפליקט אמיתי ביומן. `?view=dup` מרנדר אותו לבדו, וזו הדרך היחידה
+ * לראות בעיניים איזה כפתור ראשי לפני שמוסרים.
+ */
+function stop(over: Partial<CalendarStop>): CalendarStop {
+  return {
+    id: Math.random().toString(36).slice(2),
+    deliveryDate: '2026-05-14',
+    driver: 'רודי',
+    sequence: 0,
+    sourceType: 'delivery',
+    customerName: 'כהן דוד',
+    status: 'planned',
+    ...over,
+  } as CalendarStop;
+}
+
+const tomorrow = new Date(Date.now() + 864e5).toISOString().slice(0, 10);
+
+function DupPreview() {
+  return (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
+      <div className="mx-auto max-w-3xl space-y-4">
+        <div className="rounded-xl border bg-white p-4 text-sm">
+          <b>מצב א: השיבוץ הקיים בתאריך שכבר עבר.</b> זה המקרה של עמי, ו-294
+          מתוך 299 העצירות הפעילות נראות ככה. הפעולה הראשית צריכה להיות
+          "כבר בוצע, סגור אותו".
+        </div>
+        <DuplicateScheduleWarningDialog
+          open
+          onOpenChange={() => {}}
+          conflicts={[{ customerName: 'כהן דוד', city: 'ראשון לציון', existing: [stop({})] }]}
+          onCancel={() => {}}
+          onReschedule={() => {}}
+          onCloseExisting={() => {}}
+          targetDate="2026-08-28"
+        />
+      </div>
+    </div>
+  );
+}
+
+function DupPreviewFuture() {
+  return (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
+      <div className="mx-auto max-w-3xl space-y-4">
+        <DuplicateScheduleWarningDialog
+          open
+          onOpenChange={() => {}}
+          conflicts={[{ customerName: 'לוי שרה', city: 'חיפה', existing: [stop({ deliveryDate: tomorrow, customerName: 'לוי שרה' })] }]}
+          onCancel={() => {}}
+          onReschedule={() => {}}
+          onCloseExisting={() => {}}
+          targetDate="2026-08-30"
+        />
+      </div>
+    </div>
+  );
+}
+
+const view = new URLSearchParams(location.search).get('view');
+
+if (view === 'dup' || view === 'dup-future') {
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>{view === 'dup' ? <DupPreview /> : <DupPreviewFuture />}</StrictMode>,
+  );
+} else
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <div dir="rtl" className="min-h-screen bg-slate-50 p-6">

@@ -452,6 +452,13 @@ export function DispatchPage() {
   const [duplicateState, setDuplicateState] = useState<{
     conflicts: DuplicateConflict[];
     nonConflicting: ScheduleItem[];
+    /**
+     * ⭐ **כל הפריטים שנבחרו, ולא רק אלה שאין להם קונפליקט.**
+     * "סגור את השיבוץ הקיים" משבץ אחר כך את כולם, כי אחרי שהשארית נסגרה
+     * אין יותר מה שיחסום. בלי השדה הזה הפעולה הייתה סוגרת את הישן
+     * ומשאירה את הפריט שבגללו נפתח הדיאלוג בלי שיבוץ, וזה בדיוק הפוך.
+     */
+    items: ScheduleItem[];
     kind: ActivityKind;
     driver: AssigneeName;
     date: string;
@@ -907,6 +914,9 @@ export function DispatchPage() {
             phone: item.phone,
             address: item.address,
             city: item.city,
+            // 🔴 `kind` הוא סוג העצירה עצמו. בלעדיו אספקה חוסמת איסוף
+            // לאותו לקוח, וזה הבאג שעמי דיווח עליו ב-26/08.
+            sourceType: kind,
           });
           if (dupes.length > 0) {
             conflicts.push({
@@ -926,7 +936,7 @@ export function DispatchPage() {
       }
 
       if (conflicts.length > 0) {
-        setDuplicateState({ conflicts, nonConflicting, kind, driver, date });
+        setDuplicateState({ conflicts, nonConflicting, items, kind, driver, date });
         return;
       }
 
@@ -973,6 +983,33 @@ export function DispatchPage() {
         });
       } catch (err) {
         console.error('[moveExistingStops]', s.id, err);
+      }
+    }
+    setPendingSchedule(null);
+  };
+
+  /**
+   * סוגר את השיבוץ הקיים כ"בוצע", במקום להזיז אותו.
+   *
+   * 🔴🔴 **זו התשובה הנכונה למקרה שעמי דיווח עליו ב-26/08.** עד היום
+   * הדיאלוג הציע רק "העבר את השיבוץ הקיים", וזו התשובה הלא נכונה כשהאספקה
+   * **כבר קרתה לפני שבוע** ופשוט איש לא סגר אותה. אין מה להזיז, צריך לסגור.
+   *
+   * ⭐ ולכן `completed` ולא מחיקה: הסטטוס של המקור מתעדכן איתו (הזמנה
+   * הופכת ל"סופק"), וזה מה שבאמת קרה בשטח.
+   *
+   * 🔴 נמדד שזה לא מקרה קצה: 294 מתוך 299 העצירות ה"פעילות" מתוארכות
+   * לעבר ו-236 מהן מעל חודש, כלומר רוב הדיאלוגים האלה הם בדיוק המקרה הזה.
+   */
+  const closeExistingStops = async (conflicts: DuplicateConflict[]) => {
+    for (const c of conflicts) {
+      for (const s of c.existing) {
+        try {
+          // ברצף ולא במקביל, כמו בהעברה: כל סגירה נוגעת גם במקור.
+          await resolveStop.mutateAsync({ stop: s, status: 'completed' });
+        } catch (err) {
+          console.error('[closeExistingStops]', s.id, err);
+        }
       }
     }
     setPendingSchedule(null);
@@ -1545,6 +1582,16 @@ export function DispatchPage() {
             if (nonConflicting.length > 0) {
               void runSchedule(kind, nonConflicting, driver, date);
             }
+          });
+        }}
+        onCloseExisting={() => {
+          if (!duplicateState) return;
+          const { conflicts, items, kind, driver, date } = duplicateState;
+          setDuplicateState(null);
+          // ⭐ אחרי שהישן נסגר, משבצים את **הכל**: גם מי שהיה בקונפליקט
+          // וגם מי שלא. זו הנקודה: הלקוח באמת צריך את העבודה החדשה.
+          void closeExistingStops(conflicts).then(() => {
+            if (items.length > 0) void runSchedule(kind, items, driver, date);
           });
         }}
       />

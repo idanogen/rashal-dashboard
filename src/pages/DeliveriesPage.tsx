@@ -430,6 +430,7 @@ export function DeliveriesPage() {
             phone: order.phone,
             address: order.address,
             city: order.city,
+            sourceType: 'delivery',
           });
           if (dupes.length > 0) {
             conflicts.push({

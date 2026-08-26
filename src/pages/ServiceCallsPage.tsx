@@ -408,6 +408,7 @@ export function ServiceCallsPage() {
             customerName: call.customerName,
             phone: call.phone,
             city: call.city,
+            sourceType: 'service',
           });
           if (dupes.length > 0) {
             conflicts.push({

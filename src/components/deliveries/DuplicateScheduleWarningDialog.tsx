@@ -37,6 +37,15 @@ interface DuplicateScheduleWarningDialogProps {
    * אחר ביומן, למחוק שם שורה, ולחזור.
    */
   onReschedule?: () => void;
+  /**
+   * ⭐ **סוגר את השיבוץ הקיים כ"בוצע" ואז משבץ את החדש.**
+   *
+   * 🔴 זו התשובה הנכונה למקרה הנפוץ, ועד 26/08/2026 היא לא הייתה קיימת:
+   * ברוב המקרים השיבוץ ה"פעיל" הוא אספקה שכבר בוצעה לפני שבוע ואיש לא
+   * סגר אותה. אין מה להעביר, צריך לסגור. נמדד: **294 מתוך 299** העצירות
+   * הפעילות מתוארכות לעבר, ו-236 מהן מעל חודש.
+   */
+  onCloseExisting?: () => void;
   /** התאריך שנבחר, לניסוח הכפתור. */
   targetDate?: string;
 }
@@ -49,14 +58,32 @@ export function DuplicateScheduleWarningDialog({
   nonConflictingCount = 0,
   onScheduleOthers,
   onReschedule,
+  onCloseExisting,
   targetDate,
 }: DuplicateScheduleWarningDialogProps) {
   const multiple = conflicts.length > 1;
 
+  // ⭐ **הוותק הוא מה שמכריע איזו פעולה נכונה**, ולכן הוא מחושב ומוצג ולא
+  // נשאר בראש של מי שקורא את התאריך. שיבוץ מלפני שבוע כמעט תמיד אומר
+  // "כבר קרה ולא נסגר", ושיבוץ למחר אומר "באמת מתוכנן".
+  const today = new Date().toISOString().slice(0, 10);
+  const stalest = conflicts
+    .flatMap((c) => c.existing)
+    .map((s) => s.deliveryDate)
+    .filter((d) => d < today)
+    .sort()[0];
+  const staleCount = conflicts
+    .flatMap((c) => c.existing)
+    .filter((s) => s.deliveryDate < today).length;
+  const allStale = staleCount > 0 && staleCount === conflicts.flatMap((c) => c.existing).length;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader>
+      <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-xl">
+        {/* 🔴 `text-start` מקומי: הפרימיטיב מגדיר `sm:text-left`, כיוון
+            פיזי שבתוך RTL מיישר לצד הלא נכון. תוקן כאן בלבד, כדי לא
+            להזיז 20 דיאלוגים אחרים בלי לצלם אותם. */}
+        <DialogHeader className="sm:text-start">
           <DialogTitle className="flex items-center gap-2 text-amber-700">
             <AlertTriangle className="h-5 w-5" />
             {multiple ? 'כמה מהלקוחות כבר משובצים' : 'הלקוח כבר משובץ ביומן'}
@@ -98,26 +125,53 @@ export function DuplicateScheduleWarningDialog({
         <div className="flex items-start gap-2 rounded-md bg-muted/40 p-3 text-xs text-muted-foreground">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
-            ברוב המקרים השיבוץ הפתוח הוא שארית מתאריך שכבר עבר.{' '}
-            <span className="font-semibold text-foreground">
-              &quot;העבר את השיבוץ הקיים&quot;
-            </span>{' '}
-            מזיז אותו ליום ולעובד שבחרת, ולא נשארת כפילות.
+            {allStale ? (
+              <>
+                <span className="font-semibold text-foreground">
+                  {multiple ? 'כל השיבוצים הקיימים בתאריך שכבר עבר' : `השיבוץ הקיים הוא מ-${fmtShort(stalest!)}, תאריך שכבר עבר`}
+                  .
+                </span>{' '}
+                כמעט תמיד זה אומר שהעבודה כבר בוצעה ופשוט לא נסגרה ביומן.{' '}
+                <span className="font-semibold text-foreground">&quot;כבר בוצע, סגור אותו&quot;</span>{' '}
+                סוגר אותה ומשבץ את החדש.
+              </>
+            ) : (
+              <>
+                אם השיבוץ הקיים כבר בוצע ולא נסגר,{' '}
+                <span className="font-semibold text-foreground">&quot;כבר בוצע, סגור אותו&quot;</span>.
+                אם הוא באמת מתוכנן קדימה,{' '}
+                <span className="font-semibold text-foreground">&quot;העבר את השיבוץ הקיים&quot;</span>{' '}
+                מזיז אותו ליום ולעובד שבחרת.
+              </>
+            )}
           </span>
         </div>
 
         <DialogFooter className="gap-2 sm:gap-2">
+          {/* 🔴 סדר הכפתורים נגזר מהוותק ולא קבוע: כשכל השיבוצים בעבר,
+              "כבר בוצע" הוא הפעולה הראשית, וההעברה יורדת למשנית. */}
+          {onCloseExisting && (
+            <Button
+              variant={allStale ? 'default' : 'outline'}
+              onClick={() => {
+                onCloseExisting();
+                onOpenChange(false);
+              }}
+            >
+              {multiple ? `כבר בוצעו, סגור ושבץ (${conflicts.length})` : 'כבר בוצע, סגור ושבץ'}
+            </Button>
+          )}
           {onReschedule && (
             <Button
-              variant="default"
+              variant={allStale ? 'outline' : 'default'}
               onClick={() => {
                 onReschedule();
                 onOpenChange(false);
               }}
             >
               {multiple
-                ? `העבר את ${conflicts.length} השיבוצים הקיימים`
-                : `העבר את השיבוץ הקיים${targetDate ? ` ל-${fmtShort(targetDate)}` : ''}`}
+                ? `העבר את ${conflicts.length} הקיימים`
+                : `העבר את הקיים${targetDate ? ` ל-${fmtShort(targetDate)}` : ''}`}
             </Button>
           )}
           {nonConflictingCount > 0 && onScheduleOthers && (

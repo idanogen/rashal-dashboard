@@ -83,7 +83,14 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="dialog-header"
-      className={cn("flex flex-col gap-2 text-center sm:text-left", className)}
+      // 🔴 `min-w-0`: ילד של flex אינו מצטמצם מתחת לתוכן שלו
+      // (`min-width:auto`), ולכן משפט ארוך גלש מהדיאלוג במקום לרדת שורה.
+      // נתפס בצילום של דיאלוג הכפילות, 26/08/2026.
+      //
+      // ⚠️ `sm:text-left` הוא כיוון **פיזי** בתוך אפליקציה RTL, וזה באג.
+      // הוא לא תוקן כאן בכוונה: הפרימיטיב משרת 20 דיאלוגים, ותיקון
+      // רוחבי כזה מצריך סבב צילומים משלו ולא רכיבה על תיקון באג.
+      className={cn("flex min-w-0 flex-col gap-2 text-center sm:text-left", className)}
       {...props}
     />
   )
@@ -101,7 +108,9 @@ function DialogFooter({
     <div
       data-slot="dialog-footer"
       className={cn(
-        "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
+        // 🔴 `flex-wrap`: שלושה כפתורים בעברית לא נכנסים לרוחב אחד,
+        // והכפתור האחרון נחתך בשקט בקצה. עדיף שירד שורה.
+        "flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end",
         className
       )}
       {...props}
