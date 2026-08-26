@@ -11,6 +11,8 @@
  * כדי לא לשבור מסלול שעובד, ולכן שתי הגרסאות חיות זו לצד זו.
  */
 
+import { retryAfterMs, rateLimitInfo, DEFAULT_RETRY, RATE_LIMITED } from './heyy-rate-limit.js';
+
 const V3 = process.env.HEYY_V3_BASE_URL ?? 'https://api.heyy.io/v3';
 const KEY = process.env.HEYY_API_KEY ?? '';
 const CHANNEL = process.env.HEYY_CHANNEL_ID ?? '';
@@ -23,13 +25,62 @@ function headers(json = true): Record<string, string> {
 }
 
 /** 🔴 שעון עצר. בלעדיו קריאה שנתקעת תוקעת פונקציה שלמה. */
-async function call(path: string, init: RequestInit, ms = 20000): Promise<Response> {
+async function once(path: string, init: RequestInit, ms: number): Promise<Response> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ms);
   try {
     return await fetch(`${V3}${path}`, { ...init, signal: ctrl.signal });
   } finally {
     clearTimeout(timer);
+  }
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * קריאה עם כיבוד מכסת הקצב של heyy.
+ *
+ * 🔴🔴 **עד 26/08/2026 לא היה כאן שום טיפול ב-429**, והוא הפך ל
+ * `status: 'failed'` שנשמר במסד כאילו התוכן נדחה. כלומר בדיוק ברגע
+ * הלחוץ ביותר, כשיוצאות הרבה הודעות בבת אחת, ההודעות מעבר למאה הראשונות
+ * היו נעלמות בשקט ואיש לא היה מנסה אותן שוב.
+ *
+ * ⭐ `retryServerErrors` הוא **שקר בשליחה בכוונה**: 500 על שליחה הוא
+ * דו משמעי וייתכן שההודעה כבר יצאה ללקוח, וכפילות גרועה מהחסר.
+ * ראה `heyy-rate-limit.ts`.
+ */
+async function call(
+  path: string,
+  init: RequestInit,
+  ms = 20000,
+  policy: { retryServerErrors: boolean; maxWaitMs?: number } = { retryServerErrors: true },
+): Promise<Response> {
+  const maxWaitMs = policy.maxWaitMs ?? DEFAULT_RETRY.maxWaitMs;
+  let waitedMs = 0;
+
+  for (let attempt = 0; ; attempt++) {
+    const res = await once(path, init, ms);
+    if (res.ok) return res;
+
+    const wait = retryAfterMs(res.status, res.headers, {
+      retryServerErrors: policy.retryServerErrors,
+      maxWaitMs,
+      waitedMs,
+      attempt,
+      maxAttempts: DEFAULT_RETRY.maxAttempts,
+      nowMs: Date.now(),
+    });
+    if (wait == null) {
+      if (res.status === 429) {
+        const info = rateLimitInfo(res.headers);
+        console.error('[heyy] rate limited, giving up', { path, attempt, limit: info.limit });
+      }
+      return res;
+    }
+
+    console.warn('[heyy] retrying', { path, status: res.status, waitMs: wait, attempt });
+    await sleep(wait);
+    waitedMs += wait;
   }
 }
 
@@ -187,6 +238,8 @@ export interface SendTemplateResult {
   vendorMessageId?: string;
   status: 'pending' | 'sent' | 'delivered' | 'read' | 'failed';
   detail?: string;
+  /** נחסם על מכסת קצב ולא נדחה. ראוי לניסיון חוזר, ואסור לסמן ככישלון סופי. */
+  retryable?: boolean;
 }
 
 /**
@@ -222,7 +275,9 @@ export async function sendTemplate(opts: {
           ...(opts.attachments?.length ? { attachments: opts.attachments } : {}),
         },
       }),
-    });
+      // 🔴 מסלול שליחה: אין ניסיון חוזר על 5xx, רק על 429. שגיאת שרת על
+      // שליחה עלולה להסתיר הודעה שכבר יצאה ללקוח.
+    }, 20000, { retryServerErrors: false });
 
     const json = (await res.json().catch(() => ({}))) as {
       data?: { id?: string; vendorId?: string; status?: string; errors?: unknown[] };
@@ -232,7 +287,10 @@ export async function sendTemplate(opts: {
 
     if (!res.ok) {
       const detail = json.error ?? json.message ?? `HTTP ${res.status}`;
-      return { ok: false, status: 'failed', detail: String(detail).slice(0, 300) };
+      // 🔴 מכסה אינה דחייה. הסימן הזה הוא מה שמאפשר לקורא להחזיר את
+      // ההודעה לתור במקום לסמן אותה כנכשלה לתמיד.
+      const prefix = res.status === 429 ? `${RATE_LIMITED}: ` : '';
+      return { ok: false, status: 'failed', retryable: res.status === 429, detail: `${prefix}${String(detail)}`.slice(0, 300) };
     }
 
     // 🔴 דחייה אמיתית מגיעה ב-errors[], לא בהיעדר מזהה. אותה מלכודת

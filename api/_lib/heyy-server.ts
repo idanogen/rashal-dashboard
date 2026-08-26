@@ -1,5 +1,10 @@
 // Server-side heyy.io client. Handles BOTH demo mode (no real API call,
 // just log to DB) and real mode (POST to api.heyy.io). Switch via HEYY_MODE env.
+//
+// 🔴 **תאריך מת: 1 בנובמבר 2026.** הנתיב כאן הוא הגרסה הישנה של heyy,
+// והם מסיימים אותה במפורש בתאריך הזה. המחליף הוא `POST /v3/messages/send`,
+// וההגירה חייבת לקרות לפני. ראה `docs/heyy-limits.md`.
+import { retryAfterMs, rateLimitInfo, DEFAULT_RETRY, RATE_LIMITED } from './heyy-rate-limit.js';
 
 const HEYY_BASE = process.env.HEYY_BASE_URL ?? 'https://api.heyy.io/api/v2.0';
 const HEYY_KEY = process.env.HEYY_API_KEY ?? '';
@@ -7,6 +12,56 @@ const HEYY_CHANNEL_ID = process.env.HEYY_CHANNEL_ID ?? '';
 const HEYY_MODE = (process.env.HEYY_MODE ?? 'demo').toLowerCase(); // 'demo' | 'real'
 
 export const isHeyyDemo = HEYY_MODE !== 'real';
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * שליחה אחת מול heyy, עם כיבוד מכסת הקצב.
+ *
+ * 🔴🔴 **עד 26/08/2026 429 חזר מכאן כ-`failed` רגיל**, ומנוע הסקרים סימן
+ * את השורה `status: 'failed'` ושחרר אותה רק לבדיקה ידנית. כלומר סקר
+ * שנחסם על מכסה היה **נעלם לתמיד**, ודווקא ברגע העמוס שבו נשלחות הרבה
+ * הודעות בבת אחת.
+ *
+ * ⭐ **מנסים שוב רק על 429, אף פעם לא על 5xx.** 429 אומר מפורשות שהבקשה
+ * לא בוצעה, ולכן הוא בטוח. שגיאת שרת על שליחה היא דו משמעית: ייתכן
+ * שהוואטסאפ כבר יצא ללקוח, וכפילות גרועה מהודעה חסרה.
+ */
+async function sendWithRateLimit(body: unknown): Promise<Response> {
+  let waitedMs = 0;
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`${HEYY_BASE}/${HEYY_CHANNEL_ID}/whatsapp_messages/send`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${HEYY_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) return res;
+
+    const wait = retryAfterMs(res.status, res.headers, {
+      retryServerErrors: false,
+      maxWaitMs: DEFAULT_RETRY.maxWaitMs,
+      waitedMs,
+      attempt,
+      maxAttempts: DEFAULT_RETRY.maxAttempts,
+      nowMs: Date.now(),
+    });
+    if (wait == null) {
+      if (res.status === 429) {
+        console.error('[heyy] rate limited, giving up', rateLimitInfo(res.headers));
+      }
+      return res;
+    }
+    console.warn('[heyy] rate limited, waiting', { waitMs: wait, attempt });
+    await sleep(wait);
+    waitedMs += wait;
+  }
+}
+
+/** מוסיף לשגיאה את הסימן שאומר "מכסה, לא דחייה", כדי שהקורא יחזיר לתור. */
+function failureDetail(status: number, message: string): string {
+  return status === 429 ? `${RATE_LIMITED}: ${message}` : message;
+}
+
 
 export interface HeyyApiResult {
   ok: boolean;
@@ -16,6 +71,8 @@ export interface HeyyApiResult {
   vendorMessageId?: string;
   status: 'pending' | 'sent' | 'delivered' | 'read' | 'failed';
   statusDetail?: string;
+  /** נחסם על מכסת קצב ולא נדחה. ראוי לניסיון חוזר, ואסור לסמן ככישלון סופי. */
+  retryable?: boolean;
 }
 
 /**
@@ -62,18 +119,11 @@ export async function heyySendText(phoneE164: string, body: string): Promise<Hey
   }
 
   try {
-    const res = await fetch(`${HEYY_BASE}/${HEYY_CHANNEL_ID}/whatsapp_messages/send`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${HEYY_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ phoneNumber: phoneE164, type: 'TEXT', bodyText: body }),
-    });
+    const res = await sendWithRateLimit({ phoneNumber: phoneE164, type: 'TEXT', bodyText: body });
     const json = (await res.json().catch(() => ({}))) as HeyyApiResponse;
     if (!res.ok) {
       const errMsg = typeof json.error === 'string' ? json.error : json.error?.message ?? json.message ?? `HTTP ${res.status}`;
-      return { ok: false, status: 'failed', statusDetail: errMsg };
+      return { ok: false, status: 'failed', retryable: res.status === 429, statusDetail: failureDetail(res.status, errMsg) };
     }
     // דחייה אמיתית (למשל חלון 24 השעות סגור) מגיעה ב-errors[].
     const j = json as any;
@@ -130,25 +180,18 @@ export async function heyySendTemplate(
   }
 
   try {
-    const res = await fetch(`${HEYY_BASE}/${HEYY_CHANNEL_ID}/whatsapp_messages/send`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${HEYY_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        phoneNumber: phoneE164,
-        type: 'TEMPLATE',
-        messageTemplateId: templateId,
-        ...(variables.length ? { variables } : {}),
-      }),
+    const res = await sendWithRateLimit({
+      phoneNumber: phoneE164,
+      type: 'TEMPLATE',
+      messageTemplateId: templateId,
+      ...(variables.length ? { variables } : {}),
     });
     const json = (await res.json().catch(() => ({}))) as HeyyApiResponse & {
       data?: { waMessageId?: string; status?: string; errors?: unknown[] };
     };
     if (!res.ok) {
       const errMsg = typeof json.error === 'string' ? json.error : json.error?.message ?? json.message ?? `HTTP ${res.status}`;
-      return { ok: false, status: 'failed', statusDetail: errMsg };
+      return { ok: false, status: 'failed', retryable: res.status === 429, statusDetail: failureDetail(res.status, errMsg) };
     }
 
     // דחייה אמיתית מגיעה ב-errors[], לא בהיעדר מזהה.

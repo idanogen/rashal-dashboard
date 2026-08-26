@@ -140,6 +140,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     waMessageId: result.waMessageId,
     status: result.status,
     statusDetail: result.statusDetail,
+    // 🔴 **מכסת קצב אינה דחייה של התוכן.** בלי הסימן הזה הקורא (מנוע
+    // הסקרים) מסמן את הפריט `failed` וזורק אותו, וההודעה נעלמת לתמיד
+    // דווקא ברגע העמוס. עם הסימן הוא מחזיר אותו לתור.
+    retryable: result.retryable === true,
     isDemo: isHeyyDemo,
     outboundId: outboundRow.id,
   });

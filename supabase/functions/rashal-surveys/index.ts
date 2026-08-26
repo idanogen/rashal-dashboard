@@ -77,7 +77,7 @@ Deno.serve(async (req: Request) => {
 
   // ── 2. שליחה ───────────────────────────────────────────────────────────
   let due: DueRow[] = [];
-  let sent = 0, failed = 0;
+  let sent = 0, failed = 0, requeued = 0;
   const detail: Record<string, unknown> = {
     enqueued: enqueuedRows.map((r) => ({ name: r.customer_name, at: r.scheduled_send_at })),
   };
@@ -123,6 +123,19 @@ Deno.serve(async (req: Request) => {
           send_channel: "template",
           send_error: null,
         }).eq("id", row.id);
+      } else if (res.retryable) {
+        // 🔴🔴 **מכסת קצב אינה דחייה, וסימונה ככישלון מאבד את הסקר לתמיד.**
+        // heyy מגבילה ל-100 בקשות לדקה לכל החשבון, ולכן דווקא בשעה עמוסה,
+        // כשיש הרבה מה לשלוח, ההודעות מעבר לגבול היו נמחקות מהתור ואיש לא
+        // היה מנסה אותן שוב. כאן הן חוזרות ל-pending, והריצה הבאה
+        // (כל רבע שעה) לוקחת אותן. ⭐ `sent_at` נשאר ריק, ולכן שום הגנה
+        // אחרת לא חושבת שההודעה כבר יצאה.
+        requeued++;
+        await sb.from("customer_surveys").update({
+          status: "pending",
+          send_error: res.error.slice(0, 500),
+          send_claimed_at: null,
+        }).eq("id", row.id);
       } else {
         failed++;
         await sb.from("customer_surveys").update({
@@ -132,6 +145,7 @@ Deno.serve(async (req: Request) => {
         }).eq("id", row.id);
       }
     }
+    if (requeued) detail.requeued_rate_limited = requeued;
   }
 
   const runId = await logRun({
@@ -140,12 +154,15 @@ Deno.serve(async (req: Request) => {
 
   return json({
     ok: true, run_id: runId, dry, window_open: windowOpen,
-    enqueued: enqueuedRows.length, due: due.length, sent, failed,
+    enqueued: enqueuedRows.length, due: due.length, sent, failed, requeued,
     detail,
   });
 });
 
-async function sendOne(row: DueRow, templateId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+async function sendOne(
+  row: DueRow,
+  templateId: string,
+): Promise<{ ok: true } | { ok: false; error: string; retryable: boolean }> {
   try {
     const res = await fetch(SEND_URL, {
       method: "POST",
@@ -168,11 +185,19 @@ async function sendOne(row: DueRow, templateId: string): Promise<{ ok: true } | 
     });
     const body = await res.json().catch(() => ({}));
     if (!res.ok || body?.ok === false) {
-      return { ok: false, error: `HTTP ${res.status}: ${JSON.stringify(body).slice(0, 300)}` };
+      return {
+        ok: false,
+        error: `HTTP ${res.status}: ${JSON.stringify(body).slice(0, 300)}`,
+        // ⭐ הדגל מהשרת, לא ניחוש מקוד הסטטוס: `/api/heyy-send` מחזיר 429
+        // גם על צינון פנימי שלנו, וזה מצב אחר לגמרי מחריגה ממכסת heyy.
+        retryable: body?.retryable === true,
+      };
     }
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: String(e).slice(0, 300) };
+    // 🔴 נפילת רשת אינה ניסיון חוזר אוטומטי: ייתכן שההודעה כן יצאה
+    // ורק התשובה אבדה, וסקר כפול ללקוח גרוע מסקר חסר.
+    return { ok: false, error: String(e).slice(0, 300), retryable: false };
   }
 }
 

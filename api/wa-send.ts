@@ -340,6 +340,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             vendorMessageId: r.vendorMessageId,
             status: r.status,
             statusDetail: r.detail,
+            retryable: r.retryable === true,
           };
         })();
 
@@ -401,10 +402,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     waMessageId: result.waMessageId || null,
     status: result.status,
     statusDetail: result.statusDetail,
+    // 🔴 מכסת קצב אינה דחייה של התוכן, וקורא מכונתי צריך לדעת להבדיל
+    // כדי להחזיר את הפריט לתור במקום לסמן אותו כנכשל לתמיד.
+    retryable: (result as { retryable?: boolean }).retryable === true,
     outboundId: outboundRow?.id ?? null,
     isDemo: isHeyyDemo,
+    // ⭐ הסדרן צריך לדעת שזו חסימה זמנית ולא תוכן פסול, אחרת הוא יתקן
+    // את ההודעה שוב ושוב במקום פשוט לנסות בעוד דקה.
     message: result.ok
       ? null
-      : 'heyy לא קיבלו את ההודעה: ' + (result.statusDetail ?? 'סיבה לא ידועה'),
+      : (result as { retryable?: boolean }).retryable
+        ? 'נחסמנו זמנית על מכסת השליחה של heyy. ההודעה לא יצאה, אפשר לנסות שוב בעוד דקה.'
+        : 'heyy לא קיבלו את ההודעה: ' + (result.statusDetail ?? 'סיבה לא ידועה'),
   });
 }
