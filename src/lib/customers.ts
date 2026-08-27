@@ -1,6 +1,7 @@
 import type { NewCustomer } from '@/types/customer';
 import { supabase } from './supabase';
 import { dataWindowCutoff } from './constants';
+import { timedFetch } from './perf-collect';
 
 const PAGE = 1000;
 /** גודל אצווה ל-`in(...)` — אותו גודל שה-sync משתמש בו מול priority_customers. */
@@ -82,10 +83,12 @@ async function scheduledCustomers(customerNumbers: string[]): Promise<Set<string
  * ממוין מהחדש לישן — הלקוח שנפתח היום הוא זה שהאספקה שלו הכי קרובה.
  */
 export async function fetchNewCustomers(): Promise<NewCustomer[]> {
+  return timedFetch('customers', async (countPage) => {
   const cutoff = dataWindowCutoff();
   const rows: CustomerRow[] = [];
 
   for (let from = 0; ; from += PAGE) {
+    countPage();
     const { data, error } = await supabase
       .from('priority_customers')
       .select('custname,cdes,address,city,phone,fax,agent,health_fund,opened_by,priority_udate')
@@ -99,6 +102,11 @@ export async function fetchNewCustomers(): Promise<NewCustomer[]> {
   }
 
   const numbers = rows.map((r) => r.custname).filter(Boolean);
+  // 🔴 ארבע שליפות נוספות, ולכן ארבעה סבבי רשת נוספים. הן רצות במקביל
+  // זו לזו, אבל **אחרי** כל העמודים שלמעלה, ולכן הן מאריכות את השליפה
+  // הזאת ולא מתקזזות איתה. בלי הספירה הזאת הדוח היה מציג "עמוד אחד"
+  // ומטעה בדיוק במקום שבו הזמן נשרף.
+  countPage(); countPage(); countPage(); countPage();
   const [withOrder, withCall, withPickup, scheduled] = await Promise.all([
     existingFor('orders', numbers),
     existingFor('service_calls', numbers),
@@ -122,4 +130,5 @@ export async function fetchNewCustomers(): Promise<NewCustomer[]> {
     hasPickup: withPickup.has(r.custname),
     isScheduled: scheduled.has(r.custname),
   }));
+  }, (rows) => rows.length);
 }

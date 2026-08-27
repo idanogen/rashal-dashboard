@@ -1,6 +1,7 @@
 import type { Order } from '@/types/order';
 import { supabase } from './supabase';
 import { dataWindowFilter, ORDER_CLOSED } from './constants';
+import { timedFetch } from './perf-collect';
 
 type OrderRow = {
   id: string;
@@ -77,11 +78,15 @@ function orderFieldsToRow(fields: Partial<Omit<Order, 'id'>>): Record<string, un
 }
 
 export async function fetchAllOrders(): Promise<Order[]> {
+  // ⭐ עטוף במדידה: השליפה הזאת היא לרוב הנתיב הקריטי של מסך הסדרן,
+  // ובלי מדידה אין שום דרך לדעת מה קרה בדפדפן של מי שמתלונן.
+  return timedFetch('orders', async (countPage) => {
   // PostgREST defaults max-rows to 1000. Paginate explicitly so we always get every row.
   const PAGE = 1000;
   const all: Order[] = [];
   let from = 0;
   while (true) {
+    countPage();
     const { data, error } = await supabase
       .from('orders')
       .select('*')
@@ -96,6 +101,7 @@ export async function fetchAllOrders(): Promise<Order[]> {
     from += PAGE;
   }
   return all;
+  }, (rows) => rows.length);
 }
 
 export async function updateOrder(

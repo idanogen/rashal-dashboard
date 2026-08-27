@@ -9,6 +9,7 @@ import type {
 } from '@/types/calendar-stop';
 import { supabase } from './supabase';
 import { geocodeAddress, getCityCoordinates } from './geocoding';
+import { timedFetch } from './perf-collect';
 
 type CalendarStopRow = {
   id: string;
@@ -132,16 +133,42 @@ function stopFieldsToRow(
 
 // ─── Reads ──────────────────────────────────────────────────────
 
+/**
+ * כל העצירות ביומן.
+ *
+ * 🔴🔴 **הייתה כאן שליפה בלי עימוד, ו-PostgREST חותך על 1,000 שורות
+ * בשקט.** נמדד <bdi>27/08/2026</bdi>: 892 עצירות במסד, כלומר **108
+ * שורות מהקצה**. ⭐ והמיון הוא `delivery_date` עולה, ולכן מה שהיה נופל
+ * ראשון הוא בדיוק **העצירות העתידיות**: היומן היה מפסיק להראות את
+ * הימים הקרובים, בלי שום שגיאה, ביום שבו נוספת העצירה ה-1001.
+ * [[postgrest_default_row_cap]]
+ */
 export async function fetchAllStops(): Promise<CalendarStop[]> {
-  const { data, error } = await supabase
-    .from('calendar_stops')
-    .select('*')
-    .order('delivery_date', { ascending: true })
-    .order('driver', { ascending: true })
-    .order('sequence', { ascending: true });
+  return timedFetch('calendar_stops', async (countPage) => {
+    const PAGE = 1000;
+    const all: CalendarStop[] = [];
+    let from = 0;
+    while (true) {
+      countPage();
+      const { data, error } = await supabase
+        .from('calendar_stops')
+        .select('*')
+        .order('delivery_date', { ascending: true })
+        .order('driver', { ascending: true })
+        .order('sequence', { ascending: true })
+        // 🔴 מיון נוסף על המפתח הייחודי: `range` מניח סדר יציב, ובלי
+        // שובר שוויון עמודים חופפים ושורות נעלמות בין העמודים.
+        .order('id', { ascending: true })
+        .range(from, from + PAGE - 1);
 
-  if (error) throw new Error(`fetchAllStops: ${error.message}`);
-  return (data as CalendarStopRow[]).map(rowToStop);
+      if (error) throw new Error(`fetchAllStops: ${error.message}`);
+      const rows = (data as CalendarStopRow[]) ?? [];
+      all.push(...rows.map(rowToStop));
+      if (rows.length < PAGE) break;
+      from += PAGE;
+    }
+    return all;
+  }, (rows) => rows.length);
 }
 
 export async function fetchStopsForDateRange(

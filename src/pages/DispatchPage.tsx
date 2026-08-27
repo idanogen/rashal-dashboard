@@ -23,6 +23,8 @@ import { useZonedServiceCalls } from '@/hooks/useZonedServiceCalls';
 import { usePickups } from '@/hooks/usePickups';
 import { useNewCustomers } from '@/hooks/useNewCustomers';
 import { useCalendarStops } from '@/hooks/useCalendarStops';
+import { LoadReportLine } from '@/components/LoadReportLine';
+import { beginScreenLoad } from '@/lib/perf-collect';
 import { useGeocodeBackfill } from '@/hooks/useGeocodeBackfill';
 import { useScheduleStop } from '@/hooks/useScheduleStop';
 import { useDeleteStop } from '@/hooks/useDeleteStop';
@@ -242,6 +244,16 @@ export function DispatchPage() {
     setSearchParams({ tab: next }, { replace: true });
   };
 
+  /**
+   * 🔴 **איפוס המדידה ברינדור הראשון ולא ב-`useEffect`.** השאילתות
+   * יוצאות בתוך הרינדור הזה, ו-`useEffect` רץ אחריהן, ולכן שעון שמתחיל
+   * שם היה מפספס את מה שהוא בא למדוד. אין כאן שום עבודה, רק איפוס שני
+   * משתנים. [[render_must_not_start_work]]
+   */
+  useState(() => {
+    beginScreenLoad();
+  });
+
   // ─── נתוני מקור: שלושת הסוגים נטענים יחד (מעבר טאב מיידי) ───
   const {
     unscheduledOrders,
@@ -275,7 +287,15 @@ export function DispatchPage() {
     error: customersError,
   } = useNewCustomers();
 
-  const { data: calendarStops = [] } = useCalendarStops();
+  const { data: calendarStops = [], isLoading: stopsLoading } = useCalendarStops();
+
+  /**
+   * ⭐ **כל השליפות של המסך נגמרו.** זה הרגע שבו יש מה למדוד, ורק אז
+   * יוצא הדוח. 🔴 ולא מספיק "יש נתונים": רשימה שנכשלה מפסיקה להיות
+   * `loading` בלי להביא שורה אחת, וזה בדיוק המקרה שצריך להיכנס לדוח.
+   */
+  const screenSettled =
+    !ordersLoading && !callsLoading && !pickupsLoading && !customersLoading && !stopsLoading;
   // Backfill geocoding מדויק לעצירות פעילות (רץ ברקע, מווסת-קצב).
   useGeocodeBackfill();
 
@@ -1750,6 +1770,10 @@ export function DispatchPage() {
         open={!!detailPickup}
         onOpenChange={(o) => !o && setDetailPickup(null)}
       />
+
+      {/* ⏱ כמה זמן לקח למסך לעלות, ומה שרף את הזמן. נולד מהתלונה של
+          עמי, כי מדידה שחיה רק בקונסולה של מי שמתלונן אינה מדידה. */}
+      <LoadReportLine screen="dispatch" ready={screenSettled} />
 
       {/* מפת יום מלאה */}
       <DayMapDialog

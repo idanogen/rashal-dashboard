@@ -24,6 +24,8 @@ import { ManagementDashboard } from '@/pages/ManagementDashboard';
 import { CraneChecklistDialog } from '@/components/crane/CraneChecklistDialog';
 import { CraneTrainingDialog } from '@/components/crane/CraneTrainingDialog';
 import { CollectionsPage, CustomerDebtDialog } from '@/pages/CollectionsPage';
+import { LoadReportPanel } from '@/components/LoadReportLine';
+import { analyzeLoad } from '@/lib/perf';
 import { AuthProvider } from '@/lib/auth-context';
 import { GlobalChatProvider } from '@/context/GlobalChatContext';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -328,6 +330,7 @@ previewQc.setQueryData(
  * 27/08/2026 הוא צויר כ"אין הזמנות ממתינות לתיאום".
  */
 if (new URLSearchParams(location.search).get('view') === 'dispatch-error') {
+  // ⭐ מזריק כישלון ל-cache כדי לצלם את מצב "הרשימה לא נטענה" של הפאנל.
   previewQc
     .getQueryCache()
     .build(previewQc, { queryKey: ['orders'] })
@@ -336,10 +339,6 @@ if (new URLSearchParams(location.search).get('view') === 'dispatch-error') {
       fetchStatus: 'idle',
       error: new Error('TypeError: Failed to fetch'),
     });
-  previewQc
-    .getQueryCache()
-    .build(previewQc, { queryKey: ['pickups'] })
-    .setState({ status: 'pending', fetchStatus: 'fetching' });
 }
 
 const view = new URLSearchParams(location.search).get('view');
@@ -361,6 +360,28 @@ const VIEWS: Record<string, React.ReactElement> = {
    * "הרשימה לא נטענה" ולא "אין הזמנות ממתינות לתיאום".
    */
   dispatch: <DispatchPage />,
+  /**
+   * ⭐ **דוח הטעינה עם שליפה שנכשלה, מוזרק.** זה המצב שאי אפשר לייצר
+   * לפי דרישה בדפדפן, והוא בדיוק המצב שהכלי נבנה בשבילו.
+   * המספרים מהמדידה האמיתית של המסך.
+   */
+  'load-report': (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
+      <div className="mx-auto max-w-3xl rounded-2xl border bg-white p-5">
+        <LoadReportPanel
+          open
+          onToggle={() => {}}
+          report={analyzeLoad([
+            { name: 'orders', startedAt: 40, endedAt: 380, rows: 0, pages: 1, failed: 'TypeError: Failed to fetch' },
+            { name: 'customers', startedAt: 55, endedAt: 6100, rows: 245, pages: 5 },
+            { name: 'pickups', startedAt: 45, endedAt: 2900, rows: 5642, pages: 6 },
+            { name: 'service_calls', startedAt: 42, endedAt: 1800, rows: 6215, pages: 7 },
+            { name: 'calendar_stops', startedAt: 44, endedAt: 700, rows: 892, pages: 1 },
+          ])}
+        />
+      </div>
+    </div>
+  ),
   'dispatch-error': <DispatchPage />,
   training: (
     <div dir="rtl" className="min-h-screen bg-slate-50 p-4">

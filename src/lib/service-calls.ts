@@ -1,6 +1,7 @@
 import type { ServiceCall, ServiceCallStatus } from '@/types/service-call';
 import { supabase } from './supabase';
 import { dataWindowFilter, CALL_CLOSED } from './constants';
+import { timedFetch } from './perf-collect';
 
 type ServiceCallRow = {
   id: string;
@@ -69,11 +70,13 @@ function fieldsToRow(fields: Partial<Omit<ServiceCall, 'id'>>): Record<string, u
 }
 
 export async function fetchAllServiceCalls(): Promise<ServiceCall[]> {
+  return timedFetch('service_calls', async (countPage) => {
   // PostgREST defaults max-rows to 1000. Paginate so we always get every row.
   const PAGE = 1000;
   const all: ServiceCall[] = [];
   let from = 0;
   while (true) {
+    countPage();
     const { data, error } = await supabase
       .from('service_calls')
       .select('*')
@@ -88,6 +91,7 @@ export async function fetchAllServiceCalls(): Promise<ServiceCall[]> {
     from += PAGE;
   }
   return all;
+  }, (rows) => rows.length);
 }
 
 export async function updateServiceCall(

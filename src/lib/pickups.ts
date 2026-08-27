@@ -1,6 +1,7 @@
 import type { Pickup, PickupLine, PickupStatus } from '@/types/pickup';
 import { supabase } from './supabase';
 import { BUSINESS_FLOOR_DATE, dataWindowFilter, PICKUP_CLOSED } from './constants';
+import { timedFetch } from './perf-collect';
 
 type PickupRow = {
   id: string;
@@ -66,11 +67,13 @@ function fieldsToRow(fields: Partial<Omit<Pickup, 'id'>>): Record<string, unknow
 }
 
 export async function fetchAllPickups(): Promise<Pickup[]> {
+  return timedFetch('pickups', async (countPage) => {
   // PostgREST defaults max-rows to 1000. Paginate so we always get every row.
   const PAGE = 1000;
   const all: Pickup[] = [];
   let from = 0;
   while (true) {
+    countPage();
     const { data, error } = await supabase
       .from('pickups')
       .select('*')
@@ -92,6 +95,7 @@ export async function fetchAllPickups(): Promise<Pickup[]> {
     from += PAGE;
   }
   return all;
+  }, (rows) => rows.length);
 }
 
 export async function updatePickup(
