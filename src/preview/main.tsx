@@ -19,6 +19,7 @@ import { FIXTURE } from '@/preview/customer-fixture';
 import { DuplicateScheduleWarningDialog } from '@/components/deliveries/DuplicateScheduleWarningDialog';
 import { NotCompletedReasonDialog } from '@/components/NotCompletedReasonDialog';
 import { DriverStopCard } from '@/pages/DriverDashboardPage';
+import { SurveysPage } from '@/pages/SurveysPage';
 import { AuthProvider } from '@/lib/auth-context';
 import { GlobalChatProvider } from '@/context/GlobalChatContext';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -198,6 +199,31 @@ function ReasonPreview({ kind }: { kind: 'not_done' | 'follow_up' }) {
   );
 }
 
+/**
+ * ⭐ **נתוני הסקרים מוזרקים למטמון השאילתות**, ולכן המסך מרונדר עם תוכן
+ * אמיתי בלי מסד ובלי התחברות. 🔴 בלי זה הצילום מראה תמיד את המצב הריק,
+ * וזה בדיוק מה שגורם למסור מסך שנראה טוב ריק ושבור מלא.
+ */
+const svy = (o: Record<string, unknown>) => ({
+  id: String(o.id), stopId: null, orderId: null, customerNumber: null,
+  customerName: o.name ?? null, driver: o.driver ?? null, healthFund: o.fund ?? null,
+  deliveredAt: null, sentAt: '2026-08-20T09:00:00Z', openedAt: null,
+  answeredAt: o.at ?? '2026-08-20T10:00:00Z',
+  satisfaction: o.sat ?? 5, recommend: o.rec ?? 5, comment: o.comment ?? null,
+  status: 'answered',
+});
+
+const SURVEY_FIXTURE = [
+  svy({ id: 1, name: 'רוזנברג אופר', driver: 'דוד', fund: 'כללית', comment: 'התגובה שלכם לפנייה שלי הייתה מהירה ביותר. הטכנאי דוד הודיע שיגיע תוך חצי שעה וכך עשה, אדם מקצועי ואדיב, תודה מקרב לב על עזרתכם.' }),
+  svy({ id: 2, name: 'לוי שרה', driver: 'רודי', fund: 'מכבי', comment: 'קיבלנו שירות מצוין' }),
+  svy({ id: 3, name: 'כהן משה', driver: 'דוד', fund: 'כללית' }),
+  svy({ id: 4, name: 'אברהם רות', driver: 'מוהנד', fund: 'מאוחדת', sat: 4, rec: 4, comment: 'שירות מהיר ויעיל' }),
+  svy({ id: 5, name: 'פרץ יוסי', driver: 'רודי', fund: 'לאומית', sat: 2, rec: 2, comment: 'חיכיתי שלושה שבועות ואף אחד לא חזר אליי', at: '2026-08-24T14:00:00Z' }),
+  svy({ id: 6, name: 'דוד מרים', driver: 'מוהנד', fund: 'כללית' }),
+];
+
+previewQc.setQueryData(['surveys', 90], SURVEY_FIXTURE);
+
 const view = new URLSearchParams(location.search).get('view');
 
 const VIEWS: Record<string, React.ReactElement> = {
@@ -206,6 +232,7 @@ const VIEWS: Record<string, React.ReactElement> = {
   driver: <DriverPreview />,
   'reason-followup': <ReasonPreview kind="follow_up" />,
   'reason-notdone': <ReasonPreview kind="not_done" />,
+  surveys: <SurveysPage />,
 };
 
 if (view && VIEWS[view]) {

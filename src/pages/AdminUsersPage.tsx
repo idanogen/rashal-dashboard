@@ -55,6 +55,8 @@ import type { Profile } from '@/types/profile';
 
 const ROLE_BADGE_STYLES: Record<UserRole, string> = {
   admin: 'bg-purple-50 text-purple-700 border-purple-200',
+  // ⭐ ענבר, כמו הכסף בשאר המסכים, כדי שיהיה ברור במבט אחד מי רואה סכומים.
+  management: 'bg-amber-50 text-amber-800 border-amber-300',
   team_manager: 'bg-indigo-50 text-indigo-700 border-indigo-200',
   dispatcher: 'bg-blue-50 text-blue-700 border-blue-200',
   driver: 'bg-emerald-50 text-emerald-700 border-emerald-200',

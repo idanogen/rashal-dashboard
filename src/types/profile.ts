@@ -1,6 +1,28 @@
 import type { AssigneeName } from './route';
 
-export type UserRole = 'admin' | 'team_manager' | 'dispatcher' | 'driver' | 'viewer';
+export type UserRole =
+  | 'admin'
+  | 'management'
+  | 'team_manager'
+  | 'dispatcher'
+  | 'driver'
+  | 'viewer';
+
+/**
+ * ⭐ **`management` רואה כסף, ואינו נוגע בהגדרות המערכת.**
+ *
+ * 🔴 עידן, 26/08/2026: "כל דבר שמדבר על כסף ומחזורי מכירות חשוף רק
+ * להרשאת הנהלה, שזה נכון לעכשיו שלומי ורונן בלבד."
+ *
+ * הפער שהוא סוגר: עד היום דשבורד ההנהלה היה פתוח למנהל מערכת בלבד,
+ * ולכן כדי ששלומי יראה אותו הוא קיבל **מנהל מערכת מלא** עם ניהול
+ * משתמשים ותבניות וואטסאפ. תפקיד ביניים מפריד בין "לראות מספרים" לבין
+ * "לשנות את המערכת", ואלה שתי סמכויות שונות לגמרי.
+ *
+ * 🔴 האכיפה במסד (`is_management()`), לא במסך: סכום שרק מוסתר בדפדפן
+ * עדיין נוסע אליו ונשלף משם.
+ */
+export const MONEY_ROLES: UserRole[] = ['admin', 'management'];
 
 /**
  * ⭐ **`team_manager` הוא סדרן ועוד.** הוא רואה ועושה כל מה שסדרן עושה,
@@ -10,10 +32,11 @@ export type UserRole = 'admin' | 'team_manager' | 'dispatcher' | 'driver' | 'vie
  */
 export const USER_MANAGER_ROLES: UserRole[] = ['admin', 'team_manager'];
 
-export const ALLOWED_ROLES: UserRole[] = ['admin', 'team_manager', 'dispatcher', 'driver', 'viewer'];
+export const ALLOWED_ROLES: UserRole[] = ['admin', 'management', 'team_manager', 'dispatcher', 'driver', 'viewer'];
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   admin: 'מנהל מערכת',
+  management: 'הנהלה',
   team_manager: 'מנהל צוות',
   dispatcher: 'שולח (מנהל משלוחים)',
   driver: 'נהג',

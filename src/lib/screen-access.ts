@@ -17,8 +17,13 @@ export interface ScreenAccess {
   allow: UserRole[];
 }
 
-const STAFF: UserRole[] = ['admin', 'team_manager', 'dispatcher', 'viewer'];
+const STAFF: UserRole[] = ['admin', 'management', 'team_manager', 'dispatcher', 'viewer'];
 const MANAGERS: UserRole[] = ['admin', 'team_manager'];
+/**
+ * 🔴 **מי רואה כסף.** עידן, 26/08/2026: הנהלה בלבד, שהם שלומי ורונן.
+ * ⭐ והאכיפה האמיתית במסד (`is_management()`), כי מסך שרק מסתיר אינו הגנה.
+ */
+const MONEY: UserRole[] = ['admin', 'management'];
 
 export const SCREEN_ACCESS: ScreenAccess[] = [
   { path: '/',                 label: 'בית',              group: 'daily', allow: STAFF },
@@ -30,9 +35,13 @@ export const SCREEN_ACCESS: ScreenAccess[] = [
   // שבמסד, כי מסך שרק מסתיר כפתורים אינו הגנה.
   { path: '/customer',         label: 'כרטיס לקוח',        group: 'daily', allow: STAFF },
   { path: '/feedback',         label: 'הערות',            group: 'daily', allow: [...STAFF, 'driver'] },
-  // 🔴 מנהל מערכת בלבד (עידן, 23/08/2026). המסך מרכז מספרים של ההנהלה,
-  // ולא כל מי שרואה את מסך הסדרן אמור לראות אותם.
-  { path: '/overview',         label: 'דשבורד הנהלה',      group: 'admin', allow: ['admin'] },
+  // 🔴 **הוסב ב-27/08/2026 מ"מנהל מערכת בלבד" למי שרואה כסף.**
+  // עד אז שלומי היה חייב להיות מנהל מערכת מלא רק כדי לראות את המסך,
+  // כלומר גם ניהול משתמשים וגם תבניות. עכשיו יש תפקיד ביניים.
+  { path: '/overview',         label: 'דשבורד הנהלה',      group: 'admin', allow: MONEY },
+  // ⭐ **הסקרים בנפרד, ובכוונה.** עמי ביקש לראות סקרים, ואי אפשר פשוט
+  // לפתוח לו את דשבורד ההנהלה כי יש עליו גם כסף. שביעות רצון אינה כסף.
+  { path: '/surveys',          label: 'סקרי שביעות רצון',  group: 'daily', allow: STAFF },
   { path: '/inspections',      label: 'בדיקות מנופים',     group: 'admin', allow: STAFF },
   { path: '/whatsapp',         label: 'וואטסאפ (ישן)',     group: 'admin', allow: STAFF },
   { path: '/admin/users',      label: 'משתמשים',          group: 'admin', allow: MANAGERS },

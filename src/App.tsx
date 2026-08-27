@@ -5,6 +5,7 @@ import { AppShell } from '@/components/layout/AppShell';
 import { DriverShell } from '@/components/layout/DriverShell';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { ManagementDashboard } from '@/pages/ManagementDashboard';
+import { SurveysPage } from '@/pages/SurveysPage';
 import { DispatchPage } from '@/pages/DispatchPage';
 import { InspectionsPage } from '@/pages/InspectionsPage';
 import { RouteNavigationPage } from '@/pages/RouteNavigationPage';
@@ -95,6 +96,7 @@ function App() {
                         {/* אותו דשבורד בכתובת קבועה, כדי שגם לסדרן תהיה דרך אליו */}
                         <Route path="/orders" element={<RoleBasedRoute allow={screenAllow('/orders')}><DashboardPage /></RoleBasedRoute>} />
                         <Route path="/overview" element={<RoleBasedRoute allow={screenAllow('/overview')}><ManagementDashboard /></RoleBasedRoute>} />
+                        <Route path="/surveys" element={<RoleBasedRoute allow={screenAllow('/surveys')}><SurveysPage /></RoleBasedRoute>} />
                         <Route path="/dispatch" element={<RoleBasedRoute allow={screenAllow('/dispatch')}><DispatchPage /></RoleBasedRoute>} />
                         {/* הראוטים הישנים מפנים למסך הסדרן המאוחד עם הטאב המתאים */}
                         <Route path="/routes" element={<Navigate to="/dispatch?tab=deliveries" replace />} />
