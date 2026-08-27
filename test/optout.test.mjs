@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -15,23 +15,50 @@ import { dirname, join } from 'node:path';
  */
 
 const here = dirname(fileURLToPath(import.meta.url));
-const src = readFileSync(join(here, '..', 'api', 'wa-send.ts'), 'utf8');
+const api = (...p) => readFileSync(join(here, '..', 'api', ...p), 'utf8');
+const src = api('wa-send.ts');
 
-test('🔴🔴 בדיקת המושתקים קיימת, ולפני אכיפת החלון', () => {
-  const mute = src.indexOf("from('wa_suppressed')");
+/**
+ * ⭐ **הבדיקה עצמה עברה ל-`_lib/suppression.ts` ב-27/08/2026**, כשנוסף
+ * שולח שני (עבודת התזכורות של הערב). עד אז היא הייתה כתובה בתוך
+ * `wa-send` בלבד, ובדיוק כך נולד הפער הקודם: `api/heyy-send` שלח בלי
+ * לבדוק. הבדיקה כאן עוברת מהשואל הבודד לכלל: **כל מי ששולח, עובר בשער.**
+ */
+test('🔴🔴 השער קיים במודול משותף, ולא מועתק', () => {
+  const mod = api('_lib', 'suppression.ts');
+  assert.match(mod, /from\('wa_suppressed'\)/, '🔴 אין בדיקה מול רשימת המושתקים');
+  assert.match(mod, /check_failed/, '🔴 אין מסלול עצירה לכשל בבדיקה');
+});
+
+test('🔴🔴 כל שולח עובר בשער, בלי יוצא מן הכלל', () => {
+  // ⭐ מי ששולח נמצא לפי הקריאה עצמה ולא לפי רשימה ידנית של קבצים,
+  // כי רשימה ידנית מתיישנת בדיוק כשמוסיפים את השולח שישכח לבדוק.
+  const senders = readdirSync(join(here, '..', 'api'))
+    .filter((f) => f.endsWith('.ts'))
+    .filter((f) => {
+      const body = api(f);
+      return /heyySendTemplate\(|heyySendText\(|sendWithRateLimit\(/.test(body);
+    });
+  assert.ok(senders.length >= 2, `נמצאו רק ${senders.length} שולחים, הסריקה כנראה שבורה`);
+  for (const f of senders) {
+    assert.match(api(f), /checkSuppressed\(/, `🔴 ${f} שולח בלי לבדוק את רשימת המושתקים`);
+  }
+});
+
+test('🔴🔴 בקשת הסרה גוברת על שיחה פתוחה', () => {
+  const mute = src.indexOf('checkSuppressed(');
   assert.ok(mute > 0, '🔴 אין בדיקה מול רשימת המושתקים לפני שליחה');
   const window = src.indexOf('── אכיפת החלון');
   assert.ok(window > 0, 'לא נמצאה אכיפת החלון');
-  // ⭐ בקשת הסרה גוברת גם על שיחה פתוחה.
   assert.ok(mute < window, '🔴 המושתקים נבדקים אחרי החלון, כלומר שיחה פתוחה עוקפת בקשת הסרה');
 });
 
 test('🔴 כשל בבדיקה עוצר את השליחה ולא מדלג עליה', () => {
-  const seg = src.slice(src.indexOf("from('wa_suppressed')"), src.indexOf('── אכיפת החלון'));
+  const seg = src.slice(src.indexOf('checkSuppressed('), src.indexOf('── אכיפת החלון'));
   assert.match(seg, /suppression_check_failed/,
     '🔴 אין מסלול עצירה לכשל בבדיקה. שער שנפתח כשהוא שבור אינו שער.');
-  assert.match(seg, /status\(503\)/, 'כשל בבדיקה חייב להחזיר שגיאת שרת ולא להמשיך');
-  assert.match(seg, /status\(409\)/, 'לקוח מושתק חייב לקבל דחייה מפורשת');
+  assert.match(seg, /503/, 'כשל בבדיקה חייב להחזיר שגיאת שרת ולא להמשיך');
+  assert.match(seg, /409/, 'לקוח מושתק חייב לקבל דחייה מפורשת');
 });
 
 test('⭐ הזיהוי האוטומטי מחובר לקליטת ההודעות הנכנסות', () => {

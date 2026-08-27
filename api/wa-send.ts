@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireUser } from './_lib/require-user.js';
 import { supabaseAdmin } from './_lib/supabase-admin.js';
+import { checkSuppressed } from './_lib/suppression.js';
 import { heyySendText, isHeyyDemo } from './_lib/heyy-server.js';
 import { sendTemplate as sendTemplateV3, uploadFileBytes } from './_lib/heyy-v3.js';
 import { toE164, normalizePhone } from './_lib/phone.js';
@@ -136,22 +137,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // [[whatsapp_template_submission_traps]]
   //
   // ⭐ ולפני אכיפת החלון בכוונה: בקשת הסרה גוברת גם על שיחה פתוחה.
+  //
+  // ⭐ **הבדיקה עצמה יושבת ב-`_lib/suppression.ts`** מאז 27/08/2026, כדי
+  // שגם עבודת התזכורות תעבור דרכה. שני שולחים עם שני עותקים של אותו
+  // תנאי הם בדיוק הפער שכבר קרה כאן פעם אחת.
   {
-    const { data: mute, error: muteErr } = await supabaseAdmin
-      .from('wa_suppressed')
-      .select('phone_local, reason, created_at')
-      .eq('phone_local', local)
-      .maybeSingle();
-    // 🔴 כשל בבדיקה **עוצר את השליחה** ולא מדלג עליה. שער שנפתח כשהוא
-    // שבור אינו שער. [[fetch_helper_swallows_non_json]]
-    if (muteErr) {
-      console.error('[wa-send] suppression check failed', muteErr.message);
-      return res.status(503).json({ ok: false, error: 'suppression_check_failed',
-        message: 'לא הצלחתי לבדוק את רשימת המושתקים, ולכן לא שלחתי.' });
-    }
-    if (mute) {
-      return res.status(409).json({ ok: false, error: 'suppressed',
-        message: 'הלקוח הזה ביקש שלא נפנה אליו בוואטסאפ.' });
+    const verdict = await checkSuppressed(local);
+    if (!verdict.allowed) {
+      const status = verdict.reason === 'check_failed' ? 503 : 409;
+      return res.status(status).json({
+        ok: false,
+        error: verdict.reason === 'check_failed' ? 'suppression_check_failed' : 'suppressed',
+        message: verdict.message,
+      });
     }
   }
 

@@ -104,3 +104,50 @@ export function coordinationPreview(input: CoordinationInput): string {
  * `test/coordination-message.test.mjs` מריץ את שניהם דרך המפרש האמיתי.
  */
 export const COORDINATION_BUTTONS = ['מתאים לי', 'לא מתאים'] as const;
+
+// ═══════════════════════════════════════════════════════════════════════
+// שתי ההודעות שנוספו בשלב 8: מועד סגור, ותזכורת יום לפני
+// ═══════════════════════════════════════════════════════════════════════
+//
+// ⭐ **אותם ארבעה משתנים בדיוק** (`customer_name` · `purpose` · `day` ·
+// `hours`), ולכן `coordinationValues` משרת את שלושתן ואין שלושה בנאים
+// שיתפצלו. מה שמשתנה הוא הגוף אצל מטא והאם יש כפתורים.
+//
+// 🔴 **וההבדל שקובע הכל: לשתי אלה אין שאלה ואין כפתורים.** תבנית
+// התיאום שואלת "מתאים לכם?" ומחכה לתשובה שמעדכנת את היומן. אלה מודיעות.
+// לכן אסור להשתמש בהן במקום התיאום: לקוח שיענה עליהן ייכנס לתיבה
+// כשיחה פתוחה, ואף עצירה לא תתעדכן.
+
+/** מודיעה על מועד שכבר נסגר. בלי שאלה, בלי כפתורים. */
+export const CONFIRMED_TEMPLATE_KEY = 'rashal_visit_confirmed';
+
+/** תזכורת ערב לפני. בלי שאלה, בלי כפתורים. */
+export const REMINDER_TEMPLATE_KEY = 'rashal_visit_reminder';
+
+/**
+ * מה שהלקוח יראה כשהמועד סגור. תצוגה מקדימה בלבד: הגוף האמיתי שמור
+ * אצל מטא, וכל שינוי בשורות האלה מחייב הגשה מחדש של התבנית.
+ */
+export function confirmedPreview(input: CoordinationInput): string {
+  const v = coordinationValues(input);
+  return [
+    `שלום ${v.customer_name}, כאן ר.שעל בע"מ.`,
+    `נגיע אליכם ${v.purpose} ביום ${v.day}, בין השעות ${v.hours}.`,
+    'אם המועד אינו מתאים אפשר להשיב כאן ונתאם מחדש.',
+  ].join('\n');
+}
+
+/**
+ * התזכורת של הערב שלפני.
+ *
+ * ⭐ **"מחר" ואז התאריך המלא, ולא רק אחד מהם.** "מחר" לבדו נקרא שגוי
+ * אם ההודעה נקראת בבוקר שאחרי, והתאריך לבדו מחייב את הלקוח לחשב.
+ */
+export function reminderPreview(input: CoordinationInput): string {
+  const v = coordinationValues(input);
+  return [
+    `שלום ${v.customer_name}, כאן ר.שעל בע"מ.`,
+    `תזכורת: מחר, יום ${v.day}, נגיע אליכם ${v.purpose} בין השעות ${v.hours}.`,
+    'אם משהו השתנה אפשר להשיב כאן.',
+  ].join('\n');
+}

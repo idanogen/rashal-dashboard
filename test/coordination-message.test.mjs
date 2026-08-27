@@ -87,3 +87,65 @@ test('המפתח והמטרות סגורים', () => {
   assert.equal(PURPOSES.length, 4);
   for (const p of PURPOSES) assert.match(p.value, /^ל/);
 });
+
+/**
+ * 🔴🔴 **עותק שני של אותו ניסוח, בשני צדדים שאינם יכולים לייבא זה מזה.**
+ *
+ * `api/` אינו יכול לייבא מ-`src/` (בנייה נפרדת ב-Vercel), ולכן עבודת
+ * התזכורות מחזיקה עותק משלה של `hebrewDay` ושל רשימת המטרות. שני
+ * עותקים נפרדים בשקט: מישהו יתקן ניסוח בצד אחד, והתזכורת שיוצאת בערב
+ * תגיד משהו אחר מהתיאום שיצא בבוקר.
+ * [[dual_implementation_needs_byte_identical_guard]]
+ */
+import { readFileSync } from 'node:fs';
+
+const CRON = readFileSync(new URL('../api/cron-daily-reminders.ts', import.meta.url), 'utf8');
+
+test('🔴 שמות הימים בעבודת התזכורות זהים לאלה שבמודול', () => {
+  const m = /const DAY_NAMES = \[(.*?)\]/s.exec(CRON);
+  assert.ok(m, 'DAY_NAMES לא נמצא בעבודת התזכורות');
+  const cronDays = m[1].split(',').map((s) => s.trim().replace(/^'|'$/g, '')).filter(Boolean);
+  // הצד של המודול, דרך הפונקציה האמיתית ולא דרך קריאת הקובץ.
+  const libDays = [
+    '2026-08-30', '2026-08-31', '2026-09-01', '2026-09-02',
+    '2026-09-03', '2026-09-04', '2026-09-05',
+  ].map((d) => hebrewDay(d).split(',')[0]);
+  assert.deepEqual(cronDays, libDays);
+});
+
+test('🔴 כל מטרה שהתזכורת שולחת היא אחת מהרשימה הסגורה שאושרה', () => {
+  // ⭐ מטא הקפיאה את הגוף, והמשתנה `purpose` נבדק מולו. ערך שאינו
+  // ברשימה הוא ניסוח שלא אושר, והוא ייצא ללקוח בלי שאף אחד יראה.
+  const m = /const PURPOSE_BY_SOURCE[^=]*= \{(.*?)\n\};/s.exec(CRON);
+  assert.ok(m, 'PURPOSE_BY_SOURCE לא נמצא');
+  const used = [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]);
+  assert.ok(used.length >= 5, `נמצאו רק ${used.length} מטרות`);
+  const allowed = new Set(PURPOSES.map((p) => p.value));
+  for (const v of used) assert.ok(allowed.has(v), `"${v}" אינו ברשימה שאושרה`);
+});
+
+test('🔴🔴 עבודת התזכורות כבויה כברירת מחדל', () => {
+  // טרם יצאה ולו הודעה אמיתית אחת ללקוח של ר.שעל. עבודה שנפרסת
+  // ומתחילה לשלוח מעצמה באותו ערב היא בדיוק מה שאסור.
+  assert.match(CRON, /WA_REMINDERS_ENABLED === '1'/);
+  assert.doesNotMatch(CRON, /const ARMED = true/);
+});
+
+test('🔴 אין בעבודה שום מזהה תבנית מסוג DEMO', () => {
+  // המנגנון הקודם הצביע על `DEMO-delivery-reminder`, בדיוק כמו
+  // `DEMO-schedule-coordination` שנתפס ב-25/08. שניהם נראו כמו קוד עובד.
+  assert.doesNotMatch(CRON, /DEMO-[a-z-]+'/);
+});
+
+test('🔴 העבודה שואלת את היומן ולא את `orders.delivery_date`', () => {
+  // ⭐ נמדד: `delivery_date` ריק בכל 47,263 ההזמנות. השאילתה הישנה
+  // החזירה אפס שורות תמיד, בלי שגיאה ובלי שאף אחד ידע.
+  assert.match(CRON, /\.from\('calendar_stops'\)/);
+  assert.doesNotMatch(CRON, /from\('orders'\)[\s\S]{0,200}delivery_date/);
+});
+
+test('🔴 רשימת המושתקים נבדקת לפני כל שליחה', () => {
+  const checks = [...CRON.matchAll(/await checkSuppressed\(/g)].length;
+  const sends = [...CRON.matchAll(/await heyySendTemplate\(/g)].length;
+  assert.ok(checks >= sends, `${sends} שליחות מול ${checks} בדיקות השתקה`);
+});

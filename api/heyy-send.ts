@@ -1,7 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabaseAdmin } from './_lib/supabase-admin.js';
 import { heyySendTemplate, heyySendText, isHeyyDemo } from './_lib/heyy-server.js';
-import { toE164 } from './_lib/phone.js';
+import { normalizePhone, toE164 } from './_lib/phone.js';
+import { checkSuppressed } from './_lib/suppression.js';
 import { requireCaller, warnIfSecretMissing } from './_lib/require-caller.js';
 
 /**
@@ -63,6 +64,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const e164 = toE164(body.phoneE164);
   if (!e164) {
     return res.status(400).json({ ok: false, error: 'invalid phone' });
+  }
+
+  // ── רשימת המושתקים ──────────────────────────────────────
+  //
+  // 🔴🔴 **הנתיב הזה שלח בלי לבדוק, עד 27/08/2026.** ב-25/08 הועברו
+  // הקוראים ל-`api/wa-send` שיש בה שער, **אבל הנקודה הזאת נשארה פתוחה**
+  // ולא הוסרה. מי שקורא לה ישירות עוקף את בקשת ההסרה של הלקוח.
+  // נתפס בבדיקה שסורקת את כל השולחים במקום לשאול על קובץ אחד.
+  // [[endpoint_hardening_orphans_callers]]
+  {
+    const local = normalizePhone(e164);
+    if (local) {
+      const verdict = await checkSuppressed(local);
+      if (!verdict.allowed) {
+        const status = verdict.reason === 'check_failed' ? 503 : 409;
+        return res.status(status).json({
+          ok: false,
+          error: verdict.reason === 'check_failed' ? 'suppression_check_failed' : 'suppressed',
+          message: verdict.message,
+        });
+      }
+    }
   }
 
   // Cooldown check (only for reminders attached to an order)
