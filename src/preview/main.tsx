@@ -1,3 +1,7 @@
+/* eslint-disable react-refresh/only-export-components --
+   קובץ הרנדור לצילום בלבד, ואינו נטען באפליקציה. הכלל הזה נוגע לנוחות
+   של רענון חם בפיתוח, ואין לו משמעות במסך שרץ פעם אחת בתוך Chrome
+   headless. הופרד כאן במפורש כדי שהוא לא ייבלע ברעש של שאר הפרויקט. */
 /**
  * תצוגה מקדימה לצילום, בלי התחברות ובלי מסד.
  *
@@ -6,12 +10,18 @@
  * לשלוח אותו לעידן ולגלות ממנו. [[screenshot_behind_a_login]]
  */
 import { StrictMode } from 'react';
+import type React from 'react';
 import { createRoot } from 'react-dom/client';
 import '@/index.css';
 import { CustomerCardBody } from '@/components/customer/CustomerCard';
 import { CustomerCardButton } from '@/components/customer/CustomerCardSheet';
 import { FIXTURE } from '@/preview/customer-fixture';
 import { DuplicateScheduleWarningDialog } from '@/components/deliveries/DuplicateScheduleWarningDialog';
+import { NotCompletedReasonDialog } from '@/components/NotCompletedReasonDialog';
+import { DriverStopCard } from '@/pages/DriverDashboardPage';
+import { AuthProvider } from '@/lib/auth-context';
+import { GlobalChatProvider } from '@/context/GlobalChatContext';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { CalendarStop } from '@/types/calendar-stop';
 
 /**
@@ -101,11 +111,108 @@ function DupPreviewFuture() {
   );
 }
 
+/**
+ * ⭐ **מסך הנהג, שני המצבים שבהם הכפתורים משתנים.**
+ * 🔴 "המשך טיפול" מופיע **רק אחרי הגעה**, וזו הכרעה שצריך לראות בעיניים:
+ * מי שלא הגיע ללקוח לא יכול להיות "בוצע חלקית".
+ */
+function driverStop(over: Partial<CalendarStop>): CalendarStop {
+  return {
+    id: 'p1',
+    deliveryDate: new Date().toISOString().slice(0, 10),
+    driver: 'רודי',
+    sequence: 0,
+    sourceType: 'delivery',
+    customerName: 'כהן דוד',
+    address: 'הרצל 12',
+    city: 'ראשון לציון',
+    phone: '0521234567',
+    status: 'planned',
+    ...over,
+  } as CalendarStop;
+}
+
+/**
+ * 🔴 כרטיס הנהג נשען על ההקשרים של האפליקציה (משתמש, צ'אט, שאילתות).
+ * בלעדיהם הוא זורק והמסך יוצא **לבן לגמרי**, וזה בדיוק המקרה שבו צילום
+ * ריק נראה כמו "אין מה לראות" במקום כמו שגיאה. נתפס בצילום הראשון.
+ */
+const previewQc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+function Providers({ children }: { children: React.ReactNode }) {
+  return (
+    <QueryClientProvider client={previewQc}>
+      <AuthProvider>
+        <GlobalChatProvider>{children}</GlobalChatProvider>
+      </AuthProvider>
+    </QueryClientProvider>
+  );
+}
+
+function DriverPreview() {
+  return (
+    // 🔴 **רוחב טלפון אמיתי, כפוי.** Chrome headless לא יורד מתחת ל-500
+    // פיקסל, ולכן צילום ב-390 מראה פרוסה של עמוד רחב יותר ונראה כאילו
+    // התוכן נחתך. מיכל קבוע הוא הדרך היחידה לראות את מה שהנהג רואה.
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-3">
+      <div className="mx-auto space-y-5" style={{ width: 384 }}>
+        <div className="rounded-xl border bg-white p-3 text-xs">
+          <b>לפני הגעה:</b> ארבעה כפתורים, בלי "המשך טיפול". מי שלא הגיע
+          ללקוח לא יכול להיות "בוצע חלקית".
+        </div>
+        <DriverStopCard
+          stop={driverStop({})}
+          index={1}
+          onCoordinate={() => {}}
+          onArrive={() => {}}
+          onResolve={() => {}}
+          resolving={false}
+        />
+        <div className="rounded-xl border bg-white p-3 text-xs">
+          <b>אחרי הגעה:</b> נוסף "המשך טיפול" בענבר, בין התיאום ל"לא בוצע".
+        </div>
+        <DriverStopCard
+          stop={driverStop({ id: 'p2', status: 'in_progress' })}
+          index={2}
+          onCoordinate={() => {}}
+          onArrive={() => {}}
+          onResolve={() => {}}
+          resolving={false}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ReasonPreview({ kind }: { kind: 'not_done' | 'follow_up' }) {
+  return (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
+      <NotCompletedReasonDialog
+        open
+        kind={kind}
+        customerName="כהן דוד"
+        onOpenChange={() => {}}
+        onConfirm={() => {}}
+      />
+    </div>
+  );
+}
+
 const view = new URLSearchParams(location.search).get('view');
 
-if (view === 'dup' || view === 'dup-future') {
+const VIEWS: Record<string, React.ReactElement> = {
+  dup: <DupPreview />,
+  'dup-future': <DupPreviewFuture />,
+  driver: <DriverPreview />,
+  'reason-followup': <ReasonPreview kind="follow_up" />,
+  'reason-notdone': <ReasonPreview kind="not_done" />,
+};
+
+if (view && VIEWS[view]) {
   createRoot(document.getElementById('root')!).render(
-    <StrictMode>{view === 'dup' ? <DupPreview /> : <DupPreviewFuture />}</StrictMode>,
+    <StrictMode>
+      <Providers>{VIEWS[view]}</Providers>
+    </StrictMode>,
   );
 } else
 createRoot(document.getElementById('root')!).render(

@@ -22,6 +22,7 @@ const stop = (o) => ({
   completedAt: o.at,
   notes: o.notes,
   resolutionNote: o.resolutionNote,
+  resolutionKind: o.kind,
 });
 
 test('הסיבה שהנהג רשם מגיעה עם הישות', () => {
@@ -93,4 +94,62 @@ test('returnedIdSet נותן בדיוק את אותם מפתחות', () => {
     'service',
   );
   assert.deepEqual([...returnedIdSet(map)].sort(), ['c1', 'c2']);
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+// 27/08/2026 — "המשך טיפול"
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * 🔴🔴 הבדיקה שמצדיקה את התוספת. עמי, 26/08: "אספקה שלא יצאה כמו שצריך,
+ * אנחנו צריכים להוסיף לו כפתור של המשך טיפול." אם הסוג לא נוסע עד המסך,
+ * המשרד רואה "לא בוצע" אדום על נהג שדווקא הגיע ועשה חלק מהעבודה, ואז
+ * ההבחנה שנבנתה נמחקת בדיוק במקום שבו היא נדרשת.
+ */
+test('🔴 "המשך טיפול" נוסע עם הישות ואינו נבלע ב"לא בוצע"', () => {
+  const map = buildReturnedMap(
+    [stop({ id: 's1', date: '2026-08-27', callId: 'c1', resolutionNote: 'החגורה לא התאימה', kind: 'follow_up' })],
+    'service',
+  );
+  assert.equal(map.get('c1').kind, 'follow_up');
+  assert.equal(map.get('c1').note, 'החגורה לא התאימה');
+});
+
+test('סימון רגיל נשאר not_done', () => {
+  const map = buildReturnedMap(
+    [stop({ id: 's1', date: '2026-08-27', callId: 'c1', resolutionNote: 'לא היה בבית', kind: 'not_done' })],
+    'service',
+  );
+  assert.equal(map.get('c1').kind, 'not_done');
+});
+
+/**
+ * 🔴 עצירות שנסגרו לפני שהעמודה קיימת מחזירות undefined, **ולא ברירת
+ * מחדל שקרית**. הצגתן כ"לא בוצע" הייתה נכונה במקרה, אבל הצגתן כ"המשך
+ * טיפול" הייתה המצאה, ולכן הקוד שמצייר בוחר לפי `=== 'follow_up'`.
+ */
+test('עצירה היסטורית בלי הסוג אינה מקבלת ניחוש', () => {
+  const map = buildReturnedMap(
+    [stop({ id: 's1', date: '2026-06-01', callId: 'c1', notes: 'ישן' })],
+    'service',
+  );
+  assert.equal(map.get('c1').kind, undefined);
+});
+
+/**
+ * 🔴 "האחרון מנצח" חייב להמשיך לעבוד **גם כששני הניסיונות מסוגים שונים**.
+ * לקוח שבשבוע שעבר לא נמצא בבית והשבוע קיבל ציוד שלא התאים צריך להציג
+ * את החדש, אחרת המשרד מטפל בבעיה שכבר נפתרה.
+ */
+test('🔴 בין שני ניסיונות מסוגים שונים, האחרון מנצח', () => {
+  const map = buildReturnedMap(
+    [
+      stop({ id: 's1', date: '2026-08-20', callId: 'c1', resolutionNote: 'לא היה בבית', kind: 'not_done' }),
+      stop({ id: 's2', date: '2026-08-27', callId: 'c1', resolutionNote: 'הציוד לא התאים', kind: 'follow_up' }),
+    ],
+    'service',
+  );
+  assert.equal(map.get('c1').kind, 'follow_up');
+  assert.equal(map.get('c1').note, 'הציוד לא התאים');
 });

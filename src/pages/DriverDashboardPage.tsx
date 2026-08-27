@@ -32,8 +32,9 @@ import {
   ListChecks,
   AlertTriangle,
   Map as MapIcon,
+  RotateCcw,
 } from 'lucide-react';
-import type { CalendarStop as DbCalendarStop } from '@/types/calendar-stop';
+import type { CalendarStop as DbCalendarStop, StopResolutionKind } from '@/types/calendar-stop';
 import type { CalendarStop as UiCalendarStop } from '@/types/delivery';
 import { OrderChatSheet } from '@/components/OrderChatSheet';
 import { NotCompletedReasonDialog } from '@/components/NotCompletedReasonDialog';
@@ -93,6 +94,8 @@ export function DriverDashboardPage() {
   const log = useActivityLogger();
   const [coordinationStop, setCoordinationStop] = useState<UiCalendarStop | null>(null);
   const [notCompletedStop, setNotCompletedStop] = useState<DbCalendarStop | null>(null);
+  /** איזה כפתור פתח את הפופאפ. קובע את הניסוח ואת מה שנשמר. */
+  const [notCompletedKind, setNotCompletedKind] = useState<StopResolutionKind>('not_done');
   const [showMap, setShowMap] = useState(true);
 
   /** הקשר אירוע אחיד לעצירה — לדוחות. */
@@ -103,14 +106,20 @@ export function DriverDashboardPage() {
     customerName: stop.customerName,
   });
 
-  // "לא בוצע" → פותח פופאפ לרישום סיבה; "סופק" → סימון מיידי (עם תוצאת אספקה אם משלוח).
+  // "לא בוצע" ו"המשך טיפול" → פופאפ לרישום סיבה; "סופק" → סימון מיידי.
+  //
+  // 🔴 **שניהם נסגרים כ-`not_completed` בכוונה**, כי ההתנהגות זהה: העצירה
+  // נסגרת והמקור חוזר לרשימת הממתינים. ההבדל הוא ב-`kind`, וזה מה שהמשרד
+  // רואה: "לא הגיע" מול "הגיע, וצריך להשלים".
   const handleResolve = (
     stop: DbCalendarStop,
     status: 'completed' | 'not_completed',
-    notes?: string
+    notes?: string,
+    kind?: StopResolutionKind,
   ) => {
     if (status === 'not_completed') {
       setNotCompletedStop(stop);
+      setNotCompletedKind(kind ?? 'not_done');
     } else {
       log('stop_completed', {
         ...stopCtx(stop),
@@ -522,6 +531,7 @@ export function DriverDashboardPage() {
       <NotCompletedReasonDialog
         open={!!notCompletedStop}
         customerName={notCompletedStop?.customerName}
+        kind={notCompletedKind}
         submitting={resolveStop.isPending}
         onOpenChange={(open) => {
           if (!open) setNotCompletedStop(null);
@@ -533,7 +543,7 @@ export function DriverDashboardPage() {
             metadata: { reason },
           });
           resolveStop.mutate(
-            { stop: notCompletedStop, status: 'not_completed', notes: reason },
+            { stop: notCompletedStop, status: 'not_completed', notes: reason, kind: notCompletedKind },
             { onSuccess: () => setNotCompletedStop(null) }
           );
         }}
@@ -605,14 +615,20 @@ interface DriverStopCardProps {
   index: number;
   onCoordinate: () => void;
   onArrive: () => Promise<unknown> | void;
-  onResolve: (status: 'completed' | 'not_completed', notes?: string) => void;
+  onResolve: (status: 'completed' | 'not_completed', notes?: string, kind?: StopResolutionKind) => void;
   resolving: boolean;
 }
 
 /** משך חלון ה"חשיבה" בין הגעה לסופק (מונע לחיצות רצופות). */
 const ARRIVAL_THINK_MS = 10_000;
 
-function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve, resolving }: DriverStopCardProps) {
+/**
+ * ⭐ **מיוצא לצורך תצוגה מקדימה בלבד.** מסך הנהג יושב מאחורי התחברות
+ * ומאחורי תפקיד, ולכן אי אפשר לצלם אותו אוטומטית. בלי הייצוא הזה שינוי
+ * בכפתורים של מי שעובד בשטח נמסר בלי שראו אותו בעיניים.
+ * [[screenshot_behind_a_login]]
+ */
+export function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve, resolving }: DriverStopCardProps) {
   const log = useActivityLogger();
   const logStop = (action: string) =>
     log(action, {
@@ -793,7 +809,17 @@ function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve, resolv
                 <Check className="h-5 w-5" />
                 סיימתי כאן, סמן כסופק
               </Button>
-              <div className="grid grid-cols-3 gap-2">
+              {/* ⭐ **"המשך טיפול" מופיע רק אחרי הגעה, וזו הנקודה.**
+                  מי שלא הגיע ללקוח לא יכול להיות "בוצע חלקית"; אצלו זה
+                  פשוט "לא בוצע". הצגת הכפתור לפני ההגעה הייתה מזמינה
+                  סימון שגוי ומטשטשת בדיוק את ההבחנה שהוא נועד לייצר. */}
+              {/* ⭐ ארבעה כפתורים, ואומת בצילום ברוחב טלפון אמיתי (384
+                  פיקסל) שכולם נכנסים וקריאים. 🔴 והאימות הזה לא היה טריוויאלי:
+                  Chrome headless לא יורד מתחת ל-500 פיקסל, ולכן צילום שמבקש
+                  390 מחזיר **פרוסה** של עמוד רחב יותר ונראה בדיוק כמו תוכן
+                  שנחתך. הדרך היחידה לראות את מה שהנהג רואה היא מיכל ברוחב
+                  קבוע, וזה מה שיושב ב-`preview.html?view=driver`. */}
+              <div className="grid grid-cols-4 gap-2">
                 <Button
                   variant="outline"
                   size="sm"
@@ -807,7 +833,17 @@ function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve, resolv
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => onResolve('not_completed')}
+                  onClick={() => onResolve('not_completed', undefined, 'follow_up')}
+                  disabled={resolving}
+                  className="h-11 gap-1 text-xs bg-amber-50 border-amber-300 text-amber-800 hover:bg-amber-100"
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  המשך טיפול
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onResolve('not_completed', undefined, 'not_done')}
                   disabled={resolving}
                   className="h-11 gap-1 text-xs bg-red-50 border-red-200 text-red-700 hover:bg-red-100"
                 >

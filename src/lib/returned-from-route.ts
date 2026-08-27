@@ -1,4 +1,4 @@
-import type { CalendarStop } from '@/types/calendar-stop';
+import type { CalendarStop, StopResolutionKind } from '@/types/calendar-stop';
 
 /**
  * "חזר מהקו" — מי חזר, **ולמה**.
@@ -22,6 +22,12 @@ export interface ReturnedInfo {
   driver: string;
   /** תאריך הקו, YYYY-MM-DD */
   deliveryDate: string;
+  /**
+   * ⭐ **"לא הגיע" מול "הגיע וצריך המשך" הן שתי בקשות שונות מהמשרד**,
+   * ולכן הן נוסעות עד המסך ולא נבלעות תחת תג אחד.
+   * ריק בעצירות שנסגרו לפני 27/08/2026.
+   */
+  kind?: StopResolutionKind;
 }
 
 export type ReturnedSource = 'delivery' | 'service' | 'pickup';
@@ -57,6 +63,7 @@ export function buildReturnedMap(
 
     out.set(id, {
       stopId: stop.id,
+      kind: stop.resolutionKind,
       // 🔴 `resolutionNote` קודם, ו-`notes` הוא נפילה לאחור להיסטוריה:
       // עד 23/08/2026 הסיבה נכתבה לתוך `notes`, ולכן עצירות ישנות
       // מחזיקות אותה שם ואין להן `resolutionNote`.

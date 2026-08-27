@@ -3,6 +3,7 @@ import type {
   CoordinationMethod,
   CoordinationStatus,
   ScheduleStopInput,
+  StopResolutionKind,
   StopSourceType,
   StopStatus,
 } from '@/types/calendar-stop';
@@ -28,6 +29,7 @@ type CalendarStopRow = {
   completed_at: string | null;
   notes: string | null;
   resolution_note: string | null;
+  resolution_kind: 'not_done' | 'follow_up' | null;
   coordination_status: CoordinationStatus | null;
   coordination_method: CoordinationMethod | null;
   coordinated_at: string | null;
@@ -81,6 +83,7 @@ function rowToStop(row: CalendarStopRow): CalendarStop {
     completedAt: row.completed_at ?? undefined,
     notes: row.notes ?? undefined,
     resolutionNote: row.resolution_note ?? undefined,
+    resolutionKind: row.resolution_kind ?? undefined,
     coordinationStatus: row.coordination_status ?? undefined,
     coordinationMethod: row.coordination_method ?? undefined,
     coordinatedAt: row.coordinated_at ?? undefined,
@@ -436,7 +439,8 @@ export async function reorderStops(
 export async function resolveStop(
   id: string,
   status: 'completed' | 'not_completed',
-  notes?: string
+  notes?: string,
+  kind?: StopResolutionKind,
 ): Promise<CalendarStop> {
   const row: Record<string, unknown> = {
     status,
@@ -445,6 +449,9 @@ export async function resolveStop(
   // 🔴 **לעמודה שלה, לא לתוך `notes`.** עד 23/08/2026 הסיבה נכתבה לתוך
   // `notes` ומחקה את תיאור המשימה שנרשם בהקמה, בלי שאיש ידע.
   if (notes != null) row.resolution_note = notes;
+  // ⭐ נכתב רק כשהעצירה לא הושלמה. עצירה שבוצעה במלואה אינה "לא בוצע"
+  // ואינה "המשך טיפול", ודגל עליה היה רק מבלבל את מי שקורא אחר כך.
+  if (status === 'not_completed') row.resolution_kind = kind ?? 'not_done';
 
   const { data, error } = await supabase
     .from('calendar_stops')

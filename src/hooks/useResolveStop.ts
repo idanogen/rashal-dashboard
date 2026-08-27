@@ -1,13 +1,18 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { resolveStop } from '@/lib/calendar-stops';
 import { setSourceState } from '@/lib/stop-source-sync';
-import type { CalendarStop } from '@/types/calendar-stop';
+import type { CalendarStop, StopResolutionKind } from '@/types/calendar-stop';
 import { toast } from 'sonner';
 
 interface ResolveStopParams {
   stop: CalendarStop;
   status: 'completed' | 'not_completed';
   notes?: string;
+  /**
+   * ⭐ מבדיל בין "לא הגעתי" לבין "הגעתי, וצריך המשך טיפול".
+   * ברירת המחדל `not_done`, כדי שקורא שלא עודכן ישמור על ההתנהגות הישנה.
+   */
+  kind?: StopResolutionKind;
 }
 
 /**
@@ -23,7 +28,7 @@ export function useResolveStop() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ stop, status, notes }: ResolveStopParams) => {
+    mutationFn: async ({ stop, status, notes, kind }: ResolveStopParams) => {
       // מקדימים את עדכון המקור (הפיך) לפני עדכון העצירה. אם עדכון העצירה
       // נכשל — מחזירים את המקור למצב המשובץ, כדי שלא ייווצר פער בין
       // סטטוס העצירה לסטטוס המקור.
@@ -31,7 +36,7 @@ export function useResolveStop() {
 
       let updated;
       try {
-        updated = await resolveStop(stop.id, status, notes);
+        updated = await resolveStop(stop.id, status, notes, kind);
       } catch (err) {
         try {
           await setSourceState(stop, 'scheduled');

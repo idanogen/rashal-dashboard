@@ -9,17 +9,37 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, X } from 'lucide-react';
+import { Loader2, RotateCcw, X } from 'lucide-react';
+import type { StopResolutionKind } from '@/types/calendar-stop';
 
-/** סיבות מהירות נפוצות — לחיצה ממלאת את שדה הטקסט. */
-const QUICK_REASONS = [
-  'הלקוח לא היה בבית',
-  'הלקוח ביטל',
-  'כתובת שגויה',
-  'לא הצלחתי ליצור קשר',
-  'חוסר במלאי / ציוד',
-  'אין גישה / חניה',
-] as const;
+/**
+ * סיבות מהירות — לחיצה ממלאת את שדה הטקסט.
+ *
+ * 🔴 **רשימה נפרדת לכל מצב, ולא רשימה אחת משותפת.** "הלקוח לא היה בבית"
+ * אינה סיבה להמשך טיפול, ו"הציוד לא התאים" אינה סיבה לאי ביצוע. רשימה
+ * משותפת הייתה מזמינה בחירה של הסיבה הקרובה ביותר במקום הנכונה, וזה
+ * בדיוק מה שהופך את השדה לחסר ערך למי שקורא אותו במשרד.
+ */
+const QUICK_REASONS: Record<StopResolutionKind, readonly string[]> = {
+  not_done: [
+    'הלקוח לא היה בבית',
+    'הלקוח ביטל',
+    'כתובת שגויה',
+    'לא הצלחתי ליצור קשר',
+    'חוסר במלאי / ציוד',
+    'אין גישה / חניה',
+  ],
+  // ⭐ מהדוגמה של עמי עצמו: "סיפקת כיסא גלגלים ושלחו לך חגורה, והחגורה
+  // לא מתאימה." אלה המקרים שבהם הגעתי, עשיתי חלק, וצריך עוד סבב.
+  follow_up: [
+    'הציוד שסופק לא התאים',
+    'חסר חלק, צריך להזמין',
+    'נדרש תיקון נוסף',
+    'הלקוח ביקש להחליף',
+    'נדרשת התאמה במעבדה',
+    'סופק חלקית',
+  ],
+};
 
 interface NotCompletedReasonDialogProps {
   open: boolean;
@@ -29,6 +49,11 @@ interface NotCompletedReasonDialogProps {
   /** נקרא עם הסיבה כשהמשתמש מאשר. */
   onConfirm: (reason: string) => void;
   submitting?: boolean;
+  /**
+   * ⭐ **אותו פופאפ, שני מצבים.** רכיב שני היה מתפצל בשקט ברגע שמישהו
+   * ישנה את החסימה על שדה ריק רק באחד מהם.
+   */
+  kind?: StopResolutionKind;
 }
 
 /**
@@ -41,7 +66,9 @@ export function NotCompletedReasonDialog({
   customerName,
   onConfirm,
   submitting = false,
+  kind = 'not_done',
 }: NotCompletedReasonDialogProps) {
+  const followUp = kind === 'follow_up';
   const [reason, setReason] = useState('');
 
   // איפוס הטקסט בכל פתיחה מחדש של הדיאלוג
@@ -61,20 +88,27 @@ export function NotCompletedReasonDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent dir="rtl" className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-red-700">
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-red-100">
-              <X className="h-4 w-4" />
+          <DialogTitle
+            className={`flex items-center gap-2 ${followUp ? 'text-amber-800' : 'text-red-700'}`}
+          >
+            <span
+              className={`flex h-7 w-7 items-center justify-center rounded-full ${followUp ? 'bg-amber-100' : 'bg-red-100'}`}
+            >
+              {followUp ? <RotateCcw className="h-4 w-4" /> : <X className="h-4 w-4" />}
             </span>
-            סימון כ"לא בוצע"
+            {followUp ? 'נדרש המשך טיפול' : 'סימון כ"לא בוצע"'}
           </DialogTitle>
           <DialogDescription>
-            {customerName ? `${customerName} — ` : ''}נא לרשום מה הסיבה שהעצירה לא בוצעה.
+            {customerName ? `${customerName}. ` : ''}
+            {followUp
+              ? 'נא לרשום מה נשאר לטפל. העצירה תיסגר, והפריט יחזור לרשימת הממתינים במשרד עם ההערה שלך.'
+              : 'נא לרשום מה הסיבה שהעצירה לא בוצעה.'}
           </DialogDescription>
         </DialogHeader>
 
         {/* סיבות מהירות */}
         <div className="flex flex-wrap gap-1.5">
-          {QUICK_REASONS.map((r) => (
+          {QUICK_REASONS[kind].map((r) => (
             <button
               key={r}
               type="button"
@@ -91,7 +125,7 @@ export function NotCompletedReasonDialog({
           dir="rtl"
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          placeholder="פרט/י את הסיבה…"
+          placeholder={followUp ? 'מה נשאר לטפל?…' : 'פרט/י את הסיבה…'}
           className="min-h-24"
           onKeyDown={(e) => {
             // Ctrl/Cmd + Enter = אישור מהיר
@@ -110,10 +144,17 @@ export function NotCompletedReasonDialog({
           <Button
             onClick={handleConfirm}
             disabled={!canSubmit}
-            className="bg-red-600 text-white hover:bg-red-700"
+            className={
+              followUp
+                ? 'bg-amber-600 text-white hover:bg-amber-700'
+                : 'bg-red-600 text-white hover:bg-red-700'
+            }
           >
             {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-            סמן כלא בוצע
+            {/* 🔴 נתפס בצילום: הכותרת התחלפה ל"המשך טיפול" והכפתור המשיך
+                לומר "סמן כלא בוצע". מי שקורא את הכפתור ולא את הכותרת היה
+                חושב שהוא מדווח על אי ביצוע. */}
+            {followUp ? 'שלח להמשך טיפול' : 'סמן כלא בוצע'}
           </Button>
         </DialogFooter>
       </DialogContent>

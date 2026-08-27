@@ -14,6 +14,24 @@ export type StopStatus =
   | 'not_completed'
   | 'cancelled';
 
+/**
+ * איך נסגרה עצירה שלא הושלמה.
+ *
+ * 🔴🔴 **עמי, 26/08/2026:** אספקה שיצאה והסתיימה חלקית (חגורה שלא
+ * התאימה) איננה "בוצע" ואיננה "לא בוצע", ולכן הנהג **לא לחץ כלום**
+ * והעצירה נשארה פתוחה לנצח. זה המנגנון שמייצר את השאריות.
+ *
+ * ⭐ הסטטוס נשאר `not_completed` בשני המקרים, כי ההתנהגות זהה: העצירה
+ * נסגרת והמקור חוזר לממתינים. מה שההבחנה הזאת מוסיפה היא **מה המשרד
+ * רואה**: "לא הגיע" מול "הגיע, וצריך להשלים".
+ */
+export type StopResolutionKind = 'not_done' | 'follow_up';
+
+export const RESOLUTION_KIND_LABELS: Record<StopResolutionKind, string> = {
+  not_done: 'לא בוצע',
+  follow_up: 'נדרש המשך טיפול',
+};
+
 export type CoordinationStatus =
   | 'whatsapp_sent'
   | 'phone_confirmed'
@@ -67,6 +85,8 @@ export interface CalendarStop {
    * `notes` ודרסה את תיאור המשימה. 27 משימות כבר איבדו אותו כך.
    */
   resolutionNote?: string;
+  /** `not_done` או `follow_up`. ריק בעצירות שנסגרו לפני 27/08/2026. */
+  resolutionKind?: StopResolutionKind;
 
   // Coordination (WhatsApp / phone)
   coordinationStatus?: CoordinationStatus;
