@@ -3,10 +3,6 @@ import { supabase } from './supabase';
 import { dataWindowCutoff } from './constants';
 import { timedFetch } from './perf-collect';
 
-const PAGE = 1000;
-/** גודל אצווה ל-`in(...)` — אותו גודל שה-sync משתמש בו מול priority_customers. */
-const LOOKUP_BATCH = 200;
-
 type CustomerRow = {
   custname: string;
   cdes: string | null;
@@ -18,117 +14,60 @@ type CustomerRow = {
   health_fund: string | null;
   opened_by: string | null;
   priority_udate: string | null;
+  has_order?: boolean | null;
+  has_service_call?: boolean | null;
+  has_pickup?: boolean | null;
+  is_scheduled?: boolean | null;
 };
 
 /**
- * אוסף את כל ערכי `column` הקיימים ב-`table` עבור קבוצת מספרי לקוח.
- * מחזיר Set של המספרים שנמצאו.
- *
- * חשוב: PostgREST חותך ב-1000 שורות בשקט, ולכן גם כאן יש דפדוף. שאילתה
- * שמחזירה בדיוק 1000 תיראה תקינה לגמרי ותשקר.
- */
-async function existingFor(
-  table: 'orders' | 'service_calls' | 'pickups',
-  customerNumbers: string[]
-): Promise<Set<string>> {
-  const found = new Set<string>();
-
-  for (let i = 0; i < customerNumbers.length; i += LOOKUP_BATCH) {
-    const batch = customerNumbers.slice(i, i + LOOKUP_BATCH);
-
-    for (let from = 0; ; from += PAGE) {
-      const { data, error } = await supabase
-        .from(table)
-        .select('customer_number')
-        .in('customer_number', batch)
-        .range(from, from + PAGE - 1);
-
-      if (error) throw new Error(`existingFor(${table}): ${error.message}`);
-      for (const r of data ?? []) {
-        const v = (r as { customer_number: string | null }).customer_number;
-        if (v) found.add(v);
-      }
-      if (!data || data.length < PAGE) break;
-    }
-  }
-
-  return found;
-}
-
-/** לקוחות שכבר יש להם עצירת 'customer' פעילה ביומן. */
-async function scheduledCustomers(customerNumbers: string[]): Promise<Set<string>> {
-  const found = new Set<string>();
-
-  for (let i = 0; i < customerNumbers.length; i += LOOKUP_BATCH) {
-    const batch = customerNumbers.slice(i, i + LOOKUP_BATCH);
-    const { data, error } = await supabase
-      .from('calendar_stops')
-      .select('customer_number')
-      .eq('source_type', 'customer')
-      .in('status', ['planned', 'in_progress'])
-      .in('customer_number', batch);
-
-    if (error) throw new Error(`scheduledCustomers: ${error.message}`);
-    for (const r of data ?? []) {
-      const v = (r as { customer_number: string | null }).customer_number;
-      if (v) found.add(v);
-    }
-  }
-
-  return found;
-}
-
-/**
  * לקוחות שנפתחו בפריוריטי בתוך חלון הנתונים, עם סימון מה כבר קיים לצדם.
- * ממוין מהחדש לישן — הלקוח שנפתח היום הוא זה שהאספקה שלו הכי קרובה.
+ * ממוין מהחדש לישן: הלקוח שנפתח היום הוא זה שהאספקה שלו הכי קרובה.
+ *
+ * 🔴🔴 **היה כאן 34 קריאות רשת, והפך לאחת.**
+ *
+ * המימוש הקודם שאב את כל הלקוחות (1,462 בחלון), ואז שאל **מהדפדפן**
+ * "למי מהם יש כבר הזמנה / קריאה / איסוף / שיבוץ" בארבע שליפות נפרדות,
+ * כל אחת מהן באצוות של 200 מספרי לקוח **בלולאה סדרתית**:
+ * `ceil(1462/200) = 8` סבבים לכל טבלה. ⭐ ובנוסף השאלה "האם קיימת
+ * הזמנה" הוחזרה כ**שורות**: 1,477 שורות הזמנה נסעו לדפדפן רק כדי
+ * שנסמן וי על 1,214 לקוחות.
+ *
+ * ⭐ **וזה בדיוק מה שמדידת הטעינה חשפה:** השליפה הזאת יצאה הנתיב
+ * הקריטי של מסך הסדרן גם כשהיא מחזירה אפס שורות, כי מה שעולה זמן הוא
+ * הסבבים ולא הנתונים. [[cron_hour_must_match_when_humans_work]]
+ *
+ * 🔴 עכשיו `exists(...)` במסד, שם זה בדיוק מה שאינדקס עושה טוב.
+ * נמדד: **60 מילישניות לכל 1,462 השורות עם ארבעת הדגלים.**
  */
 export async function fetchNewCustomers(): Promise<NewCustomer[]> {
-  return timedFetch('customers', async (countPage) => {
-  const cutoff = dataWindowCutoff();
-  const rows: CustomerRow[] = [];
+  return timedFetch(
+    'customers',
+    async (countPage) => {
+      countPage();
+      const { data, error } = await supabase.rpc('new_customers', {
+        p_since: dataWindowCutoff(),
+      });
+      if (error) throw new Error(`fetchNewCustomers: ${error.message}`);
 
-  for (let from = 0; ; from += PAGE) {
-    countPage();
-    const { data, error } = await supabase
-      .from('priority_customers')
-      .select('custname,cdes,address,city,phone,fax,agent,health_fund,opened_by,priority_udate')
-      .gte('priority_udate', cutoff)
-      .order('priority_udate', { ascending: false })
-      .range(from, from + PAGE - 1);
-
-    if (error) throw new Error(`fetchNewCustomers: ${error.message}`);
-    rows.push(...((data ?? []) as CustomerRow[]));
-    if (!data || data.length < PAGE) break;
-  }
-
-  const numbers = rows.map((r) => r.custname).filter(Boolean);
-  // 🔴 ארבע שליפות נוספות, ולכן ארבעה סבבי רשת נוספים. הן רצות במקביל
-  // זו לזו, אבל **אחרי** כל העמודים שלמעלה, ולכן הן מאריכות את השליפה
-  // הזאת ולא מתקזזות איתה. בלי הספירה הזאת הדוח היה מציג "עמוד אחד"
-  // ומטעה בדיוק במקום שבו הזמן נשרף.
-  countPage(); countPage(); countPage(); countPage();
-  const [withOrder, withCall, withPickup, scheduled] = await Promise.all([
-    existingFor('orders', numbers),
-    existingFor('service_calls', numbers),
-    existingFor('pickups', numbers),
-    scheduledCustomers(numbers),
-  ]);
-
-  return rows.map((r) => ({
-    customerNumber: r.custname,
-    customerName: r.cdes ?? r.custname,
-    address: r.address ?? undefined,
-    city: r.city ?? undefined,
-    phone: r.phone ?? undefined,
-    fax: r.fax ?? undefined,
-    agent: r.agent ?? undefined,
-    healthFund: r.health_fund ?? undefined,
-    openedBy: r.opened_by ?? undefined,
-    openedAt: r.priority_udate ?? undefined,
-    hasOrder: withOrder.has(r.custname),
-    hasServiceCall: withCall.has(r.custname),
-    hasPickup: withPickup.has(r.custname),
-    isScheduled: scheduled.has(r.custname),
-  }));
-  }, (rows) => rows.length);
+      return ((data ?? []) as CustomerRow[]).map((r) => ({
+        customerNumber: r.custname,
+        customerName: r.cdes ?? r.custname,
+        address: r.address ?? undefined,
+        city: r.city ?? undefined,
+        phone: r.phone ?? undefined,
+        fax: r.fax ?? undefined,
+        agent: r.agent ?? undefined,
+        healthFund: r.health_fund ?? undefined,
+        openedBy: r.opened_by ?? undefined,
+        openedAt: r.priority_udate ?? undefined,
+        hasOrder: !!r.has_order,
+        hasServiceCall: !!r.has_service_call,
+        hasPickup: !!r.has_pickup,
+        isScheduled: !!r.is_scheduled,
+      }));
+    },
+    (rows) => rows.length
+  );
 }
+
