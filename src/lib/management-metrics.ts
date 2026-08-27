@@ -8,6 +8,7 @@ import { CINVOICE_NOT_SENT } from '@/types/document';
 import type { Pickup } from '@/types/pickup';
 import type { CalendarStop } from '@/types/calendar-stop';
 import { getZoneForCity, getZoneById, REGION_LABELS } from '@/types/zone';
+import { countOpenOverDays, countRepeatCalls } from './repeat-calls';
 
 /** יעד SLA לאספקה (עידן, 04/08): שבוע. */
 export const SLA_DAYS = 7;
@@ -51,7 +52,27 @@ export interface ManagementMetrics {
   pickupFunnel: FunnelStep[];  // ממתין → תואם → נאסף
   callsByTechnician: NamedCount[];
   activityByRegion: NamedCount[];
-  exceptions: { lateDeliveries: number; pickupsOver14d: number; unlocatedStops: number };
+  exceptions: {
+    lateDeliveries: number;
+    pickupsOver14d: number;
+    unlocatedStops: number;
+    /**
+     * <span class="pill">מההערות של עידן</span> קריאות שירות פתוחות מעל
+     * שבעה ימים. 🔴 **מוצג בצבע ניטרלי ולא כאזעקה**, כי המערכת בפיילוט
+     * ועמי משבץ בעיקר מהיום למחר. עידן, 26/08: "עדיין לא התחלנו שימוש
+     * מלא." סף התראה ייקבע רק כשהשימוש המלא יתחיל, כי סף שנקבע על נתוני
+     * פיילוט מלמד את כולם להתעלם מהמסך.
+     */
+    callsOver7d: number;
+    /**
+     * 🔴 **קריאה חוזרת = פרונטלית שחוזרת לאותו מספר סידורי תוך 3 חודשים.**
+     * שלומי, 20/08: "אם יש לי מישהו שכבר חוזר אני רוצה לדעת מזה."
+     * ⭐ ההכרעה שלו ושל עידן הייתה פרונטליות בלבד, ולא במקרה: נמדד
+     * ב-90 יום ש-402 מתוך 459 החוזרות הן טלפוניות, ואלה אינן "כבר היינו
+     * אצלו". סימון כולן היה צובע שליש מהקריאות והופך לרעש.
+     */
+    repeatCalls: number;
+  };
 }
 
 export function computeManagementMetrics(
@@ -242,6 +263,12 @@ export function computeManagementMetrics(
   ).length;
   const unlocatedStops = stops.filter((s) => isActive(s) && !s.coordinates).length;
 
+  // ⭐ שני החישובים יושבים ב-`repeat-calls.ts`, בלי ייבוא, ולכן הם
+  // נבדקים ביחידה. ההגדרה עצמה (פרונטליות בלבד) היא ההכרעה שנשמרת שם.
+  const callsOver7d = countOpenOverDays(sc, 7, now);
+  const repeatCalls = countRepeatCalls(sc, { nowMs: now });
+
+
   return {
     kpi: {
       deliveries: { todayPlanned, todayDone, late, slaPct, avgDays },
@@ -262,6 +289,6 @@ export function computeManagementMetrics(
     pickupFunnel,
     callsByTechnician,
     activityByRegion,
-    exceptions: { lateDeliveries: late, pickupsOver14d, unlocatedStops },
+    exceptions: { lateDeliveries: late, pickupsOver14d, unlocatedStops, callsOver7d, repeatCalls },
   };
 }

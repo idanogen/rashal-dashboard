@@ -5,6 +5,7 @@ import {
 import {
   Truck, Wrench, PackageOpen, Smile, Clock, Box, Frown, TrendingUp, MapPin, Users,
   FileText, Receipt,
+  RotateCcw,
 } from 'lucide-react';
 import { ActivityHeatMap } from '@/components/dashboard/ActivityHeatMap';
 import { useOrders } from '@/hooks/useOrders';
@@ -147,6 +148,36 @@ export function ManagementDashboard() {
       <div className="mb-5 px-1">
         <div className="text-xl font-extrabold" style={{ color: NAVY }}>דשבורד הנהלה</div>
         <div className="text-[11px] text-slate-400">תמונת מצב כללית{loading ? ' · טוען…' : ''}</div>
+      </div>
+
+      {/* ═══ שכבה 1: מה בוער ═══════════════════════════════════
+          🔴🔴 **הועבר לראש המסך ב-27/08/2026.** שלומי, 20/08: "הדבר
+          הראשון שאתה רוצה לראות זה קודם כל התמונה הגדולה, מה קורה וכל
+          החריגים, ואחרי זה תיכנס לכל נתון ונתון."
+          עד אז החריגים ישבו **בתחתית**, אחרי שבעה פאנלים, וזה בדיוק הפוך
+          ממה שמנהל צריך: הוא נכנס לדעת מה דחוף, לא לגלול. */}
+      <div className="mb-4 rounded-2xl border bg-white p-5 shadow-sm" style={{ borderColor: '#eef1f6' }}>
+        <h3 className="mb-4 text-center text-sm font-bold" style={{ color: NAVY }}>מה דורש טיפול</h3>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+          {/* ⭐ מההערות של עידן, 20/08. 🔴 ובצבע ניטרלי ולא אדום: המערכת
+              בפיילוט ועמי משבץ בעיקר מהיום למחר, ולכן המספר צפוי. סף
+              אזעקה ייקבע כשהשימוש המלא יתחיל. */}
+          <ExceptionCard icon={<Clock className="h-5 w-5" />} n={m.exceptions.callsOver7d} label="קריאות מעל 7 ימים" tint="#eef2f7" fg="#475569" />
+          {/* 🔴 קריאה פרונטלית שחזרה לאותו מספר סידורי תוך 3 חודשים.
+              טלפוניות אינן נספרות, כי 402 מתוך 459 החוזרות הן טלפוניות
+              וסימונן היה צובע שליש מהקריאות והופך לרעש. */}
+          <ExceptionCard icon={<RotateCcw className="h-5 w-5" />} n={m.exceptions.repeatCalls} label="קריאות חוזרות" tint="#fdecec" fg={RED} />
+          <ExceptionCard icon={<Truck className="h-5 w-5" />} n={m.exceptions.lateDeliveries} label="אספקות באיחור" tint="#fdecec" fg={RED} />
+          <ExceptionCard icon={<Box className="h-5 w-5" />} n={m.exceptions.pickupsOver14d} label="איסופים מעל 14 יום" tint="#f3effe" fg={PURPLE} />
+          <ExceptionCard icon={<MapPin className="h-5 w-5" />} n={m.exceptions.unlocatedStops} label="עצירות ללא מיקום" tint="#eef4fd" fg={BLUE} />
+          <ExceptionCard
+            icon={<Frown className="h-5 w-5" />}
+            n={sv.lowRated.length}
+            label="לקוחות בדירוג נמוך"
+            tint="#fdf6ec"
+            fg={sv.lowRated.length > 0 ? '#c2410c' : '#8a96a8'}
+          />
+        </div>
       </div>
 
       {/* KPI row */}
@@ -363,22 +394,6 @@ export function ManagementDashboard() {
         <ActivityHeatMap orders={orders} serviceCalls={serviceCalls} pickups={pickups} stops={stops} />
       </div>
 
-      {/* Exceptions row — פסטלים כמו במוקאפ */}
-      <div className="rounded-2xl border bg-white p-5 shadow-sm" style={{ borderColor: '#eef1f6' }}>
-        <h3 className="mb-4 text-center text-sm font-bold" style={{ color: NAVY }}>חריגים הדורשים טיפול</h3>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <ExceptionCard icon={<Clock className="h-5 w-5" />} n={m.exceptions.lateDeliveries} label="אספקות באיחור" tint="#fdecec" fg={RED} />
-          <ExceptionCard icon={<Box className="h-5 w-5" />} n={m.exceptions.pickupsOver14d} label="איסופים מעל 14 יום" tint="#f3effe" fg={PURPLE} />
-          <ExceptionCard icon={<MapPin className="h-5 w-5" />} n={m.exceptions.unlocatedStops} label="עצירות ללא מיקום במפה" tint="#eef4fd" fg={BLUE} />
-          <ExceptionCard
-            icon={<Frown className="h-5 w-5" />}
-            n={sv.lowRated.length}
-            label="לקוחות בדירוג נמוך"
-            tint="#fdf6ec"
-            fg={sv.lowRated.length > 0 ? '#c2410c' : '#8a96a8'}
-          />
-        </div>
-      </div>
 
       {/* ── סקרי שביעות רצון ──────────────────────────────────────────
           הנקודה שבה הסקר מפסיק להיות ציון כללי והופך לכלי ניהולי: ממוצע
