@@ -1,6 +1,6 @@
 import type { Pickup, PickupLine, PickupStatus } from '@/types/pickup';
 import { supabase } from './supabase';
-import { dataWindowFilter, PICKUP_CLOSED } from './constants';
+import { BUSINESS_FLOOR_DATE, dataWindowFilter, PICKUP_CLOSED } from './constants';
 
 type PickupRow = {
   id: string;
@@ -77,6 +77,10 @@ export async function fetchAllPickups(): Promise<Pickup[]> {
       // כמו ב-orders וב-service_calls: ארכיון לא מוצג. בלי זה טיוטות ישנות
       // שסומנו בארכיון ממשיכות להיספר, והמסך מראה יותר ממה שבאמת ממתין.
       .is('archived_at', null)
+      // 🔴 **רצפת התאריך העסקי, ולא רק חלון הכתיבה.** באיסופים כמעט הכל
+      // "פתוח" לפי הסטטוס, ולכן מסנן החלון לבדו לא הוריד ולו שורה אחת
+      // והמסך משך 16,830 שורות בכל פתיחה. ראה `BUSINESS_FLOOR_DATE`.
+      .gte('pickup_date', BUSINESS_FLOOR_DATE)
       .or(dataWindowFilter('pickup_status', PICKUP_CLOSED))
       .order('pickup_date', { ascending: false, nullsFirst: false })
       .order('created_at', { ascending: false })
