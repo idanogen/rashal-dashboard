@@ -20,6 +20,7 @@ import { DuplicateScheduleWarningDialog } from '@/components/deliveries/Duplicat
 import { NotCompletedReasonDialog } from '@/components/NotCompletedReasonDialog';
 import { DriverStopCard } from '@/pages/DriverDashboardPage';
 import { SurveysPage } from '@/pages/SurveysPage';
+import { ManagementDashboard } from '@/pages/ManagementDashboard';
 import { AuthProvider } from '@/lib/auth-context';
 import { GlobalChatProvider } from '@/context/GlobalChatContext';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -224,6 +225,28 @@ const SURVEY_FIXTURE = [
 
 previewQc.setQueryData(['surveys', 90], SURVEY_FIXTURE);
 
+/**
+ * ⭐ **דשבורד ההנהלה מוזן בנתונים סינתטיים מינימליים.**
+ * 🔴 המטרה כאן היא לאמת **מבנה** ולא מספרים: שהחריגים באמת עלו לראש
+ * המסך, שיש שישה כרטיסים, ושהכיתובים נכנסים. המספרים האמיתיים נמדדו
+ * ישירות מול המסד (57 קריאות חוזרות, 429 מעל שבעה ימים).
+ */
+const ago = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString();
+previewQc.setQueryData(['surveys', 30], SURVEY_FIXTURE);
+previewQc.setQueryData(['orders'], []);
+previewQc.setQueryData(['pickups'], []);
+previewQc.setQueryData(['calendarStops'], []);
+previewQc.setQueryData(['deliveryNotes'], []);
+previewQc.setQueryData(['consolidatedInvoices'], []);
+previewQc.setQueryData(
+  ['serviceCalls'],
+  [
+    { id: 'a', customerName: 'כהן דוד', serviceCallStatus: 'קריאה חדשה', created: ago(20), deviceSerial: 'S1', callType: 'פרונטלית' },
+    { id: 'b', customerName: 'כהן דוד', serviceCallStatus: 'קריאה חדשה', created: ago(9), deviceSerial: 'S1', callType: 'פרונטלית' },
+    { id: 'c', customerName: 'לוי שרה', serviceCallStatus: 'קריאה חדשה', created: ago(12), deviceSerial: 'S2', callType: 'טלפונית' },
+  ],
+);
+
 const view = new URLSearchParams(location.search).get('view');
 
 const VIEWS: Record<string, React.ReactElement> = {
@@ -233,6 +256,7 @@ const VIEWS: Record<string, React.ReactElement> = {
   'reason-followup': <ReasonPreview kind="follow_up" />,
   'reason-notdone': <ReasonPreview kind="not_done" />,
   surveys: <SurveysPage />,
+  overview: <ManagementDashboard />,
 };
 
 if (view && VIEWS[view]) {
