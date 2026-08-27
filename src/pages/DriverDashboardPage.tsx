@@ -33,11 +33,22 @@ import {
   AlertTriangle,
   Map as MapIcon,
   RotateCcw,
+  ClipboardCheck,
 } from 'lucide-react';
 import type { CalendarStop as DbCalendarStop, StopResolutionKind } from '@/types/calendar-stop';
 import type { CalendarStop as UiCalendarStop } from '@/types/delivery';
 import { OrderChatSheet } from '@/components/OrderChatSheet';
 import { NotCompletedReasonDialog } from '@/components/NotCompletedReasonDialog';
+import { CraneChecklistDialog } from '@/components/crane/CraneChecklistDialog';
+
+/**
+ * 🔴 שלושת הדגמים, ולא שניים. `G150E` צף בבדיקה ב-89 קריאות **ואינו
+ * קיים בטבלת המנופים בכלל**, שיש בה רק G150 ו-G175. עד שיוכרע אם זה דגם
+ * נפרד או כתיב אחר, הוא נחשב מנוף: טכנאי שיוצא למנוף וטופס לא נפתח לו
+ * הוא הנזק הגדול יותר.
+ */
+const CRANE_MODELS = ['G150', 'G150E', 'G175'];
+import { useServiceCalls } from '@/hooks/useServiceCalls';
 import { DeliveryOutcomeDialog } from '@/components/DeliveryOutcomeDialog';
 import { useCommentCounts } from '@/hooks/useTimeline';
 import type { ChatSourceKind } from '@/lib/timeline';
@@ -94,6 +105,26 @@ export function DriverDashboardPage() {
   const log = useActivityLogger();
   const [coordinationStop, setCoordinationStop] = useState<UiCalendarStop | null>(null);
   const [notCompletedStop, setNotCompletedStop] = useState<DbCalendarStop | null>(null);
+  /** העצירה שעליה נפתח צ'קליסט המנוף. */
+  const [craneStop, setCraneStop] = useState<DbCalendarStop | null>(null);
+
+  /**
+   * ⭐ **איך יודעים שזו קריאה של מנוף.** עידן, 26/08: "אנחנו יודעים איזה
+   * מוצר יש אצל הלקוח ואנחנו יודעים מתי זה מנוף." נבדק מול הנתונים,
+   * 🔴 **וההכרעה הפוכה ממה שהצעתי תחילה:** שם המכשיר קובע, לא הצלבת
+   * המספר הסידורי מול טבלת המנופים. הצלבה נותנת 1,756 קריאות, אבל
+   * **מפספסת 93 קריאות מנוף אמיתיות** שהמספר שלהן אינו בטבלה, ומכניסה
+   * 4 שאינן מנוף כלל, שהמספר שלהן התנגש במקרה. שם המכשיר נותן 1,845
+   * נקיות. הטבלה נשארת להעשרה (אחריות, היסטוריית בדיקות), לא לזיהוי.
+   */
+  const { data: serviceCalls = [] } = useServiceCalls();
+  const craneByCall = useMemo(() => {
+    const m = new Map<string, string | undefined>();
+    for (const c of serviceCalls) {
+      if (CRANE_MODELS.includes((c.deviceName ?? '').trim())) m.set(c.id, c.deviceSerial);
+    }
+    return m;
+  }, [serviceCalls]);
   /** איזה כפתור פתח את הפופאפ. קובע את הניסוח ואת מה שנשמר. */
   const [notCompletedKind, setNotCompletedKind] = useState<StopResolutionKind>('not_done');
   const [showMap, setShowMap] = useState(true);
@@ -412,7 +443,9 @@ export function DriverDashboardPage() {
                 index={idx + 1}
                 onCoordinate={() => handleCoordinate(stop)}
                 onArrive={() => handleArrive(stop)}
-                onResolve={(status, notes) => handleResolve(stop, status, notes)}
+                onResolve={(status, notes, kind) => handleResolve(stop, status, notes, kind)}
+                craneSerial={stop.serviceCallId ? craneByCall.get(stop.serviceCallId) : undefined}
+                onCraneChecklist={() => setCraneStop(stop)}
                 resolving={isResolvingStop(stop.id)}
               />
             ))
@@ -430,7 +463,9 @@ export function DriverDashboardPage() {
                 index={idx + 1}
                 onCoordinate={() => handleCoordinate(stop)}
                 onArrive={() => handleArrive(stop)}
-                onResolve={(status, notes) => handleResolve(stop, status, notes)}
+                onResolve={(status, notes, kind) => handleResolve(stop, status, notes, kind)}
+                craneSerial={stop.serviceCallId ? craneByCall.get(stop.serviceCallId) : undefined}
+                onCraneChecklist={() => setCraneStop(stop)}
                 resolving={isResolvingStop(stop.id)}
               />
             ))
@@ -457,7 +492,9 @@ export function DriverDashboardPage() {
                     index={idx + 1}
                     onCoordinate={() => handleCoordinate(stop)}
                     onArrive={() => handleArrive(stop)}
-                    onResolve={(status, notes) => handleResolve(stop, status, notes)}
+                    onResolve={(status, notes, kind) => handleResolve(stop, status, notes, kind)}
+                craneSerial={stop.serviceCallId ? craneByCall.get(stop.serviceCallId) : undefined}
+                onCraneChecklist={() => setCraneStop(stop)}
                     resolving={isResolvingStop(stop.id)}
                   />
                 ))}
@@ -509,7 +546,9 @@ export function DriverDashboardPage() {
                       index={idx + 1}
                       onCoordinate={() => handleCoordinate(stop)}
                       onArrive={() => handleArrive(stop)}
-                      onResolve={(status, notes) => handleResolve(stop, status, notes)}
+                      onResolve={(status, notes, kind) => handleResolve(stop, status, notes, kind)}
+                craneSerial={stop.serviceCallId ? craneByCall.get(stop.serviceCallId) : undefined}
+                onCraneChecklist={() => setCraneStop(stop)}
                       resolving={isResolvingStop(stop.id)}
                     />
                   ))}
@@ -526,6 +565,26 @@ export function DriverDashboardPage() {
         onOpenChange={(open) => {
           if (!open) setCoordinationStop(null);
         }}
+      />
+
+      <CraneChecklistDialog
+        open={!!craneStop}
+        onOpenChange={(o) => {
+          if (!o) setCraneStop(null);
+        }}
+        craneSerial={craneStop?.serviceCallId ? craneByCall.get(craneStop.serviceCallId) : undefined}
+        customerName={craneStop?.customerName}
+        stopId={craneStop?.id}
+        serviceCallId={craneStop?.serviceCallId}
+        technicianName={craneStop?.driver}
+        onSaved={() =>
+          log('crane_checklist_submitted', {
+            entityType: 'calendar_stop',
+            entityId: craneStop?.id ?? '',
+            sourceType: craneStop?.sourceType,
+            customerName: craneStop?.customerName,
+          })
+        }
       />
 
       <NotCompletedReasonDialog
@@ -616,6 +675,9 @@ interface DriverStopCardProps {
   onCoordinate: () => void;
   onArrive: () => Promise<unknown> | void;
   onResolve: (status: 'completed' | 'not_completed', notes?: string, kind?: StopResolutionKind) => void;
+  /** מספר סידורי של מנוף, כשהעצירה היא קריאת מנוף. פותח את הצ'קליסט. */
+  craneSerial?: string;
+  onCraneChecklist?: () => void;
   resolving: boolean;
 }
 
@@ -628,7 +690,7 @@ const ARRIVAL_THINK_MS = 10_000;
  * בכפתורים של מי שעובד בשטח נמסר בלי שראו אותו בעיניים.
  * [[screenshot_behind_a_login]]
  */
-export function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve, resolving }: DriverStopCardProps) {
+export function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve, resolving, craneSerial, onCraneChecklist }: DriverStopCardProps) {
   const log = useActivityLogger();
   const logStop = (action: string) =>
     log(action, {
@@ -797,6 +859,22 @@ export function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve,
              ארבעת הכפתורים באותו גודל, "סופק" נבלע ביניהם על מסך טלפון. */
           hasArrived ? (
             <div className="space-y-2 pt-1">
+              {/* ⭐ **הצ'קליסט מעל כפתור הסיום, ובכוונה.** הוא נועד להימלא
+                  בזמן הבדיקה ולא אחריה, ומי שכבר לחץ "סיימתי" כבר עזב.
+                  🔴 ואינו חוסם את הסיום: טכנאי שהמנוף אצלו תקוע או
+                  שהלקוח לא בבית חייב עדיין להיות מסוגל לסגור את העצירה. */}
+              {craneSerial && onCraneChecklist && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={onCraneChecklist}
+                  disabled={resolving}
+                  className="h-12 w-full gap-2 border-blue-300 bg-blue-50 text-sm font-bold text-blue-800 hover:bg-blue-100"
+                >
+                  <ClipboardCheck className="h-5 w-5" />
+                  רשימת בדיקה למנוף <bdi className="font-mono text-xs">{craneSerial}</bdi>
+                </Button>
+              )}
               <Button
                 onClick={() => {
                   // משלוח → חובה לבחור תוצאת אספקה; אחרת סימון מיידי.

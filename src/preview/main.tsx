@@ -21,6 +21,7 @@ import { NotCompletedReasonDialog } from '@/components/NotCompletedReasonDialog'
 import { DriverStopCard } from '@/pages/DriverDashboardPage';
 import { SurveysPage } from '@/pages/SurveysPage';
 import { ManagementDashboard } from '@/pages/ManagementDashboard';
+import { CraneChecklistDialog } from '@/components/crane/CraneChecklistDialog';
 import { AuthProvider } from '@/lib/auth-context';
 import { GlobalChatProvider } from '@/context/GlobalChatContext';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -181,6 +182,20 @@ function DriverPreview() {
           onResolve={() => {}}
           resolving={false}
         />
+        <div className="rounded-xl border bg-white p-3 text-xs">
+          <b>קריאת מנוף אחרי הגעה:</b> נוסף כפתור רשימת הבדיקה מעל כפתור
+          הסיום, כי הוא נועד להימלא בזמן הבדיקה ולא אחריה.
+        </div>
+        <DriverStopCard
+          stop={driverStop({ id: 'p3', status: 'in_progress', sourceType: 'service', customerName: 'לוי שרה' })}
+          index={3}
+          onCoordinate={() => {}}
+          onArrive={() => {}}
+          onResolve={() => {}}
+          resolving={false}
+          craneSerial="G175-04821"
+          onCraneChecklist={() => {}}
+        />
       </div>
     </div>
   );
@@ -257,6 +272,17 @@ const VIEWS: Record<string, React.ReactElement> = {
   'reason-notdone': <ReasonPreview kind="not_done" />,
   surveys: <SurveysPage />,
   overview: <ManagementDashboard />,
+  crane: (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-4">
+      <CraneChecklistDialog
+        open
+        onOpenChange={() => {}}
+        craneSerial="G175-04821"
+        customerName="כהן דוד"
+        technicianName="אבי"
+      />
+    </div>
+  ),
 };
 
 if (view && VIEWS[view]) {
