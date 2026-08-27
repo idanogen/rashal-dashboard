@@ -93,6 +93,25 @@ const Q = {
   cinvoices: (since: string) =>
     `/CINVOICES?$select=IVNUM,DOCNO,CUSTNAME,CDES,IVDATE,STATDES,ORDNAME,AGENTNAME,BOOKNUM,FNCNUM,IVRECONDATE,DEBIT,IVTYPE,VAT,TOTPRICE,TOTQUANT,FINAL` +
     `&$filter=${encodeURIComponent(`IVDATE ge ${since}`)}&$orderby=IVDATE%20asc&$top=4000`,
+  /**
+   * 🔴🔴 **המשיכה שסוגרת חובות ששולמו.**
+   *
+   * המשיכה הרגילה מסננת `IVDATE ge <since>`, כלומר **תאריך החשבונית**.
+   * חשבונית מיוני שנפרעת באוגוסט אינה משנה את `IVDATE`, ולכן היא לעולם
+   * לא חוזרת לחלון, ו-`IVRECONDATE` אצלנו נשאר ריק לנצח. נמדד 27/08/2026:
+   * **2,996 מתוך 3,031 החשבוניות נמשכו פעם אחת ב-20/08 ולא עודכנו מאז.**
+   *
+   * ⭐ ול-CINVOICES **אין שדה `UDATE`** (נבדק: רק `IVDATE` ו-`IVRECONDATE`),
+   * ולכן אי אפשר למשוך "מה השתנה". אבל אפשר למשוך **"מה נפרע"**, וזה
+   * בדיוק מה שחסר: תשלום מציב `IVRECONDATE` עדכני.
+   *
+   * 🔴 אומת מול השרת עם בקרה שלילית: `IVRECONDATE ge 2027-06-01` החזיר
+   * **0 שורות**. בלי הבקרה הזאת פילטר שאינו מסנן נראה בדיוק כמו פילטר
+   * שעובד, וזה כבר קרה לנו בתת-הטופס של יומן השינויים.
+   */
+  cinvoices_recon: (since: string) =>
+    `/CINVOICES?$select=IVNUM,DOCNO,CUSTNAME,CDES,IVDATE,STATDES,ORDNAME,AGENTNAME,BOOKNUM,FNCNUM,IVRECONDATE,DEBIT,IVTYPE,VAT,TOTPRICE,TOTQUANT,FINAL` +
+    `&$filter=${encodeURIComponent(`IVRECONDATE ge ${since}`)}&$orderby=IVRECONDATE%20asc&$top=4000`,
   pickups_addresses: (since: string) =>
     `/DOCUMENTS_N?$select=DOCNO,DOC,CUSTNAME,CDES,CURDATE,STATDES,ORDNAME,ODOCNO,REFERENCE,TOWARHSDES,AGENTNAME,OWNERLOGIN,TOTQUANT,TOTPRICE,UDATE` +
     `&$expand=${encodeURIComponent("DOCUMENTS_DCONT_SUBFORM($select=ADRS,STATE,PHONE,FAX)")}` +
@@ -338,6 +357,11 @@ async function runBackfill(
 }
 
 // חלון מתגלגל 3 ימים לכתובות איסוף (כמו addDays(now;-3) ב-Make)
+/** ISO של לפני N ימים, בפורמט שפריוריטי מקבל. */
+function rollingDays(n: number): string {
+  return new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 19) + "Z";
+}
+
 function rolling3Days(): string {
   const d = new Date(Date.now() - 3 * 24 * 3600 * 1000);
   return `${d.toISOString().slice(0, 10)}T00:00:00Z`;
@@ -358,6 +382,12 @@ const JOBS: Record<string, Step[]> = {
     { entity: "delivery_notes", kind: "delivery_notes", buildUrl: (w) => w.delivery_notes_since ? Q.delivery_notes(w.delivery_notes_since) : null },
     { entity: "invoices", kind: "invoices", buildUrl: (w) => w.invoices_since ? Q.invoices(w.invoices_since) : null },
     { entity: "cinvoices", kind: "cinvoices", buildUrl: (w) => w.cinvoices_since ? Q.cinvoices(w.cinvoices_since) : null },
+    // 🔴 **המשיכה השנייה, וזו שסוגרת חובות.** הראשונה מביאה חוב חדש,
+    // וזו מביאה חוב שנפרע. בלעדיה `IVRECONDATE` אצלנו קופא ברגע
+    // שהחשבונית נוצרה, והמסך מציג כחייב את מי שכבר שילם.
+    // ⭐ חלון מתגלגל של 30 יום ולא ווטרמרק: התאמה יכולה להירשם רטרואקטיבית,
+    // וווטרמרק שרץ קדימה היה מדלג עליה. 3,000 שורות בסך הכל, זה זול.
+    { entity: "cinvoices_recon", kind: "cinvoices", buildUrl: () => Q.cinvoices_recon(rollingDays(30)) },
   ],
   "pull-pickup-addresses": [
     { entity: "pickups_addresses", kind: "pickups", buildUrl: () => Q.pickups_addresses(rolling3Days()) },
@@ -785,9 +815,23 @@ async function probeFields(): Promise<Record<string, unknown>> {
  * לפני שהגיעה לפריוריטי. לכן בודקים כמה ניסוחים ולא מסיקים מהראשון.
  * [[priority_403_is_user_agent]]
  */
-async function probeFilters(filters: string[], mode = "encoded", expand = ""): Promise<Record<string, unknown>> {
+/**
+ * 🔴🔴 **`entity` ו-`select` נוספו 27/08/2026, אחרי שהכלי שיקר.**
+ * הוא היה נעול על `CUSTOMERS`, ולכן בדיקה של פילטר על CINVOICES החזירה
+ * 200 שורות של **לקוחות** ונראתה כמו הצלחה.
+ * ⭐ מה שחשף את זה היה בקרת התאריך העתידי: `IVRECONDATE ge 2027` החזירה
+ * בדיוק אותן 200 שורות. בלי הבקרה הזאת הייתי מסיק שהפילטר עובד ובונה
+ * עליו סנכרון של ארבעה מיליון שקל.
+ */
+async function probeFilters(
+  filters: string[],
+  mode = "encoded",
+  expand = "",
+  entity = "CUSTOMERS",
+  select = "CUSTNAME,PHONE",
+): Promise<Record<string, unknown>> {
   const auth = { headers: { Authorization: basicAuth(), "User-Agent": UA, Accept: "application/json" } };
-  const out: Record<string, unknown> = { mode, expand };
+  const out: Record<string, unknown> = { entity, mode, expand };
   // 🔴 `encodeURIComponent` משאיר סוגריים כמו שהם אבל מקודד נקודתיים
   // ל-%3A. שער ה-CDN שלפני פריוריטי עלול לחסום דווקא על זה, ולכן
   // המצב "spaces" מקודד רווחים בלבד.
@@ -802,7 +846,7 @@ async function probeFilters(filters: string[], mode = "encoded", expand = ""): P
   for (const f of filters.slice(0, 8)) {
     try {
       const res = await fetch(
-        `${PRIORITY}/CUSTOMERS?$select=CUSTNAME,PHONE&$filter=${enc(f)}${expand ? `&$expand=${encodeURIComponent(expand)}` : ""}&$top=200`, auth);
+        `${PRIORITY}/${entity}?$select=${select}&$filter=${enc(f)}${expand ? `&$expand=${encodeURIComponent(expand)}` : ""}&$top=200`, auth);
       const body = await res.text();
       out[f] = res.ok
         ? { ok: true, rows: (JSON.parse(body)?.value ?? []).length,
@@ -1140,7 +1184,12 @@ Deno.serve(async (req: Request) => {
     const filters = Array.isArray(body?.filters) ? (body.filters as unknown[]).map(String) : [];
     const mode = String(body?.mode ?? "encoded");
     const expand = String(body?.expand ?? "");
-    return new Response(JSON.stringify(await probeFilters(filters, mode, expand), null, 2),
+    // 🔴 רשימה סגורה ולא נתיב מהקורא: הפונקציה עונה בלי טוקן, וישות
+    // חופשית הייתה הופכת אותה לפרוקסי לכל מסך בפריוריטי.
+    const ALLOWED = ["CUSTOMERS", "ORDERS", "DOCUMENTS_D", "DOCUMENTS_N", "AINVOICES", "CINVOICES", "SERVCALL"];
+    const ent = ALLOWED.includes(String(body?.entity ?? "")) ? String(body.entity) : "CUSTOMERS";
+    const sel = String(body?.select ?? (ent === "CUSTOMERS" ? "CUSTNAME,PHONE" : "IVNUM,CUSTNAME,IVDATE,IVRECONDATE,TOTPRICE"));
+    return new Response(JSON.stringify(await probeFilters(filters, mode, expand, ent, sel), null, 2),
       { headers: { "Content-Type": "application/json" } });
   }
   if (job === "probe-changes") {
