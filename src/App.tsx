@@ -6,6 +6,7 @@ import { DriverShell } from '@/components/layout/DriverShell';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { ManagementDashboard } from '@/pages/ManagementDashboard';
 import { SurveysPage } from '@/pages/SurveysPage';
+import { CollectionsPage } from '@/pages/CollectionsPage';
 import { DispatchPage } from '@/pages/DispatchPage';
 import { InspectionsPage } from '@/pages/InspectionsPage';
 import { RouteNavigationPage } from '@/pages/RouteNavigationPage';
@@ -97,6 +98,7 @@ function App() {
                         <Route path="/orders" element={<RoleBasedRoute allow={screenAllow('/orders')}><DashboardPage /></RoleBasedRoute>} />
                         <Route path="/overview" element={<RoleBasedRoute allow={screenAllow('/overview')}><ManagementDashboard /></RoleBasedRoute>} />
                         <Route path="/surveys" element={<RoleBasedRoute allow={screenAllow('/surveys')}><SurveysPage /></RoleBasedRoute>} />
+                        <Route path="/collections" element={<RoleBasedRoute allow={screenAllow('/collections')}><CollectionsPage /></RoleBasedRoute>} />
                         <Route path="/dispatch" element={<RoleBasedRoute allow={screenAllow('/dispatch')}><DispatchPage /></RoleBasedRoute>} />
                         {/* הראוטים הישנים מפנים למסך הסדרן המאוחד עם הטאב המתאים */}
                         <Route path="/routes" element={<Navigate to="/dispatch?tab=deliveries" replace />} />

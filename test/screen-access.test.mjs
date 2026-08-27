@@ -32,6 +32,17 @@ test('מסך הסקרים פתוח לצוות המשרד, ולא לנהג', () =
   assert.ok(!allow.includes('driver'), 'נהג רואה את הנסיעה שלו, לא דוחות');
 });
 
+/**
+ * 🔴 גיול חובות נולד סגור. הבדיקה קיימת כדי שפתיחה שלו למנהל צוות או
+ * לסדרן תהיה החלטה מודעת ולא עריכה שעברה בשקט.
+ */
+test('מסך גיול החובות פתוח למי שרואה כסף בלבד', () => {
+  assert.deepEqual(screenAllow('/collections'), ['admin', 'management']);
+  for (const r of ['team_manager', 'dispatcher', 'viewer', 'driver']) {
+    assert.ok(!screenAllow('/collections').includes(r), `${r} אינו אמור לראות חובות`);
+  }
+});
+
 test('תבניות הוואטסאפ פתוחות למנהל מערכת בלבד', () => {
   assert.deepEqual(screenAllow('/admin/wa-templates'), ['admin']);
 });

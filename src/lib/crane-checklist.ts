@@ -1,7 +1,7 @@
 /**
  * רשימת הבדיקה לטכנאי במנוף SUNLIFT 150/175.
  *
- * ⭐ **הועתקה מילה במילה מהטופס של ר.שעל** ("רשימת בדיקה לטכנאי — מנוף
+ * ⭐ **הועתקה מילה במילה מהטופס של ר.שעל** ("רשימת בדיקה לטכנאי, מנוף
  * SUNLIFT (175/150)", מבוסס על מדריך המשתמש של SUNRISE), שעידן צירף
  * ב-<bdi>26/08/2026</bdi>. 🔴 **לא נוסח מחדש ולא קוצר**: זה טופס בטיחות
  * של ציוד הרמה רפואי, והניסוח שלו הוא מה שהטכנאי מכיר ומה שעומד מאחוריו.
@@ -28,7 +28,7 @@ export interface ChecklistSection {
   items: ChecklistItem[];
 }
 
-export const CRANE_CHECKLIST_TITLE = 'רשימת בדיקה לטכנאי — מנוף SUNLIFT (175/150)';
+export const CRANE_CHECKLIST_TITLE = 'רשימת בדיקה לטכנאי, מנוף SUNLIFT (175/150)';
 export const CRANE_CHECKLIST_SUBTITLE = 'מבוסס על מדריך למשתמש של חברת SUNRISE';
 
 /** גרסת הטופס. 🔴 נשמרת עם כל מילוי, כדי שטופס ישן יישאר קריא כפי שנחתם. */
@@ -39,7 +39,7 @@ export const CRANE_CHECKLIST: ChecklistSection[] = [
     id: 'structure',
     title: 'מבנה, גלגלים ורגליים',
     items: [
-      { id: 's1', text: 'שלדה, תורן וזרוע — ללא כפיפה / סדק / קורוזיה' },
+      { id: 's1', text: 'שלדה, תורן וזרוע: ללא כפיפה / סדק / קורוזיה' },
       { id: 's2', text: '4 גלגלי כיוונון נעים חופשי; בלמים אחוריים אוחזים היטב' },
       { id: 's3', text: 'רגליים נפתחות/נסגרות חלק, ללא רופפות בצירים' },
       { id: 's4', text: 'ידית נעילת התורן מאבטחת כראוי' },
@@ -50,7 +50,7 @@ export const CRANE_CHECKLIST: ChecklistSection[] = [
     title: 'מערכת חשמלית',
     items: [
       { id: 'e1', text: 'בוכנה נעה חלק בשני הכיוונים ונעצרת בסוף המהלך' },
-      { id: 'e2', text: 'שלט ידני — לחצנים מגיבים, תקע מחובר היטב' },
+      { id: 'e2', text: 'שלט ידני: לחצנים מגיבים, תקע מחובר היטב' },
       { id: 'e3', text: 'סוללות טעונות (נורית ירוקה); כבל טעינה שלם' },
       { id: 'e4', text: 'לחצן עצירת חירום מנתק חשמל ומתאפס כראוי', critical: true },
       { id: 'e5', text: 'הורדת חירום ידנית + חשמלית פועלות', critical: true },
@@ -62,7 +62,7 @@ export const CRANE_CHECKLIST: ChecklistSection[] = [
     items: [
       { id: 'm1', text: 'מוט הפרדה מסתובב חופשי ומאובטח לתורן' },
       { id: 'm2', text: 'הווים שלמים, ללא בלאי' },
-      { id: 'm3', text: 'מנשא — ללא קרעים / פרימת תפרים; מתאים למטופל', critical: true },
+      { id: 'm3', text: 'מנשא: ללא קרעים / פרימת תפרים; מתאים למטופל', critical: true },
     ],
   },
   {
@@ -98,7 +98,7 @@ export type CraneVerdict = 'ok' | 'out_of_service';
 
 export const VERDICT_LABELS: Record<CraneVerdict, string> = {
   ok: 'תקין להפעלה',
-  out_of_service: 'הוצא משימוש — לא תקין',
+  out_of_service: 'הוצא משימוש, לא תקין',
 };
 
 /** כל מזהי הפריטים, בסדר הטופס. */

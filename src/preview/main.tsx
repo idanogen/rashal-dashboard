@@ -22,6 +22,7 @@ import { DriverStopCard } from '@/pages/DriverDashboardPage';
 import { SurveysPage } from '@/pages/SurveysPage';
 import { ManagementDashboard } from '@/pages/ManagementDashboard';
 import { CraneChecklistDialog } from '@/components/crane/CraneChecklistDialog';
+import { CollectionsPage, CustomerDebtDialog } from '@/pages/CollectionsPage';
 import { AuthProvider } from '@/lib/auth-context';
 import { GlobalChatProvider } from '@/context/GlobalChatContext';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -262,6 +263,56 @@ previewQc.setQueryData(
   ],
 );
 
+/**
+ * ⭐ **גיול חובות מוזן מנתונים אמיתיים שנמדדו**, ולא ממספרים עגולים.
+ * מסך כספי שנבדק על 1,000 ו-2,000 נראה מסודר תמיד; רק כללית עם
+ * 4,049,321 ו-998 חשבוניות מראה מה קורה לרוחב העמודות באמת.
+ * 🔴 והזיכוי השלילי של כללית נשמר, כי מינוס בטבלת כסף הוא בדיוק המקרה
+ * שנשבר בשקט. [[negative_zero_reads_as_broken]]
+ */
+const AGING_FIXTURE = [
+  { customerNumber: '511941213', customerName: 'כללית הנדסה רפואית בעמ', openCount: 998,
+    total: 4049321.76, oldestDays: 207,
+    buckets: { b0_30: 1402881, b31_60: 1180012, b61_90: 802331, b91_120: 672312, b120_plus: -8215.24 },
+    lastNoteAt: null, nextActionDate: null },
+  { customerNumber: '589958495', customerName: 'קופת חולים מאוחדת', openCount: 16,
+    total: 1225393.29, oldestDays: 94,
+    buckets: { b0_30: 402113, b31_60: 311280, b61_90: 290000, b91_120: 222000.29, b120_plus: 0 },
+    lastNoteAt: '2026-08-24T09:00:00Z', nextActionDate: '2026-08-31' },
+  { customerNumber: '930103742', customerName: 'משרד הבטחון', openCount: 13,
+    total: 390105, oldestDays: 210,
+    buckets: { b0_30: 0, b31_60: 84200, b61_90: 121205, b91_120: 120000, b120_plus: 64700 },
+    lastNoteAt: '2026-08-20T09:00:00Z', nextActionDate: null },
+  { customerNumber: 'בית קסלר', customerName: 'בית קסלר מעון אילן לנכים', openCount: 1,
+    total: 108000, oldestDays: 9,
+    buckets: { b0_30: 108000, b31_60: 0, b61_90: 0, b91_120: 0, b120_plus: 0 },
+    lastNoteAt: null, nextActionDate: null },
+];
+previewQc.setQueryData(['debt-aging'], AGING_FIXTURE);
+
+// ⭐ החשבוניות של משרד הביטחון, כי זה בדיוק הלקוח שהצלבת הדוח סימנה
+// כמסובך: 13 חשבוניות פרוסות על שבעה חודשים.
+previewQc.setQueryData(
+  ['open-invoices', '930103742'],
+  [
+    { docNo: 'CI-24118', invoiceDate: '2026-01-29', totalPrice: 64700, status: 'vEDI-SENT', sourceOrder: 'SO2601104', ageDays: 210 },
+    { docNo: 'CI-24902', invoiceDate: '2026-04-30', totalPrice: 120000, status: 'סופית', sourceOrder: 'SO2603318', ageDays: 119 },
+    { docNo: 'CI-25330', invoiceDate: '2026-05-28', totalPrice: 121205, status: 'vEDI-SENT', sourceOrder: null, ageDays: 91 },
+    { docNo: 'CI-26014', invoiceDate: '2026-07-02', totalPrice: 84200, status: 'vEDI-SENT', sourceOrder: 'SO2605521', ageDays: 56 },
+  ],
+);
+previewQc.setQueryData(
+  ['collection-notes', '930103742'],
+  [
+    { id: '1', customerNumber: '930103742', customerName: 'משרד הבטחון', outcome: 'promised',
+      note: 'דיברתי עם רויטל מהנהלת חשבונות. אמרה שהחשבונית מינואר עברה לבדיקה אצל הקצין ושהתשלום ייצא בסבב הבא.',
+      promisedAmount: null, nextActionDate: '2026-09-10', createdByName: 'רונן', createdAt: '2026-08-20T09:12:00Z' },
+    { id: '2', customerNumber: '930103742', customerName: 'משרד הבטחון', outcome: 'no_answer',
+      note: 'לא ענו, השארתי הודעה.', promisedAmount: null, nextActionDate: null,
+      createdByName: 'רונן', createdAt: '2026-08-12T11:40:00Z' },
+  ],
+);
+
 const view = new URLSearchParams(location.search).get('view');
 
 const VIEWS: Record<string, React.ReactElement> = {
@@ -272,6 +323,24 @@ const VIEWS: Record<string, React.ReactElement> = {
   'reason-notdone': <ReasonPreview kind="not_done" />,
   surveys: <SurveysPage />,
   overview: <ManagementDashboard />,
+  // 🔴 המסך פותח `-mx-4 sm:-mx-6` כדי להיצמד לדפנות של `AppShell`. בלי
+  // ריפוד מקביל כאן הוא גולש מהחלון, ובעברית זה נראה בדיוק כמו תוכן
+  // חתוך. [[rtl_overflow_scroll_shift]]
+  'collections-dialog': (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-4">
+      <CustomerDebtDialog
+        row={AGING_FIXTURE[2]}
+        userName="רונן"
+        onClose={() => {}}
+        onSaved={() => {}}
+      />
+    </div>
+  ),
+  collections: (
+    <div className="px-4 py-6 sm:px-6">
+      <CollectionsPage />
+    </div>
+  ),
   crane: (
     <div dir="rtl" className="min-h-screen bg-slate-50 p-4">
       <CraneChecklistDialog
