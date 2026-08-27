@@ -27,6 +27,8 @@ import { CollectionsPage, CustomerDebtDialog } from '@/pages/CollectionsPage';
 import { AuthProvider } from '@/lib/auth-context';
 import { GlobalChatProvider } from '@/context/GlobalChatContext';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
+import { DispatchPage } from '@/pages/DispatchPage';
 import type { CalendarStop } from '@/types/calendar-stop';
 
 /**
@@ -148,7 +150,11 @@ function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={previewQc}>
       <AuthProvider>
-        <GlobalChatProvider>{children}</GlobalChatProvider>
+        <GlobalChatProvider>
+          {/* 🔴 מסך הסדרן נשען על `useSearchParams`, ובלי נתב הוא זורק
+              והצילום יוצא לבן. */}
+          <MemoryRouter initialEntries={['/dispatch?tab=all']}>{children}</MemoryRouter>
+        </GlobalChatProvider>
       </AuthProvider>
     </QueryClientProvider>
   );
@@ -314,6 +320,28 @@ previewQc.setQueryData(
   ],
 );
 
+/**
+ * 🔴 **מצב הכישלון של רשימה אחת, מוזרק ידנית.**
+ *
+ * בלי משתמש מחובר PostgREST מחזיר מערך ריק ולא שגיאה, ולכן אי אפשר
+ * לראות את מצב הכישלון סתם ככה. ואת המצב הזה בדיוק צריך לראות: עד
+ * 27/08/2026 הוא צויר כ"אין הזמנות ממתינות לתיאום".
+ */
+if (new URLSearchParams(location.search).get('view') === 'dispatch-error') {
+  previewQc
+    .getQueryCache()
+    .build(previewQc, { queryKey: ['orders'] })
+    .setState({
+      status: 'error',
+      fetchStatus: 'idle',
+      error: new Error('TypeError: Failed to fetch'),
+    });
+  previewQc
+    .getQueryCache()
+    .build(previewQc, { queryKey: ['pickups'] })
+    .setState({ status: 'pending', fetchStatus: 'fetching' });
+}
+
 const view = new URLSearchParams(location.search).get('view');
 
 const VIEWS: Record<string, React.ReactElement> = {
@@ -327,6 +355,13 @@ const VIEWS: Record<string, React.ReactElement> = {
   // 🔴 המסך פותח `-mx-4 sm:-mx-6` כדי להיצמד לדפנות של `AppShell`. בלי
   // ריפוד מקביל כאן הוא גולש מהחלון, ובעברית זה נראה בדיוק כמו תוכן
   // חתוך. [[rtl_overflow_scroll_shift]]
+  /**
+   * ⭐ **מסך הסדרן בטאב "הכל" בלי שום נתונים מוזנים.** ארבע השאילתות
+   * ייכשלו (אין הרשאה בתצוגה המקדימה), וזה בדיוק המצב שצריך לראות:
+   * "הרשימה לא נטענה" ולא "אין הזמנות ממתינות לתיאום".
+   */
+  dispatch: <DispatchPage />,
+  'dispatch-error': <DispatchPage />,
   training: (
     <div dir="rtl" className="min-h-screen bg-slate-50 p-4">
       <CraneTrainingDialog

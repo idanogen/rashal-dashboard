@@ -1082,8 +1082,13 @@ export function DispatchPage() {
   );
 
   // ─── מצב טעינה/שגיאה של הטאב הפעיל בלבד (היומן לא מחכה לאף אחד) ───
+  // ⭐ בטאב "הכל" אין "מצב של הטאב", כי יש בו ארבע רשימות עם ארבעה מצבים
+  // נפרדים. הן משתמשות ב-`panelState` לכל אחת. 🔴 הגזירה כאן נפלה קודם
+  // ל-`customersError` בטאב הזה, כלומר תיארה רשימה אחרת לגמרי.
   const tabLoading =
-    tab === 'deliveries'
+    tab === 'all'
+      ? false
+      : tab === 'deliveries'
       ? ordersLoading
       : tab === 'service'
         ? callsLoading
@@ -1091,13 +1096,56 @@ export function DispatchPage() {
           ? pickupsLoading
           : customersLoading;
   const tabError =
-    tab === 'deliveries'
+    tab === 'all'
+      ? null
+      : tab === 'deliveries'
       ? ordersError
       : tab === 'service'
         ? callsError
         : tab === 'pickups'
           ? pickupsError
           : customersError;
+
+  /**
+   * 🔴🔴 **מצב של רשימה אחת, ולא של המסך.**
+   *
+   * עמי, <bdi>27/08/2026</bdi>: "אתמול עד שעות הערב לא היה אספקות במערכת",
+   * עם צילום שבו כתוב **"אין הזמנות ממתינות לתיאום"** בזמן שבמסד יושבות
+   * 829 הזמנות ממתינות והוא רשאי לראות את כולן.
+   *
+   * **השורש:** בטאב "הכל" ארבע הרשימות נטענות במקביל, וארבעת המצבים
+   * (`ordersLoading` · `ordersError` וכו') **נמחקו במפורש** בשורה
+   * `tab === 'all' ? null : tabState`. כלומר רשימה שעדיין נטענת, או
+   * רשימה שהשליפה שלה נכשלה, ציירה את **טקסט המצב הריק של עצמה**:
+   * "אין הזמנות ממתינות לתיאום". מצב ריק שקרי גרוע ממסך שבור, כי הוא
+   * נראה כמו תשובה. [[empty_state_must_speak]]
+   *
+   * ⭐ **וזה גם למה זה "הסתדר לבד לקראת הערב":** טעינה שהסתיימה מאוחר
+   * נראית בדיוק כמו תקלה שנעלמה.
+   *
+   * 🔴 והשגיאה עצמה מעולם לא הוצגה בטאב הזה: `tabError` גוזרת לפי הטאב
+   * ואין לה ענף ל-`all`, ולכן היא נפלה ל-`customersError`.
+   */
+  const panelState = (loading: boolean, err: Error | null) => {
+    if (loading) {
+      return (
+        <div className="flex min-h-[140px] flex-col items-center justify-center gap-2">
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          <p className="text-xs text-muted-foreground">טוען…</p>
+        </div>
+      );
+    }
+    if (err) {
+      return (
+        <div className="flex min-h-[140px] flex-col items-center justify-center gap-2">
+          <AlertCircle className="h-6 w-6 text-destructive" />
+          <p className="text-sm font-semibold text-destructive">הרשימה לא נטענה</p>
+          <p className="max-w-md text-center text-xs text-muted-foreground">{err.message}</p>
+        </div>
+      );
+    }
+    return null;
+  };
 
   const renderTabState = () => {
     if (tabLoading) {
@@ -1205,7 +1253,7 @@ export function DispatchPage() {
 
         {/* ─── אזור מתחלף: הממתינים של הסוג הנבחר ─── */}
         {(tab === 'deliveries' || tab === 'all') && (
-          (tab === 'all' ? null : tabState) ?? (
+          (tab === 'all' ? panelState(ordersLoading, ordersError as Error | null) : tabState) ?? (
             <>
               <div className="flex items-center justify-between">
                 <Button
@@ -1249,7 +1297,7 @@ export function DispatchPage() {
         )}
 
         {(tab === 'service' || tab === 'all') && (
-          (tab === 'all' ? null : tabState) ?? (
+          (tab === 'all' ? panelState(callsLoading, callsError as Error | null) : tabState) ?? (
             <>
               <div className="flex items-center justify-between">
                 <Button
@@ -1292,7 +1340,7 @@ export function DispatchPage() {
         )}
 
         {(tab === 'pickups' || tab === 'all') && (
-          (tab === 'all' ? null : tabState) ?? (
+          (tab === 'all' ? panelState(pickupsLoading, pickupsError as Error | null) : tabState) ?? (
             <>
               <div className="flex items-center justify-between">
                 <Button
@@ -1340,7 +1388,7 @@ export function DispatchPage() {
         )}
 
         {(tab === 'customers' || tab === 'all') && (
-          (tab === 'all' ? null : tabState) ?? (
+          (tab === 'all' ? panelState(customersLoading, customersError as Error | null) : tabState) ?? (
             <>
               <div className="flex items-center justify-between">
                 <Button
