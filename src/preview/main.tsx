@@ -22,6 +22,7 @@ import { DriverStopCard } from '@/pages/DriverDashboardPage';
 import { SurveysPage } from '@/pages/SurveysPage';
 import { ManagementDashboard } from '@/pages/ManagementDashboard';
 import { CraneChecklistDialog } from '@/components/crane/CraneChecklistDialog';
+import { CraneTrainingDialog } from '@/components/crane/CraneTrainingDialog';
 import { CollectionsPage, CustomerDebtDialog } from '@/pages/CollectionsPage';
 import { AuthProvider } from '@/lib/auth-context';
 import { GlobalChatProvider } from '@/context/GlobalChatContext';
@@ -194,8 +195,8 @@ function DriverPreview() {
           onArrive={() => {}}
           onResolve={() => {}}
           resolving={false}
-          craneSerial="G175-04821"
-          onCraneChecklist={() => {}}
+          crane={{ serial: 'G175-04821', kind: 'inspection' }}
+          onCraneForm={() => {}}
         />
       </div>
     </div>
@@ -326,6 +327,17 @@ const VIEWS: Record<string, React.ReactElement> = {
   // 🔴 המסך פותח `-mx-4 sm:-mx-6` כדי להיצמד לדפנות של `AppShell`. בלי
   // ריפוד מקביל כאן הוא גולש מהחלון, ובעברית זה נראה בדיוק כמו תוכן
   // חתוך. [[rtl_overflow_scroll_shift]]
+  training: (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-4">
+      <CraneTrainingDialog
+        open
+        onOpenChange={() => {}}
+        craneSerial="17517098728"
+        customerName="כהן דוד"
+        technicianName="אבי"
+      />
+    </div>
+  ),
   'collections-dialog': (
     <div dir="rtl" className="min-h-screen bg-slate-50 p-4">
       <CustomerDebtDialog

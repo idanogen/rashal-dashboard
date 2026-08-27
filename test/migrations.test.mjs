@@ -54,3 +54,61 @@ test('⭐ הבדיקה באמת סורקת ומוצאת הגדרות', () => {
   }
   assert.ok(found >= 15, `נמצאו רק ${found} הגדרות פונקציה, הסריקה כנראה שבורה`);
 });
+
+/**
+ * 🔴🔴 **לכל טבלה שהקוד קורא לה יש קובץ מיגרציה שיוצר אותה.**
+ *
+ * נשך ב-27/08/2026: `crane_forms` הוחלה במסד דרך הכלי ו**מעולם לא
+ * נשמרה כקובץ**. הקוד עבד מצוין, הבדיקות עברו, והמאגר פשוט הפסיק לתאר
+ * את הסכימה. סביבה חדשה שהייתה נבנית מהמיגרציות הייתה חסרה טבלה שלמה,
+ * ואיש לא היה יודע עד לרגע הראשון של שמירת טופס.
+ *
+ * ⭐ הבדיקה סורקת `supabase.from('X')` בקוד ומחפשת `create table` תואם.
+ */
+test('🔴🔴 כל טבלה שהקוד ניגש אליה נוצרת באיזשהו קובץ מיגרציה', () => {
+  const roots = [join(here, '..', 'src'), join(here, '..', 'api')];
+  const files = [];
+  const walk = (p) => {
+    for (const e of readdirSync(p, { withFileTypes: true })) {
+      const full = join(p, e.name);
+      if (e.isDirectory()) walk(full);
+      else if (/\.(ts|tsx)$/.test(e.name)) files.push(full);
+    }
+  };
+  for (const r of roots) walk(r);
+
+  const used = new Set();
+  for (const f of files) {
+    for (const m of readFileSync(f, 'utf8').matchAll(/\.from\(\s*['"]([a-z0-9_]+)['"]/g)) {
+      used.add(m[1]);
+    }
+  }
+
+  const created = new Set();
+  for (const f of readdirSync(dir).filter((x) => x.endsWith('.sql'))) {
+    const body = readFileSync(join(dir, f), 'utf8');
+    // ⭐ גם `materialized view`: מבחינת הקוד שקורא ממנה היא טבלה לכל דבר.
+    const RE = /create\s+(?:table|(?:materialized\s+)?view)\s+(?:if\s+not\s+exists\s+)?(?:public\.)?([a-z0-9_]+)/gi;
+    for (const m of body.matchAll(RE)) {
+      created.add(m[1].toLowerCase());
+    }
+  }
+
+  // ⭐ טבלאות שנולדו לפני שהמאגר החזיק מיגרציות בכלל, ולכן אין להן קובץ
+  // ומעולם לא היה. הרשימה סגורה בכוונה: כל טבלה חדשה חייבת קובץ.
+  const LEGACY = new Set([
+    'orders', 'service_calls', 'routes', 'order_documents', 'profiles',
+    'calendar_stops', 'cranes', 'crane_inspections', 'crane_sync_history',
+    'timeline_events', 'priority_customers', 'pickups', 'delivery_notes',
+    'invoices', 'consolidated_invoices', 'sync_state', 'sync_runs',
+    'sync_events', 'sync_alerts', 'sync_debug', 'reconcile_runs',
+    'whatsapp_messages_outbound', 'whatsapp_messages_inbound',
+  ]);
+
+  const missing = [...used].filter((t) => !created.has(t) && !LEGACY.has(t)).sort();
+  assert.deepEqual(
+    missing,
+    [],
+    '🔴 טבלה שהקוד קורא לה ואין קובץ מיגרציה שיוצר אותה. סביבה חדשה תיבנה בלעדיה.',
+  );
+});

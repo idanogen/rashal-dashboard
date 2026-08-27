@@ -27,6 +27,16 @@ export function SignaturePad({
 }) {
   const ref = useRef<HTMLCanvasElement | null>(null);
   const drawing = useRef(false);
+  /**
+   * 🔴🔴 **ref ולא state, וזה לא ניקיון אלא באג שנתפס.**
+   * ההחלטה "האם יש דיו" נקראת בתוך המאזין ל-`mouseup`. כשהיא הייתה
+   * state, הסגור של `end` החזיק את הערך מהרינדור שבו הוא נרשם, ומשיכה
+   * שלמה שמתרחשת בתוך אצווה אחת (בלי רינדור בין `move` ל-`up`) הסתיימה
+   * עם `false`, כלומר **החתימה צוירה על המסך ולא נשמרה**, והשער אמר
+   * "חסרה חתימה" מול חתימה שרואים. נתפס בצילום אוטומטי ב-27/08/2026.
+   * ⭐ ה-state נשאר, אבל רק בשביל מה שרואים: כיתוב הרמז וכפתור המחיקה.
+   */
+  const inked = useRef(false);
   const [hasInk, setHasInk] = useState(false);
 
   const ctxOf = useCallback(() => {
@@ -81,13 +91,16 @@ export function SignaturePad({
       if (!p || !ctx) return;
       ctx.lineTo(p.x, p.y);
       ctx.stroke();
-      if (!hasInk) setHasInk(true);
+      if (!inked.current) {
+        inked.current = true;
+        setHasInk(true);
+      }
     };
     const end = () => {
       if (!drawing.current) return;
       drawing.current = false;
       const c2 = ref.current;
-      if (c2 && hasInk) onChange(c2.toDataURL('image/png'));
+      if (c2 && inked.current) onChange(c2.toDataURL('image/png'));
     };
 
     c.addEventListener('mousedown', start);
@@ -107,13 +120,16 @@ export function SignaturePad({
       c.removeEventListener('touchmove', move);
       window.removeEventListener('touchend', end);
     };
-  }, [ctxOf, hasInk, onChange]);
+    // 🔴 בלי `hasInk` בתלויות: המאזינים נרשמים פעם אחת, וההחלטה נקראת
+    // מה-ref. רישום מחדש באמצע משיכה הוא בדיוק מה שאיבד את החתימה.
+  }, [ctxOf, onChange]);
 
   const clear = () => {
     const c = ref.current;
     const ctx = ctxOf();
     if (!c || !ctx) return;
     ctx.clearRect(0, 0, c.width, c.height);
+    inked.current = false;
     setHasInk(false);
     onChange(null);
   };
