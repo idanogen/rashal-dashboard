@@ -44,13 +44,26 @@ export async function fetchNewCustomers(): Promise<NewCustomer[]> {
   return timedFetch(
     'customers',
     async (countPage) => {
-      countPage();
-      const { data, error } = await supabase.rpc('new_customers', {
-        p_since: dataWindowCutoff(),
-      });
-      if (error) throw new Error(`fetchNewCustomers: ${error.message}`);
+      // 🔴🔴 **גם RPC נחתך על 1,000 שורות.** התקרה של PostgREST חלה על
+      // כל תשובה, גם כשהיא מגיעה מפונקציה. נתפס בייצור **באותו יום שבו
+      // הקוד הזה נכתב**, ביומן הטעינה: `customers` החזירה בדיוק 1,000
+      // במקום 1,462, כלומר **462 לקוחות נעלמו בשקט** ולא הייתה שום
+      // שגיאה. בדיוק אותה מלכודת שהעימוד הישן כאן הגן מפניה.
+      // [[postgrest_default_row_cap]]
+      const PAGE = 1000;
+      const rows: CustomerRow[] = [];
+      for (let from = 0; ; from += PAGE) {
+        countPage();
+        const { data, error } = await supabase
+          .rpc('new_customers', { p_since: dataWindowCutoff() })
+          .range(from, from + PAGE - 1);
+        if (error) throw new Error(`fetchNewCustomers: ${error.message}`);
+        const batch = (data ?? []) as CustomerRow[];
+        rows.push(...batch);
+        if (batch.length < PAGE) break;
+      }
 
-      return ((data ?? []) as CustomerRow[]).map((r) => ({
+      return rows.map((r) => ({
         customerNumber: r.custname,
         customerName: r.cdes ?? r.custname,
         address: r.address ?? undefined,
