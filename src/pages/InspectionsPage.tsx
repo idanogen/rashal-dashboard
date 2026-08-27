@@ -31,6 +31,11 @@ export function InspectionsPage() {
 
   const [customerType, setCustomerType] = useState<CustomerTypeKey>('כללית הנדסה');
   const [urgencyFilter, setUrgencyFilter] = useState<UrgencyFilter>('all');
+  /**
+   * <span>מההערות של עידן, 20/08:</span> "מנוף, סינון לפי G175 G150".
+   * ⭐ הנתון נקי לחלוטין: 2,055 מנופים, ובדיוק שני דגמים בטבלה.
+   */
+  const [modelFilter, setModelFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
   const [includeCancelled, setIncludeCancelled] = useState(false);
   const [selectedCrane, setSelectedCrane] = useState<Crane | null>(null);
@@ -74,6 +79,18 @@ export function InspectionsPage() {
     return counts;
   }, [visibleCranes]);
 
+  /** הדגמים שקיימים בפועל, עם הספירה שלהם, ממוינים מהגדול לקטן. */
+  const models = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const { crane } of visibleCranes) {
+      const m = (crane.model ?? '').trim();
+      if (m) counts.set(m, (counts.get(m) ?? 0) + 1);
+    }
+    return [...counts.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [visibleCranes]);
+
   // Apply all filters → table rows
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -88,6 +105,8 @@ export function InspectionsPage() {
       }
       // Urgency
       if (urgencyFilter !== 'all' && status.urgency !== urgencyFilter) return false;
+      // דגם
+      if (modelFilter !== 'all' && (crane.model ?? '') !== modelFilter) return false;
       // Search
       if (q) {
         const hay =
@@ -102,7 +121,7 @@ export function InspectionsPage() {
       }
       return true;
     });
-  }, [visibleCranes, customerType, urgencyFilter, search]);
+  }, [visibleCranes, customerType, urgencyFilter, modelFilter, search]);
 
   // Stats for cards (based on currently-selected customer type)
   const stats = useMemo(() => {
@@ -196,8 +215,21 @@ export function InspectionsPage() {
           />
         </div>
 
+        {/* ⭐ **בורר הדגמים נגזר מהנתונים ואינו רשימה קשיחה.** דגם חדש
+            שייכנס במלאי יופיע כאן לבד, ודגם שייעלם לא יישאר ככפתור מת
+            שמסנן לאפס. 🔴 והספירה על הכפתור היא מה שהופך אותו לשימושי:
+            בלעדיה צריך ללחוץ כדי לדעת אם יש שם משהו. */}
         <div className="flex items-center gap-1 text-xs">
           <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+          <FilterPill active={modelFilter === 'all'} onClick={() => setModelFilter('all')}>כל הדגמים</FilterPill>
+          {models.map((m) => (
+            <FilterPill key={m.name} active={modelFilter === m.name} onClick={() => setModelFilter(m.name)}>
+              <bdi>{m.name}</bdi> ({m.count})
+            </FilterPill>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-1 text-xs">
           <FilterPill active={urgencyFilter === 'all'} onClick={() => setUrgencyFilter('all')}>הכל</FilterPill>
           <FilterPill active={urgencyFilter === 'overdue'} onClick={() => setUrgencyFilter('overdue')} tone="red">
             פג תוקף ({stats.overdue})
