@@ -13,6 +13,7 @@
 //    שהשרת שלח באמת).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { buildAlertMail, shouldAlert, type SurveyAnswer } from "./low-rating.ts";
 
 const SEND_URL = "https://rashal-dashboard.vercel.app/api/heyy-send";
 
@@ -22,6 +23,18 @@ const SEND_URL = "https://rashal-dashboard.vercel.app/api/heyy-send";
 // באותו דפוס בדיוק של `PRIORITY_SYNC_SECRET`.
 // ⭐ הסוד יושב בסודות של הפונקציה ולעולם לא בקוד.
 const SEND_SECRET = Deno.env.get("RASHAL_SEND_SECRET") ?? "";
+
+// ⭐ אותו ערוץ התרעה בדיוק שהשומר משתמש בו, ולכן אין כאן סוד חדש ולא
+// הגדרה חדשה. הוא נבדק חי ב-26/08 והוציא מייל אמיתי.
+const RESEND_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
+// 🔴 **אותה ברירת מחדל בדיוק של השומר**, ולא כתובת "יפה" יותר.
+// הניסיון הראשון יצא מ-alerts@ogensolutions.biz ו-Resend החזירה
+// `403 The ogensolutions.biz domain is not verified`. השולח היחיד
+// שמותר בלי אימות דומיין הוא זה, והוא מגיע לבעל החשבון בלבד.
+// ⭐ להוספת עמי או שלומי כנמענים צריך לאמת את הדומיין ב-Resend.
+const ALERT_FROM = Deno.env.get("ALERT_FROM") ?? "Ogen Sync <onboarding@resend.dev>";
+const ALERT_EMAIL = Deno.env.get("ALERT_EMAIL") ?? "idan@ogensolutions.biz";
+const SURVEYS_URL = "https://rashal-dashboard.vercel.app/surveys";
 
 const sb = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -148,6 +161,18 @@ Deno.serve(async (req: Request) => {
     if (requeued) detail.requeued_rate_limited = requeued;
   }
 
+  // ─── שלב 3: התרעה על ציון נמוך ──────────────────────────────────────
+  //
+  // ⭐ **פנימית בלבד.** שלומי ביקש הודעה ללקוח, ומדידה לפני הבנייה הראתה
+  // ששלושה מתוך שלושה שנתנו ציון נמוך **כבר כתבו הערה**, ושהלקוחה
+  // האמיתית היחידה נתנה 1 וכתבה מחמאה. לכן קודם אדם, ורק אחר כך הודעה.
+  //
+  // 🔴 **רץ גם במצב יבש.** מצב יבש נועד לא לשלוח ללקוח; התרעה פנימית
+  // לצוות היא בדיוק מה שצריך לצאת גם כשהמנוע כבוי, אחרת ציון נמוך
+  // בתקופת ההרצה לא יגיע לאיש.
+  const alerted = await alertOnLowRatings();
+  if (alerted.length) detail.low_rating_alerts = alerted;
+
   const runId = await logRun({
     trigger, dry, enqueued: enqueuedRows.length, due: due.length, sent, failed, detail,
   });
@@ -155,9 +180,96 @@ Deno.serve(async (req: Request) => {
   return json({
     ok: true, run_id: runId, dry, window_open: windowOpen,
     enqueued: enqueuedRows.length, due: due.length, sent, failed, requeued,
+    low_rating_alerts: alerted.length,
     detail,
   });
 });
+
+/**
+ * מוצא חוות דעת עם ציון נמוך שטרם התריעו עליהן, ושולח מייל אחד לכל אחת.
+ *
+ * 🔴 **הסימון נכתב רק אחרי שהמייל יצא**, ולכן כשל בשליחה מחזיר את השורה
+ * לניסיון הבא במקום לבלוע אותה. [[silent_failure_needs_a_watchdog]]
+ *
+ * 🔴 **ומסונן ב-`is_test`**: שתיים משלוש התוצאות הנמוכות שהיו עד היום הן
+ * בדיקות פנימיות, וההתרעה הראשונה שהצוות היה מקבל הייתה על עצמו.
+ */
+async function alertOnLowRatings(): Promise<string[]> {
+  const { data, error } = await sb
+    .from("customer_surveys")
+    .select("id, customer_name, driver, q1_satisfaction, q2_recommend, comment, answered_at, is_test, alerted_at")
+    .not("answered_at", "is", null)
+    .is("alerted_at", null)
+    .lte("q1_satisfaction", 2)
+    .order("answered_at", { ascending: true })
+    .limit(20);
+
+  if (error) {
+    console.error("low-rating lookup failed:", error.message);
+    return [];
+  }
+
+  const done: string[] = [];
+  for (const r of data ?? []) {
+    const answer: SurveyAnswer = {
+      id: r.id,
+      customerName: r.customer_name,
+      driver: r.driver,
+      q1: r.q1_satisfaction,
+      q2: r.q2_recommend,
+      comment: r.comment,
+      answeredAt: r.answered_at,
+      isTest: r.is_test,
+      alertedAt: r.alerted_at,
+    };
+    const decision = shouldAlert(answer);
+    if (!decision.alert) {
+      // ⭐ רשומת בדיקה מסומנת כמטופלת, אחרת היא נבדקת מחדש בכל ריצה לנצח.
+      if (decision.reason === "test_row") {
+        await sb.from("customer_surveys")
+          .update({ alerted_at: new Date().toISOString() }).eq("id", r.id);
+      }
+      continue;
+    }
+
+    const mail = buildAlertMail(answer, SURVEYS_URL);
+    if (!(await sendAlertMail(mail.subject, mail.html))) continue;
+
+    await sb.from("customer_surveys")
+      .update({ alerted_at: new Date().toISOString() }).eq("id", r.id);
+    done.push(r.id);
+  }
+  return done;
+}
+
+async function sendAlertMail(subject: string, html: string): Promise<boolean> {
+  if (!RESEND_KEY) {
+    console.error("no RESEND_API_KEY, low-rating alert not sent");
+    return false;
+  }
+  try {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: ALERT_FROM,
+        // ⭐ רשימה מופרדת בפסיקים, כדי שהוספת עמי או שלומי היא שינוי
+        // משתנה סביבה ולא שינוי קוד.
+        to: ALERT_EMAIL.split(",").map((x) => x.trim()).filter(Boolean),
+        subject,
+        html,
+      }),
+    });
+    if (!res.ok) {
+      console.error("resend failed:", res.status, (await res.text()).slice(0, 200));
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error("resend threw:", String(e).slice(0, 200));
+    return false;
+  }
+}
 
 async function sendOne(
   row: DueRow,
