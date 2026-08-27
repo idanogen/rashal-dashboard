@@ -7,8 +7,29 @@ import { SCREEN_ACCESS, screenAllow } from '../src/lib/screen-access.ts';
  * הרשאה יהיה החלטה מודעת ולא תוצאת לוואי של עריכה.
  */
 
-test('דשבורד ההנהלה פתוח למנהל מערכת בלבד', () => {
-  assert.deepEqual(screenAllow('/overview'), ['admin']);
+/**
+ * 🔴 **הוסב 27/08/2026.** עד אז המסך היה פתוח למנהל מערכת בלבד, ולכן כדי
+ * ששלומי יראה אותו הוא קיבל **מנהל מערכת מלא** עם ניהול משתמשים ותבניות.
+ * עידן, 26/08: "כל דבר שמדבר על כסף חשוף רק להרשאת הנהלה."
+ * ⭐ הבדיקה שומרת על מה שחשוב באמת: **מנהל צוות וסדרן אינם שם**.
+ */
+test('דשבורד ההנהלה פתוח למי שרואה כסף בלבד', () => {
+  assert.deepEqual(screenAllow('/overview'), ['admin', 'management']);
+  for (const r of ['team_manager', 'dispatcher', 'viewer', 'driver']) {
+    assert.ok(!screenAllow('/overview').includes(r), `${r} אינו אמור לראות כסף`);
+  }
+});
+
+/**
+ * ⭐ ומסך הסקרים הוא ההפך המדויק: פתוח לצוות המשרד ולא להנהלה בלבד,
+ * כי שביעות רצון אינה כסף. זו הבקשה של עמי, 26/08.
+ */
+test('מסך הסקרים פתוח לצוות המשרד, ולא לנהג', () => {
+  const allow = screenAllow('/surveys');
+  for (const r of ['admin', 'management', 'team_manager', 'dispatcher', 'viewer']) {
+    assert.ok(allow.includes(r), `${r} אמור לראות סקרים`);
+  }
+  assert.ok(!allow.includes('driver'), 'נהג רואה את הנסיעה שלו, לא דוחות');
 });
 
 test('תבניות הוואטסאפ פתוחות למנהל מערכת בלבד', () => {

@@ -45,7 +45,8 @@ as $$
   -- הכרטיס לחלונית שבתוך פריוריטי. הוא כבר דורש משתמש מחובר בעצמו
   -- (`requireUser`), ולכן ההרשאה נאכפת שם. מפתח ה-service בשרת בלבד.
   select coalesce(auth.role(), '') = 'service_role'
-      or public.current_user_role() in ('admin', 'team_manager', 'dispatcher', 'viewer');
+      or public.current_user_role() in ('admin', 'team_manager', 'dispatcher', 'viewer', 'management');
+  -- 🔴 `management` נוסף 27/08/2026, כאן ולא בקובץ חדש. ראה migrations.test.
 $$;
 
 comment on function public.is_office_staff() is

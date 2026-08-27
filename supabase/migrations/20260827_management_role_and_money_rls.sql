@@ -5,19 +5,11 @@
 -- 🔴 מסך שרק מסתיר שדה אינו הגנה: הערך עדיין נוסע לדפדפן ונשלף משם.
 -- ⭐ 79 מדיניויות RLS, ורק 13 נוקבות בתפקיד, וכולן דרך שתי פונקציות
 --    עוזרות. לכן הוספת תפקיד היא שינוי של שתיים ולא של 79.
-
-create or replace function public.is_admin_or_dispatcher()
-returns boolean language sql stable security definer set search_path to 'public'
-as $$
-  select public.current_user_role() in ('admin', 'dispatcher', 'team_manager', 'management');
-$$;
-
-create or replace function public.is_office_staff()
-returns boolean language sql stable security definer set search_path to 'public'
-as $$
-  select coalesce(auth.role(), '') = 'service_role'
-      or public.current_user_role() in ('admin', 'team_manager', 'dispatcher', 'viewer', 'management');
-$$;
+--
+-- 🔴 **ושתי הפונקציות האלה עודכנו בקבצים שבהם הן נולדו**, ולא כאן:
+--    `is_admin_or_dispatcher` ב-20260823, `is_office_staff` ב-20260824.
+--    פונקציה שמוגדרת בשני קבצים חוזרת לגרסה ישנה ברגע שמריצים מחדש את
+--    הישן, בלי שום שגיאה. זה כבר נשך אותנו, ויש על זה בדיקה.
 
 -- 🔴 מנהל צוות וסדרן **אינם** כאן, וזו כל הנקודה.
 create or replace function public.is_management()

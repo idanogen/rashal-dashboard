@@ -5,7 +5,10 @@
 
 create or replace function public.is_admin_or_dispatcher()
 returns boolean language sql stable security definer set search_path to 'public' as $$
-  select public.current_user_role() in ('admin', 'dispatcher', 'team_manager');
+  select public.current_user_role() in ('admin', 'dispatcher', 'team_manager', 'management');
+  -- 🔴 `management` נוסף 27/08/2026. **מתעדכן כאן ולא בקובץ חדש**, כי
+  -- פונקציה שמוגדרת בשני קבצים חוזרת לגרסה ישנה ברגע שמריצים מחדש את
+  -- הקובץ הישן, בלי שום שגיאה. [[test/migrations.test.mjs]]
 $$;
 
 create or replace function public.can_manage_team()
