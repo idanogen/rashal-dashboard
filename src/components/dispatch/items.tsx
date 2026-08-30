@@ -8,6 +8,8 @@ import type { Order } from '@/types/order';
 import type { Pickup } from '@/types/pickup';
 import type { ServiceCall } from '@/types/service-call';
 import { getZoneForCity } from '@/types/zone';
+import { mediaBadge, MEDIA_BADGE_CLASS } from '@/lib/media-request-badge';
+import type { MediaRequestState } from '@/hooks/useMediaRequests';
 
 /**
  * המרת ארבעת סוגי העבודה ל-DispatchItemVM. הבנאים האלה נקראים גם מהרכיבים
@@ -94,9 +96,13 @@ export function buildOrderItems(
 export function buildServiceCallItems(
   calls: ServiceCall[],
   zoneMap: Map<string, string>,
-  groupSize?: Map<string, number>
+  groupSize?: Map<string, number>,
+  mediaStates?: Map<string, MediaRequestState>
 ): DispatchItemVM[] {
-  return calls.map((call) => ({
+  return calls.map((call) => {
+    const mediaState = mediaStates?.get(call.id);
+    const badge = mediaState ? mediaBadge(mediaState.state) : null;
+    return {
     id: call.id,
     dragId: `servicecall-${call.id}`,
     dragData: { type: 'serviceCall', call },
@@ -128,6 +134,17 @@ export function buildServiceCallItems(
     ),
     meta: (
       <>
+        {/* חיווי "תמונה לפני טכנאי": ירוק = יש תמונה, אפשר לתאם. */}
+        {badge && (
+          <p className="mt-0.5">
+            <span
+              className={`inline-block rounded-full px-1.5 py-0.5 text-[10px] font-medium ${MEDIA_BADGE_CLASS[badge.tone]}`}
+              title={mediaState?.mediaReceivedAt ? `התקבלה ${new Date(mediaState.mediaReceivedAt).toLocaleString('he-IL')}` : undefined}
+            >
+              {badge.label}
+            </span>
+          </p>
+        )}
         {(call.faultDesc || call.symptomDesc) && (
           <p className="mt-0.5 text-[11px] font-medium text-amber-800">
             תקלה: {call.faultDesc ?? call.symptomDesc}
@@ -158,7 +175,8 @@ export function buildServiceCallItems(
       customerNumber: call.customerNumber,
       customerName: call.customerName,
     },
-  }));
+    };
+  });
 }
 
 // ─── איסופים ───────────────────────────────────────────────

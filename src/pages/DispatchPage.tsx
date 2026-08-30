@@ -27,6 +27,7 @@ import { LoadReportLine } from '@/components/LoadReportLine';
 import { beginScreenLoad } from '@/lib/perf-collect';
 import { matchesSearch } from '@/lib/search-match';
 import { useGeocodeBackfill } from '@/hooks/useGeocodeBackfill';
+import { useMediaRequests } from '@/hooks/useMediaRequests';
 import { useScheduleStop } from '@/hooks/useScheduleStop';
 import { useDeleteStop } from '@/hooks/useDeleteStop';
 import { useResolveStop } from '@/hooks/useResolveStop';
@@ -424,10 +425,11 @@ export function DispatchPage() {
     () => (customersOnlyBare ? pendingCustomers.filter(isBareCustomer) : pendingCustomers),
     [pendingCustomers, customersOnlyBare]
   );
+  const { data: mediaStates } = useMediaRequests();
   const itemsByTab = useMemo(
     () => ({
       deliveries: buildOrderItems(unscheduledOrders, orderZoneMap, ordersGroupSize),
-      service: buildServiceCallItems(pendingCalls, callZoneMap, callsGroupSize),
+      service: buildServiceCallItems(pendingCalls, callZoneMap, callsGroupSize, mediaStates),
       pickups: buildPickupItems(pendingPickups, setDetailPickup),
       customers: buildCustomerItems(scopedCustomers),
     }),
@@ -440,6 +442,7 @@ export function DispatchPage() {
       callsGroupSize,
       pendingPickups,
       scopedCustomers,
+      mediaStates,
     ]
   );
 

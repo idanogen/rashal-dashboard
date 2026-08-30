@@ -4,6 +4,7 @@ import { extractMessage, parseCustomerReply } from './_lib/extract.js';
 import { normalizePhone, toE164 } from './_lib/phone.js';
 import { recordToThread } from './_lib/wa-thread.js';
 import { copyMediaForMessage } from './_lib/wa-media.js';
+import { describeAttachments } from './_lib/attachments.js';
 
 /**
  * מקלט הוובהוקים של heyy.
@@ -292,6 +293,29 @@ async function handleInbound(payload: any, finish: Finish, res: VercelResponse) 
   // היא מדולגת בכוונה, ונאמר במפורש שהיא כבר בשרשור.
   const hasAttachments = Array.isArray(payload?.data?.content?.attachments)
     && payload.data.content.attachments.length > 0;
+
+  // ── מנוע "תמונה לפני טכנאי" (30/08/2026) ────────────────
+  // תמונה או סרטון סוגרים את הבקשה הפתוחה של הטלפון הזה כ"תמונה
+  // התקבלה", גם אם הלקוח הקדים את ההודעה שלנו. כל תגובה אחרת, אחרי
+  // שההודעה שלנו כבר יצאה, עוצרת את התזכורת: אדם נכנס לשיחה.
+  // 🔴 describeAttachments ולא ספירת המערך, כי כפתורי תבנית יושבים
+  // באותו מערך והם אינם קובץ. וכישלון כאן לעולם לא מפיל את הוובהוק.
+  if (phoneE164) {
+    const files = describeAttachments(payload?.data?.content?.attachments);
+    const hasVisualMedia = files.some((f) => f.kind === 'image' || f.kind === 'video');
+    try {
+      const { data: mediaReqId, error: mediaErr } = await supabaseAdmin.rpc('wa_apply_media_reply', {
+        p_phone: phoneE164,
+        p_has_media: hasVisualMedia,
+      });
+      if (mediaErr) console.error('[heyy-webhook] media request reply', mediaErr.message);
+      else if (mediaReqId) {
+        console.log('[heyy-webhook] media request', hasVisualMedia ? 'media_received' : 'replied_no_media', mediaReqId);
+      }
+    } catch (e) {
+      console.error('[heyy-webhook] media request threw', e instanceof Error ? e.message : e);
+    }
+  }
 
   if (phoneE164 && !extracted.rawText && hasAttachments) {
     return finish(true, 'קובץ בלי טקסט: נרשם בשרשור, ואינו תשובת לקוח לפירוש', {

@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Wrench } from 'lucide-react';
 
 import { buildServiceCallItems } from '@/components/dispatch/items';
+import { useMediaRequests } from '@/hooks/useMediaRequests';
 import { UnscheduledPanel, type HandledMatch } from '@/components/dispatch/UnscheduledPanel';
 import type { ServiceCall } from '@/types/service-call';
 import type { ReturnedInfo } from '@/lib/returned-from-route';
@@ -47,9 +48,10 @@ export function UnscheduledServiceCalls({
   search,
   selectedZones,
 }: UnscheduledServiceCallsProps) {
+  const { data: mediaStates } = useMediaRequests();
   const items = useMemo(
-    () => buildServiceCallItems(calls, callZoneMap, groupSize),
-    [calls, callZoneMap, groupSize]
+    () => buildServiceCallItems(calls, callZoneMap, groupSize, mediaStates),
+    [calls, callZoneMap, groupSize, mediaStates]
   );
 
   const handled = useMemo<HandledMatch[]>(

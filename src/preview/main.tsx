@@ -16,6 +16,7 @@ import '@/index.css';
 import { CustomerCardBody } from '@/components/customer/CustomerCard';
 import { LastVisitBadge } from '@/components/customer/LastVisitBadge';
 import { localDateStr } from '@/lib/visit-history';
+import { mediaBadge, MEDIA_BADGE_CLASS } from '@/lib/media-request-badge';
 import { CustomerCardButton } from '@/components/customer/CustomerCardSheet';
 import { FIXTURE } from '@/preview/customer-fixture';
 import { DuplicateScheduleWarningDialog } from '@/components/deliveries/DuplicateScheduleWarningDialog';
@@ -387,6 +388,23 @@ const VIEWS: Record<string, React.ReactElement> = {
           ]}
           onMoveStop={() => {}}
         />
+      </div>
+    </div>
+  ),
+  /** חיווי "תמונה לפני טכנאי": כל המצבים שמוצגים על כרטיס קריאה. */
+  'media-badge': (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
+      <div className="mx-auto max-w-md space-y-2 rounded-2xl border bg-white p-5">
+        {(['media_received', 'pending', 'first_sent', 'reminder_sent', 'replied_no_media', 'no_response', 'failed', 'no_phone'] as const).map((s) => {
+          const b = mediaBadge(s);
+          return b ? (
+            <p key={s}>
+              <span className={`inline-block rounded-full px-1.5 py-0.5 text-[10px] font-medium ${MEDIA_BADGE_CLASS[b.tone]}`}>
+                {b.label}
+              </span>
+            </p>
+          ) : null;
+        })}
       </div>
     </div>
   ),
