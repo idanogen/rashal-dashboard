@@ -37,6 +37,7 @@ import {
 } from '@/components/ui/select';
 import { usePersistedCollapse } from '@/hooks/usePersistedCollapse';
 import { getDaysColor, getDaysSinceCreated, cn } from '@/lib/utils';
+import { matchesSearch } from '@/lib/search-match';
 import { CustomerCardButton } from '@/components/customer/CustomerCardSheet';
 import { NO_ADDRESS_ZONE, ZONES, getZoneById } from '@/types/zone';
 
@@ -423,9 +424,9 @@ export function UnscheduledPanel({
 
   // חיפוש חופשי קודם, כדי שספירת האזורים תשקף את מה שבאמת מוצג
   const searched = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = search.trim();
     if (!q) return items;
-    return items.filter((i) => i.searchText.includes(q));
+    return items.filter((i) => matchesSearch(i.searchText, q));
   }, [items, search]);
 
   const zoneCounts = useMemo(() => {
@@ -445,12 +446,10 @@ export function UnscheduledPanel({
 
   // כשהחיפוש לא מחזיר ממתינים — מציגים את מי שכבר טופל, כדי שלא ייראה כאילו נעלם
   const handledMatches = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = search.trim();
     if (!q || filteredItems.length > 0 || !handled) return [];
     return handled.filter((h) =>
-      [h.customerName, h.customerNumber]
-        .filter(Boolean)
-        .some((v) => String(v).toLowerCase().includes(q))
+      matchesSearch([h.customerName, h.customerNumber].filter(Boolean).join(' '), q)
     );
   }, [search, filteredItems.length, handled]);
 

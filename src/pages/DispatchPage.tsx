@@ -25,6 +25,7 @@ import { useNewCustomers } from '@/hooks/useNewCustomers';
 import { useCalendarStops } from '@/hooks/useCalendarStops';
 import { LoadReportLine } from '@/components/LoadReportLine';
 import { beginScreenLoad } from '@/lib/perf-collect';
+import { matchesSearch } from '@/lib/search-match';
 import { useGeocodeBackfill } from '@/hooks/useGeocodeBackfill';
 import { useScheduleStop } from '@/hooks/useScheduleStop';
 import { useDeleteStop } from '@/hooks/useDeleteStop';
@@ -449,9 +450,9 @@ export function DispatchPage() {
   }, [itemsByTab, tab]);
 
   const searchedItems = useMemo(() => {
-    const q = filterSearch.trim().toLowerCase();
+    const q = filterSearch.trim();
     if (!q) return visibleItems;
-    return visibleItems.filter((i) => i.searchText.includes(q));
+    return visibleItems.filter((i) => matchesSearch(i.searchText, q));
   }, [visibleItems, filterSearch]);
 
   /** ספירת האזורים על מה שעבר את החיפוש, כדי שהצ'יפים לא ישקרו. */
