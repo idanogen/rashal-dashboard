@@ -1132,15 +1132,34 @@ async function reconcileDaily(days: number): Promise<Record<string, unknown>> {
 
   const totalReal = anomalies.reduce((a, b) => a + b.rows.length, 0);
 
+  // גלאי התצוגה (30/08/2026): ההשוואה מול פריוריטי עונה על "האם הרשומה
+  // קיימת אצלנו", ואף בדיקה לא שאלה "האם הרשומה שקיימת גם מוצגת". הפונקציה
+  // במסד משחזרת את מסנני הטעינה של המסך ומחזירה כל רשומה פתוחה שלא תגיע
+  // לאף רשימה — מכל סיבה, כולל סיבות שעוד לא הכרנו. הרקע: הקריאות של עמי
+  // ישבו במסד עם סטטוס NULL והיו בלתי נראות, והתגלו מגיליון ולא מבדיקה.
+  // 🔴 כשל של הבדיקה עצמה מדוּוח כמו ממצא: גלאי שנשבר בשקט נראה ירוק.
+  let invisible: Row[] = [];
+  let visibilityError: string | null = null;
+  {
+    const { data, error } = await sb.rpc("visibility_audit");
+    if (error) visibilityError = error.message.slice(0, 200);
+    else invisible = (data ?? []) as Row[];
+  }
+  summary.visibility = visibilityError
+    ? { error: visibilityError }
+    : { invisible: invisible.length };
+
   await sb.from("reconcile_runs").insert({
     window_days: days,
     rows_checked: checked,
     missing_real: totalReal,
     summary,
-    details: anomalies.length ? anomalies : null,
+    details: (anomalies.length || invisible.length)
+      ? { missing: anomalies.length ? anomalies : undefined, invisible: invisible.length ? invisible : undefined }
+      : null,
   });
 
-  if (totalReal > 0) {
+  if (totalReal > 0 || invisible.length > 0 || visibilityError) {
     const blocks = anomalies.map((a) => {
       const rows = a.rows.slice(0, 25).map((s) =>
         `<tr><td style="padding:4px 10px;font-family:monospace">${s.key}</td>` +
@@ -1152,12 +1171,39 @@ async function reconcileDaily(days: number): Promise<Record<string, unknown>> {
         `<table style="border-collapse:collapse;font-size:13px">${rows}</table>`;
     }).join("");
 
+    const INVISIBLE_REASON: Record<string, string> = {
+      not_loaded: "פתוחה ולא נטענת למסך",
+      null_status: "בלי סטטוס — תקלת ההכנסה הקבוצתית חזרה",
+      hidden_dup: "כפיל מוסתר מאחורי רשומה סגורה, ופתוח בפריוריטי",
+    };
+    const invisibleBlock = invisible.length
+      ? `<h3 style="margin:18px 0 6px">קיימות אצלנו ולא מוצגות באף מסך · ${invisible.length}</h3>` +
+        `<table style="border-collapse:collapse;font-size:13px">` +
+        invisible.slice(0, 25).map((s) =>
+          `<tr><td style="padding:4px 10px;font-family:monospace">${s.pkey ?? ""}</td>` +
+          `<td style="padding:4px 10px">${s.customer_name ?? ""}</td>` +
+          `<td style="padding:4px 10px">${s.city ?? ""}</td>` +
+          `<td style="padding:4px 10px">${LABELS[String(s.entity)] ?? s.entity}</td>` +
+          `<td style="padding:4px 10px">${INVISIBLE_REASON[String(s.reason)] ?? s.reason}</td></tr>`).join("") +
+        `</table>`
+      : "";
+    const visibilityErrorBlock = visibilityError
+      ? `<p style="color:#b00">🔴 גלאי התצוגה עצמו נכשל: <span dir="ltr">${visibilityError}</span></p>`
+      : "";
+
+    const parts: string[] = [];
+    if (totalReal > 0) parts.push(`${totalReal} חסרות מול פריוריטי`);
+    if (invisible.length > 0) parts.push(`${invisible.length} קיימות ולא מוצגות`);
+    if (visibilityError) parts.push("גלאי התצוגה נכשל");
+
     await sendAlertEmail(
-      `רשעל · ${totalReal} רשומות קיימות בפריוריטי ולא אצלנו`,
+      `רשעל · ${parts.join(" · ")}`,
       `<div dir="rtl" style="font-family:system-ui,sans-serif;color:#14223a">
-         <p>ריצת ההשוואה היומית מצאה רשומות שנפתחו בפריוריטי לפני היום ולא הגיעו למערכת.</p>
-         <p style="color:#666;font-size:13px">רשומות שנוצרו היום לא נספרות, הן פיגור רגיל בין ריצות.</p>
+         <p>ריצת הבוקר בודקת שני דברים: מה קיים בפריוריטי ולא אצלנו, ומה קיים אצלנו ולא יוצג באף מסך.</p>
+         <p style="color:#666;font-size:13px">רשומות שנוצרו היום לא נספרות בחוסר, הן פיגור רגיל בין ריצות.</p>
          ${blocks}
+         ${invisibleBlock}
+         ${visibilityErrorBlock}
        </div>`,
     );
   }
