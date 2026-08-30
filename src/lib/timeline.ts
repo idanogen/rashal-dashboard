@@ -132,7 +132,9 @@ export async function getCommentCounts(): Promise<Record<string, number>> {
     const { data, error } = await supabase
       .from('timeline_events')
       .select('order_id, service_call_id, calendar_stop_id')
-      .eq('type', 'comment')
+      // גם קבצים נספרים: תמונה מהלקוח (מנוע "תמונה לפני טכנאי") בלי אף
+      // תגובה הייתה מציגה 0 על הכפתור, והטכנאי לא היה יודע שיש מה לפתוח.
+      .in('type', ['comment', 'file_upload'])
       .range(from, from + PAGE - 1);
     if (error) throw new Error(`getCommentCounts: ${error.message}`);
     const rows =
