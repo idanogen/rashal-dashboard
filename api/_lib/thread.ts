@@ -151,6 +151,38 @@ export async function loadThread(by: { phone?: string | null; customer?: string 
     return undefined;
   };
 
+  // ── שם השולח האמיתי ─────────────────────────────────────
+  //
+  // 🔴 `author` נכתב כ-`user:<email>`, והמיילים אצל רשעל מגובבים
+  // (`u<40hex>@rashal.internal`), ולכן כל הודעה יוצאת הוצגה לצוות
+  // כ"עובד" סתמי. השם האמיתי (עמי גז, שלומי קורן) חי ב-`profiles.full_name`,
+  // והפענוח כאן רטרואקטיבי: גם הודעות ישנות מקבלות שם בלי לגעת בנתונים.
+  const AUTHOR_EMAIL = /^user:(.+@.+)$/;
+  const emails = new Set<string>();
+  for (const m of messages ?? []) {
+    const hit = AUTHOR_EMAIL.exec(String((m as { author?: unknown }).author ?? ''));
+    if (hit) emails.add(hit[1].toLowerCase());
+  }
+  const authorNames = new Map<string, string>();
+  if (emails.size) {
+    try {
+      const { data: profs } = await supabaseAdmin
+        .from('profiles')
+        .select('email, full_name')
+        .in('email', Array.from(emails));
+      for (const p of (profs ?? []) as Array<{ email?: string | null; full_name?: string | null }>) {
+        if (p.email && p.full_name) authorNames.set(p.email.toLowerCase(), p.full_name);
+      }
+    } catch (e) {
+      // נכשל בשקט: שם שולח אינו סיבה להפיל שרשור.
+      console.error('[thread] author names failed', e instanceof Error ? e.message : e);
+    }
+  }
+  const authorNameFor = (author: unknown): string | null => {
+    const hit = AUTHOR_EMAIL.exec(String(author ?? ''));
+    return hit ? authorNames.get(hit[1].toLowerCase()) ?? null : null;
+  };
+
   return {
     conversation: {
       id: conv.id,
@@ -174,6 +206,7 @@ export async function loadThread(by: { phone?: string | null; customer?: string 
     // קובץ ואת הנתיב הפנימי שלנו, ומכיל גם כפתורי תבנית שאינם קבצים.
     messages: (messages ?? []).map((m) => ({
       ...m,
+      author_name: authorNameFor((m as { author?: unknown }).author),
       attachments: describeAttachments(m.attachments),
       // ⭐ הכפתור שהלקוח קיבל, ואיתו הקישור עצמו. הוא יושב באותו מערך,
       // והוא **לא** קובץ. ראה `describeButtons`.
