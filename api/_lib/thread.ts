@@ -168,10 +168,12 @@ export async function loadThread(by: { phone?: string | null; customer?: string 
     try {
       const { data: profs } = await supabaseAdmin
         .from('profiles')
-        .select('email, full_name')
+        .select('email, full_name, username')
         .in('email', Array.from(emails));
-      for (const p of (profs ?? []) as Array<{ email?: string | null; full_name?: string | null }>) {
-        if (p.email && p.full_name) authorNames.set(p.email.toLowerCase(), p.full_name);
+      // 🔴 יש פרופילים בלי full_name (רודי, נהג): שם המשתמש עדיף על "עובד".
+      for (const p of (profs ?? []) as Array<{ email?: string | null; full_name?: string | null; username?: string | null }>) {
+        const name = p.full_name || p.username;
+        if (p.email && name) authorNames.set(p.email.toLowerCase(), name);
       }
     } catch (e) {
       // נכשל בשקט: שם שולח אינו סיבה להפיל שרשור.
