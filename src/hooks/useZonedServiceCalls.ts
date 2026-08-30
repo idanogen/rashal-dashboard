@@ -33,8 +33,10 @@ export function useZonedServiceCalls(): ZonedServiceCallsResult {
     }
 
     // טיוטא = טרם אושרה בפריוריטי, כמו בהזמנות (החלטת עידן 05/08/2026).
+    // סטטוס ריק נספר כ"קריאה חדשה": קריאה בלי סטטוס אחרת לא נכנסת לאף
+    // רשימה ונעלמת מכל המסכים בלי שגיאה (23 כאלה נמצאו ב-30/08/2026).
     const pendingCalls = allCalls.filter(
-      (c) => c.serviceCallStatus === 'קריאה חדשה' && c.priorityStatus !== 'טיוטא'
+      (c) => (c.serviceCallStatus ?? 'קריאה חדשה') === 'קריאה חדשה' && c.priorityStatus !== 'טיוטא'
     );
 
     const scheduledCalls = allCalls.filter(

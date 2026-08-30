@@ -51,8 +51,10 @@ export function useZonedOrders(): ZonedOrdersResult {
     // סינון לפי סטטוס.
     // טיוטא = הזמנה שעוד לא אושרה בפריוריטי, אין מה לתאם עליה. היא נשארת במסד
     // ותיכנס לרשימה לבד ברגע שפריוריטי יאשר אותה (החלטת עידן 05/08/2026).
+    // סטטוס ריק נספר כ"ממתין לתאום": הזמנה בלי סטטוס אחרת לא נכנסת לאף
+    // רשימה ונעלמת מכל המסכים בלי שגיאה (אותו כשל כמו בקריאות, 30/08/2026).
     const unscheduledOrders = allOrders.filter(
-      (o) => o.orderStatus === 'ממתין לתאום' && o.priorityStatus !== 'טיוטא'
+      (o) => (o.orderStatus ?? 'ממתין לתאום') === 'ממתין לתאום' && o.priorityStatus !== 'טיוטא'
     );
 
     const scheduledOrders = allOrders.filter(

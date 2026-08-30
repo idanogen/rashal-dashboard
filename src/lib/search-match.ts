@@ -15,12 +15,21 @@
  * - שאילתה עם ספרות מושווית גם מול הספרות בלבד של המחסן, כדי
  *   ש-"052-123" ימצא "0521234567".
  *
+ * - אותיות סופיות מנורמלות (ף=פ, ם=מ...): בפריוריטי "חלף" כתוב "חלפ",
+ *   וחיפוש עם האות הסופית החזיר אפס (עמי, 30/08/2026).
+ *
  * בלי ייבוא, ולכן נבדק ביחידה.
  */
+const FINALS: Record<string, string> = { ך: 'כ', ם: 'מ', ן: 'נ', ף: 'פ', ץ: 'צ' };
+
+function fold(text: string): string {
+  return text.toLowerCase().replace(/[ךםןףץ]/g, (c) => FINALS[c]);
+}
+
 export function matchesSearch(haystack: string, rawQuery: string): boolean {
-  const q = rawQuery.trim().toLowerCase();
+  const q = fold(rawQuery.trim());
   if (!q) return true;
-  const hay = haystack.toLowerCase();
+  const hay = fold(haystack);
 
   if (hay.includes(q)) return true;
 

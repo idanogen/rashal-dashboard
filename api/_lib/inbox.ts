@@ -179,9 +179,18 @@ export function sortItems(items: InboxItem[], tab: 'waiting' | 'all'): InboxItem
  *
  * 🔴 **והספרות מנורמלות.** `054-541` ו-`054541` הם אותו חיפוש, ומקף אחד
  * הוא ההבדל בין תוצאה לבין מסך ריק.
+ *
+ * 🔴 **וגם אותיות סופיות** (ף=פ, ם=מ...): בפריוריטי "חלף" כתוב "חלפ",
+ * וחיפוש עם האות הסופית החזיר אפס (עמי, 30/08/2026). זהה ל-`search-match.ts`.
  */
+const HEB_FINALS: Record<string, string> = { ך: 'כ', ם: 'מ', ן: 'נ', ף: 'פ', ץ: 'צ' };
+
+function foldFinals(text: string): string {
+  return text.replace(/[ךםןףץ]/g, (c) => HEB_FINALS[c]);
+}
+
 export function matchesQuery(item: InboxItem, raw: string): boolean {
-  const q = String(raw ?? '').trim().toLowerCase();
+  const q = foldFinals(String(raw ?? '').trim().toLowerCase());
   if (!q) return true;
 
   const digits = q.replace(/\D/g, '');
@@ -192,10 +201,10 @@ export function matchesQuery(item: InboxItem, raw: string): boolean {
   // היא זו שגילתה. שתי ספרות מחזירות חצי מהתיבה, וזה נראה כמו חיפוש שבור.
   if (digits.length === q.length && digits.length < 3) return false;
 
-  const haystack = [item.title, item.customerNumber, item.phone, item.preview]
+  const haystack = foldFinals([item.title, item.customerNumber, item.phone, item.preview]
     .filter(Boolean)
     .join(' ')
-    .toLowerCase();
+    .toLowerCase());
 
   if (haystack.includes(q)) return true;
 

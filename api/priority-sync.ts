@@ -504,8 +504,15 @@ async function runAdoption(rows: Row[], cfg: AdoptConfig, backfill = false) {
   }
   stats.updated = changed.length;
 
+  // NOTE: rows in one bulk insert don't share a column set (service_call_status
+  // is present only when Priority's status is terminal), and PostgREST fills a
+  // key that other rows carry with NULL — not with the column default. That is
+  // how 23 open calls landed with a NULL status and vanished from every list
+  // (Ami, 30/08/2026). `defaultToNull: false` makes missing keys take the
+  // column default instead.
   for (let i = 0; i < inserts.length; i += 500) {
-    const { error } = await supabaseAdmin.from(cfg.table).insert(inserts.slice(i, i + 500));
+    const { error } = await supabaseAdmin.from(cfg.table)
+      .insert(inserts.slice(i, i + 500), { defaultToNull: false });
     if (error) throw new Error(`${cfg.table} insert: ${error.message}`);
   }
   stats.inserted = inserts.length;
