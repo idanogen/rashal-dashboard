@@ -37,3 +37,15 @@ test('לכל טון יש מחלקת עיצוב, כי Tailwind לא יוצר מח
     assert.ok(MEDIA_BADGE_CLASS[b.tone], `tone ${b.tone} has a class`);
   }
 });
+
+// עידן, 30/08/2026: "תזכורת נשלחה, ממתין לתמונה זה יותר מדי מלל."
+// הכרטיס צפוף, הצבע נושא את המשמעות, והמשפט המלא עבר לטולטיפ.
+test('🔴 התווית קצרה: עד שתי מילים (אימוג׳י לא נספר), והמשפט המלא בטולטיפ', () => {
+  for (const s of ['media_received', 'pending', 'first_sent', 'reminder_sent', 'replied_no_media', 'no_response', 'failed', 'no_phone']) {
+    const b = mediaBadge(s);
+    const words = b.label.replace('📷 ', '').trim().split(/\s+/);
+    assert.ok(words.length <= 3, `"${b.label}" ארוכה מדי (${words.length} מילים)`);
+    assert.ok(b.long.length > b.label.length, `ל-${s} אין טולטיפ מפורט`);
+  }
+  assert.equal(mediaBadge('reminder_sent').label, 'נשלחה תזכורת');
+});

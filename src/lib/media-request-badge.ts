@@ -13,28 +13,31 @@
 export type MediaBadgeTone = 'green' | 'amber' | 'red' | 'blue' | 'gray';
 
 export interface MediaBadge {
+  /** עד שתי מילים — הכרטיס צפוף והצבע נושא את רוב המשמעות (עידן, 30/08). */
   label: string;
+  /** המשפט המלא, לטולטיפ. */
+  long: string;
   tone: MediaBadgeTone;
 }
 
 export function mediaBadge(state: string): MediaBadge | null {
   switch (state) {
     case 'media_received':
-      return { label: '📷 תמונה התקבלה', tone: 'green' };
+      return { label: '📷 תמונה התקבלה', long: 'הלקוח שלח תמונה או סרטון של התקלה', tone: 'green' };
     case 'pending':
-      return { label: 'בקשת תמונה בתור', tone: 'gray' };
+      return { label: 'תמונה בתור', long: 'בקשת תמונה ממתינה לשליחה', tone: 'gray' };
     case 'first_sent':
-      return { label: 'ממתין לתמונה', tone: 'amber' };
+      return { label: 'ממתין לתמונה', long: 'נשלחה ללקוח בקשת תמונה, טרם ענה', tone: 'amber' };
     case 'reminder_sent':
-      return { label: 'תזכורת נשלחה, ממתין לתמונה', tone: 'amber' };
+      return { label: 'נשלחה תזכורת', long: 'נשלחה תזכורת, עדיין ממתין לתמונה', tone: 'amber' };
     case 'replied_no_media':
-      return { label: 'ענה בלי תמונה', tone: 'blue' };
+      return { label: 'ענה בלי תמונה', long: 'הלקוח ענה בטקסט בלי תמונה, כדאי להיכנס לשיחה', tone: 'blue' };
     case 'no_response':
-      return { label: 'אין מענה לבקשת תמונה', tone: 'red' };
+      return { label: 'אין מענה', long: 'אין מענה לבקשת התמונה גם אחרי התזכורת, כדאי להתקשר', tone: 'red' };
     case 'failed':
-      return { label: 'שליחת בקשת תמונה נכשלה', tone: 'red' };
+      return { label: 'שליחה נכשלה', long: 'שליחת בקשת התמונה נכשלה, כנראה אין וואטסאפ על המספר', tone: 'red' };
     case 'no_phone':
-      return { label: 'אין נייד לבקשת תמונה', tone: 'gray' };
+      return { label: 'אין נייד', long: 'אין מספר נייד לשליחת בקשת תמונה', tone: 'gray' };
     default:
       // cancelled · skipped · מצב עתידי שלא הוגדר: אין פעולה, אין צבע.
       return null;

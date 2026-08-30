@@ -139,7 +139,7 @@ export function buildServiceCallItems(
           <p className="mt-0.5">
             <span
               className={`inline-block rounded-full px-2 py-1 text-xs font-semibold ${MEDIA_BADGE_CLASS[badge.tone]}`}
-              title={mediaState?.mediaReceivedAt ? `התקבלה ${new Date(mediaState.mediaReceivedAt).toLocaleString('he-IL')}` : undefined}
+              title={mediaState?.mediaReceivedAt ? `התקבלה ${new Date(mediaState.mediaReceivedAt).toLocaleString('he-IL')}` : badge.long}
             >
               {badge.label}
             </span>
