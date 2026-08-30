@@ -34,6 +34,10 @@ const RESEND_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 // ⭐ להוספת עמי או שלומי כנמענים צריך לאמת את הדומיין ב-Resend.
 const ALERT_FROM = Deno.env.get("ALERT_FROM") ?? "Ogen Sync <onboarding@resend.dev>";
 const ALERT_EMAIL = Deno.env.get("ALERT_EMAIL") ?? "idan@ogensolutions.biz";
+// התראת דירוג נמוך היא אות ללקוח-פנים (שלומי/עמי/רונן ברשעל) ולא התראת
+// תפעול, ולכן רשימת נמענים נפרדת: SURVEY_ALERT_EMAIL. בלעדיה נופלים
+// ל-ALERT_EMAIL, כדי שההתראה לעולם לא תישאר בלי נמען.
+const SURVEY_ALERT_EMAIL = Deno.env.get("SURVEY_ALERT_EMAIL") ?? ALERT_EMAIL;
 const SURVEYS_URL = "https://rashal-dashboard.vercel.app/surveys";
 
 const sb = createClient(
@@ -255,7 +259,7 @@ async function sendAlertMail(subject: string, html: string): Promise<boolean> {
         from: ALERT_FROM,
         // ⭐ רשימה מופרדת בפסיקים, כדי שהוספת עמי או שלומי היא שינוי
         // משתנה סביבה ולא שינוי קוד.
-        to: ALERT_EMAIL.split(",").map((x) => x.trim()).filter(Boolean),
+        to: SURVEY_ALERT_EMAIL.split(",").map((x) => x.trim()).filter(Boolean),
         subject,
         html,
       }),
