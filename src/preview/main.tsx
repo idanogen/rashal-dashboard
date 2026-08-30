@@ -35,6 +35,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { DispatchPage } from '@/pages/DispatchPage';
 import { DeliveryCalendar } from '@/components/deliveries/DeliveryCalendar';
+import { WaAutomationsPage } from '@/pages/WaAutomationsPage';
 import type { CalendarStop } from '@/types/calendar-stop';
 
 /**
@@ -345,9 +346,38 @@ if (new URLSearchParams(location.search).get('view') === 'dispatch-error') {
     });
 }
 
+/** חדר הבקרה של האוטומציות: נתוני אמת מהיום שהמנוע עלה לאוויר. */
+if (new URLSearchParams(location.search).get('view') === 'wa-automations') {
+  previewQc
+    .getQueryCache()
+    .build(previewQc, { queryKey: ['wa-automation-overview'] })
+    .setState({
+      status: 'success',
+      fetchStatus: 'idle',
+      dataUpdatedAt: Date.now(),
+      data: {
+        surveys: { enabled: true, dry_run: false, sent_today: 13, sent_7d: 65, answered_7d: 27, queue: 4, failed_open: 0, last_run_at: new Date(Date.now() - 9 * 60_000).toISOString() },
+        media: { enabled: true, dry_run: false, sent_today: 8, waiting: 8, queue: 0, received_7d: 1, no_response_open: 1, no_phone_open: 0, failed_open: 0, last_run_at: new Date(Date.now() - 4 * 60_000).toISOString() },
+        reminders: { sent_7d: 0, last_at: '2026-06-15T14:01:00Z' },
+        manual: { sent_7d: 7, last_at: new Date(Date.now() - 3 * 3_600_000).toISOString() },
+        suppressed: 0,
+        delivery_failed_7d: 7,
+        generated_at: new Date().toISOString(),
+      },
+    });
+}
+
 const view = new URLSearchParams(location.search).get('view');
 
 const VIEWS: Record<string, React.ReactElement> = {
+  /** חדר הבקרה של אוטומציות הוואטסאפ, עם נתוני היום האמיתיים. */
+  'wa-automations': (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
+      <div className="mx-auto max-w-5xl">
+        <WaAutomationsPage />
+      </div>
+    </div>
+  ),
   /** כרטיס יומן במצב "לא בוצע": האיקס עם הסיבה צמודה אליו (30/08). */
   'calendar-x': (
     <div dir="rtl" className="min-h-screen bg-slate-50 p-6">

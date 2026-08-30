@@ -14,6 +14,7 @@ import { WhatsAppPage } from '@/pages/WhatsAppPage';
 import { InboxPage } from '@/pages/InboxPage';
 import { CustomerPage } from '@/pages/CustomerPage';
 import { AdminUsersPage } from '@/pages/AdminUsersPage';
+import { WaAutomationsPage } from '@/pages/WaAutomationsPage';
 import { TeamPage } from '@/pages/TeamPage';
 import { WhatsAppTemplatesPage } from '@/pages/WhatsAppTemplatesPage';
 import { DriverDashboardPage } from '@/pages/DriverDashboardPage';
@@ -113,6 +114,14 @@ function App() {
                           element={
                             <ProtectedAdminRoute allow={screenAllow('/admin/wa-templates')}>
                               <WhatsAppTemplatesPage />
+                            </ProtectedAdminRoute>
+                          }
+                        />
+                        <Route
+                          path="/admin/wa-automations"
+                          element={
+                            <ProtectedAdminRoute allow={screenAllow('/admin/wa-automations')}>
+                              <WaAutomationsPage />
                             </ProtectedAdminRoute>
                           }
                         />

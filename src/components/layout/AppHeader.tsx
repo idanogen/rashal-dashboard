@@ -55,6 +55,7 @@ const ADMIN_LINKS = [
   { to: '/inspections', label: 'בדיקות מנופים' },
   { to: '/whatsapp', label: 'וואטסאפ' },
   { to: '/admin/wa-templates', label: '💬 תבניות וואטסאפ' },
+  { to: '/admin/wa-automations', label: '🤖 אוטומציות וואטסאפ' },
   { to: '/admin/users', label: '👥 משתמשים' },
   { to: '/admin/team', label: '🚚 צוות השטח' },
   { to: '/admin/permissions', label: '🛡️ הרשאות' },

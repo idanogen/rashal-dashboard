@@ -52,6 +52,9 @@ export const SCREEN_ACCESS: ScreenAccess[] = [
   { path: '/admin/team',       label: 'צוות השטח',         group: 'admin', allow: MANAGERS },
   { path: '/admin/permissions', label: 'הרשאות',          group: 'admin', allow: MANAGERS },
   { path: '/admin/wa-templates', label: 'תבניות וואטסאפ', group: 'admin', allow: ['admin'] },
+  // ⭐ חדר הבקרה של האוטומציות (30/08/2026): צפייה למי שרואה כסף,
+  // והמתג עצמו נאכף במסד למנהל מערכת בלבד.
+  { path: '/admin/wa-automations', label: 'אוטומציות וואטסאפ', group: 'admin', allow: MONEY },
   { path: '/route-navigation', label: 'ניווט מסלול',       group: 'field', allow: [...STAFF, 'driver'] },
   { path: '/driver',           label: 'מסך הנהג',          group: 'field', allow: ['driver'] },
 ];
