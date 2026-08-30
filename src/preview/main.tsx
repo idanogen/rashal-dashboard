@@ -34,6 +34,10 @@ import { GlobalChatProvider } from '@/context/GlobalChatContext';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { DispatchPage } from '@/pages/DispatchPage';
+import { DispatchCard } from '@/components/dispatch/UnscheduledPanel';
+import { buildServiceCallItems } from '@/components/dispatch/items';
+import { DndContext } from '@dnd-kit/core';
+import type { ServiceCall } from '@/types/service-call';
 import { DeliveryCalendar } from '@/components/deliveries/DeliveryCalendar';
 import { WaAutomationsPage } from '@/pages/WaAutomationsPage';
 import type { CalendarStop } from '@/types/calendar-stop';
@@ -370,7 +374,32 @@ if (new URLSearchParams(location.search).get('view') === 'wa-automations') {
 
 const view = new URLSearchParams(location.search).get('view');
 
+/** כרטיסי סדרן לצילום: חיווי התמונה המוגדל + כפתור "כרטיס" עם שם ארוך. */
+const PREVIEW_CALLS = [
+  { id: 'c1', customerName: 'יהודית חיה ברסלר גולדשטיין', customerNumber: '219970647', phone: '050-3304721', address: 'אוהב ישראל 8/5', city: 'ביתר עילית', deviceName: '183WM56', deviceSerial: 'ZRS-066620', created: new Date().toISOString() },
+  { id: 'c2', customerName: 'שרה נחמה ברסלר', customerNumber: '225020668', phone: '050-3304721', address: 'אוהב ישראל 8', city: 'ביתר עלית', deviceName: '183WM56', deviceSerial: 'ZRS-066658', created: new Date().toISOString() },
+  { id: 'c3', customerName: 'גונן יעל', customerNumber: '059308247', phone: '0536584770', address: 'דובדבן 7/2', city: 'בית שאן', deviceName: 'Q6EDGE HD', deviceSerial: 'JC712826002UK1', created: new Date().toISOString() },
+] as unknown as ServiceCall[];
+
+const PREVIEW_MEDIA = new Map([
+  ['c1', { serviceCallId: 'c1', state: 'first_sent', mediaReceivedAt: null }],
+  ['c2', { serviceCallId: 'c2', state: 'reminder_sent', mediaReceivedAt: null }],
+  ['c3', { serviceCallId: 'c3', state: 'media_received', mediaReceivedAt: new Date().toISOString() }],
+]);
+
 const VIEWS: Record<string, React.ReactElement> = {
+  /** כרטיס קריאה במסך הסדרן: חיווי תמונה מוגדל, וכפתור "כרטיס" ששרד שם ארוך. */
+  'dispatch-card': (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
+      <DndContext>
+        <div className="mx-auto grid max-w-4xl grid-cols-3 gap-4">
+          {buildServiceCallItems(PREVIEW_CALLS, new Map(), undefined, PREVIEW_MEDIA).map((vm) => (
+            <DispatchCard key={vm.id} vm={vm} accentBorder="border-s-orange-500" />
+          ))}
+        </div>
+      </DndContext>
+    </div>
+  ),
   /** חדר הבקרה של אוטומציות הוואטסאפ, עם נתוני היום האמיתיים. */
   'wa-automations': (
     <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
@@ -430,7 +459,7 @@ const VIEWS: Record<string, React.ReactElement> = {
           const b = mediaBadge(s);
           return b ? (
             <p key={s}>
-              <span className={`inline-block rounded-full px-1.5 py-0.5 text-[10px] font-medium ${MEDIA_BADGE_CLASS[b.tone]}`}>
+              <span className={`inline-block rounded-full px-2 py-1 text-xs font-semibold ${MEDIA_BADGE_CLASS[b.tone]}`}>
                 {b.label}
               </span>
             </p>

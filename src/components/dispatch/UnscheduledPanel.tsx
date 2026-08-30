@@ -107,7 +107,8 @@ interface DispatchCardProps {
   onToggleSelect?: (id: string) => void;
 }
 
-function DispatchCard({
+// מיוצא לרינדור ב-preview.html (צילום מצב הכרטיס בלי מסך התחברות).
+export function DispatchCard({
   vm,
   accentBorder,
   isExcluded,
@@ -201,11 +202,14 @@ function DispatchCard({
 
         <div className="mb-2 flex items-start justify-between">
           <div className="min-w-0 flex-1">
-            <p className={cn('truncate text-sm font-semibold', isExcluded && 'line-through')}>
-              {vm.customerName}
+            {/* 🔴 השם לבדו נחתך, לא השורה כולה: כשהכל ישב בתוך truncate אחד,
+                שם ארוך בלע את כפתור "כרטיס" ואת התגים שאחריו, והם הופיעו
+                רק אצל לקוחות עם שם קצר (עידן, 30/08/2026). */}
+            <p className={cn('flex items-center text-sm font-semibold', isExcluded && 'line-through')}>
+              <span className="min-w-0 truncate" title={vm.customerName}>{vm.customerName}</span>
               {vm.dupCount && vm.dupCount > 1 && (
                 <span
-                  className="ms-1 inline-flex h-4 items-center rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-800"
+                  className="ms-1 inline-flex h-4 shrink-0 items-center rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-800"
                   title={`כפילות מ-Priority — ${vm.dupCount} רשומות זהות אוחדו לשורה אחת`}
                 >
                   ×{vm.dupCount}
@@ -222,7 +226,7 @@ function DispatchCard({
               />
               {isReturned && (
                 <span
-                  className="ms-1 inline-flex h-4 items-center gap-0.5 rounded bg-red-100 px-1 text-[10px] font-bold text-red-700"
+                  className="ms-1 inline-flex h-4 shrink-0 items-center gap-0.5 rounded bg-red-100 px-1 text-[10px] font-bold text-red-700"
                   title={
                     returnedInfo?.note
                       ? `סומן "לא בוצע" · ${returnedInfo.note}`

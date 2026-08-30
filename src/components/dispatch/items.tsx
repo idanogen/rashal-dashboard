@@ -138,7 +138,7 @@ export function buildServiceCallItems(
         {badge && (
           <p className="mt-0.5">
             <span
-              className={`inline-block rounded-full px-1.5 py-0.5 text-[10px] font-medium ${MEDIA_BADGE_CLASS[badge.tone]}`}
+              className={`inline-block rounded-full px-2 py-1 text-xs font-semibold ${MEDIA_BADGE_CLASS[badge.tone]}`}
               title={mediaState?.mediaReceivedAt ? `התקבלה ${new Date(mediaState.mediaReceivedAt).toLocaleString('he-IL')}` : undefined}
             >
               {badge.label}
@@ -272,7 +272,7 @@ export function buildCustomerItems(customers: NewCustomer[]): DispatchItemVM[] {
       customer.openedBy
     ),
     nameBadge: isBareCustomer(customer) ? (
-      <span className="ms-1 inline-flex h-4 items-center rounded bg-violet-600 px-1 text-[10px] font-semibold text-white">
+      <span className="ms-1 inline-flex h-4 shrink-0 items-center rounded bg-violet-600 px-1 text-[10px] font-semibold text-white">
         ללא הזמנה
       </span>
     ) : undefined,
