@@ -266,6 +266,72 @@ async function handleStatus(
   return finish(true, `סטטוס עודכן ל-${status}`, { status, matched: updated?.length ?? 0 });
 }
 
+/**
+ * תמונה שהתקבלה למנוע "תמונה לפני טכנאי" משוכפלת לצ'אט הקריאה (בקשת
+ * עידן, 30/08/2026): משם היא גלויה לצוות ליד הקריאה עצמה, ומנגנון
+ * הדחיפה הקיים (priority-push ← rashal-push) מעלה אותה לבד לכרטיס
+ * הלקוח בפריוריטי כנספח. אין כאן ערוץ דחיפה חדש, רק הזנה של צינור מוכח.
+ *
+ * 🔴 רץ רק כשה-RPC החזיר מזהה, כלומר פעם אחת לכל בקשה (מעבר מצב), ולכן
+ * וובהוק כפול של heyy לא מייצר כפילות בפריוריטי.
+ * 🔴 הקובץ מועתק לדלי הציבורי של הצ'אט לפני הרישום, כי כתובת ה-S3 של
+ * heyy פגה אחרי 24 שעות והדחיפה לפריוריטי רצה עם השהיה וניסיונות חוזרים.
+ * 🔴 קובץ מעל 10MB (סרטון ארוך) לא נדחף לפריוריטי: הוא נשלח כ-data URI
+ * בגוף הבקשה, ומטען ענק היה נכשל שם שוב ושוב בלי להשתחרר מהתור.
+ */
+const MEDIA_MIRROR_MAX_BYTES = 10_000_000;
+
+async function mirrorMediaToRecordChat(mediaReqId: string, rawAttachments: unknown): Promise<void> {
+  const { data: mr } = await supabaseAdmin
+    .from('media_requests')
+    .select('service_call_id, priority_call_id')
+    .eq('id', mediaReqId)
+    .single();
+  if (!mr?.service_call_id) return;
+
+  const files = describeAttachments(rawAttachments);
+  const raw = Array.isArray(rawAttachments) ? (rawAttachments as any[]) : [];
+  const imageUrls: string[] = [];
+  const names: string[] = [];
+  let skippedBig = 0;
+
+  for (const f of files) {
+    if (f.kind !== 'image' && f.kind !== 'video') continue;
+    const url = raw[f.index]?.file?.url;
+    if (typeof url !== 'string' || !url) continue;
+    const r = await fetch(url);
+    if (!r.ok) continue;
+    const mime = r.headers.get('content-type') ?? 'application/octet-stream';
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (buf.length > MEDIA_MIRROR_MAX_BYTES) { skippedBig++; continue; }
+    const ext = mime.split('/')[1]?.split(';')[0] ?? 'bin';
+    const path = `wa-media/${mediaReqId}/${Date.now()}-${f.index}.${ext}`;
+    const up = await supabaseAdmin.storage
+      .from('timeline-files')
+      .upload(path, buf, { contentType: mime });
+    if (up.error) { console.error('[heyy-webhook] media mirror upload', up.error.message); continue; }
+    const { data: pub } = supabaseAdmin.storage.from('timeline-files').getPublicUrl(path);
+    if (pub?.publicUrl) {
+      imageUrls.push(pub.publicUrl);
+      names.push(f.name ?? `קובץ ${f.index + 1}`);
+    }
+  }
+  if (!imageUrls.length && !skippedBig) return;
+
+  const note = skippedBig ? ` (וגם סרטון גדול שנשאר בשיחת הוואטסאפ בלבד)` : '';
+  const { error } = await supabaseAdmin.from('timeline_events').insert({
+    id: crypto.randomUUID(),
+    service_call_id: mr.service_call_id,
+    type: imageUrls.length ? 'file_upload' : 'comment',
+    user_id: 'wa-customer',
+    user_name: 'הלקוח (וואטסאפ)',
+    content: `תמונה מהלקוח לבקשת "תמונה לפני טכנאי"${note}`,
+    files: names.length ? names : null,
+    metadata: { imageUrls, source: 'media-request', media_request_id: mediaReqId },
+  });
+  if (error) console.error('[heyy-webhook] media mirror insert', error.message);
+}
+
 /** הודעה נכנסת מלקוח. */
 async function handleInbound(payload: any, finish: Finish, res: VercelResponse) {
   const extracted = extractMessage(payload);
@@ -311,6 +377,15 @@ async function handleInbound(payload: any, finish: Finish, res: VercelResponse) 
       if (mediaErr) console.error('[heyy-webhook] media request reply', mediaErr.message);
       else if (mediaReqId) {
         console.log('[heyy-webhook] media request', hasVisualMedia ? 'media_received' : 'replied_no_media', mediaReqId);
+        // שכפול התמונה לצ'אט הקריאה ומשם לפריוריטי. כישלון כאן לא מפיל
+        // את הוובהוק: הבקשה כבר סומנה ירוק, והתמונה קיימת בשרשור.
+        if (hasVisualMedia) {
+          try {
+            await mirrorMediaToRecordChat(String(mediaReqId), payload?.data?.content?.attachments);
+          } catch (e) {
+            console.error('[heyy-webhook] media mirror threw', e instanceof Error ? e.message : e);
+          }
+        }
       }
     } catch (e) {
       console.error('[heyy-webhook] media request threw', e instanceof Error ? e.message : e);
