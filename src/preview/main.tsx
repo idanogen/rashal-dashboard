@@ -14,6 +14,8 @@ import type React from 'react';
 import { createRoot } from 'react-dom/client';
 import '@/index.css';
 import { CustomerCardBody } from '@/components/customer/CustomerCard';
+import { LastVisitBadge } from '@/components/customer/LastVisitBadge';
+import { localDateStr } from '@/lib/visit-history';
 import { CustomerCardButton } from '@/components/customer/CustomerCardSheet';
 import { FIXTURE } from '@/preview/customer-fixture';
 import { DuplicateScheduleWarningDialog } from '@/components/deliveries/DuplicateScheduleWarningDialog';
@@ -344,6 +346,27 @@ if (new URLSearchParams(location.search).get('view') === 'dispatch-error') {
 const view = new URLSearchParams(location.search).get('view');
 
 const VIEWS: Record<string, React.ReactElement> = {
+  /** "ביקור אחרון" (בקשת עמי 30/08): שלושת המצבים של התג. */
+  'visit-badge': (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
+      <div className="mx-auto max-w-md space-y-4 rounded-2xl border bg-white p-5">
+        <div className="text-xs font-bold text-slate-500">טרי ובוצע, גלולה ירוקה:</div>
+        <LastVisitBadge
+          date={localDateStr(new Date(Date.now() - 5 * 86_400_000))}
+          driver="דוד"
+          outcome="completed"
+        />
+        <div className="text-xs font-bold text-slate-500">טרי ולא בוצע, גלולה ענברית:</div>
+        <LastVisitBadge
+          date={localDateStr(new Date(Date.now() - 2 * 86_400_000))}
+          driver="רודי"
+          outcome="not_completed"
+        />
+        <div className="text-xs font-bold text-slate-500">ישן, שורה שקטה עם תאריך:</div>
+        <LastVisitBadge date="2026-05-28" driver="דוד" outcome="completed" />
+      </div>
+    </div>
+  ),
   dup: <DupPreview />,
   'dup-future': <DupPreviewFuture />,
   driver: <DriverPreview />,

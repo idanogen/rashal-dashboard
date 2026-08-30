@@ -35,7 +35,10 @@ import {
   RotateCcw,
   BookOpenCheck,
   ClipboardCheck,
+  Search,
 } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { buildVisitHistory } from '@/lib/visit-history';
 import type { CalendarStop as DbCalendarStop, StopResolutionKind } from '@/types/calendar-stop';
 import type { CalendarStop as UiCalendarStop } from '@/types/delivery';
 import { OrderChatSheet } from '@/components/OrderChatSheet';
@@ -263,17 +266,19 @@ export function DriverDashboardPage() {
     return result.sort((a, b) => a.date.localeCompare(b.date));
   }, [stopsByDate, today, tomorrow]);
 
-  // היסטוריית 7 הימים האחרונים (מאתמול אחורה), מהיום החדש לישן.
-  const historyStops = useMemo(() => {
-    const weekAgo = toLocalDateStr(new Date(Date.now() - 7 * 86_400_000));
-    const result: { date: string; stops: DbCalendarStop[] }[] = [];
-    for (const [date, stops] of stopsByDate.entries()) {
-      if (date >= weekAgo && date < today) {
-        result.push({ date, stops });
-      }
-    }
-    return result.sort((a, b) => b.date.localeCompare(a.date));
-  }, [stopsByDate, today]);
+  // היסטוריה: ברירת המחדל 7 ימים אחורה, אבל חיפוש רץ על **הכל** (בקשת
+  // עמי 30/08). ה-RLS כבר תוחם לעצירות של הנהג הזה בלבד, אז "הכל" הוא
+  // כל מה שהוא עצמו ביצע, כולל "לא בוצע" עם הסיבה.
+  const [historyQuery, setHistoryQuery] = useState('');
+  const historyStops = useMemo(
+    () =>
+      buildVisitHistory(stopsByDate.entries(), {
+        today,
+        floorDate: toLocalDateStr(new Date(Date.now() - 7 * 86_400_000)),
+        query: historyQuery,
+      }),
+    [stopsByDate, today, historyQuery]
+  );
 
   const historyCompleted = historyStops.reduce(
     (sum, d) => sum + d.stops.filter((s) => s.status === 'completed').length,
@@ -541,8 +546,29 @@ export function DriverDashboardPage() {
         </TabsContent>
 
         <TabsContent value="history" className="space-y-4">
+          {/* חיפוש בכל ההיסטוריה של הנהג, לא רק בשבוע המוצג. */}
+          <div className="relative">
+            <Search className="pointer-events-none absolute inset-inline-start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={historyQuery}
+              onChange={(e) => setHistoryQuery(e.target.value)}
+              placeholder="חיפוש לקוח, כתובת או סיבה, בכל ההיסטוריה שלך"
+              className="ps-9"
+            />
+          </div>
+          {historyQuery.trim() !== '' && historyStops.length > 0 && (
+            <p className="px-1 text-[11px] text-muted-foreground">
+              מציג התאמות מכל ההיסטוריה שלך, לא רק מהשבוע האחרון
+            </p>
+          )}
           {historyStops.length === 0 ? (
-            <EmptyState message="אין היסטוריה מהשבוע האחרון" />
+            <EmptyState
+              message={
+                historyQuery.trim() !== ''
+                  ? `לא נמצאו ביקורים שמתאימים ל"${historyQuery.trim()}"`
+                  : 'אין היסטוריה מהשבוע האחרון'
+              }
+            />
           ) : (
             <>
               {/* סיכום שבועי — סופקו / לא בוצעו */}

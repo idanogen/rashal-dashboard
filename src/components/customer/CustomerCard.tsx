@@ -4,6 +4,7 @@ import {
   Loader2, AlertTriangle, Clock, User, MapPin, Phone,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { LastVisitBadge } from '@/components/customer/LastVisitBadge';
 import {
   fetchCustomerCard, customerCardKey,
   type CustomerCardData, type TimelineEvent,
@@ -276,6 +277,14 @@ export function CustomerCardBody({
   const answer = answerLine(orders, calls, undefined, data.stock);
   const certainty = certaintyNote(data.match);
   const identity = identityNote(c);
+  // הביקור האחרון שקרה בפועל, מתוך אירועי ה'stop' שכבר יושבים על הציר.
+  // ref = הנהג, הכותרת מבדילה בוצע מ'לא בוצע' (כך הפונקציה במסד כותבת).
+  const lastVisit = (data.timeline ?? [])
+    .filter((e) => e.kind === 'stop' && e.at)
+    .reduce<(typeof data.timeline)[number] | null>(
+      (best, e) => (best && best.at >= e.at ? best : e),
+      null
+    );
 
   return (
     <div className="space-y-3">
@@ -325,6 +334,13 @@ export function CustomerCardBody({
           התשובה ללקוח
         </div>
         <div className="mt-0.5 text-[15px] font-bold text-slate-900">{answer.text}</div>
+        {lastVisit && (
+          <LastVisitBadge
+            date={lastVisit.at.slice(0, 10)}
+            driver={lastVisit.ref}
+            outcome={lastVisit.title === 'בוצע בשטח' ? 'completed' : 'not_completed'}
+          />
+        )}
       </div>
 
       {/* 🔴 הטלפון שכותב אינו הטלפון שרשום בפריוריטי. נאמר לפני הציוד,

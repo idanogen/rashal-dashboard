@@ -24,6 +24,10 @@ export interface CustomerHit {
   city: string | null;
   match_kind: MatchKind;
   score: number;
+  /** הביקור האחרון שקרה בפועל (בקשת עמי 30/08): מודגש בתוצאה כשהוא טרי. */
+  last_visit_date: string | null;
+  last_visit_driver: string | null;
+  last_visit_outcome: 'completed' | 'not_completed' | null;
 }
 
 export interface TimelineEvent {

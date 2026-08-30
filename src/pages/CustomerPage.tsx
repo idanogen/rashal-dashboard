@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Search, Loader2, Phone, Hash, FileText, User } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { CustomerCard } from '@/components/customer/CustomerCard';
+import { LastVisitBadge } from '@/components/customer/LastVisitBadge';
 import { searchCustomers, customerSearchKey, type CustomerHit } from '@/lib/customer-card';
 
 /**
@@ -52,6 +53,13 @@ function HitRow({ hit, active, onClick }: { hit: CustomerHit; active: boolean; o
         {hit.phone && <bdi className="font-mono">{hit.phone}</bdi>}
         {hit.city && <span>· {hit.city}</span>}
       </div>
+      {hit.last_visit_date && (
+        <LastVisitBadge
+          date={hit.last_visit_date}
+          driver={hit.last_visit_driver}
+          outcome={hit.last_visit_outcome}
+        />
+      )}
     </button>
   );
 }
