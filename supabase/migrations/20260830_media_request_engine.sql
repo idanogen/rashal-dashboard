@@ -259,7 +259,10 @@ declare
   sent_today int;
   room int;
 begin
-  select * into cfg from public.media_request_settings where id;
+  -- 🔴 s.id ולא id: לפונקציה יש עמודת OUT בשם id, ו-plpgsql מסרב להכריע
+  -- בין המשתנה לעמודה. נתפס בריצה החיה הראשונה, אחרי שכל הריצות היבשות
+  -- עברו כי הן לא מגיעות ל-claim.
+  select * into cfg from public.media_request_settings s where s.id;
 
   -- קריאה שעזבה את "לביצוע", אורכבה, או שכבר שובץ לה טכנאי ביומן,
   -- לא מקבלת יותר כלום. ההודעה נועדה לפני שיבוץ, לא אחריו.
