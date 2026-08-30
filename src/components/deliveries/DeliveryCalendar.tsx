@@ -4,6 +4,7 @@ import type { CalendarDelivery, CalendarStop } from '@/types/delivery';
 import { assigneeStyle } from '@/types/delivery';
 import { useAssignees } from '@/hooks/useAssignees';
 import { compareStopsByTime } from '@/lib/stop-order';
+import { ReturnedNote } from '@/components/ReturnedNote';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -352,6 +353,20 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate, onMoveSto
             </>
           )}
         </div>
+      )}
+
+      {/* הסיבה שהעצירה לא בוצעה, צמודה לאיקס שהיא מסבירה. בלי זה המנהל
+          רואה איקס אדום וחוזר לטלפן לנהג ולשאול למה. */}
+      {stop.status === 'not_completed' && (
+        <ReturnedNote
+          info={{
+            stopId: stop.stopId,
+            note: stop.resolutionNote ?? null,
+            driver: stop.driver,
+            deliveryDate: stop.deliveryDate,
+            kind: stop.resolutionKind,
+          }}
+        />
       )}
 
       {/* עצירה שלא בוצעה — אפשר להעביר ליום אחר (נעולה לגרירה) */}

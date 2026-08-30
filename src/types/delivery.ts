@@ -58,6 +58,12 @@ export interface CalendarStop {
   scheduledBy?: string;
   rescheduledBy?: string;
   rescheduledAt?: string;
+  /**
+   * הסיבה שהעצירה סומנה "לא בוצע", כדי שהאיקס על כרטיס היומן לא יעמוד
+   * בלי הסבר (עידן, 30/08/2026: "איפה אני רואה את הסיבה שזה עבר לאיקס?").
+   */
+  resolutionNote?: string;
+  resolutionKind?: import('./calendar-stop').StopResolutionKind;
 }
 
 export interface CalendarDelivery {

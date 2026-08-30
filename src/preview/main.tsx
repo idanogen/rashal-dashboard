@@ -33,6 +33,7 @@ import { GlobalChatProvider } from '@/context/GlobalChatContext';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { DispatchPage } from '@/pages/DispatchPage';
+import { DeliveryCalendar } from '@/components/deliveries/DeliveryCalendar';
 import type { CalendarStop } from '@/types/calendar-stop';
 
 /**
@@ -346,6 +347,49 @@ if (new URLSearchParams(location.search).get('view') === 'dispatch-error') {
 const view = new URLSearchParams(location.search).get('view');
 
 const VIEWS: Record<string, React.ReactElement> = {
+  /** כרטיס יומן במצב "לא בוצע": האיקס עם הסיבה צמודה אליו (30/08). */
+  'calendar-x': (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
+      <div className="mx-auto max-w-sm">
+        <DeliveryCalendar
+          deliveries={[
+            {
+              id: 'g1',
+              date: localDateStr(new Date()),
+              driver: 'מוהנד',
+              stops: [
+                {
+                  stopId: 'x1',
+                  sourceId: 'o1',
+                  sourceType: 'delivery',
+                  status: 'not_completed',
+                  deliveryDate: localDateStr(new Date()),
+                  driver: 'מוהנד',
+                  customerName: 'חיל סעידה מזל',
+                  address: 'שער אפרים',
+                  city: 'שער אפרים',
+                  phone: '0544362341',
+                  resolutionNote: 'הלקוח לא היה בבית',
+                  resolutionKind: 'not_done',
+                },
+                {
+                  stopId: 'x2',
+                  sourceId: 'o2',
+                  sourceType: 'delivery',
+                  status: 'not_completed',
+                  deliveryDate: localDateStr(new Date()),
+                  driver: 'מוהנד',
+                  customerName: 'עצירה ישנה בלי סיבה',
+                  city: 'טייבה',
+                },
+              ],
+            },
+          ]}
+          onMoveStop={() => {}}
+        />
+      </div>
+    </div>
+  ),
   /** "ביקור אחרון" (בקשת עמי 30/08): שלושת המצבים של התג. */
   'visit-badge': (
     <div dir="rtl" className="min-h-screen bg-slate-50 p-6">

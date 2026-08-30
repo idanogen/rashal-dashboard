@@ -37,6 +37,10 @@ export function toViewStop(s: DbStop) {
     scheduledBy: s.scheduledBy,
     rescheduledBy: s.rescheduledBy,
     rescheduledAt: s.rescheduledAt,
+    // עצירות שנסגרו לפני 23/08/2026 מחזיקות את הסיבה ב-notes,
+    // אותו fallback כמו buildReturnedMap.
+    resolutionNote: s.resolutionNote ?? s.notes,
+    resolutionKind: s.resolutionKind,
   };
 }
 
