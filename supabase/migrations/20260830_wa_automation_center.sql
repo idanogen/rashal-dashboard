@@ -55,6 +55,22 @@ begin
       )
       from public.media_request_settings m where m.id
     ),
+    'on_way', (
+      select jsonb_build_object(
+        'enabled', w.enabled,
+        'dry_run', w.dry_run,
+        'sent_today', (select count(*) from public.on_way_notices n
+                        where n.sent_at >= day_start and n.is_test = false),
+        'sent_7d',    (select count(*) from public.on_way_notices n
+                        where n.sent_at >= week_ago and n.is_test = false),
+        'skipped_today', (select count(*) from public.on_way_events e
+                           where e.created_at >= day_start
+                             and e.result not in ('sent', 'claimed', 'dry')
+                             and e.result is not null),
+        'last_run_at',(select max(r.ran_at) from public.on_way_runs r)
+      )
+      from public.on_way_settings w where w.id
+    ),
     -- התזכורת יום-לפני מנוהלת במשתנה סביבה בוורסל (WA_REMINDERS_ENABLED),
     -- ולכן אין לה מתג כאן, רק תמונת מצב מהיומן שלה.
     'reminders', jsonb_build_object(
@@ -95,6 +111,8 @@ begin
     update public.survey_settings s set enabled = p_enabled where s.id;
   elsif p_engine = 'media' then
     update public.media_request_settings m set enabled = p_enabled where m.id;
+  elsif p_engine = 'on_way' then
+    update public.on_way_settings w set enabled = p_enabled where w.id;
   else
     raise exception 'unknown engine: %', p_engine;
   end if;

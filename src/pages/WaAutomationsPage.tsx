@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  MessageSquare, Camera, Star, CalendarClock, Hand, ShieldOff, AlertTriangle, Loader2,
+  MessageSquare, Camera, Star, CalendarClock, Hand, ShieldOff, AlertTriangle, Loader2, Truck,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -34,6 +34,7 @@ interface Overview {
     sent_today: number; waiting: number; queue: number; received_7d: number;
     no_response_open: number; no_phone_open: number; failed_open: number;
   };
+  on_way: EngineNumbers & { sent_today: number; sent_7d: number; skipped_today: number };
   reminders: { sent_7d: number; last_at: string | null };
   manual: { sent_7d: number; last_at: string | null };
   suppressed: number;
@@ -87,6 +88,7 @@ export function WaAutomationsPage() {
   const now = new Date();
   const surveysState = engineState(data.surveys.enabled, data.surveys.dry_run);
   const mediaState = engineState(data.media.enabled, data.media.dry_run);
+  const onWayState = engineState(data.on_way.enabled, data.on_way.dry_run);
 
   return (
     <div className="space-y-4">
@@ -166,6 +168,26 @@ export function WaAutomationsPage() {
             enabled: data.surveys.enabled,
             busy: toggle.isPending,
             onToggle: () => toggle.mutate({ engine: 'surveys', enabled: !data.surveys.enabled }),
+          } : undefined}
+        />
+
+        {/* ── הנהג בדרך אליך ── */}
+        <EngineCard
+          icon={Truck}
+          title="הנהג בדרך אליך"
+          description="נהג שסוגר עצירה שולח ללקוח הבא בתור הודעה שהוא בדרך. מיידי, פעם אחת לעצירה."
+          state={onWayState}
+          lastRun={sinceLabel(data.on_way.last_run_at, now)}
+          numbers={[
+            { label: 'יצאו היום', value: data.on_way.sent_today },
+            { label: 'יצאו (7 ימים)', value: data.on_way.sent_7d },
+            { label: 'דולגו היום', value: data.on_way.skipped_today },
+          ]}
+          attention={[]}
+          toggle={isAdmin ? {
+            enabled: data.on_way.enabled,
+            busy: toggle.isPending,
+            onToggle: () => toggle.mutate({ engine: 'on_way', enabled: !data.on_way.enabled }),
           } : undefined}
         />
 

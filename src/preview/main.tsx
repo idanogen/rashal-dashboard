@@ -358,6 +358,7 @@ if (new URLSearchParams(location.search).get('view') === 'wa-automations') {
       data: {
         surveys: { enabled: true, dry_run: false, sent_today: 13, sent_7d: 65, answered_7d: 27, queue: 4, failed_open: 0, last_run_at: new Date(Date.now() - 9 * 60_000).toISOString() },
         media: { enabled: true, dry_run: false, sent_today: 8, waiting: 8, queue: 0, received_7d: 1, no_response_open: 1, no_phone_open: 0, failed_open: 0, last_run_at: new Date(Date.now() - 4 * 60_000).toISOString() },
+        on_way: { enabled: true, dry_run: true, sent_today: 0, sent_7d: 0, skipped_today: 2, last_run_at: new Date(Date.now() - 2 * 60_000).toISOString() },
         reminders: { sent_7d: 0, last_at: '2026-06-15T14:01:00Z' },
         manual: { sent_7d: 7, last_at: new Date(Date.now() - 3 * 3_600_000).toISOString() },
         suppressed: 0,
