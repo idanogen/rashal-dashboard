@@ -131,88 +131,9 @@ create trigger on_way_capture_tg
   after update on public.calendar_stops
   for each row execute function public.on_way_capture();
 
--- ── העיבוד: מהאירוע אל המועמד לשליחה ────────────────────────────────────
--- p_dry=true מחשב ומסמן 'dry' בלי שהפונקציה בענן תשלח דבר.
-create or replace function public.on_way_claim(p_dry boolean default false, p_limit int default 20)
-returns table (event_id bigint, next_stop_id uuid, customer_name text,
-               phone_e164 text, worker text, resolved_stop_id uuid)
-language plpgsql security definer set search_path = public
-as $fn$
-declare
-  cfg public.on_way_settings;
-  ev record;
-  nxt record;
-  verdict text;
-begin
-  select * into cfg from public.on_way_settings s where s.id;
-
-  -- אירוע ישן מ-stale_minutes כבר אינו "בדרך אליך".
-  update public.on_way_events e
-     set processed_at = now(), result = 'stale'
-   where e.processed_at is null
-     and e.created_at < now() - make_interval(mins => cfg.stale_minutes);
-
-  for ev in
-    select * from public.on_way_events e
-     where e.processed_at is null
-     order by e.created_at
-     limit p_limit
-     for update skip locked
-  loop
-    -- העצירה הבאה של אותו נהג היום, לפי הסדר הקנוני של המסכים:
-    -- שעת תיאום קודמת, ואז מספר סידורי.
-    -- 🔴 time_window_start הוא טקסט חופשי 'HH:MM'. מיון טקסטואלי היה שם
-    -- את 9:00 אחרי 10:00, ולכן הפענוח לזמן, וערך שבור נופל לסוף במקום
-    -- להפיל את הפונקציה.
-    select s.*,
-           nullif(substring(coalesce(s.time_window_start, '') from '^\d{1,2}:\d{2}'), '')::time as win_start
-      into nxt
-      from public.calendar_stops s
-     where s.driver::text = ev.driver
-       and s.delivery_date = ev.delivery_date
-       and s.status = 'planned'
-     order by (nullif(substring(coalesce(s.time_window_start, '') from '^\d{1,2}:\d{2}'), '') is null),
-              nullif(substring(coalesce(s.time_window_start, '') from '^\d{1,2}:\d{2}'), '')::time,
-              s.sequence
-     limit 1;
-
-    if nxt.id is null then
-      verdict := 'last_stop';
-    elsif exists (select 1 from public.on_way_notices n where n.stop_id = nxt.id) then
-      verdict := 'already_notified';
-    elsif regexp_replace(coalesce(nxt.phone, ''), '\D', '', 'g') !~ '^0?5[0-9]{8}$' then
-      verdict := 'no_mobile';
-    elsif not public.on_way_window_open() then
-      verdict := 'after_hours';
-    elsif nxt.win_start is not null
-      and (ev.delivery_date + nxt.win_start) at time zone 'Asia/Jerusalem'
-          > now() + make_interval(mins => cfg.lead_minutes) then
-      -- מוקדם מדי לומר "בדרך". לא מסמנים את העצירה: סגירה מאוחרת
-      -- יותר תעריך אותה מחדש כשהחלון יתקרב.
-      verdict := 'too_early';
-    else
-      verdict := case when p_dry then 'dry' else 'claimed' end;
-    end if;
-
-    update public.on_way_events e
-       set processed_at = now(),
-           result = verdict,
-           next_stop_id = nxt.id
-     where e.id = ev.id;
-
-    if verdict in ('claimed', 'dry') then
-      event_id := ev.id;
-      next_stop_id := nxt.id;
-      customer_name := nxt.customer_name;
-      phone_e164 := '+972' || right(regexp_replace(nxt.phone, '\D', '', 'g'), 9);
-      -- קריאת שירות = טכנאי, כל השאר = נהג. הלקוח שופט לפי סוג הביקור.
-      worker := case when nxt.source_type = 'service' then 'טכנאי' else 'נהג' end;
-      resolved_stop_id := ev.resolved_stop_id;
-      return next;
-    end if;
-  end loop;
-end;
-$fn$;
+-- ── העיבוד (on_way_claim) ──────────────────────────────────────────────
+-- 🔴 ההגדרה של on_way_claim הועברה ל-20260831_on_way_worker_contact.sql
+-- (נוספו worker_name + worker_phone). פונקציה חיה בקובץ מיגרציה אחד בלבד.
 
 -- שליחה הצליחה: ההודעה נרשמת, פעם אחת לכל עצירה.
 create or replace function public.on_way_mark_sent(
@@ -229,11 +150,9 @@ begin
 end;
 $fn$;
 
-revoke all on function public.on_way_claim(boolean, int) from public, anon, authenticated;
 revoke all on function public.on_way_mark_sent(bigint, uuid, text, text, uuid) from public, anon, authenticated;
 revoke all on function public.on_way_window_open() from public, anon;
 grant execute on function public.on_way_window_open() to authenticated, service_role;
-grant execute on function public.on_way_claim(boolean, int) to service_role;
 grant execute on function public.on_way_mark_sent(bigint, uuid, text, text, uuid) to service_role;
 
 -- ── התזמון (מופעל בנפרד): קרון מטאטא כל 5 דקות, ראשון-חמישי ──────────────

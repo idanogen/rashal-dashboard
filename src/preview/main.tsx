@@ -40,6 +40,7 @@ import { DndContext } from '@dnd-kit/core';
 import type { ServiceCall } from '@/types/service-call';
 import { DeliveryCalendar } from '@/components/deliveries/DeliveryCalendar';
 import { WaAutomationsPage } from '@/pages/WaAutomationsPage';
+import { CustomerCommentsList } from '@/components/surveys/CustomerCommentsList';
 import type { CalendarStop } from '@/types/calendar-stop';
 
 /**
@@ -387,7 +388,22 @@ const PREVIEW_MEDIA = new Map([
   ['c3', { serviceCallId: 'c3', state: 'media_received', mediaReceivedAt: new Date().toISOString() }],
 ]);
 
+/** רשימת "מה הלקוחות כתבו": שם + מספר לקוח + כפתור וואטסאפ (31/08). */
+const PREVIEW_COMMENTS = [
+  { id: 's1', customerName: 'טביב צפורה', customerNumber: '311122233', phoneE164: '+972546875850', satisfaction: 5, answeredAt: new Date().toISOString(), comment: 'הגיע נציג מטעם החברה בשם דוד, שירות מעל המצופה, גילה רגישות וסבלנות למצב בבית של ההורים שלי. מעריכים מאוד' },
+  { id: 's2', customerName: 'משיח ריטה', customerNumber: '204455667', phoneE164: '+972523115539', satisfaction: 1, answeredAt: '2026-08-27T11:46:00Z', comment: 'תודה על השירות המהיר.' },
+  { id: 's3', customerName: 'לויץ מאירה דבורה', customerNumber: null, phoneE164: null, satisfaction: 4, answeredAt: '2026-08-26T15:33:00Z', comment: 'השליח ממש נחמד איש עדין קבלני והסביר הכל בנחת' },
+] as unknown as import('@/lib/surveys').Survey[];
+
 const VIEWS: Record<string, React.ReactElement> = {
+  /** רשימת ההערות מהסקרים: שם, מספר לקוח בפריוריטי, וכפתור וואטסאפ. */
+  'survey-comments': (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
+      <div className="mx-auto max-w-2xl rounded-2xl border bg-white p-5" style={{ borderColor: '#eef1f6' }}>
+        <CustomerCommentsList rows={PREVIEW_COMMENTS} />
+      </div>
+    </div>
+  ),
   /** כרטיס קריאה במסך הסדרן: חיווי תמונה מוגדל, וכפתור "כרטיס" ששרד שם ארוך. */
   'dispatch-card': (
     <div dir="rtl" className="min-h-screen bg-slate-50 p-6">

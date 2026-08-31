@@ -14,6 +14,8 @@ export interface Survey {
   orderId: string | null;
   customerNumber: string | null;
   customerName: string | null;
+  /** הנייד שאליו יצא הסקר. משמש את קישור הוואטסאפ ברשימת ההערות. */
+  phoneE164: string | null;
   driver: string | null;
   healthFund: string | null;
   deliveredAt: string | null;
@@ -32,6 +34,7 @@ interface SurveyRow {
   order_id: string | null;
   customer_number: string | null;
   customer_name: string | null;
+  phone_e164: string | null;
   driver: string | null;
   health_fund: string | null;
   delivered_at: string | null;
@@ -51,6 +54,7 @@ function toSurvey(r: SurveyRow): Survey {
     orderId: r.order_id,
     customerNumber: r.customer_number,
     customerName: r.customer_name,
+    phoneE164: r.phone_e164,
     driver: r.driver,
     healthFund: r.health_fund,
     deliveredAt: r.delivered_at,
@@ -65,7 +69,7 @@ function toSurvey(r: SurveyRow): Survey {
 }
 
 const COLUMNS =
-  'id, stop_id, order_id, customer_number, customer_name, driver, health_fund,' +
+  'id, stop_id, order_id, customer_number, customer_name, phone_e164, driver, health_fund,' +
   ' delivered_at, sent_at, opened_at, answered_at, q1_satisfaction, q2_recommend, comment, status';
 
 /**

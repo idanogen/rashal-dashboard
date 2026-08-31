@@ -21,6 +21,7 @@ import { Smile, Frown, Users, Star, MessageSquareQuote } from 'lucide-react';
 import { useSurveys } from '@/hooks/useSurveys';
 import { computeSurveyMetrics, formatScore, type NamedScore } from '@/lib/surveys';
 import { surveyMark, SURVEY_TONE } from '@/lib/survey-badge';
+import { CustomerCommentsList } from '@/components/surveys/CustomerCommentsList';
 
 const NAVY = '#14223a';
 const GREEN = '#15803d';
@@ -89,17 +90,6 @@ function Stat({ n, t, color }: { n: React.ReactNode; t: string; color?: string }
       <div className="mt-1 text-[11px] text-slate-400">{t}</div>
     </div>
   );
-}
-
-function commentDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const today = new Date();
-  const sameDay = d.toDateString() === today.toDateString();
-  const time = d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
-  if (sameDay) return `היום ${time}`;
-  // 🔴 עם שנה. הרשימה ממוינת מהחדש לישן, ובלי שנה קל להניח שהכל מהשבוע.
-  return `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()} ${time}`;
 }
 
 export function SurveysPage() {
@@ -197,22 +187,7 @@ export function SurveysPage() {
               title="מה הלקוחות כתבו"
               hint={`${sv.withComments.length} הערות`}
             >
-              {sv.withComments.length === 0 ? (
-                <p className="py-8 text-center text-xs text-slate-400">אין עדיין הערות חופשיות</p>
-              ) : (
-                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                  {sv.withComments.map((s) => (
-                    <div key={s.id} className="rounded-xl border bg-slate-50/60 p-3" style={{ borderColor: '#eef1f6' }}>
-                      <p className="text-[13px] leading-snug text-slate-700">{s.comment}</p>
-                      <p className="mt-1.5 text-[11px] text-slate-400">
-                        {s.customerName ?? 'לקוח'}
-                        {s.satisfaction != null && ` · ${s.satisfaction} מתוך 5`}
-                        {s.answeredAt && ` · ${commentDate(s.answeredAt)}`}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )}
+              <CustomerCommentsList rows={sv.withComments} />
             </Panel>
           </div>
         </>
