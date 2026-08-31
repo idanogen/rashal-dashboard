@@ -41,6 +41,7 @@ import type { ServiceCall } from '@/types/service-call';
 import { DeliveryCalendar } from '@/components/deliveries/DeliveryCalendar';
 import { WaAutomationsPage } from '@/pages/WaAutomationsPage';
 import { CustomerCommentsList } from '@/components/surveys/CustomerCommentsList';
+import { ImageThumb } from '@/components/wa/InboxBoard';
 import type { CalendarStop } from '@/types/calendar-stop';
 
 /**
@@ -388,6 +389,19 @@ const PREVIEW_MEDIA = new Map([
   ['c3', { serviceCallId: 'c3', state: 'media_received', mediaReceivedAt: new Date().toISOString() }],
 ]);
 
+/** תמונה בשיחת הוואטסאפ עם כפתור "שמור למחשב" (31/08). */
+if (new URLSearchParams(location.search).get('view') === 'wa-image') {
+  const png =
+    'data:image/svg+xml;utf8,' +
+    encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="220"><rect width="320" height="220" fill="%23334155"/><rect x="90" y="40" width="140" height="120" rx="10" fill="%230f172a"/><ellipse cx="160" cy="120" rx="46" ry="30" fill="none" stroke="%2334d399" stroke-width="7"/></svg>',
+    );
+  previewQc
+    .getQueryCache()
+    .build(previewQc, { queryKey: ['wa-media', 'pm1', 0] })
+    .setState({ status: 'success', fetchStatus: 'idle', dataUpdatedAt: Date.now(), data: png });
+}
+
 /** רשימת "מה הלקוחות כתבו": שם + מספר לקוח + כפתור וואטסאפ (31/08). */
 const PREVIEW_COMMENTS = [
   { id: 's1', customerName: 'טביב צפורה', customerNumber: '311122233', phoneE164: '+972546875850', satisfaction: 5, answeredAt: new Date().toISOString(), comment: 'הגיע נציג מטעם החברה בשם דוד, שירות מעל המצופה, גילה רגישות וסבלנות למצב בבית של ההורים שלי. מעריכים מאוד' },
@@ -396,6 +410,17 @@ const PREVIEW_COMMENTS = [
 ] as unknown as import('@/lib/surveys').Survey[];
 
 const VIEWS: Record<string, React.ReactElement> = {
+  /** תמונה בבועת שיחה עם כפתור השמירה הצף. */
+  'wa-image': (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
+      <div className="mx-auto max-w-sm rounded-2xl border bg-white p-4" style={{ borderColor: '#eef1f6' }}>
+        <ImageThumb
+          messageId="pm1"
+          att={{ index: 0, name: 'תמונת-תקלה.jpg', kind: 'image', ready: true, sizeBytes: 120000 } as never}
+        />
+      </div>
+    </div>
+  ),
   /** רשימת ההערות מהסקרים: שם, מספר לקוח בפריוריטי, וכפתור וואטסאפ. */
   'survey-comments': (
     <div dir="rtl" className="min-h-screen bg-slate-50 p-6">

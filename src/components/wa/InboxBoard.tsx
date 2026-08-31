@@ -24,6 +24,7 @@ import {
   Copy,
   Check,
   PhoneOff,
+  Download,
 } from 'lucide-react';
 import {
   fetchInbox,
@@ -31,6 +32,7 @@ import {
   sendText,
   markThreadRead,
   attachmentUrl,
+  attachmentDownloadUrl,
   authorLabel,
   waitLabel,
   type InboxItem,
@@ -158,27 +160,57 @@ function AttachmentPill({ messageId, att }: { messageId: string; att: WaAttachme
  * ⭐ ואם החתימה נכשלה או שהתמונה לא נטענה, יורדים חזרה לשורת האטב.
  * ריבוע שבור הוא בדיוק סוג הכשל השקט שמלמד לא לסמוך על המסך.
  */
-function ImageThumb({ messageId, att }: { messageId: string; att: WaAttachment }) {
+export function ImageThumb({ messageId, att }: { messageId: string; att: WaAttachment }) {
   const [broken, setBroken] = useState(false);
+  const [saving, setSaving] = useState(false);
   const { data: url, isError } = useAttachmentUrl(messageId, att.index, !broken);
+
+  // שמירה למחשב בלחיצה אחת (בקשת עידן, 31/08/2026): כתובת חתומה עם
+  // content-disposition של הורדה, והדפדפן שומר בלי לעזוב את המסך.
+  async function save() {
+    setSaving(true);
+    try {
+      const dl = await attachmentDownloadUrl(messageId, att.index);
+      const a = document.createElement('a');
+      a.href = dl;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'לא הצלחתי לשמור את הקובץ');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   if (isError || broken) return <AttachmentPill messageId={messageId} att={att} />;
   if (!url) return <div className="mt-1.5 h-28 w-40 animate-pulse rounded-lg bg-slate-900/5" />;
 
   return (
-    <button
-      onClick={() => window.open(url, '_blank', 'noopener')}
-      title="פתח בגודל מלא"
-      className="mt-1.5 block overflow-hidden rounded-lg border border-slate-900/10 transition hover:opacity-90"
-    >
-      <img
-        src={url}
-        alt={att.name}
-        loading="lazy"
-        onError={() => setBroken(true)}
-        className="max-h-56 w-auto max-w-full object-contain"
-      />
-    </button>
+    <div className="relative mt-1.5 w-fit">
+      <button
+        onClick={() => window.open(url, '_blank', 'noopener')}
+        title="פתח בגודל מלא"
+        className="block overflow-hidden rounded-lg border border-slate-900/10 transition hover:opacity-90"
+      >
+        <img
+          src={url}
+          alt={att.name}
+          loading="lazy"
+          onError={() => setBroken(true)}
+          className="max-h-56 w-auto max-w-full object-contain"
+        />
+      </button>
+      <button
+        onClick={save}
+        disabled={saving}
+        title="שמור למחשב"
+        className="absolute end-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-slate-700 shadow-sm ring-1 ring-slate-900/10 transition hover:bg-white disabled:opacity-60"
+      >
+        {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+      </button>
+    </div>
   );
 }
 

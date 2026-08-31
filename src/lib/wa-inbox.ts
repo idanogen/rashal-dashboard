@@ -245,6 +245,17 @@ export async function attachmentUrl(messageId: string, index = 0): Promise<strin
   return json.url as string;
 }
 
+/**
+ * כתובת חתומה שמורידה את הקובץ למחשב (content-disposition של הורדה),
+ * במקום להציג אותו. משמשת את כפתור השמירה שעל תמונות בשיחה.
+ */
+export async function attachmentDownloadUrl(messageId: string, index = 0): Promise<string> {
+  const json = await authFetch(
+    `/api/wa-media?message=${encodeURIComponent(messageId)}&i=${index}&download=1`,
+  );
+  return json.url as string;
+}
+
 /** מי שלח, בשם שאפשר לקרוא. זהה במכוון ל-`authorLabel` שבחלונית. */
 export function authorLabel(raw: string | null): string {
   const v = String(raw ?? '').trim();

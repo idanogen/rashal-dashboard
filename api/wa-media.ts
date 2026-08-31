@@ -69,9 +69,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   }
 
+  // ?download=1 → הכתובת החתומה נושאת content-disposition של הורדה,
+  // והדפדפן שומר את הקובץ למחשב במקום להציג אותו (בקשת עידן, 31/08/2026).
+  const wantDownload = req.query.download === '1';
   const { data: signed, error: signErr } = await supabaseAdmin.storage
     .from(BUCKET)
-    .createSignedUrl(att.stored_path, SIGNED_SECONDS);
+    .createSignedUrl(
+      att.stored_path,
+      SIGNED_SECONDS,
+      wantDownload ? { download: att.file?.name ?? 'file' } : undefined,
+    );
 
   if (signErr || !signed?.signedUrl) {
     console.error('[wa-media] sign failed', signErr?.message);
