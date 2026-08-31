@@ -18,7 +18,6 @@ import { WaAutomationsPage } from '@/pages/WaAutomationsPage';
 import { TeamPage } from '@/pages/TeamPage';
 import { WhatsAppTemplatesPage } from '@/pages/WhatsAppTemplatesPage';
 import { DriverDashboardPage } from '@/pages/DriverDashboardPage';
-import { FeedbackPage } from '@/pages/FeedbackPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { SurveyPage } from '@/pages/SurveyPage';
 import { AuthProvider } from '@/lib/auth-context';
@@ -70,16 +69,6 @@ function App() {
                       <DriverDashboardPage />
                     </DriverShell>
                   </RoleBasedRoute>
-                </ProtectedRoute>
-              }
-            />
-
-            {/* Feedback/notes board — accessible to every authenticated role */}
-            <Route
-              path="/feedback"
-              element={
-                <ProtectedRoute>
-                  <FeedbackPage />
                 </ProtectedRoute>
               }
             />

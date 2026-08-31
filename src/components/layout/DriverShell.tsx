@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
-import { Link } from 'react-router-dom';
-import { LogOut, RefreshCw, MessageSquarePlus } from 'lucide-react';
+import { LogOut, RefreshCw } from 'lucide-react';
 import { BrandMark } from '@/components/BrandMark';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/lib/auth-context';
@@ -44,11 +43,6 @@ export function DriverShell({ children }: DriverShellProps) {
             </div>
           </div>
           <div className="flex items-center gap-1">
-            <Button asChild variant="outline" size="sm" title="הערות">
-              <Link to="/feedback">
-                <MessageSquarePlus className="h-4 w-4" />
-              </Link>
-            </Button>
             <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
               <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
             </Button>

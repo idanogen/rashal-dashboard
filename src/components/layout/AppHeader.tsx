@@ -41,7 +41,6 @@ const PRIMARY_LINKS = [
   { to: '/inbox', label: '💬 שיחות' },
   // ⭐ נקודת הכניסה כשלקוח מתקשר, ולכן היא בשורה הראשית ולא בתפריט הניהול.
   { to: '/customer', label: '🪪 כרטיס לקוח' },
-  { to: '/feedback', label: '📝 הערות' },
 ];
 
 const ADMIN_LINKS = [
