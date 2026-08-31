@@ -15,17 +15,39 @@ import { useFieldSuggestions } from '@/hooks/useFieldSuggestions';
 import { SuggestInput } from '@/components/SuggestInput';
 import { ClipboardList } from 'lucide-react';
 
+/** פרטים שממלאים את הטופס מראש — שיבוץ יזום מתוך חיפוש שנתקע. */
+export interface TaskPrefill {
+  customerName?: string;
+  customerNumber?: string;
+  address?: string;
+  city?: string;
+  phone?: string;
+  notes?: string;
+}
+
 interface TaskDialogProps {
   open: boolean;
   onClose: () => void;
+  /** תאריך קבוע מהיומן. כש-`dateEditable` דולק הוא רק ברירת המחדל. */
   date: string | null;
+  /**
+   * ⭐ שדה תאריך בתוך הדיאלוג. נולד מהתלונה של עמי (31/08/2026): לקוח
+   * שכבר טופל בעבר צריך ביקור חדש, ואין לו שום רשומה ממתינה לגרור ליומן.
+   * מהחיפוש אין תא-יום ללחוץ עליו, ולכן התאריך נבחר כאן.
+   */
+  dateEditable?: boolean;
+  /** כותרת חלופית — ברירת המחדל "משימה חדשה". */
+  title?: string;
+  initial?: TaskPrefill;
   /** רשימת המשובצים. ברירת המחדל היא כל הצוות הפעיל מטבלת `assignees`. */
   assignees?: AssigneeName[];
   /** תווית השדה — ברירת מחדל "נהג". */
   assigneeLabel?: string;
   onSubmit: (data: {
+    date: string;
     driver: AssigneeName;
     customerName: string;
+    customerNumber?: string;
     address?: string;
     city?: string;
     phone?: string;
@@ -33,10 +55,21 @@ interface TaskDialogProps {
   }) => void;
 }
 
+/** מחר, ואם מחר שישי/שבת — יום ראשון. חישוב מקומי, לא UTC. */
+function nextWorkday(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  while (d.getDay() === 5 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export function TaskDialog({
   open,
   onClose,
   date,
+  dateEditable = false,
+  title,
+  initial,
   assignees: assigneesProp,
   assigneeLabel = 'עובד',
   onSubmit,
@@ -62,23 +95,32 @@ export function TaskDialog({
   const [city, setCity] = useState('');
   const [phone, setPhone] = useState('');
   const [notes, setNotes] = useState('');
+  const [pickedDate, setPickedDate] = useState('');
 
   useEffect(() => {
     if (open) {
       setDriver('');
-      setCustomerName('');
-      setAddress('');
-      setCity('');
-      setPhone('');
-      setNotes('');
+      setCustomerName(initial?.customerName ?? '');
+      setAddress(initial?.address ?? '');
+      setCity(initial?.city ?? '');
+      setPhone(initial?.phone ?? '');
+      setNotes(initial?.notes ?? '');
+      setPickedDate(date ?? nextWorkday());
     }
+    // הפרטים נלכדים ברגע הפתיחה בכוונה: שינוי אובייקט ה-initial תוך כדי
+    // הקלדה לא אמור לדרוס את מה שהמשתמש כבר תיקן.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  const effectiveDate = dateEditable ? pickedDate : (date ?? '');
+
   const handleSubmit = () => {
-    if (!customerName.trim() || !selected) return;
+    if (!customerName.trim() || !selected || !effectiveDate) return;
     onSubmit({
+      date: effectiveDate,
       driver: selected,
       customerName: customerName.trim(),
+      customerNumber: initial?.customerNumber,
       address: address.trim() || undefined,
       city: city.trim() || undefined,
       phone: phone.trim() || undefined,
@@ -86,7 +128,7 @@ export function TaskDialog({
     });
   };
 
-  const dateLabel = date
+  const dateLabel = !dateEditable && date
     ? new Date(date + 'T00:00:00').toLocaleDateString('he-IL', {
         weekday: 'long',
         day: 'numeric',
@@ -100,7 +142,7 @@ export function TaskDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ClipboardList className="h-5 w-5 text-amber-600" />
-            משימה חדשה ל{assigneeLabel}
+            {title ?? `משימה חדשה ל${assigneeLabel}`}
           </DialogTitle>
           {dateLabel && (
             <p className="text-xs text-muted-foreground">{dateLabel}</p>
@@ -108,6 +150,20 @@ export function TaskDialog({
         </DialogHeader>
 
         <div className="space-y-3 py-2">
+          {dateEditable && (
+            <div className="space-y-1.5">
+              <Label htmlFor="task-date" className="text-xs">
+                תאריך *
+              </Label>
+              <Input
+                id="task-date"
+                type="date"
+                value={pickedDate}
+                onChange={(e) => setPickedDate(e.target.value)}
+                dir="ltr"
+              />
+            </div>
+          )}
           <div className="space-y-1.5">
             <Label htmlFor="task-driver" className="text-xs">
               {assigneeLabel}
@@ -197,7 +253,7 @@ export function TaskDialog({
           <Button variant="ghost" onClick={onClose}>
             ביטול
           </Button>
-          <Button onClick={handleSubmit} disabled={!customerName.trim()}>
+          <Button onClick={handleSubmit} disabled={!customerName.trim() || !effectiveDate}>
             הוסף ליומן
           </Button>
         </DialogFooter>

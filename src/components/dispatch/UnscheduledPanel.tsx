@@ -90,6 +90,20 @@ export interface HandledMatch {
   customerName: string;
   customerNumber?: string;
   status?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  /** "משובץ ל-01/09 · רודי" — כשקיימת עצירה פעילה ביומן על הרשומה. */
+  scheduledLine?: string;
+}
+
+/** הפרטים שעוברים לדיאלוג השיבוץ היזום. */
+export interface VisitPrefill {
+  customerName: string;
+  customerNumber?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
 }
 
 // ─── Card ──────────────────────────────────────────────────
@@ -334,6 +348,13 @@ interface UnscheduledPanelProps {
   returnedInfo?: Map<string, ReturnedInfo>;
   /** רשומות שכבר טופלו — מוצגות כשהחיפוש לא מחזיר ממתינים */
   handled?: HandledMatch[];
+  /**
+   * ⭐ שיבוץ יזום מתוך חיפוש שנתקע. עמי (31/08/2026): לקוח שכבר טופל
+   * צריך ביקור חדש, ורשימת "כבר טופלו" הייתה מבוי סתום בלי שום כפתור.
+   * מוצג גם כשאין אף התאמה, עם השם שהוקלד — כי לקוח חוזר בלי רשומה
+   * חדשה בפריוריטי לא נמצא בשום רשימה.
+   */
+  onScheduleVisit?: (prefill: VisitPrefill) => void;
   /** תיבת הסבר מעל הפאנל */
   intro?: ReactNode;
   /** כפתורים נוספים בשורת הכלים העליונה */
@@ -366,6 +387,7 @@ export function UnscheduledPanel({
   returnedIds,
   returnedInfo,
   handled,
+  onScheduleVisit,
   intro,
   toolbarExtra,
   search: searchProp,
@@ -674,25 +696,70 @@ export function UnscheduledPanel({
               <p className="text-sm text-muted-foreground">לא נמצאו רשומות התואמות לחיפוש</p>
               {handledMatches.length > 0 && (
                 <div className="mx-auto mt-3 max-w-md rounded-lg border border-blue-200 bg-blue-50/60 p-3 text-right dark:border-blue-900 dark:bg-blue-950/10">
-                  <p className="mb-2 text-xs font-semibold text-blue-700 dark:text-blue-300">
+                  <p className="mb-0.5 text-xs font-semibold text-blue-700 dark:text-blue-300">
                     לקוחות תואמים שכבר טופלו ({handledMatches.length}):
                   </p>
-                  <ul className="space-y-1">
+                  {onScheduleVisit && (
+                    // ⭐ המשפט שמוציא את עמי מהמבוי הסתום: מה המצב, ומה עושים עכשיו.
+                    <p className="mb-2 text-[11px] text-blue-700/70 dark:text-blue-300/70">
+                      לביקור נוסף אצל לקוח כזה: "שבץ ביקור" פותח שיבוץ חדש ישירות ליומן.
+                    </p>
+                  )}
+                  <ul className="space-y-1.5">
                     {handledMatches.map((h) => (
-                      <li key={h.id} className="flex items-center justify-between gap-2 text-xs">
-                        <span className="truncate font-medium">
-                          {h.customerName}
-                          {h.customerNumber ? ` · ${h.customerNumber}` : ''}
-                        </span>
-                        {h.status && (
-                          <span className="flex-shrink-0 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
-                            {h.status}
+                      <li key={h.id} className="rounded-md bg-white/60 px-2 py-1.5 dark:bg-blue-950/20">
+                        <div className="flex items-center justify-between gap-2 text-xs">
+                          {/* 🔴 השם עוטף ולא נחתך — truncate כאן היה בולע את התג. */}
+                          <span className="min-w-0 font-medium">
+                            {h.customerName}
+                            {h.customerNumber ? ` · ${h.customerNumber}` : ''}
                           </span>
+                          <span className="flex flex-shrink-0 items-center gap-1.5">
+                            {h.status && (
+                              <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10px] text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                                {h.status}
+                              </span>
+                            )}
+                            {onScheduleVisit && (
+                              <button
+                                onClick={() =>
+                                  onScheduleVisit({
+                                    customerName: h.customerName,
+                                    customerNumber: h.customerNumber,
+                                    phone: h.phone,
+                                    address: h.address,
+                                    city: h.city,
+                                  })
+                                }
+                                className="inline-flex items-center gap-1 rounded-md bg-primary px-2 py-1 text-[11px] font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+                              >
+                                <CalendarDays className="h-3 w-3" />
+                                שבץ ביקור
+                              </button>
+                            )}
+                          </span>
+                        </div>
+                        {h.scheduledLine && (
+                          <p className="mt-0.5 text-start text-[11px] text-blue-700/70 dark:text-blue-300/70">
+                            {h.scheduledLine}
+                          </p>
                         )}
                       </li>
                     ))}
                   </ul>
                 </div>
+              )}
+              {/* לקוח חוזר בלי שום רשומה — גם לו יש דרך ליומן, עם השם שהוקלד. */}
+              {onScheduleVisit && handledMatches.length === 0 && search.trim() && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-3 gap-1.5"
+                  onClick={() => onScheduleVisit({ customerName: search.trim() })}
+                >
+                  <CalendarDays className="h-3.5 w-3.5" />
+                  שבץ ביקור ל"{search.trim()}"
+                </Button>
               )}
             </div>
           ) : (

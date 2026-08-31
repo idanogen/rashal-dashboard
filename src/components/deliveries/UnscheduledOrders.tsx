@@ -2,7 +2,11 @@ import { useMemo } from 'react';
 import { Package } from 'lucide-react';
 
 import { buildOrderItems } from '@/components/dispatch/items';
-import { UnscheduledPanel, type HandledMatch } from '@/components/dispatch/UnscheduledPanel';
+import {
+  UnscheduledPanel,
+  type HandledMatch,
+  type VisitPrefill,
+} from '@/components/dispatch/UnscheduledPanel';
 import type { Order } from '@/types/order';
 import type { ReturnedInfo } from '@/lib/returned-from-route';
 
@@ -29,6 +33,10 @@ interface UnscheduledOrdersProps {
   returnedInfo?: Map<string, ReturnedInfo>;
   /** הזמנות שכבר טופלו (תואמה אספקה / סופק) — לחיווי "כבר משובץ" כשחיפוש ריק בממתינים. */
   handledOrders?: Order[];
+  /** מזהה הזמנה ⟵ "משובץ ל-01/09 · רודי", כשקיימת עצירה פעילה ביומן. */
+  handledStopLines?: Map<string, string>;
+  /** שיבוץ יזום מהמבוי הסתום של החיפוש — ראה UnscheduledPanel. */
+  onScheduleVisit?: (prefill: VisitPrefill) => void;
   /** חיפוש ואזורים משותפים למסך הסדרן. כשמועברים, הפאנל לא מצייר אותם בעצמו. */
   search?: string;
   selectedZones?: string[];
@@ -48,6 +56,8 @@ export function UnscheduledOrders({
   returnedIds,
   returnedInfo,
   handledOrders,
+  handledStopLines,
+  onScheduleVisit,
   search,
   selectedZones,
 }: UnscheduledOrdersProps) {
@@ -63,8 +73,12 @@ export function UnscheduledOrders({
         customerName: o.customerName,
         customerNumber: o.customerNumber,
         status: o.orderStatus,
+        phone: o.phone,
+        address: o.address,
+        city: o.city,
+        scheduledLine: handledStopLines?.get(o.id),
       })),
-    [handledOrders]
+    [handledOrders, handledStopLines]
   );
 
   return (
@@ -87,6 +101,7 @@ export function UnscheduledOrders({
       returnedIds={returnedIds}
       returnedInfo={returnedInfo}
       handled={handled}
+      onScheduleVisit={onScheduleVisit}
       search={search}
       selectedZones={selectedZones}
     />

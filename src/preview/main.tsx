@@ -34,7 +34,9 @@ import { GlobalChatProvider } from '@/context/GlobalChatContext';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { DispatchPage } from '@/pages/DispatchPage';
-import { DispatchCard } from '@/components/dispatch/UnscheduledPanel';
+import { DispatchCard, UnscheduledPanel } from '@/components/dispatch/UnscheduledPanel';
+import { Package } from 'lucide-react';
+import { TaskDialog } from '@/components/deliveries/TaskDialog';
 import { buildServiceCallItems } from '@/components/dispatch/items';
 import { DndContext } from '@dnd-kit/core';
 import type { ServiceCall } from '@/types/service-call';
@@ -409,7 +411,70 @@ const PREVIEW_COMMENTS = [
   { id: 's3', customerName: 'לויץ מאירה דבורה', customerNumber: null, phoneE164: null, satisfaction: 4, answeredAt: '2026-08-26T15:33:00Z', comment: 'השליח ממש נחמד איש עדין קבלני והסביר הכל בנחת' },
 ] as unknown as import('@/lib/surveys').Survey[];
 
+/**
+ * ⭐ המבוי הסתום של עמי (31/08): חיפוש שמוצא רק "לקוחות שכבר טופלו".
+ * שני מצבים: יש התאמות (כפתור "שבץ ביקור" על כל שורה + שורת "משובץ
+ * ביומן"), ואין שום התאמה (כפתור שיבוץ עם השם שהוקלד).
+ */
+const DEAD_END_ITEM = {
+  id: 'd1',
+  dragId: 'order-d1',
+  dragData: { type: 'order' },
+  zoneId: 'unassigned',
+  customerName: 'לקוח אחר לגמרי',
+  searchText: 'לקוח אחר לגמרי',
+};
+
+function DeadEndPreview({ withMatches }: { withMatches: boolean }) {
+  return (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
+      <DndContext>
+        <div className="mx-auto max-w-3xl">
+          <UnscheduledPanel
+            items={[DEAD_END_ITEM]}
+            title="הזמנות ממתינות לתיאום"
+            Icon={Package}
+            accentBorder="border-s-blue-500"
+            noun={{ one: 'הזמנה', many: 'הזמנות' }}
+            emptyText="אין הזמנות ממתינות לתיאום"
+            searchPlaceholder="חיפוש"
+            storageKey="preview-deadend"
+            search={withMatches ? 'פאוסטונוביץ' : 'לקוח שאין לו שום רשומה'}
+            handled={
+              withMatches
+                ? [
+                    { id: 'h1', customerName: 'פאוסטונוביץ לודמילה', customerNumber: '306958653', status: 'תואמה אספקה', phone: '0501234567', city: 'חיפה', scheduledLine: 'משובץ ביומן ל-31.8 · רודי' },
+                    { id: 'h2', customerName: 'פאוסטונוביץ לודמילה', customerNumber: '306958653', status: 'סופק' },
+                  ]
+                : []
+            }
+            onScheduleVisit={() => {}}
+          />
+        </div>
+      </DndContext>
+    </div>
+  );
+}
+
 const VIEWS: Record<string, React.ReactElement> = {
+  /** המבוי הסתום עם התאמות "כבר טופלו" — הכפתור החדש על כל שורה. */
+  'dead-end': <DeadEndPreview withMatches />,
+  /** חיפוש בלי שום התאמה — כפתור שיבוץ יזום עם השם שהוקלד. */
+  'dead-end-empty': <DeadEndPreview withMatches={false} />,
+  /** דיאלוג השיבוץ היזום: תאריך נערך + פרטי הלקוח ממולאים. */
+  'visit-dialog': (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
+      <TaskDialog
+        open
+        onClose={() => {}}
+        date={null}
+        dateEditable
+        title="שיבוץ ביקור ללקוח"
+        initial={{ customerName: 'פאוסטונוביץ לודמילה', customerNumber: '306958653', phone: '0501234567', city: 'חיפה' }}
+        onSubmit={() => {}}
+      />
+    </div>
+  ),
   /** תמונה בבועת שיחה עם כפתור השמירה הצף. */
   'wa-image': (
     <div dir="rtl" className="min-h-screen bg-slate-50 p-6">

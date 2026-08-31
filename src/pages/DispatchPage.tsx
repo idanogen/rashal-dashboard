@@ -45,6 +45,7 @@ import {
   buildServiceCallItems,
 } from '@/components/dispatch/items';
 import { UnscheduledOrders } from '@/components/deliveries/UnscheduledOrders';
+import type { VisitPrefill } from '@/components/dispatch/UnscheduledPanel';
 import { UnscheduledServiceCalls } from '@/components/service-calls/UnscheduledServiceCalls';
 import { UnscheduledPickups } from '@/components/pickups/UnscheduledPickups';
 import { UnscheduledCustomers } from '@/components/customers/UnscheduledCustomers';
@@ -405,6 +406,12 @@ export function DispatchPage() {
   const [taskDialogDate, setTaskDialogDate] = useState<string | null>(null);
   const [mapDialogDate, setMapDialogDate] = useState<string | null>(null);
   const [detailPickup, setDetailPickup] = useState<Pickup | null>(null);
+  /**
+   * ⭐ שיבוץ יזום ללקוח שכבר טופל (עמי, 31/08/2026): כשהחיפוש מוצא רק
+   * "לקוחות שכבר טופלו" אין שום רשומה ממתינה לגרור ליומן, ולכן הכפתור
+   * שם פותח את דיאלוג המשימה עם הפרטים של הלקוח ותאריך לבחירה.
+   */
+  const [visitPrefill, setVisitPrefill] = useState<VisitPrefill | null>(null);
 
   // ─── חיפוש וסינון אזור: אחד לכל סוגי המסמכים ───
   // עד 12/08/2026 לכל רשימה היו חיפוש וסינון אזור משלה, ובטאב "הכל" זה
@@ -1076,34 +1083,62 @@ export function DispatchPage() {
 
   const handleCreateTask = useCallback(
     async (data: {
+      date: string;
       driver: AssigneeName;
       customerName: string;
+      customerNumber?: string;
       address?: string;
       city?: string;
       phone?: string;
       notes?: string;
     }) => {
-      if (!taskDialogDate) return;
+      if (!data.date) return;
       try {
         await scheduleStop.mutateAsync({
-          deliveryDate: taskDialogDate,
+          deliveryDate: data.date,
           driver: data.driver,
           sourceType: 'task',
           customerName: data.customerName,
+          customerNumber: data.customerNumber,
           address: data.address,
           city: data.city,
           phone: data.phone,
           notes: data.notes,
         });
-        toast.success(`המשימה נוספה ליומן (${data.driver})`);
+        const dateLabel = new Date(data.date + 'T00:00:00').toLocaleDateString('he-IL', {
+          day: 'numeric',
+          month: 'numeric',
+        });
+        toast.success(`נוסף ליומן: ${data.customerName} · ${dateLabel} · ${data.driver}`);
       } catch (err) {
         console.error('Failed to create task:', err);
+        toast.error('השיבוץ נכשל, נסה שוב');
       } finally {
         setTaskDialogDate(null);
+        setVisitPrefill(null);
       }
     },
-    [taskDialogDate, scheduleStop]
+    [scheduleStop]
   );
+
+  /**
+   * מזהה הזמנה/קריאה ⟵ "משובץ ל-01/09 · רודי". מזין את רשימת "כבר
+   * טופלו" בחיפוש, כדי ש"טופלו" יפסיק להיות מילה סתומה: רואים מתי ומי.
+   */
+  const activeStopLines = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const s of calendarStops) {
+      if (s.status !== 'planned' && s.status !== 'in_progress') continue;
+      const key = s.orderId ?? s.serviceCallId;
+      if (!key) continue;
+      const d = new Date(s.deliveryDate + 'T00:00:00').toLocaleDateString('he-IL', {
+        day: 'numeric',
+        month: 'numeric',
+      });
+      m.set(key, `משובץ ביומן ל-${d} · ${s.driver}`);
+    }
+    return m;
+  }, [calendarStops]);
 
   // ─── מצב טעינה/שגיאה של הטאב הפעיל בלבד (היומן לא מחכה לאף אחד) ───
   // ⭐ בטאב "הכל" אין "מצב של הטאב", כי יש בו ארבע רשימות עם ארבעה מצבים
@@ -1313,6 +1348,8 @@ export function DispatchPage() {
                 returnedIds={returnedOrderIds}
                 returnedInfo={returnedOrderInfo}
                 handledOrders={[...scheduledOrders, ...deliveredOrders]}
+                handledStopLines={activeStopLines}
+                onScheduleVisit={setVisitPrefill}
                 search={filterSearch}
                 selectedZones={filterZones}
               />
@@ -1356,6 +1393,8 @@ export function DispatchPage() {
                 returnedIds={returnedCallIds}
                 returnedInfo={returnedCallInfo}
                 handledCalls={[...scheduledCalls, ...completedCalls]}
+                handledStopLines={activeStopLines}
+                onScheduleVisit={setVisitPrefill}
                 search={filterSearch}
                 selectedZones={filterZones}
               />
@@ -1765,6 +1804,18 @@ export function DispatchPage() {
         open={taskDialogDate !== null}
         onClose={() => setTaskDialogDate(null)}
         date={taskDialogDate}
+        onSubmit={handleCreateTask}
+      />
+
+      {/* ⭐ שיבוץ יזום ללקוח שכבר טופל — אותו דיאלוג, עם פרטי הלקוח
+          ותאריך לבחירה. נכנס ליומן כמשימה לעובד שנבחר. */}
+      <TaskDialog
+        open={visitPrefill !== null}
+        onClose={() => setVisitPrefill(null)}
+        date={null}
+        dateEditable
+        title="שיבוץ ביקור ללקוח"
+        initial={visitPrefill ?? undefined}
         onSubmit={handleCreateTask}
       />
 

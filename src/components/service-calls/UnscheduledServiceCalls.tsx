@@ -3,7 +3,11 @@ import { Wrench } from 'lucide-react';
 
 import { buildServiceCallItems } from '@/components/dispatch/items';
 import { useMediaRequests } from '@/hooks/useMediaRequests';
-import { UnscheduledPanel, type HandledMatch } from '@/components/dispatch/UnscheduledPanel';
+import {
+  UnscheduledPanel,
+  type HandledMatch,
+  type VisitPrefill,
+} from '@/components/dispatch/UnscheduledPanel';
 import type { ServiceCall } from '@/types/service-call';
 import type { ReturnedInfo } from '@/lib/returned-from-route';
 
@@ -26,6 +30,10 @@ interface UnscheduledServiceCallsProps {
   returnedInfo?: Map<string, ReturnedInfo>;
   /** קריאות שכבר טופלו (תואם ביקור / בוצע) — לחיווי "כבר משובץ" כשחיפוש ריק בממתינים. */
   handledCalls?: ServiceCall[];
+  /** מזהה קריאה ⟵ "משובץ ל-01/09 · אולג", כשקיימת עצירה פעילה ביומן. */
+  handledStopLines?: Map<string, string>;
+  /** שיבוץ יזום מהמבוי הסתום של החיפוש — ראה UnscheduledPanel. */
+  onScheduleVisit?: (prefill: VisitPrefill) => void;
   /** חיפוש ואזורים משותפים למסך הסדרן. כשמועברים, הפאנל לא מצייר אותם בעצמו. */
   search?: string;
   selectedZones?: string[];
@@ -45,6 +53,8 @@ export function UnscheduledServiceCalls({
   returnedIds,
   returnedInfo,
   handledCalls,
+  handledStopLines,
+  onScheduleVisit,
   search,
   selectedZones,
 }: UnscheduledServiceCallsProps) {
@@ -61,8 +71,12 @@ export function UnscheduledServiceCalls({
         customerName: c.customerName,
         customerNumber: c.customerNumber,
         status: c.serviceCallStatus,
+        phone: c.phone,
+        address: c.address,
+        city: c.city,
+        scheduledLine: handledStopLines?.get(c.id),
       })),
-    [handledCalls]
+    [handledCalls, handledStopLines]
   );
 
   return (
@@ -85,6 +99,7 @@ export function UnscheduledServiceCalls({
       returnedIds={returnedIds}
       returnedInfo={returnedInfo}
       handled={handled}
+      onScheduleVisit={onScheduleVisit}
       search={search}
       selectedZones={selectedZones}
     />
