@@ -202,11 +202,13 @@ export function DispatchCard({
 
         <div className="mb-2 flex items-start justify-between">
           <div className="min-w-0 flex-1">
-            {/* 🔴 השם לבדו נחתך, לא השורה כולה: כשהכל ישב בתוך truncate אחד,
-                שם ארוך בלע את כפתור "כרטיס" ואת התגים שאחריו, והם הופיעו
-                רק אצל לקוחות עם שם קצר (עידן, 30/08/2026). */}
-            <p className={cn('flex items-center text-sm font-semibold', isExcluded && 'line-through')}>
-              <span className="min-w-0 truncate" title={vm.customerName}>{vm.customerName}</span>
+            {/* 🔴 השם לא נחתך בכלל: הגרסה הראשונה (30/08) חתכה את השורה כולה
+                ושם ארוך בלע את כפתור "כרטיס"; הגרסה השנייה חתכה את השם עצמו
+                ועידן דיווח למחרת "השמות של הלקוחות נחתכים". לכן השורה עוטפת:
+                שם ארוך יורד לשורה שנייה, והתגים זורמים אחריו. שם הלקוח הוא
+                המזהה הראשי של הכרטיס ואסור שילך לאיבוד בשביל תג. */}
+            <p className={cn('flex flex-wrap items-center gap-y-0.5 text-sm font-semibold', isExcluded && 'line-through')}>
+              <span className="min-w-0">{vm.customerName}</span>
               {vm.dupCount && vm.dupCount > 1 && (
                 <span
                   className="ms-1 inline-flex h-4 shrink-0 items-center rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-800"
