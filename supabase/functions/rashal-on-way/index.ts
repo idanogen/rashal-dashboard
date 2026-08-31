@@ -24,6 +24,9 @@ interface Candidate {
   phone_e164: string;
   worker: string;
   resolved_stop_id: string;
+  /** שם העובד והטלפון שלו מטבלת הצוות (בקשת שלומי, 31/08/2026). */
+  worker_name: string | null;
+  worker_phone: string | null;
 }
 
 Deno.serve(async (req: Request) => {
@@ -58,10 +61,12 @@ Deno.serve(async (req: Request) => {
   if (dry) {
     detail.would_send = candidates.map((c) => ({
       name: c.customer_name, phone: c.phone_e164, worker: c.worker,
+      worker_name: c.worker_name, worker_phone: c.worker_phone,
+      template: cfg.template_v2_id && c.worker_phone ? "v2" : "v1",
     }));
   } else {
     for (const c of candidates) {
-      const res = await sendOne(c, String(cfg.template_id ?? ""));
+      const res = await sendOne(c, String(cfg.template_id ?? ""), String(cfg.template_v2_id ?? ""));
       if (res.ok) {
         sent++;
         await sb.rpc("on_way_mark_sent", {
@@ -94,8 +99,23 @@ Deno.serve(async (req: Request) => {
 async function sendOne(
   c: Candidate,
   templateId: string,
+  templateV2Id: string,
 ): Promise<{ ok: true } | { ok: false; error: string; retryable: boolean }> {
-  if (!templateId) return { ok: false, error: "no template id", retryable: false };
+  // התבנית עם שם וטלפון של העובד, רק כשהיא מחווטת (=אושרה במטא) ויש
+  // לעובד טלפון בטבלת הצוות. אחרת נסיגה שקטה לנוסח הישן, בלי הודעת חור.
+  const useV2 = Boolean(templateV2Id && c.worker_phone && c.worker_name);
+  const chosen = useV2 ? templateV2Id : templateId;
+  if (!chosen) return { ok: false, error: "no template id", retryable: false };
+  const variables = [
+    { name: "name", value: c.customer_name ?? "" },
+    { name: "worker", value: c.worker },
+    ...(useV2
+      ? [
+          { name: "worker_name", value: c.worker_name ?? "" },
+          { name: "worker_phone", value: c.worker_phone ?? "" },
+        ]
+      : []),
+  ];
   try {
     const res = await fetch(SEND_URL, {
       method: "POST",
@@ -103,11 +123,8 @@ async function sendOne(
       body: JSON.stringify({
         kind: "template",
         phoneE164: c.phone_e164,
-        templateId,
-        variables: [
-          { name: "name", value: c.customer_name ?? "" },
-          { name: "worker", value: c.worker },
-        ],
+        templateId: chosen,
+        variables,
         triggeredBy: "on-way-engine",
       }),
     });
