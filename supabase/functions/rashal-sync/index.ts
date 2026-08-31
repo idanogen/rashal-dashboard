@@ -367,6 +367,45 @@ function rolling3Days(): string {
   return `${d.toISOString().slice(0, 10)}T00:00:00Z`;
 }
 
+/**
+ * משיכת איסופים בפיצול, כשהשאילתה המשולבת נקטעת (31/08/2026).
+ *
+ * שלב א: אותה שאילתה בלי ה-$expand (עובדת). שלב ב: תת-הטופס לכל מסמך
+ * בנתיב ניווט `DOCUMENTS_N(DOCNO='X',TYPE='N')/<SUBFORM>`. הגוף המורכב
+ * זהה בצורתו לתשובת ה-expand המקורית, כך שה-inbox לא יודע על הפיצול.
+ *
+ * 🔴 אם שליפת שורות של מסמך אחד נכשלת, כל הצעד נכשל: מסמך בלי השורות
+ * שלו היה נקלט חסר וסימן-המים היה מדלג עליו לנצח.
+ */
+async function fetchPickupsSplit(
+  runId: number,
+  entity: string,
+  originalPath: string,
+): Promise<string | null> {
+  const auth = { headers: { Authorization: basicAuth(), "User-Agent": UA, Accept: "application/json" } };
+  const m = decodeURIComponent(originalPath).match(/\$expand=([A-Z_0-9]+)\((\$select=[^)]*)\)/);
+  if (!m) return null;
+  const subName = m[1];
+  const subSelect = m[2];
+  const headerPath = originalPath.replace(/&\$expand=[^&]*/, "");
+
+  const hr = await fetchRetry(runId, `${entity}:split-headers`, PRIORITY + headerPath, auth, headerPath.split("?")[0]);
+  if (!hr.res) return null;
+
+  let docs: Record<string, unknown>[] = [];
+  try { docs = (JSON.parse(hr.body)?.value ?? []) as Record<string, unknown>[]; } catch { return null; }
+
+  for (const d of docs) {
+    const docno = String(d.DOCNO ?? "").trim();
+    if (!/^[A-Za-z0-9_-]{1,30}$/.test(docno)) { d[subName] = []; continue; }
+    const navPath = `/DOCUMENTS_N(DOCNO='${docno}',TYPE='N')/${subName}?${subSelect}&$top=500`;
+    const sr = await fetchRetry(runId, `${entity}:split-lines`, PRIORITY + navPath, auth, `/DOCUMENTS_N(...)/${subName}`);
+    if (!sr.res) return null;
+    try { d[subName] = JSON.parse(sr.body)?.value ?? []; } catch { return null; }
+  }
+  return JSON.stringify({ value: docs });
+}
+
 interface Step { entity: string; kind: string; buildUrl: (wm: Record<string, string>) => string | null }
 const JOBS: Record<string, Step[]> = {
   "pull-core": [
@@ -1244,6 +1283,22 @@ Deno.serve(async (req: Request) => {
     return new Response(JSON.stringify(await probeChanges(since, custname), null, 2),
       { headers: { "Content-Type": "application/json" } });
   }
+  if (job === "probe-pickup-nav") {
+    // בדיקת נתיב הניווט של הנפילה החכמה, נעול לישות ולתת-הטופס של האיסופים.
+    const docno = String(body?.docno ?? "");
+    if (!/^[A-Za-z0-9_-]{1,30}$/.test(docno)) {
+      return new Response(JSON.stringify({ error: "bad docno" }), { headers: { "Content-Type": "application/json" } });
+    }
+    const auth = { headers: { Authorization: basicAuth(), "User-Agent": UA, Accept: "application/json" } };
+    const nav = `/DOCUMENTS_N(DOCNO='${docno}',TYPE='N')/TRANSORDER_N_SUBFORM?$select=TRANS,KLINE,PARTNAME,PDES,TQUANT,TUNITNAME,BARCODE,ORDNAME,RETREASONDES&$top=500`;
+    try {
+      const r = await fetch(PRIORITY + nav, auth);
+      const t = await r.text();
+      return new Response(JSON.stringify({ status: r.status, ok: r.ok, body: t.slice(0, 600) }), { headers: { "Content-Type": "application/json" } });
+    } catch (e) {
+      return new Response(JSON.stringify({ threw: String(e).slice(0, 200) }), { headers: { "Content-Type": "application/json" } });
+    }
+  }
   if (job === "probe-subform") {
     const parent = String(body?.parent ?? "CUSTOMERS");
     const names = Array.isArray(body?.names) ? (body.names as unknown[]).map(String) : [];
@@ -1350,7 +1405,19 @@ Deno.serve(async (req: Request) => {
       headers: { Authorization: basicAuth(), "User-Agent": UA, Accept: "application/json" },
     }, path.split("?")[0]);
     retries += pr.attempts - 1;
-    if (!pr.res) { errors.push(`${step.entity}: ${pr.body.slice(0, 200)}`); results[step.entity] = "fetch failed"; continue; }
+    let body = pr.res ? pr.body : null;
+    if (!body && step.kind === "pickups") {
+      // 🔴 31/08/2026: פריוריטי החלה לקטוע את החיבור באמצע התשובה על כל
+      // שאילתת DOCUMENTS_N שמשלבת $filter עם $expand (אומת בבידוד: בלי
+      // expand עובר, expand בלי filter עובר, הצירוף נופל בכל קידוד).
+      // הנפילה החכמה: כותרות בלי expand, ואז תת-הטופס מסמך-מסמך בנתיב
+      // ניווט, והרכבת גוף זהה למקור. כשפריוריטי תבריא, המסלול המקורי
+      // פשוט יחזור לעבוד והנפילה תפסיק להיקרא.
+      body = await fetchPickupsSplit(runId, step.entity, path);
+      if (body != null) results[step.entity + ":via"] = "split-fallback";
+    }
+    if (body == null) { errors.push(`${step.entity}: ${pr.body.slice(0, 200)}`); results[step.entity] = "fetch failed"; continue; }
+    pr.body = body;
 
     let rows = 0;
     try { rows = (JSON.parse(pr.body)?.value ?? []).length; } catch { /* count best-effort */ }
