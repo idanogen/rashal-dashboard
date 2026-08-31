@@ -168,6 +168,12 @@ export function DriverDashboardPage() {
   /** איזה כפתור פתח את הפופאפ. קובע את הניסוח ואת מה שנשמר. */
   const [notCompletedKind, setNotCompletedKind] = useState<StopResolutionKind>('not_done');
   const [showMap, setShowMap] = useState(true);
+  /**
+   * ⭐ הטאבים נשלטים מבחוץ מאז 31/08/2026: העצירות הפתוחות מימים קודמים
+   * עברו לטאב משלהן (אצל רודי הצטברו 170 והן קברו את "היום"), והשורה
+   * שנשארה בטאב היום צריכה כפתור שקופץ לשם.
+   */
+  const [tab, setTab] = useState('today');
 
   /** הקשר אירוע אחיד לעצירה — לדוחות. */
   const stopCtx = (stop: DbCalendarStop) => ({
@@ -252,6 +258,18 @@ export function DriverDashboardPage() {
         .sort((a, b) => b.deliveryDate.localeCompare(a.deliveryDate)),
     [allStops, today]
   );
+  // הטאב "פתוחות" מציג אותן מקובצות לפי יום, מהטרי לישן.
+  const leftOpenByDay = useMemo(() => {
+    const map = new Map<string, DbCalendarStop[]>();
+    for (const s of leftOpen) {
+      const list = map.get(s.deliveryDate) ?? [];
+      list.push(s);
+      map.set(s.deliveryDate, list);
+    }
+    return Array.from(map.entries())
+      .map(([date, stops]) => ({ date, stops }))
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [leftOpen]);
   const tomorrowStops = stopsByDate.get(tomorrow) ?? [];
   const weekStops = useMemo(() => {
     const start = new Date();
@@ -358,7 +376,7 @@ export function DriverDashboardPage() {
       </Card>
 
       {/* Tabs */}
-      <Tabs defaultValue="today" dir="rtl">
+      <Tabs value={tab} onValueChange={setTab} dir="rtl">
         <TabsList className="w-full">
           <TabsTrigger value="today" className="flex-1">
             היום
@@ -368,6 +386,15 @@ export function DriverDashboardPage() {
               </Badge>
             )}
           </TabsTrigger>
+          {/* הטריגר נשאר גם כשנסגרה האחרונה בזמן שהטאב פתוח, אחרת המסך מתרוקן. */}
+          {(leftOpen.length > 0 || tab === 'open') && (
+            <TabsTrigger value="open" className="flex-1">
+              פתוחות
+              <Badge className="ms-1.5 h-5 bg-amber-500 px-1.5 text-[10px] text-white hover:bg-amber-500">
+                {leftOpen.length}
+              </Badge>
+            </TabsTrigger>
+          )}
           <TabsTrigger value="tomorrow" className="flex-1">
             מחר
             {tomorrowStops.length > 0 && (
@@ -395,56 +422,22 @@ export function DriverDashboardPage() {
         </TabsList>
 
         <TabsContent value="today" className="space-y-3">
+          {/* ⭐ ההתראה נשארת בטאב היום, הרשימה עברה לטאב "פתוחות" (31/08/2026).
+              אצל רודי הצטברו 170 עצירות כאלה, והקופסה הישנה קברה את מסלול
+              היום מתחתיהן. */}
           {leftOpen.length > 0 && (
-            <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-3">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 flex-none text-amber-600" />
-                <span className="text-sm font-bold text-amber-900">
-                  נשארו לך {leftOpen.length} עצירות פתוחות מימים קודמים
-                </span>
-              </div>
-              <p className="mt-1 text-xs text-amber-800">
-                כל עוד הן פתוחות, ההזמנה לא רשומה כסופקה במשרד.
-              </p>
-              <div className="mt-2 max-h-56 space-y-2 overflow-y-auto">
-                {leftOpen.map((stop) => (
-                  <div
-                    key={stop.id}
-                    className="rounded-lg border border-amber-200 bg-card p-2.5"
-                  >
-                    <div className="flex flex-wrap items-center gap-2 text-sm">
-                      <span className="font-semibold">{stop.customerName}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {new Date(stop.deliveryDate + 'T00:00:00').toLocaleDateString(
-                          'he-IL',
-                          { day: 'numeric', month: 'numeric' }
-                        )}
-                        {stop.city ? ` · ${stop.city}` : ''}
-                      </span>
-                    </div>
-                    <div className="mt-2 grid grid-cols-2 gap-2">
-                      <Button
-                        onClick={() => handleResolve(stop, 'completed')}
-                        disabled={isResolvingStop(stop.id)}
-                        className="h-10 gap-1 bg-emerald-600 text-xs font-semibold text-white hover:bg-emerald-700"
-                      >
-                        <Check className="h-4 w-4" />
-                        בוצע
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => handleResolve(stop, 'not_completed')}
-                        disabled={isResolvingStop(stop.id)}
-                        className="h-10 gap-1 border-red-200 bg-red-50 text-xs text-red-700 hover:bg-red-100"
-                      >
-                        <X className="h-4 w-4" />
-                        לא בוצע
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <button
+              onClick={() => setTab('open')}
+              className="flex w-full items-center gap-2 rounded-xl border-2 border-amber-300 bg-amber-50 p-3 text-start transition-colors hover:bg-amber-100"
+            >
+              <AlertTriangle className="h-4 w-4 flex-none text-amber-600" />
+              <span className="flex-1 text-sm font-bold text-amber-900">
+                נשארו לך {leftOpen.length} עצירות פתוחות מימים קודמים
+              </span>
+              <span className="flex-none rounded-lg bg-amber-500 px-2.5 py-1 text-xs font-bold text-white">
+                לרשימה
+              </span>
+            </button>
           )}
 
           {todayStops.length > 0 && (
@@ -491,6 +484,42 @@ export function DriverDashboardPage() {
                 resolving={isResolvingStop(stop.id)}
               />
             ))
+          )}
+        </TabsContent>
+
+        {/* ⭐ העצירות הפתוחות מימים קודמים, מקובצות לפי יום, מהטרי לישן.
+            הסגירה כאן מיידית (בוצע / לא בוצע), בלי מסלול "הגעה": אלה
+            ביקורים שכבר קרו בשטח ורק הסימון חסר, וכל עוד הוא חסר ההזמנה
+            לא רשומה כסופקה במשרד. */}
+        <TabsContent value="open" className="space-y-4">
+          {leftOpen.length === 0 ? (
+            <EmptyState message="אין עצירות פתוחות מימים קודמים 🎉" />
+          ) : (
+            <>
+              <p className="px-1 text-xs text-muted-foreground">
+                כל עוד עצירה כאן פתוחה, ההזמנה לא רשומה כסופקה במשרד. סוגרים
+                עם "בוצע" או "לא בוצע" לפי מה שקרה בפועל.
+              </p>
+              {leftOpenByDay.map((day) => (
+                <div key={day.date} className="space-y-2">
+                  <div className="flex items-center gap-2 px-1">
+                    <CalendarClock className="h-4 w-4 text-muted-foreground" />
+                    <h3 className="text-sm font-semibold">{dayLabel(day.date)}</h3>
+                    <Badge variant="outline" className="text-[10px]">
+                      {day.stops.length} עצירות
+                    </Badge>
+                  </div>
+                  {day.stops.map((stop) => (
+                    <LeftoverStopCard
+                      key={stop.id}
+                      stop={stop}
+                      resolving={isResolvingStop(stop.id)}
+                      onResolve={(status) => handleResolve(stop, status)}
+                    />
+                  ))}
+                </div>
+              ))}
+            </>
           )}
         </TabsContent>
 
@@ -692,6 +721,75 @@ export function DriverDashboardPage() {
         }}
       />
     </div>
+  );
+}
+
+/**
+ * כרטיס עצירה פתוחה מיום קודם — טאב "פתוחות". קומפקטי בכוונה: הביקור
+ * כנראה כבר קרה, ומה שחסר הוא הסימון. טלפון וכתובת נשארים למקרה שבאמת
+ * צריך לחזור ללקוח. מיוצא לתצוגה מקדימה, כמו DriverStopCard.
+ */
+export function LeftoverStopCard({
+  stop,
+  resolving,
+  onResolve,
+}: {
+  stop: DbCalendarStop;
+  resolving: boolean;
+  onResolve: (status: 'completed' | 'not_completed') => void;
+}) {
+  const src = SOURCE_CONFIG[stop.sourceType] ?? SOURCE_CONFIG.delivery;
+  const SrcIcon = src.Icon;
+  const telUrl = buildTelUrl(stop.phone);
+  return (
+    <Card className="border-amber-200">
+      <CardContent className="space-y-2 p-3">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className={`flex h-5 w-5 items-center justify-center rounded ${src.bg} ${src.color}`}>
+            <SrcIcon className="h-3 w-3" />
+          </span>
+          <span className="font-semibold">{stop.customerName}</span>
+          {stop.city && (
+            <span className="text-xs text-muted-foreground">{stop.city}</span>
+          )}
+          {stop.phone && (
+            <a
+              href={telUrl ?? '#'}
+              className="flex items-center gap-1 text-xs font-medium text-emerald-700"
+              dir="ltr"
+            >
+              <Phone className="h-3 w-3" />
+              {stop.phone}
+            </a>
+          )}
+        </div>
+        {stop.notes && (
+          <p className="rounded bg-muted/40 p-1.5 text-xs italic text-muted-foreground">
+            📝 {stop.notes}
+          </p>
+        )}
+        <div className="grid grid-cols-3 gap-2">
+          <Button
+            onClick={() => onResolve('completed')}
+            disabled={resolving}
+            className="h-11 gap-1 bg-emerald-600 text-xs font-semibold text-white hover:bg-emerald-700"
+          >
+            <Check className="h-4 w-4" />
+            בוצע
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => onResolve('not_completed')}
+            disabled={resolving}
+            className="h-11 gap-1 border-red-200 bg-red-50 text-xs text-red-700 hover:bg-red-100"
+          >
+            <X className="h-4 w-4" />
+            לא בוצע
+          </Button>
+          <StopChatButton stop={stop} />
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

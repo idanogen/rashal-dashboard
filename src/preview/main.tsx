@@ -21,7 +21,9 @@ import { CustomerCardButton } from '@/components/customer/CustomerCardSheet';
 import { FIXTURE } from '@/preview/customer-fixture';
 import { DuplicateScheduleWarningDialog } from '@/components/deliveries/DuplicateScheduleWarningDialog';
 import { NotCompletedReasonDialog } from '@/components/NotCompletedReasonDialog';
-import { DriverStopCard } from '@/pages/DriverDashboardPage';
+import { DriverStopCard, LeftoverStopCard } from '@/pages/DriverDashboardPage';
+import { AlertTriangle, CalendarClock } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { SurveysPage } from '@/pages/SurveysPage';
 import { ManagementDashboard } from '@/pages/ManagementDashboard';
 import { CraneChecklistDialog } from '@/components/crane/CraneChecklistDialog';
@@ -457,6 +459,43 @@ function DeadEndPreview({ withMatches }: { withMatches: boolean }) {
 }
 
 const VIEWS: Record<string, React.ReactElement> = {
+  /** טאב "פתוחות" של הנהג (31/08): שורת הקפיצה מטאב היום + הכרטיסים. */
+  'driver-open': (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-3">
+      <div className="mx-auto space-y-4" style={{ width: 384 }}>
+        <div className="rounded-xl border bg-white p-3 text-xs">
+          <b>מה שנשאר בטאב "היום":</b> שורת התראה שקופצת לטאב הפתוחות.
+        </div>
+        <button className="flex w-full items-center gap-2 rounded-xl border-2 border-amber-300 bg-amber-50 p-3 text-start">
+          <AlertTriangle className="h-4 w-4 flex-none text-amber-600" />
+          <span className="flex-1 text-sm font-bold text-amber-900">
+            נשארו לך 170 עצירות פתוחות מימים קודמים
+          </span>
+          <span className="flex-none rounded-lg bg-amber-500 px-2.5 py-1 text-xs font-bold text-white">
+            לרשימה
+          </span>
+        </button>
+        <div className="rounded-xl border bg-white p-3 text-xs">
+          <b>הטאב החדש "פתוחות":</b> קיבוץ לפי יום, סגירה מיידית.
+        </div>
+        <div className="flex items-center gap-2 px-1">
+          <CalendarClock className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-sm font-semibold">יום ראשון, 17.8</h3>
+          <Badge variant="outline" className="text-[10px]">2 עצירות</Badge>
+        </div>
+        <LeftoverStopCard
+          stop={driverStop({ id: 'lo1', deliveryDate: '2026-08-17', customerName: 'לופשיץ מנוחה אבי', city: 'ראשל"צ', phone: '0501112233' })}
+          resolving={false}
+          onResolve={() => {}}
+        />
+        <LeftoverStopCard
+          stop={driverStop({ id: 'lo2', deliveryDate: '2026-08-17', customerName: 'מרקו עדנה', city: 'ראשל"צ', notes: 'מנוף חשמלי, קומה 3', sourceType: 'service' })}
+          resolving={false}
+          onResolve={() => {}}
+        />
+      </div>
+    </div>
+  ),
   /** המבוי הסתום עם התאמות "כבר טופלו" — הכפתור החדש על כל שורה. */
   'dead-end': <DeadEndPreview withMatches />,
   /** חיפוש בלי שום התאמה — כפתור שיבוץ יזום עם השם שהוקלד. */
