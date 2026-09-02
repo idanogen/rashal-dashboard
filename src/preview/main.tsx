@@ -45,6 +45,7 @@ import type { ServiceCall } from '@/types/service-call';
 import { DeliveryCalendar } from '@/components/deliveries/DeliveryCalendar';
 import { WaAutomationsPage } from '@/pages/WaAutomationsPage';
 import { CustomerCommentsList } from '@/components/surveys/CustomerCommentsList';
+import { SurveyDetailSheet } from '@/components/surveys/SurveyDetailSheet';
 import { ImageThumb } from '@/components/wa/InboxBoard';
 import type { CalendarStop } from '@/types/calendar-stop';
 import { WeeklyTargetStrip } from '@/components/management/WeeklyTargetStrip';
@@ -249,8 +250,9 @@ function ReasonPreview({ kind }: { kind: 'not_done' | 'follow_up' }) {
  * וזה בדיוק מה שגורם למסור מסך שנראה טוב ריק ושבור מלא.
  */
 const svy = (o: Record<string, unknown>) => ({
-  id: String(o.id), stopId: null, orderId: null, customerNumber: null,
+  id: String(o.id), stopId: null, orderId: null,
   customerName: o.name ?? null, driver: o.driver ?? null, healthFund: o.fund ?? null,
+  customerNumber: o.customerNumber ?? null,
   deliveredAt: null, sentAt: '2026-08-20T09:00:00Z', openedAt: null,
   answeredAt: o.at ?? '2026-08-20T10:00:00Z',
   satisfaction: o.sat ?? 5, recommend: o.rec ?? 5, comment: o.comment ?? null,
@@ -391,6 +393,12 @@ if (new URLSearchParams(location.search).get('view') === 'wa-automations') {
       },
     });
 }
+
+/** לקוח שדירג נמוך, בלי מלל ובלי נייד תקין. */
+const SURVEY_DETAIL_ROW = svy({
+  id: 9, name: 'עדי אהוד', driver: 'ישראל', fund: 'מכבי', sat: 2, rec: 1,
+  at: '2026-08-28T09:12:00Z', phone: null, customerNumber: '204455667',
+}) as unknown as import('@/lib/surveys').Survey;
 
 const view = new URLSearchParams(location.search).get('view');
 
@@ -588,6 +596,15 @@ const VIEWS: Record<string, React.ReactElement> = {
         initial={{ customerName: 'פאוסטונוביץ לודמילה', customerNumber: '306958653', phone: '0501234567', city: 'חיפה' }}
         onSubmit={() => {}}
       />
+    </div>
+  ),
+  /**
+   * ⭐ **מגירת חוות הדעת, על המקרה הקשה:** לקוח שדירג בלי לכתוב מילה
+   * ובלי נייד תקין. זה בדיוק המצב שבו מגירה מתוכננת רע נראית ריקה.
+   */
+  'survey-detail': (
+    <div dir="rtl" className="min-h-screen bg-slate-50">
+      <SurveyDetailSheet survey={SURVEY_DETAIL_ROW} open onOpenChange={() => {}} />
     </div>
   ),
   /** תמונה בבועת שיחה עם כפתור השמירה הצף. */
