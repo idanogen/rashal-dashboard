@@ -16,7 +16,7 @@
  * קורה איתו.
  */
 import { useMemo, useState } from 'react';
-import { CalendarClock, ClipboardList, Users, XCircle } from 'lucide-react';
+import { CalendarClock, ClipboardList, Repeat, Users, XCircle } from 'lucide-react';
 import { useTeamPerformance } from '@/hooks/useTeamPerformance';
 import {
   needsAttention,
@@ -28,6 +28,18 @@ import {
 
 const NAVY = '#14223a';
 const RED = '#c2410c';
+
+/** 0 = ראשון, כמו ב-postgres. חמישי הוא היום האחרון שעובדים בו. */
+const DOW_LABEL: Record<number, string> = {
+  0: 'ראשון', 1: 'שני', 2: 'שלישי', 3: 'רביעי', 4: 'חמישי', 5: 'שישי', 6: 'שבת',
+};
+
+const LEAD_BUCKETS = [
+  { key: 'd0_2' as const, label: 'עד יומיים', color: '#16a34a' },
+  { key: 'd3_7' as const, label: 'שלושה עד שבעה', color: '#84cc16' },
+  { key: 'd8_14' as const, label: 'שמונה עד 14', color: '#f59e0b' },
+  { key: 'over14' as const, label: 'מעל שבועיים', color: '#dc2626' },
+];
 
 const KIND_LABEL: Record<string, string> = {
   driver: 'חלוקה',
@@ -68,6 +80,10 @@ export function TeamPerformancePage() {
   const rows = useMemo(() => orderPeople((data?.people ?? []).map(toPersonRow)), [data]);
   const attention = useMemo(() => needsAttention(rows), [rows]);
   const totals = data?.totals;
+  const lead = data?.leadTime ?? { n: 0, median: null, p90: null, d0_2: 0, d3_7: 0, d8_14: 0, over14: 0, ofCompleted: 0 };
+  const rep = data?.repeat ?? { customers: 0, withRepeat: 0, visits: 0, closedWithCustomer: 0 };
+  const dow = data?.byDow ?? [];
+  const dowMax = Math.max(1, ...dow.map((d) => d.stops));
   const reasonTotal = (data?.reasons ?? []).reduce((s, r) => s + r.n, 0);
 
   return (
@@ -145,8 +161,8 @@ export function TeamPerformancePage() {
                 ))}
               </div>
               <p className="mt-2 text-[11px] text-orange-900/70">
-                כל אחת מהן היא לקוח שהעבודה אצלו לא נסגרה במערכת. מוצג ממי שיש לו
-                <bdi> {OPEN_BACKLOG_ALERT} </bdi>ומעלה.
+                כל אחת מהן היא לקוח שהעבודה אצלו לא נסגרה במערכת. מוצג ממי שיש לו{' '}
+                <bdi>{OPEN_BACKLOG_ALERT}</bdi> ומעלה.
               </p>
             </div>
           )}
@@ -251,22 +267,109 @@ export function TeamPerformancePage() {
               )}
             </Panel>
 
-            <Panel icon={<CalendarClock className="h-4 w-4" />} title="מה עוד אפשר למדוד מכאן">
-              <ul className="space-y-2 py-1 text-xs leading-relaxed text-slate-600">
-                <li>
-                  <b style={{ color: NAVY }}>שעת הגעה.</b> מהיום היא נחתמת אוטומטית בכל לחיצה על
-                  "הגעתי", גם מהאפליקציה. עוד כמה שבועות אפשר יהיה להציג זמן שהייה אצל הלקוח
-                  ושעת התחלה של יום עבודה.
-                </li>
-                <li>
-                  <b style={{ color: NAVY }}>סיבות "לא בוצע".</b> ככל שהנהגים בוחרים מהרשימה,
-                  הפאנל שלצד זה הופך למדד של איכות התיאום ולא של הנהג.
-                </li>
-                <li>
-                  <b style={{ color: NAVY }}>זמן מהזמנה עד אספקה.</b> החציון היום הוא יומיים,
-                  ולעשירית מההזמנות זה מעל שבועיים. זה המקום שבו לקוח מתחיל להתקשר.
-                </li>
-              </ul>
+            {/* ⭐⭐ **מדד ארגוני ולא אישי.** כמה זמן לוקח מרגע שהלקוח הזמין
+                ועד שהציוד אצלו. זה אינו תלוי בנהג אלא בתיאום, במלאי
+                ובעומס, ולכן הוא לא יושב בטבלת האנשים. */}
+            <Panel
+              icon={<CalendarClock className="h-4 w-4" />}
+              title="מהזמנה עד אספקה"
+              hint={lead.n > 0 ? `חציון ${lead.median} ימים` : undefined}
+            >
+              {lead.n === 0 ? (
+                <p className="py-8 text-center text-xs text-slate-400">
+                  אין אספקות שמקושרות להזמנה בתקופה הזאת, ולכן אי אפשר לחשב את הזמן.
+                </p>
+              ) : (
+                <>
+                  <div className="space-y-2 py-1">
+                    {LEAD_BUCKETS.map((b) => {
+                      const n = lead[b.key];
+                      return (
+                        <div key={b.key} className="flex items-center gap-2 text-xs">
+                          <span className="w-28 shrink-0">{b.label}</span>
+                          <div className="h-4 flex-1 overflow-hidden rounded-full bg-slate-100">
+                            <div
+                              className="h-full rounded-full"
+                              style={{ width: `${lead.n ? (n / lead.n) * 100 : 0}%`, background: b.color }}
+                            />
+                          </div>
+                          <bdi className="w-8 shrink-0 text-start font-bold" style={{ color: NAVY }}>{n}</bdi>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* 🔴 המכנה נאמר. 149 מתוך 571 אינו "כל האספקות". */}
+                  <p className="pt-2 text-[11px] leading-relaxed text-slate-400">
+                    נמדד על <bdi>{lead.n}</bdi> אספקות מתוך <bdi>{lead.ofCompleted}</bdi> שבוצעו,
+                    אלה שמקושרות להזמנה ולכן ידוע מתי היא נפתחה. אצל{' '}
+                    <bdi>{lead.over14}</bdi> מהן עברו יותר משבועיים, וזה המקום שבו לקוח מתחיל להתקשר.
+                  </p>
+                </>
+              )}
+            </Panel>
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Panel
+              icon={<Repeat className="h-4 w-4" />}
+              title="לקוחות שדרשו יותר מנסיעה אחת"
+              hint={rep.customers > 0 ? `${rep.withRepeat} מתוך ${rep.customers}` : undefined}
+            >
+              {rep.customers === 0 ? (
+                <p className="py-8 text-center text-xs text-slate-400">
+                  אין מספיק עצירות עם מספר לקוח בתקופה הזאת.
+                </p>
+              ) : (
+                <div className="py-2">
+                  <div className="flex items-end justify-center gap-6">
+                    <div className="text-center">
+                      <div className="text-3xl font-extrabold leading-none" style={{ color: '#c2410c' }}>
+                        {Math.round((rep.withRepeat / rep.customers) * 100)}%
+                      </div>
+                      <div className="mt-1 text-[11px] text-slate-400">מהלקוחות</div>
+                    </div>
+                    <div className="text-center">
+                      <div className="text-3xl font-extrabold leading-none" style={{ color: NAVY }}>
+                        {rep.visits}
+                      </div>
+                      <div className="mt-1 text-[11px] text-slate-400">נסיעות אליהם</div>
+                    </div>
+                  </div>
+                  {/* 🔴 המכנה שוב: רק עצירות שיש להן מספר לקוח. משימה
+                      שנפתחה ידנית בלי ישות אינה יודעת אצל מי היא הייתה. */}
+                  <p className="mt-3 text-[11px] leading-relaxed text-slate-400">
+                    <bdi>{rep.withRepeat}</bdi> לקוחות מתוך <bdi>{rep.customers}</bdi> קיבלו יותר
+                    מנסיעה אחת, ויחד הם <bdi>{rep.visits}</bdi> נסיעות מתוך{' '}
+                    <bdi>{rep.closedWithCustomer}</bdi>. כל נסיעה שנייה היא עלות שלא תוכננה, ולרוב
+                    היא נולדת ממשהו שהתגלה בשטח ולא מהנהג.
+                  </p>
+                </div>
+              )}
+            </Panel>
+
+            <Panel icon={<Users className="h-4 w-4" />} title="עומס לפי יום בשבוע">
+              {dow.length === 0 ? (
+                <p className="py-8 text-center text-xs text-slate-400">אין עצירות בתקופה הזאת.</p>
+              ) : (
+                <div className="space-y-2 py-1">
+                  {dow.map((d) => (
+                    <div key={d.dow} className="flex items-center gap-2 text-xs">
+                      <span className="w-12 shrink-0">{DOW_LABEL[d.dow] ?? d.dow}</span>
+                      <div className="h-4 flex-1 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-full rounded-full"
+                          style={{ width: `${dowMax ? (d.stops / dowMax) * 100 : 0}%`, background: '#2563eb' }}
+                        />
+                      </div>
+                      <bdi className="w-8 shrink-0 text-start font-bold" style={{ color: NAVY }}>{d.stops}</bdi>
+                    </div>
+                  ))}
+                  <p className="pt-2 text-[11px] leading-relaxed text-slate-400">
+                    מספר העצירות המשובצות בכל יום. חמישי קל יותר משאר הימים, וזה המקום הראשון
+                    להזיז אליו עומס מיום עמוס.
+                  </p>
+                </div>
+              )}
             </Panel>
           </div>
         </>

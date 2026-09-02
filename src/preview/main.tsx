@@ -488,6 +488,13 @@ previewQc.setQueryData(['teamPerformance', 90], {
     { reason: 'לא הצלחתי ליצור קשר', n: 8 },
     { reason: 'חוסר במלאי / ציוד', n: 2 },
   ],
+  leadTime: { n: 149, median: 2, p90: 15.8, d0_2: 80, d3_7: 45, d8_14: 9, over14: 15, ofCompleted: 571 },
+  repeat: { customers: 400, withRepeat: 28, visits: 58, closedWithCustomer: 430 },
+  byDow: [
+    { dow: 0, stops: 200, completed: 122 }, { dow: 1, stops: 215, completed: 124 },
+    { dow: 2, stops: 208, completed: 123 }, { dow: 3, stops: 201, completed: 130 },
+    { dow: 4, stops: 156, completed: 72 },
+  ],
   totals: { stops: 980, completed: 571, notCompleted: 122, openFromPast: 280, closedSameDay: 544, withArrival: 705 },
 });
 

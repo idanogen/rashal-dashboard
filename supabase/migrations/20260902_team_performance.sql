@@ -12,6 +12,12 @@
 -- `open_from_past` לצד `not_completed`, והמסך מציג את שתיהן.
 --
 -- 🔴 `security invoker`, ולכן ה-RLS של העצירות חל כאן מעצמו.
+--
+-- ⭐ **הורחב באותו יום** בשלושה מדדים ארגוניים, שאינם על אדם מסוים:
+-- זמן מהזמנה עד אספקה, ביקורים חוזרים אצל אותו לקוח, ועומס לפי יום
+-- בשבוע. 🔴 **זמן ההזמנה נמדד רק על עצירות שמקושרות להזמנה** (149 מתוך
+-- 571 ברבעון), והמסך אומר את המכנה במפורש, כי אחוז בלי מכנה על מדגם
+-- חלקי הוא בדיוק הדרך להסיק על כל החברה מרבע ממנה.
 
 create or replace function public.team_performance(p_days integer default 90)
 returns jsonb
@@ -62,6 +68,51 @@ select jsonb_build_object(
   'reasons', coalesce((
     select jsonb_agg(jsonb_build_object('reason', reason, 'n', n) order by n desc)
       from reasons), '[]'::jsonb),
+  'leadTime', (
+    -- ⭐ `orders.created_at` הוא **תאריך ההזמנה בפריוריטי** ולא מועד
+    -- הקליטה אצלנו: הערכים מגיעים עד 2014. לכן זה מדד אמיתי.
+    select jsonb_build_object(
+      'n', count(*),
+      'median', round(percentile_cont(0.5) within group (order by d)::numeric, 1),
+      'p90', round(percentile_cont(0.9) within group (order by d)::numeric, 1),
+      'd0_2', count(*) filter (where d between 0 and 2),
+      'd3_7', count(*) filter (where d between 3 and 7),
+      'd8_14', count(*) filter (where d between 8 and 14),
+      'over14', count(*) filter (where d > 14),
+      'ofCompleted', (select count(*) from s where s.status = 'completed')
+    )
+    from (
+      select (s.delivery_date - o.created_at::date) as d
+        from s join public.orders o on o.id = s.order_id
+       where s.status = 'completed' and o.created_at is not null
+         and (s.delivery_date - o.created_at::date) >= 0
+    ) l
+  ),
+  'repeat', (
+    -- 🔴 רק עצירות שיש להן מספר לקוח. השאר הן משימות שנפתחו ידנית בלי
+    -- ישות, ואי אפשר לדעת אצל מי הן היו.
+    select jsonb_build_object(
+      'customers', count(*),
+      'withRepeat', count(*) filter (where c > 1),
+      'visits', coalesce(sum(c) filter (where c > 1), 0),
+      'closedWithCustomer', coalesce(sum(c), 0)
+    )
+    from (
+      select customer_number, count(*) as c
+        from s
+       where status in ('completed','not_completed') and coalesce(customer_number,'') <> ''
+       group by customer_number
+    ) r
+  ),
+  'byDow', coalesce((
+    select jsonb_agg(jsonb_build_object('dow', dow, 'stops', stops, 'completed', completed) order by dow)
+      from (
+        select extract(dow from delivery_date)::int as dow,
+               count(*) as stops,
+               count(*) filter (where status='completed') as completed
+          from s group by 1
+      ) d
+  ), '[]'::jsonb),
   'totals', (
     select jsonb_build_object(
       'stops', count(*),
