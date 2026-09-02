@@ -433,12 +433,25 @@ function Row({
 export interface InboxBoardProps {
   /** גובה הלוח. הדף מקבל את גובה המסך, החלונית את גובה המגירה. */
   heightClass?: string;
+  /**
+   * טלפון מקומי (`0XXXXXXXXX`) שהתיבה נפתחת עליו, מ-`/inbox?phone=…`.
+   *
+   * ⭐ **נולד ב-<bdi>02/09/2026</bdi>**, כשכפתור הוואטסאפ במסך הסקרים
+   * עבר מ-`wa.me` לתיבה של המערכת. בלי זה הקישור היה נוחת על רשימה
+   * ומשאיר את המשתמש לחפש את הלקוח ביד.
+   *
+   * 🔴 **הפתיחה גם עוברת ללשונית "כל השיחות" וגם מזינה את החיפוש.**
+   * ברירת המחדל היא "ממתינים", ולקוח שקיבל מאיתנו סקר ולא ענה בוואטסאפ
+   * פשוט אינו שם. בלי שני אלה הקישור היה מוביל למסך שאומר "בחר שיחה
+   * מהרשימה", כלומר לקישור שנראה שבור.
+   */
+  initialPhone?: string | null;
 }
 
 export const HEIGHT_PAGE = 'lg:h-[calc(100vh-13rem)]';
 export const HEIGHT_DOCK = 'h-[calc(100vh-6rem)]';
 
-export function InboxBoard({ heightClass = HEIGHT_PAGE }: InboxBoardProps) {
+export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: InboxBoardProps) {
   const [tab, setTab] = useState<'waiting' | 'all'>('waiting');
   const [q, setQ] = useState('');
   const [selected, setSelected] = useState<string | null>(null);
@@ -550,6 +563,20 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE }: InboxBoardProps) {
     return (people.data ?? []).filter((c) => !c.phone_local || !seen.has(c.phone_local));
   }, [people.data, items, inbox.data?.phones]);
   const counts = inbox.data?.counts ?? { waiting: 0, all: 0 };
+
+  // ⭐ פתיחה על לקוח מסוים, פעם אחת, כשהגענו לכאן מקישור.
+  const jumped = useRef(false);
+  useEffect(() => {
+    if (jumped.current || !initialPhone) return;
+    jumped.current = true;
+    // 🔴 שלושתם יחד. הבחירה לבדה לא מספיקה: השורה חייבת להיות ברשימה
+    // שמוצגת, אחרת הצד הימני מציג "בחר שיחה מהרשימה" ליד לקוח שנבחר.
+    setTab('all');
+    setQ(initialPhone);
+    setSelected(initialPhone);
+    // המעבר האוטומטי ללשונית "כל השיחות" כבר קרה כאן, ואין צורך שיקרה שוב.
+    autoSwitched.current = true;
+  }, [initialPhone]);
 
   // ⭐ **אם אין מי שמחכה, אין טעם להציג לשונית ריקה.** נפתחים על כל
   // השיחות, פעם אחת, ורק כשהתשובה מהשרת כבר הגיעה.

@@ -1,9 +1,10 @@
 import { MessageCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { CustomerCardButton } from '@/components/customer/CustomerCardSheet';
 import type { Survey } from '@/lib/surveys';
 import { surveyWhen } from '@/lib/survey-when';
-import { waChatUrl } from '@/lib/wa-chat-link';
+import { waInboxPath } from '@/lib/wa-chat-link';
 import { useSetSurveyHandled } from '@/hooks/useSurveys';
 
 const NAVY = '#14223a';
@@ -36,7 +37,7 @@ export function SurveyDetailSheet({
   if (!survey) return null;
 
   const done = survey.handledAt !== null;
-  const url = waChatUrl(survey.phoneE164);
+  const inbox = waInboxPath(survey.phoneE164);
   const comment = survey.comment?.trim() ?? '';
 
   return (
@@ -109,18 +110,20 @@ export function SurveyDetailSheet({
               name={survey.customerName}
             />
 
-            {/* 🔴 וואטסאפ נשאר, אבל ככפתור נפרד ומסומן, ולא כתוצאה של
-                לחיצה על שם. פעולה יוצאת ללקוח נעשית בכוונה. */}
-            {url ? (
-              <a
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
+            {/* 🔴🔴 **היעד הוא תיבת השיחות של המערכת ולא `wa.me`.** עידן,
+                <bdi>02/09/2026</bdi>: "אנחנו עובדים בוואטסאפ על המערכת
+                שלנו". הודעה שיוצאת מוואטסאפ ווב של העובד יוצאת מהמספר
+                הפרטי שלו, אינה נרשמת בתיבה, ואף אחד אחר לא יראה שדיברנו.
+                🔴 והכפתור נשאר כפתור נפרד ומסומן ולא תוצאה של לחיצה על
+                שם: פנייה ללקוח היא החלטה. */}
+            {inbox ? (
+              <Link
+                to={inbox}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-white px-3 py-1.5 text-xs font-bold text-emerald-800 hover:bg-emerald-50"
               >
                 <MessageCircle className="h-3.5 w-3.5" />
-                פתיחת וואטסאפ
-              </a>
+                השיחה בתיבה
+              </Link>
             ) : (
               <span className="rounded-lg bg-slate-100 px-3 py-1.5 text-xs text-slate-400">אין נייד</span>
             )}

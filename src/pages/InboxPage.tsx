@@ -1,4 +1,5 @@
 import { MessageCircle, RefreshCw } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
 import { useQueryClient, useIsFetching } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { InboxBoard } from '@/components/wa/InboxBoard';
@@ -8,6 +9,16 @@ import { WA_INBOX_KEY } from '@/lib/wa-inbox-query';
 export function InboxPage() {
   const qc = useQueryClient();
   const fetching = useIsFetching({ queryKey: [WA_INBOX_KEY] }) > 0;
+
+  /**
+   * ⭐ `/inbox?phone=0XXXXXXXXX` פותח את התיבה על לקוח מסוים.
+   *
+   * זו נקודת הכניסה מכפתור הוואטסאפ שבמסך הסקרים, שעבר ב-<bdi>02/09/2026</bdi>
+   * מ-`wa.me` לתיבה של המערכת: העבודה מול הלקוח נעשית בערוץ העסקי
+   * המתועד, ולא מהמספר הפרטי של מי שלחץ.
+   */
+  const [params] = useSearchParams();
+  const phone = params.get('phone');
 
   return (
     <div className="space-y-4">
@@ -34,7 +45,7 @@ export function InboxPage() {
         </Button>
       </div>
 
-      <InboxBoard />
+      <InboxBoard initialPhone={phone} />
     </div>
   );
 }

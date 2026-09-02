@@ -3,7 +3,7 @@ import { Check, RotateCcw } from 'lucide-react';
 import type { Survey } from '@/lib/surveys';
 import { surveyMark, SURVEY_TONE } from '@/lib/survey-badge';
 import { surveyWhen } from '@/lib/survey-when';
-import { waChatUrl } from '@/lib/wa-chat-link';
+import { waLocalPhone } from '@/lib/wa-chat-link';
 import { useSetSurveyHandled } from '@/hooks/useSurveys';
 import { SurveyDetailSheet } from '@/components/surveys/SurveyDetailSheet';
 
@@ -46,7 +46,7 @@ export function LowRatedList({ rows }: { rows: Survey[] }) {
     <div className="divide-y" style={{ borderColor: '#eef1f6' }}>
       {rows.map((s) => {
         const mark = surveyMark({ score: s.satisfaction, answeredAt: s.answeredAt, comment: s.comment });
-        const hasPhone = waChatUrl(s.phoneE164) !== null;
+        const hasPhone = waLocalPhone(s.phoneE164) !== null;
         const done = s.handledAt !== null;
         const busy = handle.isPending && handle.variables?.id === s.id;
 

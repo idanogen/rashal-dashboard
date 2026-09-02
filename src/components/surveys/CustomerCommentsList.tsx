@@ -1,6 +1,7 @@
 import { MessageCircle } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import type { Survey } from '@/lib/surveys';
-import { waChatUrl } from '@/lib/wa-chat-link';
+import { waInboxPath } from '@/lib/wa-chat-link';
 import { surveyWhen } from '@/lib/survey-when';
 
 const NAVY = '#14223a';
@@ -13,6 +14,10 @@ const NAVY = '#14223a';
  * הלקוח ואת הציון, בדיוק הבאג של כפתור "כרטיס" מאתמול.
  * 🔴 לקוח בלי נייד תקין מקבל תווית "אין נייד" ולא כפתור שקט שנעלם:
  * היעדר חייב לדבר.
+ *
+ * 🔴🔴 **הכפתור מוביל לתיבת השיחות של המערכת ולא ל-`wa.me`** (עידן,
+ * <bdi>02/09/2026</bdi>). הודעה שיוצאת מוואטסאפ ווב של העובד יוצאת
+ * מהמספר הפרטי שלו ואינה מתועדת בשום מקום אצלנו.
  */
 export function CustomerCommentsList({ rows }: { rows: Survey[] }) {
   if (rows.length === 0) {
@@ -21,7 +26,7 @@ export function CustomerCommentsList({ rows }: { rows: Survey[] }) {
   return (
     <div className="divide-y" style={{ borderColor: '#eef1f6' }}>
       {rows.map((s) => {
-        const url = waChatUrl(s.phoneE164);
+        const inbox = waInboxPath(s.phoneE164);
         const low = (s.satisfaction ?? 5) <= 3;
         return (
           <div key={s.id} className="flex items-start gap-3 py-2.5 first:pt-1 last:pb-1">
@@ -54,16 +59,14 @@ export function CustomerCommentsList({ rows }: { rows: Survey[] }) {
                 <p className="mt-0.5 text-[13px] leading-snug text-slate-600">{s.comment}</p>
               )}
             </div>
-            {url ? (
-              <a
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
+            {inbox ? (
+              <Link
+                to={inbox}
                 className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-emerald-700"
               >
                 <MessageCircle className="h-3.5 w-3.5" />
                 וואטסאפ
-              </a>
+              </Link>
             ) : (
               <span className="shrink-0 rounded-lg bg-slate-100 px-3 py-1.5 text-xs text-slate-400">
                 אין נייד
