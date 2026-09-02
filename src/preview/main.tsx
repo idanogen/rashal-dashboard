@@ -415,9 +415,33 @@ const JUMP_ITEM = {
   window: { open: false, expiresAt: null, minutesLeft: 0, reason: 'no_inbound' },
   survey: { score: 2, answeredAt: '2026-08-28T09:12:00Z', comment: null },
 } as never;
+/**
+ * 🔴🔴 **הלשונית "ממתינים" מוזנת בלקוח אחר, וזה לב השחזור.** בייצור
+ * הכפתור הצף כבר שאב את הרשימה הזאת לפני שהמסך נפתח, ולכן ברגע הראשון
+ * `items` **אינו ריק**, והבחירה האוטומטית של השורה הראשונה רצה ודורסת
+ * את הבחירה שהגיעה מהקישור. התוצאה שעידן ראה: שם אחד ברשימה, ושיחה של
+ * לקוח אחר לגמרי לצידה.
+ */
+const DECOY_ITEM = {
+  id: 'conv-2', phone: '0543295286', title: 'אל נמר טאליה', customerNumber: '341837938',
+  unidentified: false, preview: 'שתחזור מהבית ספר אצלכם',
+  lastMessageAt: '2026-09-01T12:00:00Z', lastMessageDirection: 'in',
+  unansweredSince: '2026-09-01T12:00:00Z', waitingMinutes: 300, read: false, messageCount: 6,
+  window: { open: true, expiresAt: null, minutesLeft: 120, reason: null },
+} as never;
 previewQc.setQueryData(['wa-inbox', 'waiting', ''], {
-  ok: true, tab: 'waiting', counts: { waiting: 15, all: 224 }, matched: 0,
-  truncated: false, items: [], phones: [JUMP_PHONE],
+  ok: true, tab: 'waiting', counts: { waiting: 14, all: 225 }, matched: 1,
+  truncated: false, items: [DECOY_ITEM], phones: [JUMP_PHONE, '0543295286'],
+});
+previewQc.setQueryData(['wa-thread', '0543295286'], {
+  ok: true,
+  conversation: {
+    id: 'conv-2', phone: '0543295286', phoneE164: '+972543295286', contactName: null,
+    customerNumber: '341837938', customerName: 'אל נמר טאליה', messageCount: 6,
+    lastMessageAt: '2026-09-01T12:00:00Z', unansweredSince: '2026-09-01T12:00:00Z', waiting: true,
+    window: { open: true, expiresAt: null, minutesLeft: 120, reason: null },
+  },
+  messages: [],
 });
 // 🔴 **הרשימה מוזנת רק כשלא מבקשים את המצב הקר.** `?view=inbox-jump-cold`
 // מדמה את הרגע שבו השיחה כבר נשאבה אבל השורה עדיין לא ברשימה שמוצגת,
@@ -648,6 +672,8 @@ const VIEWS: Record<string, React.ReactElement> = {
   ),
   'inbox-jump': <InboxBoard initialPhone={JUMP_PHONE} />,
   'inbox-jump-cold': <InboxBoard initialPhone={JUMP_PHONE} />,
+  /** ⭐ בקרה חיובית: בלי קישור, השורה הראשונה עדיין נבחרת לבד. */
+  'inbox-plain': <InboxBoard />,
   /** תמונה בבועת שיחה עם כפתור השמירה הצף. */
   'wa-image': (
     <div dir="rtl" className="min-h-screen bg-slate-50 p-6">

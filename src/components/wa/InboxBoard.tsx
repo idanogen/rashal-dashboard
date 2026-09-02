@@ -452,16 +452,30 @@ export const HEIGHT_PAGE = 'lg:h-[calc(100vh-13rem)]';
 export const HEIGHT_DOCK = 'h-[calc(100vh-6rem)]';
 
 export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: InboxBoardProps) {
-  const [tab, setTab] = useState<'waiting' | 'all'>('waiting');
-  const [q, setQ] = useState('');
-  const [selected, setSelected] = useState<string | null>(null);
+  /**
+   * 🔴🔴 **הגעה מקישור נקבעת כאן, במצב ההתחלתי, ולא ב-`useEffect`.**
+   *
+   * הגרסה הראשונה קבעה את שלושתם באפקט, ועידן ראה את התוצאה: ברשימה
+   * הופיע לקוח אחד, ובשרשור שלצידו **לקוח אחר לגמרי**. הסיבה היא סדר
+   * האפקטים: שניהם רצים באותו סבב, ולכן "בחירה אוטומטית של השורה
+   * הראשונה" עדיין ראתה `selected === null` בסגירה שלה, ודרסה את
+   * הבחירה שהגיעה מהקישור. ⭐ והיא הצליחה לרוץ מיד כי **הכפתור הצף כבר
+   * שאב את הרשימה למטמון**, אז ברגע הראשון `items` אינו ריק.
+   *
+   * ⭐ ערך התחלתי אינו מרוץ: הוא קיים כבר ברינדור הראשון, ולכן אין שום
+   * אפקט שיכול להקדים אותו. [[effect_order_is_not_a_guarantee]]
+   */
+  const [tab, setTab] = useState<'waiting' | 'all'>(initialPhone ? 'all' : 'waiting');
+  const [q, setQ] = useState(initialPhone ?? '');
+  const [selected, setSelected] = useState<string | null>(initialPhone);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
   // 🔴 מתג חד-פעמי. בלעדיו כל רענון של הרשימה היה מחזיר את הלשונית
   // ל"כל השיחות" גם אחרי שהעובד בחר במפורש "ממתינים", וזה נקרא כמו מסך
   // שנלחם בך. מעבר אוטומטי הוא עזרה בפתיחה, לא כלל שרץ כל הזמן.
-  const autoSwitched = useRef(false);
+  // ⭐ הגעה מקישור כבר קבעה את הלשונית, ולכן המעבר האוטומטי מנוטרל מראש.
+  const autoSwitched = useRef(Boolean(initialPhone));
   const qc = useQueryClient();
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -564,18 +578,15 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
   }, [people.data, items, inbox.data?.phones]);
   const counts = inbox.data?.counts ?? { waiting: 0, all: 0 };
 
-  // ⭐ פתיחה על לקוח מסוים, פעם אחת, כשהגענו לכאן מקישור.
-  const jumped = useRef(false);
+  // ⭐ קישור חדש בזמן שהמסך כבר פתוח (`/inbox?phone=` אחר). הפתיחה
+  // הראשונה כבר נעשתה במצב ההתחלתי, ולכן כאן מטפלים רק בשינוי.
+  const lastJump = useRef(initialPhone);
   useEffect(() => {
-    if (jumped.current || !initialPhone) return;
-    jumped.current = true;
-    // 🔴 שלושתם יחד. הבחירה לבדה לא מספיקה: השורה חייבת להיות ברשימה
-    // שמוצגת, אחרת הצד הימני מציג "בחר שיחה מהרשימה" ליד לקוח שנבחר.
+    if (!initialPhone || initialPhone === lastJump.current) return;
+    lastJump.current = initialPhone;
     setTab('all');
     setQ(initialPhone);
     setSelected(initialPhone);
-    // המעבר האוטומטי ללשונית "כל השיחות" כבר קרה כאן, ואין צורך שיקרה שוב.
-    autoSwitched.current = true;
   }, [initialPhone]);
 
   // ⭐ **אם אין מי שמחכה, אין טעם להציג לשונית ריקה.** נפתחים על כל
