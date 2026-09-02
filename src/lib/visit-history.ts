@@ -17,6 +17,8 @@ import { matchesSearch } from './search-match.ts';
 export interface VisitStopLike {
   deliveryDate: string; // YYYY-MM-DD
   status: string;
+  /** מי ביצע. מ-02/09/2026 יכול להיות עובד אחר, ראה `mine` למטה. */
+  driver?: string;
   customerName: string;
   customerNumber?: string;
   address?: string;
@@ -52,17 +54,28 @@ function stopHaystack(s: VisitStopLike): string {
  * עם חיפוש: **כל** הימים שלפני היום, ורק עצירות שמתאימות לשאילתה
  * (כל המילים, בכל סדר, אותם כללים כמו חיפוש הסדרן). יום בלי התאמות
  * לא מוצג.
+ *
+ * 🔴🔴 **`mine` נוסף ב-02/09/2026, כשהנהג התחיל לראות גם ביקורים של
+ * עובדים אחרים אצל לקוח שהוא נוסע אליו.** בלי ההפרדה קרו שני דברים רעים:
+ * ביקורים של עמיתים היו נכנסים לרשימת "השבוע האחרון שלי" ולמונים שלה,
+ * כלומר **הסטטיסטיקה של הנהג הייתה סופרת עבודה של אחרים**; ומי שהסתכל
+ * בכרטיס לא היה יודע שהביקור בכלל לא שלו.
+ * ⭐ **לכן ביקור של אחר מופיע רק בתוצאות חיפוש**, שהוא הרגע שבו הנהג
+ * שואל "מה היה כאן קודם", ולעולם לא בתצוגת ברירת המחדל.
  */
 export function buildVisitHistory<T extends VisitStopLike>(
   entries: Iterable<[string, T[]]>,
-  opts: { today: string; floorDate: string; query: string }
+  opts: { today: string; floorDate: string; query: string; mine?: string }
 ): VisitDay<T>[] {
   const q = opts.query.trim();
+  const isMine = (s: T) => !opts.mine || !s.driver || s.driver === opts.mine;
   const result: VisitDay<T>[] = [];
   for (const [date, stops] of entries) {
     if (date >= opts.today) continue;
     if (!q && date < opts.floorDate) continue;
-    const kept = q ? stops.filter((s) => matchesSearch(stopHaystack(s), q)) : stops;
+    const kept = q
+      ? stops.filter((s) => matchesSearch(stopHaystack(s), q))
+      : stops.filter(isMine);
     if (kept.length > 0) result.push({ date, stops: kept });
   }
   return result.sort((a, b) => b.date.localeCompare(a.date));

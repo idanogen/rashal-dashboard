@@ -93,3 +93,46 @@ test('תוויות תוצאה', () => {
   assert.equal(visitOutcomeLabel('not_completed'), 'לא בוצע');
   assert.equal(visitOutcomeLabel(null), '');
 });
+
+/**
+ * 🔴 מ-02/09/2026 הנהג רואה גם ביקורים של עובדים אחרים אצל לקוח שהוא
+ * נוסע אליו. הבדיקות האלה שומרות על שני הגבולות: הם לא נכנסים לתצוגת
+ * ברירת המחדל ולמונים שלה, והם כן נמצאים כשמחפשים.
+ */
+const mineOpts = { today: '2026-09-02', floorDate: '2026-08-26', mine: 'אבי' };
+const mixedDays = [
+  ['2026-09-01', [
+    { deliveryDate: '2026-09-01', status: 'completed', driver: 'אבי', customerName: 'כהן משה' },
+    { deliveryDate: '2026-09-01', status: 'completed', driver: 'רודי', customerName: 'לוי שרה' },
+  ]],
+  ['2026-05-04', [
+    { deliveryDate: '2026-05-04', status: 'not_completed', driver: 'ישראל', customerName: 'לוי שרה',
+      resolutionNote: 'הלקוח לא היה בבית' },
+  ]],
+];
+
+test('ברירת המחדל מציגה רק את הביקורים של הנהג עצמו', () => {
+  const days = buildVisitHistory(mixedDays, { ...mineOpts, query: '' });
+  const all = days.flatMap((d) => d.stops);
+  assert.equal(all.length, 1);
+  assert.equal(all[0].customerName, 'כהן משה');
+  assert.ok(!all.some((s) => s.driver !== 'אבי'), 'עבודה של עמית לא נספרת כשלו');
+});
+
+test('⭐ בחיפוש דווקא כן, כי זו השאלה "מה היה כאן קודם"', () => {
+  const days = buildVisitHistory(mixedDays, { ...mineOpts, query: 'לוי שרה' });
+  const all = days.flatMap((d) => d.stops);
+  assert.equal(all.length, 2, 'שני הביקורים אצל אותה לקוחה, גם של רודי וגם של ישראל');
+  assert.ok(all.some((s) => s.driver === 'ישראל'));
+});
+
+test('🔴 חיפוש חוצה גם את רצפת שבעת הימים, אחרת הביקור הקודם לא יימצא', () => {
+  const days = buildVisitHistory(mixedDays, { ...mineOpts, query: 'לא היה בבית' });
+  assert.equal(days.length, 1);
+  assert.equal(days[0].date, '2026-05-04');
+});
+
+test('בלי mine ההתנהגות הישנה נשמרת, ואף עצירה לא נעלמת', () => {
+  const days = buildVisitHistory(mixedDays, { today: '2026-09-02', floorDate: '2026-08-26', query: '' });
+  assert.equal(days.flatMap((d) => d.stops).length, 2);
+});

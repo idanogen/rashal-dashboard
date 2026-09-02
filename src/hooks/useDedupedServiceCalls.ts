@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import { useServiceCalls } from './useServiceCalls';
 import { useDedupEnabled } from './useDedupEnabled';
+import { resolveDedupGroups } from '@/lib/dedup-heads';
+import { CALL_CLOSED, PRIORITY_CALL_CLOSED } from '@/lib/constants';
 import type { ServiceCall } from '@/types/service-call';
 
 export interface DedupedServiceCallsResult {
@@ -34,24 +36,21 @@ export function useDedupedServiceCalls(): DedupedServiceCallsResult {
       };
     }
 
-    const childCount = new Map<string, number>();
-    for (const c of raw) {
-      if (c.duplicateOf) {
-        childCount.set(c.duplicateOf, (childCount.get(c.duplicateOf) ?? 0) + 1);
-      }
-    }
-
-    const heads = raw.filter((c) => !c.duplicateOf);
-    const groupSize = new Map<string, number>();
-    for (const [headId, n] of childCount.entries()) {
-      groupSize.set(headId, n + 1);
-    }
+    // אותו כלל כמו בהזמנות: כפיל שאיבד את המייצג הפתוח שלו חוזר לרשימה.
+    const { heads, groupSize, hiddenCount } = resolveDedupGroups(raw, {
+      getId: (c) => c.id,
+      getDuplicateOf: (c) => c.duplicateOf,
+      isOpen: (c) => !CALL_CLOSED.includes(c.serviceCallStatus as (typeof CALL_CLOSED)[number]),
+      isOpenInPriority: (c) =>
+        !!c.priorityStatus &&
+        !PRIORITY_CALL_CLOSED.includes(c.priorityStatus as (typeof PRIORITY_CALL_CLOSED)[number]),
+    });
 
     return {
       rawCalls: raw,
       calls: heads,
       groupSize,
-      hiddenCount: raw.length - heads.length,
+      hiddenCount,
       isLoading,
       error: (error as Error) ?? null,
     };

@@ -229,6 +229,9 @@ async function upsertCustomers(rows: Row[], backfill = false) {
       phone: s(r.PHONE),
       fax: s(r.FAX),
       agent: s(r.AGENTNAME),
+      // MCUSTDES הוא הלקוח-האב/המשלם ולא קופת חולים. הוא נשמר תחת השם
+      // ההיסטורי, וקופת החולים האמיתית (CTYPENAME) מתוחזקת בעמודה
+      // `customer_type` על ידי rashal-customer-type.
       health_fund: s(r.MCUSTDES),
       opened_by: s(r.OWNERLOGIN),
       priority_udate: s(r.CREATEDDATE),
@@ -587,7 +590,12 @@ async function upsertOrders(rows: Row[], backfill = false) {
         address: s(c.address),
         city: s(c.city),
         fax: s(c.fax),
-        health_fund: s(c.health_fund) ?? s(r.TYPEDES),
+        // 🔴 **הקופה אינה נכתבת כאן.** עד 02/09/2026 היא הגיעה מ-
+        // `c.health_fund` (שהוא MCUSTDES, כלומר הלקוח-האב) ובנפילה מ-
+        // `TYPEDES`, שהוא **סוג ההזמנה**. התוצאה: 24,670 הזמנות עם קופה
+        // שגויה, וביניהן לקוח מכבי שהוצג כמשרד הבריאות. הקופה נגזרת
+        // מ-`priority_customers.customer_type` (CTYPENAME) בטריגר במסד.
+        order_type: s(r.TYPEDES),
         opened_by: s(c.opened_by) ?? s(r.DOERNAME),
         customer_status: 'לקוח חדש',
         created_at: s(r.CURDATE) ?? new Date().toISOString(),
@@ -624,7 +632,8 @@ async function upsertOrders(rows: Row[], backfill = false) {
       const phone = s(r.Y_151_0_ESHB) ?? s(c.phone); if (phone) u.phone = phone;
       const address = s(c.address); if (address) u.address = address;
       const city = s(c.city); if (city) u.city = city;
-      const hf = s(c.health_fund) ?? s(r.TYPEDES); if (hf) u.health_fund = hf;
+      // סוג ההזמנה בעמודה שלו. הקופה נגזרת במסד, ראה למעלה.
+      const ot = s(r.TYPEDES); if (ot) u.order_type = ot;
       const items = mapItems(r); if (items) u.items = items;
       return u;
     },

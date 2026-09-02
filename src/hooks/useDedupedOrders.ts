@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
 import { useOrders } from './useOrders';
 import { useDedupEnabled } from './useDedupEnabled';
+import { resolveDedupGroups } from '@/lib/dedup-heads';
+import { ORDER_CLOSED, PRIORITY_ORDER_CLOSED } from '@/lib/constants';
 import type { Order } from '@/types/order';
 
 export interface DedupedOrdersResult {
@@ -42,25 +44,22 @@ export function useDedupedOrders(): DedupedOrdersResult {
       };
     }
 
-    // Count duplicates per head
-    const childCount = new Map<string, number>();
-    for (const o of raw) {
-      if (o.duplicateOf) {
-        childCount.set(o.duplicateOf, (childCount.get(o.duplicateOf) ?? 0) + 1);
-      }
-    }
-
-    const heads = raw.filter((o) => !o.duplicateOf);
-    const groupSize = new Map<string, number>();
-    for (const [headId, n] of childCount.entries()) {
-      groupSize.set(headId, n + 1); // +1 for the head itself
-    }
+    // הכפיל יורד מהמסך רק כל עוד יש לו מייצג פתוח. ראש שנסגר או שאורכב
+    // היה מוריד איתו עבודה פתוחה, ולכן הכלל יושב ב-resolveDedupGroups.
+    const { heads, groupSize, hiddenCount } = resolveDedupGroups(raw, {
+      getId: (o) => o.id,
+      getDuplicateOf: (o) => o.duplicateOf,
+      isOpen: (o) => !ORDER_CLOSED.includes(o.orderStatus as (typeof ORDER_CLOSED)[number]),
+      isOpenInPriority: (o) =>
+        !!o.priorityStatus &&
+        !PRIORITY_ORDER_CLOSED.includes(o.priorityStatus as (typeof PRIORITY_ORDER_CLOSED)[number]),
+    });
 
     return {
       rawOrders: raw,
       orders: heads,
       groupSize,
-      hiddenCount: raw.length - heads.length,
+      hiddenCount,
       isLoading,
       error: (error as Error) ?? null,
       refetch: refetchFn,

@@ -96,6 +96,18 @@ export function dataWindowFilter(statusColumn?: string, terminal?: readonly stri
 }
 
 /** סטטוסים סופיים. רשומה כזאת לא "עובדים עליה" גם אם נגעו בשורה. */
+/**
+ * הסטטוסים בפריוריטי שאומרים "אין כאן עבודה פתוחה בשבילנו".
+ *
+ * 🔴 `בוצעה` נכלל כאן **רק** לצורך החלטת התצוגה של כפיל יתום, ולא כסגירה
+ * של הזמנה. מ-09/08/2026 `בוצעה` נקבע בפריוריטי בזמן החיוב, לעיתים ימים
+ * לפני הנסיעה, ולכן הוא אינו סוגר אצלנו כלום (ORDER_TERMINAL = מבוטלת בלבד).
+ * ⭐ הרשימות זהות לגלאי התצוגה במסד (visibility_audit), וזה מה שמבטיח
+ * שמה שמדווח במייל של הבוקר הוא בדיוק מה שיופיע על המסך.
+ */
+export const PRIORITY_ORDER_CLOSED = ['בוצעה', 'שולמה', 'מבוטלת', 'טיוטא'] as const;
+export const PRIORITY_CALL_CLOSED = ['בוצעה', 'סופית', 'מבוטלת', 'טיוטא'] as const;
+
 export const ORDER_CLOSED = ['סופק', 'בוטל'] as const;
 export const CALL_CLOSED = ['בוצע', 'בוטל'] as const;
 /**

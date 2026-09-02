@@ -6,6 +6,8 @@ import {
   ORDER_CLOSED,
   CALL_CLOSED,
   PICKUP_CLOSED,
+  PRIORITY_ORDER_CLOSED,
+  PRIORITY_CALL_CLOSED,
   BUSINESS_FLOOR_DATE,
 } from '../src/lib/constants.ts';
 
@@ -35,6 +37,14 @@ test('רשימות הסגורים במיגרציה זהות לרשימות של 
   assert.ok(sql.includes(inList(ORDER_CLOSED)), 'ORDER_CLOSED לא תואם');
   assert.ok(sql.includes(inList(CALL_CLOSED)), 'CALL_CLOSED לא תואם');
   assert.ok(sql.includes(inList(PICKUP_CLOSED)), 'PICKUP_CLOSED לא תואם');
+});
+
+test('🔴 רשימות הסגורים בפריוריטי במיגרציה זהות לאלה של המסך', () => {
+  // מ-01/09/2026 המסך מעלה כפיל יתום לפי אותו כלל שהגלאי מדווח עליו.
+  // סטייה בין השניים פירושה מייל שמבטיח שורה שלא תופיע, או להפך.
+  const inList = (list) => `not in (${[...list].map((s) => `'${s}'`).join(',')})`;
+  assert.ok(sql.includes(inList(PRIORITY_ORDER_CLOSED)), 'PRIORITY_ORDER_CLOSED לא תואם');
+  assert.ok(sql.includes(inList(PRIORITY_CALL_CLOSED)), 'PRIORITY_CALL_CLOSED לא תואם');
 });
 
 test('הפונקציה נעולה: ההרשאות נשללות מ-anon ומ-authenticated', () => {

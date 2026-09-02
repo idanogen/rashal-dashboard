@@ -36,6 +36,8 @@ import {
   BookOpenCheck,
   ClipboardCheck,
   Search,
+
+  UserRound,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { buildVisitHistory } from '@/lib/visit-history';
@@ -242,7 +244,22 @@ export function DriverDashboardPage() {
     return map;
   }, [allStops]);
 
-  const todayStops = stopsByDate.get(today) ?? [];
+  // 🔴🔴 **לוח העבודה מסונן לשלו, וההיסטוריה לא.** מ-02/09/2026 ה-RLS
+  // מחזיר גם עצירות **סגורות** של עובדים אחרים אצל לקוח שהנהג נוסע אליו,
+  // וזו בדיוק המטרה. אבל בלי ההפרדה הזאת עצירה שעמית סגר היום אצל אותו
+  // לקוח הייתה נוחתת ב"היום שלי" ונראית כמו עבודה שלו.
+  const myStopsByDate = useMemo(() => {
+    const mine = profile?.linkedDriver;
+    if (!mine) return stopsByDate;
+    const map = new Map<string, DbCalendarStop[]>();
+    for (const [date, stops] of stopsByDate.entries()) {
+      const kept = stops.filter((s) => !s.driver || s.driver === mine);
+      if (kept.length) map.set(date, kept);
+    }
+    return map;
+  }, [stopsByDate, profile?.linkedDriver]);
+
+  const todayStops = myStopsByDate.get(today) ?? [];
 
   // 🔴 עצירות מימים שעברו שנשארו פתוחות. במדידה של 12/08/2026 היו 116 כאלה
   // במערכת, רובן במצב "הגעתי" בלי סגירה. הנהג מעולם לא ראה אותן: המסך שלו
@@ -270,19 +287,19 @@ export function DriverDashboardPage() {
       .map(([date, stops]) => ({ date, stops }))
       .sort((a, b) => b.date.localeCompare(a.date));
   }, [leftOpen]);
-  const tomorrowStops = stopsByDate.get(tomorrow) ?? [];
+  const tomorrowStops = myStopsByDate.get(tomorrow) ?? [];
   const weekStops = useMemo(() => {
     const start = new Date();
     const end = new Date(Date.now() + 7 * 86_400_000);
     const result: { date: string; stops: DbCalendarStop[] }[] = [];
-    for (const [date, stops] of stopsByDate.entries()) {
+    for (const [date, stops] of myStopsByDate.entries()) {
       const d = new Date(date + 'T00:00:00');
       if (d >= start && d <= end && date !== today && date !== tomorrow) {
         result.push({ date, stops });
       }
     }
     return result.sort((a, b) => a.date.localeCompare(b.date));
-  }, [stopsByDate, today, tomorrow]);
+  }, [myStopsByDate, today, tomorrow]);
 
   // היסטוריה: ברירת המחדל 7 ימים אחורה, אבל חיפוש רץ על **הכל** (בקשת
   // עמי 30/08). ה-RLS כבר תוחם לעצירות של הנהג הזה בלבד, אז "הכל" הוא
@@ -291,22 +308,28 @@ export function DriverDashboardPage() {
   const historyStops = useMemo(
     () =>
       buildVisitHistory(stopsByDate.entries(), {
+        mine: profile?.linkedDriver ?? undefined,
         today,
         floorDate: toLocalDateStr(new Date(Date.now() - 7 * 86_400_000)),
         query: historyQuery,
       }),
-    [stopsByDate, today, historyQuery]
+    [stopsByDate, today, historyQuery, profile?.linkedDriver]
   );
 
+  // 🔴 המונים סופרים אך ורק את העבודה שלו. מ-02/09/2026 תוצאות החיפוש
+  // כוללות גם ביקורים של עמיתים אצל אותו לקוח, ובלי הסינון הזה
+  // הסטטיסטיקה של הנהג הייתה מתנפחת מעבודה שהוא לא עשה.
+  const isMineStop = (s: { driver?: string }) =>
+    !profile?.linkedDriver || !s.driver || s.driver === profile.linkedDriver;
   const historyCompleted = historyStops.reduce(
-    (sum, d) => sum + d.stops.filter((s) => s.status === 'completed').length,
+    (sum, d) => sum + d.stops.filter((s) => isMineStop(s) && s.status === 'completed').length,
     0
   );
   const historyNotCompleted = historyStops.reduce(
-    (sum, d) => sum + d.stops.filter((s) => s.status === 'not_completed').length,
+    (sum, d) => sum + d.stops.filter((s) => isMineStop(s) && s.status === 'not_completed').length,
     0
   );
-  const historyTotal = historyStops.reduce((sum, d) => sum + d.stops.length, 0);
+  const historyTotal = historyStops.reduce((sum, d) => sum + d.stops.filter(isMineStop).length, 0);
 
   // "בוצעו" = רק עצירות שסופקו בפועל (לא כולל "לא בוצע"/מבוטל).
   // "נותרו" = עצירות שעדיין לפעולה (planned/in_progress); "לא בוצע" אינו נספר באף אחד.
@@ -632,8 +655,16 @@ export function DriverDashboardPage() {
                     </Badge>
                   </div>
                   {day.stops.map((stop, idx) => (
+                    <div key={stop.id}>
+                      {/* ⭐ ביקור של עובד אחר אצל לקוח שאני נוסע אליו.
+                          בלי השורה הזאת הנהג קורא הערה ומניח שהוא כתב אותה. */}
+                      {!isMineStop(stop) && (
+                        <div className="mb-1 flex items-center gap-1.5 px-1 text-[11px] font-semibold text-violet-700">
+                          <UserRound className="h-3.5 w-3.5" />
+                          ביקור קודם של {stop.driver}
+                        </div>
+                      )}
                     <DriverStopCard
-                      key={stop.id}
                       stop={stop}
                       index={idx + 1}
                       onCoordinate={() => handleCoordinate(stop)}
@@ -643,6 +674,7 @@ export function DriverDashboardPage() {
                 onCraneForm={() => setCraneStop(stop)}
                       resolving={isResolvingStop(stop.id)}
                     />
+                    </div>
                   ))}
                 </div>
               ))}

@@ -9,6 +9,9 @@ import type { Pickup } from '@/types/pickup';
 import type { CalendarStop } from '@/types/calendar-stop';
 import { getZoneForCity, getZoneById, REGION_LABELS } from '@/types/zone';
 import { countOpenOverDays, countRepeatCalls } from './repeat-calls';
+import {
+  deliveryTargetStatus, weekStart, countsTowardTarget, type TargetStatus,
+} from './delivery-target';
 
 /** יעד SLA לאספקה (עידן, 04/08): שבוע. */
 export const SLA_DAYS = 7;
@@ -31,7 +34,12 @@ function real<T extends { duplicateOf?: string }>(rows: T[]): T[] {
 }
 
 export interface KpiBlock {
-  deliveries: { todayPlanned: number; todayDone: number; late: number; slaPct: number; avgDays: number | null };
+  deliveries: {
+    todayPlanned: number; todayDone: number; late: number; slaPct: number; avgDays: number | null;
+    /** עמידה ביעד השבועי + שמונת השבועות שלפניו, לרצועה בכרטיס */
+    weekly: TargetStatus;
+    weeklyHistory: { weekStart: string; count: number }[];
+  };
   service: { open: number; doneThisMonth: number; avgCloseHours: number | null };
   docs: {
     notesOpen: number; notesClosedThisMonth: number; notesOldestOpenDays: number | null;
@@ -269,9 +277,33 @@ export function computeManagementMetrics(
   const repeatCalls = countRepeatCalls(sc, { nowMs: now });
 
 
+  // ---- יעד האספקות השבועי (שלומי, 02/09/2026) ----
+  // ⭐ נספר מתעודות המשלוח, שהן המדד לאספקות שסוכם ב-26/08. הכלל עצמו
+  // (מי נספרת, מתי מתחיל השבוע, ומה הקצב הצפוי) יושב ב-delivery-target.ts
+  // בלי ייבוא, ולכן הוא נבדק ביחידה.
+  const nowDate = new Date(now);
+  const curWeekStart = weekStart(nowDate).getTime();
+  const weekCounts = new Map<number, number>();
+  for (const n of notes) {
+    if (!countsTowardTarget(n.status, n.docDate)) continue;
+    const d = new Date(n.docDate as string);
+    if (Number.isNaN(d.getTime())) continue;
+    const w = weekStart(d).getTime();
+    weekCounts.set(w, (weekCounts.get(w) ?? 0) + 1);
+  }
+  const weekly = deliveryTargetStatus(weekCounts.get(curWeekStart) ?? 0, nowDate);
+  // שמונת השבועות שקדמו לנוכחי, מהישן לחדש. שבוע בלי תעודות הוא אפס
+  // ולא חור, אחרת הרצועה משקרת ומראה רצף שלא היה.
+  const weeklyHistory: { weekStart: string; count: number }[] = [];
+  for (let i = 8; i >= 1; i--) {
+    const w = new Date(curWeekStart);
+    w.setDate(w.getDate() - i * 7);
+    weeklyHistory.push({ weekStart: localDate(w), count: weekCounts.get(w.getTime()) ?? 0 });
+  }
+
   return {
     kpi: {
-      deliveries: { todayPlanned, todayDone, late, slaPct, avgDays },
+      deliveries: { todayPlanned, todayDone, late, slaPct, avgDays, weekly, weeklyHistory },
       service: { open: openCalls, doneThisMonth, avgCloseHours },
       pickups: { waiting: pWaiting, collected: pCollected, cancelled: pCancelled, donePct },
       docs: {

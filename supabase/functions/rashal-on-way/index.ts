@@ -8,6 +8,7 @@
 // ⚠ המתג במסד (on_way_settings.enabled / dry_run). כיבוי = UPDATE אחד.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { displayPhone } from "./phone-display.ts";
 
 const SEND_URL = "https://rashal-dashboard.vercel.app/api/heyy-send";
 const SEND_SECRET = Deno.env.get("RASHAL_SEND_SECRET") ?? "";
@@ -53,7 +54,13 @@ Deno.serve(async (req: Request) => {
     await logRun({ trigger, dry, detail: { claim_error: error.message } });
     return json({ ok: false, error: error.message }, 500);
   }
-  const candidates = (data ?? []) as Candidate[];
+  // הטלפון עובר לפורמט בינלאומי פעם אחת כאן, כדי שגם הדוח היבש וגם
+  // השליחה בפועל יראו בדיוק את אותו מספר שהלקוח יראה. displayPhone מחזיר
+  // את המקור כמו שהוא כשהמספר לא מזוהה, ולכן זה לא יכול לייצר חור.
+  const candidates = ((data ?? []) as Candidate[]).map((c) => ({
+    ...c,
+    worker_phone: c.worker_phone ? displayPhone(c.worker_phone) : c.worker_phone,
+  }));
 
   let sent = 0, failed = 0;
   const detail: Record<string, unknown> = {};
