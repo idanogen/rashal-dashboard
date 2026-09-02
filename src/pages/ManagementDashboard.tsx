@@ -16,6 +16,7 @@ import { computeManagementMetrics, SLA_DAYS } from '@/lib/management-metrics';
 import { useSurveys } from '@/hooks/useSurveys';
 import { useDeliveryNotes, useConsolidatedInvoices } from '@/hooks/useDocuments';
 import { computeSurveyMetrics, formatScore } from '@/lib/surveys';
+import { WeeklyTargetStrip } from '@/components/management/WeeklyTargetStrip';
 
 const NAVY = '#14223a';
 
@@ -170,12 +171,15 @@ export function ManagementDashboard() {
           <ExceptionCard icon={<Truck className="h-5 w-5" />} n={m.exceptions.lateDeliveries} label="אספקות באיחור" tint="#fdecec" fg={RED} />
           <ExceptionCard icon={<Box className="h-5 w-5" />} n={m.exceptions.pickupsOver14d} label="איסופים מעל 14 יום" tint="#f3effe" fg={PURPLE} />
           <ExceptionCard icon={<MapPin className="h-5 w-5" />} n={m.exceptions.unlocatedStops} label="עצירות ללא מיקום" tint="#eef4fd" fg={BLUE} />
+          {/* ⭐ **הפתוחים בלבד.** חריג הוא עבודה שממתינה, ולקוח שעמי כבר
+              דיבר איתו וסימן "טופל" ירד מהרשימה. זה בדיוק אותו מספר
+              שמוצג במסך הסקרים, ולא חישוב שני לאותה תווית. */}
           <ExceptionCard
             icon={<Frown className="h-5 w-5" />}
-            n={sv.lowRated.length}
+            n={sv.lowOpen.length}
             label="לקוחות בדירוג נמוך"
             tint="#fdf6ec"
-            fg={sv.lowRated.length > 0 ? '#c2410c' : '#8a96a8'}
+            fg={sv.lowOpen.length > 0 ? '#c2410c' : '#8a96a8'}
           />
         </div>
       </div>
@@ -242,6 +246,7 @@ export function ManagementDashboard() {
             <>
               <Big n={`${m.kpi.deliveries.slaPct}%`} t={`עמידה ב-SLA (${SLA_DAYS} ימים)`} color={GREEN} />
               <Big n={m.kpi.deliveries.avgDays ?? '—'} t="זמן אספקה ממוצע (ימים)" />
+              <WeeklyTargetStrip s={m.kpi.deliveries.weekly} history={m.kpi.deliveries.weeklyHistory} />
             </>
           }
         />

@@ -1,6 +1,7 @@
 import { MessageCircle } from 'lucide-react';
 import type { Survey } from '@/lib/surveys';
 import { waChatUrl } from '@/lib/wa-chat-link';
+import { surveyWhen } from '@/lib/survey-when';
 
 const NAVY = '#14223a';
 
@@ -46,7 +47,7 @@ export function CustomerCommentsList({ rows }: { rows: Survey[] }) {
                   </span>
                 )}
                 {s.answeredAt && (
-                  <span className="text-[11px] text-slate-400">{commentDate(s.answeredAt)}</span>
+                  <span className="text-[11px] text-slate-400">{surveyWhen(s.answeredAt)}</span>
                 )}
               </div>
               {s.comment && (
@@ -73,15 +74,4 @@ export function CustomerCommentsList({ rows }: { rows: Survey[] }) {
       })}
     </div>
   );
-}
-
-function commentDate(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const today = new Date();
-  const sameDay = d.toDateString() === today.toDateString();
-  const time = d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
-  if (sameDay) return `היום ${time}`;
-  // 🔴 עם שנה. הרשימה ממוינת מהחדש לישן, ובלי שנה קל להניח שהכל מהשבוע.
-  return `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()} ${time}`;
 }

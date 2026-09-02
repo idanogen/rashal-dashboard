@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { isLowRated, openLowRated, orderLowRated } from './low-rated';
 
 /**
  * סקרי שביעות רצון: שליפה ואגרגציה לדשבורד ההנהלה.
@@ -26,6 +27,10 @@ export interface Survey {
   recommend: number | null;
   comment: string | null;
   status: 'pending' | 'sent' | 'answered' | 'skipped' | 'failed';
+  /** מתי מישהו סימן שהדירוג הנמוך טופל. null = פתוח */
+  handledAt: string | null;
+  /** מי סימן. נגזר בשרת מהפרופיל, לא נשלח מהדפדפן */
+  handledBy: string | null;
 }
 
 interface SurveyRow {
@@ -45,6 +50,8 @@ interface SurveyRow {
   q2_recommend: number | null;
   comment: string | null;
   status: Survey['status'];
+  handled_at: string | null;
+  handled_by: string | null;
 }
 
 function toSurvey(r: SurveyRow): Survey {
@@ -65,12 +72,15 @@ function toSurvey(r: SurveyRow): Survey {
     recommend: r.q2_recommend,
     comment: r.comment,
     status: r.status,
+    handledAt: r.handled_at,
+    handledBy: r.handled_by,
   };
 }
 
 const COLUMNS =
   'id, stop_id, order_id, customer_number, customer_name, phone_e164, driver, health_fund,' +
-  ' delivered_at, sent_at, opened_at, answered_at, q1_satisfaction, q2_recommend, comment, status';
+  ' delivered_at, sent_at, opened_at, answered_at, q1_satisfaction, q2_recommend, comment, status,' +
+  ' handled_at, handled_by';
 
 /**
  * כל הסקרים מ-N הימים האחרונים.
@@ -117,8 +127,18 @@ export interface SurveyMetrics {
   recommend: number | null;
   /** אחוז מענה, מעוגל */
   responseRate: number | null;
-  /** ציון 1 או 2 בשביעות רצון. אלה הלקוחות שכדאי להרים אליהם טלפון */
+  /**
+   * ציון 1 או 2 בשביעות רצון. אלה הלקוחות שכדאי להרים אליהם טלפון.
+   * הפתוחים קודם, ואחריהם אלה שכבר סומנו כמטופלים.
+   */
   lowRated: Survey[];
+  /**
+   * ⭐ אותם לקוחות **שעדיין לא טופלו**. זה המספר שמייצג עבודה פתוחה,
+   * וזה המספר שמוצג בשני המסכים. תווית אחת ושני חישובים שונים היא בדיוק
+   * הדרך שבה מסכים מתחילים לסתור זה את זה.
+   * [[label_and_math_from_two_mechanisms]]
+   */
+  lowOpen: Survey[];
   byDriver: NamedScore[];
   byFund: NamedScore[];
   /** התשובות שיש בהן מלל חופשי, החדשות קודם */
@@ -151,6 +171,10 @@ export function computeSurveyMetrics(surveys: Survey[]): SurveyMetrics {
   // אינו כישלון מענה ואסור לו להוריד את האחוז.
   const sent = surveys.filter((s) => s.sentAt !== null);
 
+  // ⭐ הפתוחים קודם: הרשימה היא רשימת עבודה, ומה שכבר טופל יורד למטה
+  // ולא נמחק, כדי שאפשר יהיה לראות מי טיפל ומתי.
+  const low = orderLowRated(answered.filter(isLowRated));
+
   const satisfaction = average(
     answered.map((s) => s.satisfaction).filter((v): v is number => v !== null),
   );
@@ -164,9 +188,8 @@ export function computeSurveyMetrics(surveys: Survey[]): SurveyMetrics {
     satisfaction,
     recommend,
     responseRate: sent.length > 0 ? Math.round((answered.length / sent.length) * 100) : null,
-    lowRated: answered
-      .filter((s) => s.satisfaction !== null && s.satisfaction <= 2)
-      .sort((a, b) => (b.answeredAt ?? '').localeCompare(a.answeredAt ?? '')),
+    lowRated: low,
+    lowOpen: openLowRated(low),
     byDriver: groupAverage(answered, (s) => s.driver),
     byFund: groupAverage(answered, (s) => s.healthFund),
     withComments: answered
@@ -178,4 +201,53 @@ export function computeSurveyMetrics(surveys: Survey[]): SurveyMetrics {
 /** מספר להצגה: ממוצע בעברית קצרה, או קו כשאין נתון. */
 export function formatScore(v: number | null): string {
   return v === null ? '' : v.toFixed(1);
+}
+
+/* ─────────────────────────── טיפול וחיפוש ─────────────────────────── */
+
+/**
+ * סימון "טופל" על חוות דעת בדירוג נמוך, בשני הכיוונים.
+ *
+ * 🔴 עובר ב-RPC ולא בעדכון ישיר על הטבלה. מדיניות `update` על
+ * `customer_surveys` הייתה פותחת לכל משתמש מחובר גם את הציון ואת ההערה,
+ * כלומר את המדידה עצמה. **ושם המסמן נגזר בשרת** מהפרופיל של המשתמש
+ * המחובר, כי דפדפן ששולח שם יכול לשלוח כל שם.
+ */
+export async function setSurveyHandled(
+  surveyId: string,
+  handled: boolean,
+): Promise<{ handledAt: string | null; handledBy: string | null }> {
+  const { data, error } = await supabase.rpc('set_survey_handled', {
+    p_survey_id: surveyId,
+    p_handled: handled,
+  });
+  if (error) throw error;
+  const row = (data ?? {}) as { handled_at?: string | null; handled_by?: string | null };
+  return { handledAt: row.handled_at ?? null, handledBy: row.handled_by ?? null };
+}
+
+/**
+ * חיפוש חוות דעת **בכל ההיסטוריה**, לפי שם הלקוח שכתב אותה.
+ *
+ * 🔴 **למה בכלל צריך את זה ולא רק סינון של מה שכבר טעון.** המסך מציג את
+ * <bdi>90</bdi> הימים האחרונים, ולכן חיפוש שמסתמך עליו בלבד יחזיר "לא
+ * נמצא" על לקוח אמיתי שענה לפני ארבעה חודשים, וזו התשובה הגרועה מכולן:
+ * היא נראית כמו עובדה ולא כמו גבול של חלון. הפונקציה הזאת רצה רק כשאין
+ * התאמה בחלון, ולכן היא לא עולה כלום בשימוש הרגיל.
+ *
+ * ⚠️ הסינון עצמו נעשה בזיכרון עם `matchesSearch`, כדי שסדר המילים
+ * והאותיות הסופיות יתנהגו בדיוק כמו בכל שאר החיפושים במערכת. השרת מחזיר
+ * את חוות הדעת שנענו, מהחדשה לישנה, עד <bdi>1000</bdi> שורות.
+ */
+export async function searchAnsweredSurveys(): Promise<Survey[]> {
+  const { data, error } = await supabase
+    .from('customer_surveys')
+    .select(COLUMNS)
+    .eq('is_test', false)
+    .not('answered_at', 'is', null)
+    .order('answered_at', { ascending: false })
+    .limit(1000);
+
+  if (error) throw error;
+  return ((data ?? []) as unknown as SurveyRow[]).map(toSurvey);
 }

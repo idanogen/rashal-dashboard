@@ -47,6 +47,9 @@ import { WaAutomationsPage } from '@/pages/WaAutomationsPage';
 import { CustomerCommentsList } from '@/components/surveys/CustomerCommentsList';
 import { ImageThumb } from '@/components/wa/InboxBoard';
 import type { CalendarStop } from '@/types/calendar-stop';
+import { WeeklyTargetStrip } from '@/components/management/WeeklyTargetStrip';
+import { deliveryTargetStatus as dts } from '@/lib/delivery-target';
+import { DispatcherHome } from '@/components/dispatch/DispatcherHome';
 
 /**
  * 🔴 **המצב הריק מצולם גם הוא, כי הוא המצב של רוב הלקוחות.** נמדד
@@ -252,6 +255,10 @@ const svy = (o: Record<string, unknown>) => ({
   answeredAt: o.at ?? '2026-08-20T10:00:00Z',
   satisfaction: o.sat ?? 5, recommend: o.rec ?? 5, comment: o.comment ?? null,
   status: 'answered',
+  // 🔴 `??` היה בולע `phone: null` ומחזיר את ברירת המחדל, ולכן השורה
+  // בלי נייד לא נראתה בצילום כלל.
+  phoneE164: 'phone' in o ? (o.phone as string | null) : '+972546875850',
+  handledAt: o.handledAt ?? null, handledBy: o.handledBy ?? null,
 });
 
 const SURVEY_FIXTURE = [
@@ -261,6 +268,13 @@ const SURVEY_FIXTURE = [
   svy({ id: 4, name: 'אברהם רות', driver: 'מוהנד', fund: 'מאוחדת', sat: 4, rec: 4, comment: 'שירות מהיר ויעיל' }),
   svy({ id: 5, name: 'פרץ יוסי', driver: 'רודי', fund: 'לאומית', sat: 2, rec: 2, comment: 'חיכיתי שלושה שבועות ואף אחד לא חזר אליי', at: '2026-08-24T14:00:00Z' }),
   svy({ id: 6, name: 'דוד מרים', driver: 'מוהנד', fund: 'כללית' }),
+  /**
+   * ⭐ **שלושת מצבי "האם טופל" באותה תמונה** (02/09/2026): פתוח, פתוח
+   * בלי נייד תקין, וכזה שכבר סומן. 🔴 בלי השורה בלי הנייד אי אפשר לראות
+   * שהתווית "אין נייד" נכנסת ולא מועכת את השם.
+   */
+  svy({ id: 7, name: 'לויץ מאירה דבורה', driver: 'ישראל', fund: 'מכבי', sat: 1, rec: 1, comment: 'הזמנתי מיטה ועד היום לא קיבלתי תשובה מתי מגיעים', at: '2026-08-26T15:33:00Z', phone: null }),
+  svy({ id: 8, name: 'משיח ריטה', driver: 'אבי', fund: 'כללית', sat: 1, rec: 2, comment: 'הטכנאי הגיע באיחור של שעתיים ולא עדכן', at: '2026-08-25T11:46:00Z', handledAt: '2026-09-01T13:05:00Z', handledBy: 'עמי גז' }),
 ];
 
 previewQc.setQueryData(['surveys', 90], SURVEY_FIXTURE);
@@ -459,6 +473,68 @@ function DeadEndPreview({ withMatches }: { withMatches: boolean }) {
 }
 
 const VIEWS: Record<string, React.ReactElement> = {
+  /** מסך פתיחה לסדרן (עידן, 02/09/2026). כל המספרים אמיתיים, נמדדו במסד. */
+  'dispatcher-home': (
+    <div className="min-h-screen bg-slate-50 py-4">
+      <DispatcherHome
+        d={{
+          cancelledButScheduled: 7,
+          uncoordinatedToday: 9,
+          needsCancel: 4,
+          staleStops: 335,
+          noAddress: 277,
+          over30: 676,
+          over90: 152,
+          pendingTotal: 1189,
+          arrivedThisWeek: 117,
+          scheduledToday: 44,
+          scheduledTomorrow: 0,
+          returnedFromRoute: 49,
+          topCities: [
+            { city: 'ירושלים', n: 101 },
+            { city: 'תל אביב', n: 41 },
+            { city: 'חיפה', n: 29 },
+            { city: 'באר שבע', n: 26 },
+            { city: 'בני ברק', n: 25 },
+          ],
+        }}
+      />
+    </div>
+  ),
+
+  /** רצועת היעד השבועי בכרטיס האספקות (שלומי, 02/09/2026), בארבעה מצבים. */
+  'weekly-target': (() => {
+    const HIST = [113, 89, 108, 115, 78, 77, 88, 127].map((count, i) => ({
+      weekStart: `שבוע ${i + 1}`, count,
+    }));
+    const card = (title: string, s: import('@/lib/delivery-target').TargetStatus) => (
+      <div key={title} className="rounded-2xl border bg-white p-5 shadow-sm" style={{ borderColor: '#eef1f6' }}>
+        <div className="mb-3 text-[13px] font-bold text-slate-500">{title}</div>
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div><div className="text-2xl font-bold text-[#2b6cb0]">11</div><div className="text-[11px] text-slate-500">מתוכננות היום</div></div>
+          <div><div className="text-2xl font-bold text-[#16a34a]">1</div><div className="text-[11px] text-slate-500">בוצעו היום</div></div>
+          <div><div className="text-2xl font-bold text-[#dc2626]">170</div><div className="text-[11px] text-slate-500">באיחור</div></div>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-2 border-t pt-3 text-center" style={{ borderColor: '#f0f3f8' }}>
+          <div><div className="text-2xl font-bold text-[#16a34a]">81%</div><div className="text-[11px] text-slate-500">עמידה ב-SLA (7 ימים)</div></div>
+          <div><div className="text-2xl font-bold text-slate-800">8</div><div className="text-[11px] text-slate-500">זמן אספקה ממוצע (ימים)</div></div>
+          <WeeklyTargetStrip s={s} history={HIST} />
+        </div>
+      </div>
+    );
+    const D = (m: number, d: number, h: number) => new Date(2026, m - 1, d, h);
+    return (
+      <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
+        <div className="mx-auto grid max-w-3xl gap-4">
+          {card('רביעי בבוקר, המצב האמיתי של השבוע', dts(85, D(9, 2, 8)))}
+          {card('ראשון בבוקר, מוקדם מכדי לחזות', dts(4, D(8, 30, 9)))}
+          {card('חמישי בערב, פיגור אמיתי', dts(85, D(9, 3, 18)))}
+          {card('שבוע שסגר את היעד', dts(151, D(9, 3, 18)))}
+        </div>
+      </div>
+    );
+  })(),
+
   /** טאב "פתוחות" של הנהג (31/08): שורת הקפיצה מטאב היום + הכרטיסים. */
   'driver-open': (
     <div dir="rtl" className="min-h-screen bg-slate-50 p-3">

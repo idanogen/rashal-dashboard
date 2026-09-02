@@ -16,12 +16,14 @@
  * הנהגים. הוא צודק שהם לא יודעים שיש עליהם סקר, אבל שליחה לקבוצה היא
  * הודעה יוצאת ולא מסך, והיא ממתינה לאישור של עידן.
  */
-import { useMemo } from 'react';
-import { Smile, Frown, Users, Star, MessageSquareQuote } from 'lucide-react';
-import { useSurveys } from '@/hooks/useSurveys';
-import { computeSurveyMetrics, formatScore, type NamedScore } from '@/lib/surveys';
-import { surveyMark, SURVEY_TONE } from '@/lib/survey-badge';
+import { useMemo, useState } from 'react';
+import { Smile, Frown, Users, Star, MessageSquareQuote, Search } from 'lucide-react';
+import { useAllAnsweredSurveys, useSurveys } from '@/hooks/useSurveys';
+import { computeSurveyMetrics, formatScore, type NamedScore, type Survey } from '@/lib/surveys';
+import { matchesSearch } from '@/lib/search-match';
 import { CustomerCommentsList } from '@/components/surveys/CustomerCommentsList';
+import { LowRatedList } from '@/components/surveys/LowRatedList';
+import { SurveySearch } from '@/components/surveys/SurveySearch';
 
 const NAVY = '#14223a';
 const GREEN = '#15803d';
@@ -96,14 +98,52 @@ export function SurveysPage() {
   const { data: surveys = [], isLoading } = useSurveys(90);
   const sv = useMemo(() => computeSurveyMetrics(surveys), [surveys]);
 
+  const [query, setQuery] = useState('');
+  const term = query.trim();
+  const searching = term.length >= 2;
+
+  /** התאמות בתוך החלון שהמסך כבר טען. מיידי, בלי סבב רשת. */
+  const inWindow = useMemo(() => {
+    if (!searching) return [];
+    return surveys
+      .filter((s) => s.answeredAt !== null)
+      .filter((s) => matchesSearch(`${s.customerName ?? ''} ${s.customerNumber ?? ''}`, term));
+  }, [surveys, searching, term]);
+
+  /**
+   * 🔴 **ורק כשאין אף התאמה בחלון, מחפשים בכל ההיסטוריה.** מסך שמציג
+   * <bdi>90</bdi> יום ועונה "לא נמצא" על לקוח שענה לפני ארבעה חודשים
+   * נשמע כמו עובדה ולא כמו גבול של חלון, וזו התשובה שמלמדת לא לסמוך על
+   * החיפוש. היום אין עדיין אף תשובה מעבר לחלון, ולכן זה שקט לגמרי.
+   */
+  const wantsHistory = searching && inWindow.length === 0;
+  const {
+    data: allAnswered,
+    isFetching: historyLoading,
+    isError: historyFailed,
+  } = useAllAnsweredSurveys(wantsHistory);
+  const inHistory = useMemo(() => {
+    if (!wantsHistory || !allAnswered) return [];
+    return allAnswered.filter((s) =>
+      matchesSearch(`${s.customerName ?? ''} ${s.customerNumber ?? ''}`, term),
+    );
+  }, [wantsHistory, allAnswered, term]);
+
+  const results: Survey[] = inWindow.length > 0 ? inWindow : inHistory;
+
   return (
     <div style={{ background: '#f5f7fb' }} className="-mx-4 -my-6 min-h-screen px-4 py-5 sm:-mx-6 sm:px-6">
-      <div className="mb-5 px-1">
-        <div className="text-xl font-extrabold" style={{ color: NAVY }}>
-          סקרי שביעות רצון
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-3 px-1">
+        <div>
+          <div className="text-xl font-extrabold" style={{ color: NAVY }}>
+            סקרי שביעות רצון
+          </div>
+          <div className="text-[11px] text-slate-400">
+            <bdi>90</bdi> הימים האחרונים{isLoading ? ' · טוען…' : ''}
+          </div>
         </div>
-        <div className="text-[11px] text-slate-400">
-          <bdi>90</bdi> הימים האחרונים{isLoading ? ' · טוען…' : ''}
+        <div className="w-full sm:w-72">
+          <SurveySearch value={query} onChange={setQuery} />
         </div>
       </div>
 
@@ -129,67 +169,93 @@ export function SurveysPage() {
                 t="מענה לסקר"
                 color={GREEN}
               />
-              <Stat n={sv.lowRated.length} t="בדירוג נמוך" color={sv.lowRated.length > 0 ? '#c2410c' : undefined} />
+              {/* ⭐ המספר הוא **הפתוחים** ולא כל הנמוכים, וזה אותו מספר
+                  שמופיע בחריגים של דשבורד ההנהלה. תווית אחת ושני חישובים
+                  שונים היא הדרך שבה שני מסכים מתחילים לסתור זה את זה. */}
+              <Stat
+                n={sv.lowOpen.length}
+                t="בדירוג נמוך לטיפול"
+                color={sv.lowOpen.length > 0 ? '#c2410c' : undefined}
+              />
             </div>
             <div className="mt-3 text-center text-[11px] text-slate-400">
               <bdi>{sv.answered}</bdi> תשובות מתוך <bdi>{sv.sent}</bdi> סקרים שיצאו
+              {sv.lowRated.length > sv.lowOpen.length && (
+                <>
+                  {' · '}
+                  {sv.lowRated.length - sv.lowOpen.length === 1 ? (
+                    'דירוג נמוך אחד כבר טופל'
+                  ) : (
+                    <>
+                      <bdi>{sv.lowRated.length - sv.lowOpen.length}</bdi> דירוגים נמוכים כבר טופלו
+                    </>
+                  )}
+                </>
+              )}
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-            <Panel icon={<Smile className="h-4 w-4" />} title="לפי נהג" hint="הנמוך קודם">
-              <ScoreList rows={sv.byDriver} />
-            </Panel>
-            <Panel icon={<Users className="h-4 w-4" />} title="לפי קופה" hint="הנמוך קודם">
-              <ScoreList rows={sv.byFund} />
-            </Panel>
+          {searching ? (
+            /* ⭐ **חיפוש מחליף את התצוגה ולא מסתנן בתוך פאנל אחד.** מי
+               שמקליד שם רוצה לראות את כל מה שאותו אדם כתב, ולא לנחש
+               באיזה משלושת הפאנלים הוא נמצא. הממוצעים למעלה נשארים כמו
+               שהם, כי הם מדידה של התקופה ולא של החיפוש. */
             <Panel
-              icon={<Frown className="h-4 w-4" />}
-              title="לקוחות בדירוג נמוך"
-              hint={`${sv.lowRated.length} לטיפול`}
+              icon={<Search className="h-4 w-4" />}
+              title="תוצאות חיפוש"
+              hint={
+                results.length === 0
+                  ? undefined
+                  : `${results.length} חוות דעת${inWindow.length === 0 ? ' · מחוץ ל-90 הימים' : ''}`
+              }
             >
-              {sv.lowRated.length === 0 ? (
-                <p className="py-8 text-center text-xs text-slate-400">אף לקוח לא נתן ציון נמוך</p>
+              {results.length > 0 ? (
+                <CustomerCommentsList rows={results} />
+              ) : historyLoading ? (
+                <p className="py-8 text-center text-xs text-slate-400">מחפש בכל ההיסטוריה…</p>
               ) : (
-                <div className="space-y-2 py-1">
-                  {sv.lowRated.map((s) => {
-                    const mark = surveyMark({
-                      score: s.satisfaction,
-                      answeredAt: s.answeredAt,
-                      comment: s.comment,
-                    });
-                    return (
-                      <div key={s.id} className="flex items-start gap-2 text-xs">
-                        {mark && (
-                          <span
-                            className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[11px] font-semibold ${SURVEY_TONE[mark.tone]}`}
-                          >
-                            {mark.emoji} {mark.label}
-                          </span>
-                        )}
-                        <span className="min-w-0">
-                          <span className="font-semibold text-slate-800">{s.customerName ?? 'לקוח'}</span>
-                          {s.comment && (
-                            <span className="block text-slate-500">{s.comment}</span>
-                          )}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
+                /* 🔴 המצב הריק אומר **על מה** חיפשנו. "לא נמצא" בלי גבול
+                   נשמע כמו עובדה, וכאן הגבול הוא כל הסקרים שנענו.
+                   🔴🔴 **וכשהשליפה מההיסטוריה נכשלה, אסור לומר "עברנו על
+                   הכל".** זו בדיוק הצורה שבה תקלה נראית כמו תשובה. */
+                <p className="py-8 text-center text-xs text-slate-400">
+                  לא נמצאה חוות דעת של לקוח בשם <bdi className="font-semibold">{term}</bdi>.
+                  <br />
+                  {historyFailed
+                    ? 'החיפוש בכל ההיסטוריה נכשל, ולכן נבדקה רק התקופה שמוצגת למעלה.'
+                    : 'החיפוש עבר על כל הסקרים שנענו, גם מחוץ לתקופה שמוצגת למעלה.'}
+                </p>
               )}
             </Panel>
-          </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                <Panel icon={<Smile className="h-4 w-4" />} title="לפי נהג" hint="הנמוך קודם">
+                  <ScoreList rows={sv.byDriver} />
+                </Panel>
+                <Panel icon={<Users className="h-4 w-4" />} title="לפי קופה" hint="הנמוך קודם">
+                  <ScoreList rows={sv.byFund} />
+                </Panel>
+                <Panel
+                  icon={<Frown className="h-4 w-4" />}
+                  title="לקוחות בדירוג נמוך"
+                  hint={`${sv.lowOpen.length} לטיפול`}
+                >
+                  <LowRatedList rows={sv.lowRated} />
+                </Panel>
+              </div>
 
-          <div className="mt-4">
-            <Panel
-              icon={<MessageSquareQuote className="h-4 w-4" />}
-              title="מה הלקוחות כתבו"
-              hint={`${sv.withComments.length} הערות`}
-            >
-              <CustomerCommentsList rows={sv.withComments} />
-            </Panel>
-          </div>
+              <div className="mt-4">
+                <Panel
+                  icon={<MessageSquareQuote className="h-4 w-4" />}
+                  title="מה הלקוחות כתבו"
+                  hint={`${sv.withComments.length} הערות`}
+                >
+                  <CustomerCommentsList rows={sv.withComments} />
+                </Panel>
+              </div>
+            </>
+          )}
         </>
       )}
     </div>
