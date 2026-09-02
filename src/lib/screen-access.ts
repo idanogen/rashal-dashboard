@@ -45,6 +45,12 @@ export const SCREEN_ACCESS: ScreenAccess[] = [
   // ⭐ **הסקרים בנפרד, ובכוונה.** עמי ביקש לראות סקרים, ואי אפשר פשוט
   // לפתוח לו את דשבורד ההנהלה כי יש עליו גם כסף. שביעות רצון אינה כסף.
   { path: '/surveys',          label: 'סקרי שביעות רצון',  group: 'daily', allow: STAFF },
+  /**
+   * ⭐ **ביצועי הצוות: הנהלה ומנהל צוות בלבד** (02/09/2026). זה אינו כסף,
+   * ולכן הוא לא נופל תחת MONEY, אבל הוא **מדדים על אנשים בשמם**, וזו
+   * סיבה עצמאית לא לפתוח אותו לכל המשרד. הנהג עצמו אינו נכלל.
+   */
+  { path: '/performance',      label: 'ביצועי הצוות',      group: 'admin', allow: ['admin', 'management', 'team_manager'] },
   { path: '/inspections',      label: 'בדיקות מנופים',     group: 'admin', allow: STAFF },
   { path: '/whatsapp',         label: 'וואטסאפ (ישן)',     group: 'admin', allow: STAFF },
   { path: '/admin/users',      label: 'משתמשים',          group: 'admin', allow: MANAGERS },

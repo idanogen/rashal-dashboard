@@ -47,6 +47,7 @@ import { WaAutomationsPage } from '@/pages/WaAutomationsPage';
 import { CustomerCommentsList } from '@/components/surveys/CustomerCommentsList';
 import { SurveyDetailSheet } from '@/components/surveys/SurveyDetailSheet';
 import { InboxBoard } from '@/components/wa/InboxBoard';
+import { TeamPerformancePage } from '@/pages/TeamPerformancePage';
 import { ImageThumb } from '@/components/wa/InboxBoard';
 import type { CalendarStop } from '@/types/calendar-stop';
 import { WeeklyTargetStrip } from '@/components/management/WeeklyTargetStrip';
@@ -463,6 +464,33 @@ previewQc.setQueryData(['wa-thread', JUMP_PHONE], {
   messages: [],
 });
 
+/**
+ * ⭐ **מדדי הצוות, עם המספרים האמיתיים שנמדדו ב-<bdi>02/09/2026</bdi>.**
+ * לא נתונים מומצאים: זו בדיוק התשובה של `team_performance(90)` מהייצור,
+ * כולל רודי עם 156 פתוחות ואולג עם אפס סגירות, כי אלה המקרים שהמסך
+ * נבנה כדי לא לשקר עליהם.
+ */
+previewQc.setQueryData(['teamPerformance', 90], {
+  windowDays: 90, from: '2026-06-04', to: '2026-09-02',
+  people: [
+    { name: 'דוד חסידים', kind: 'both', stops: 311, arrived: 248, completed: 237, notCompleted: 37, openFromPast: 37, activeDays: 44, closedSameDay: 237 },
+    { name: 'אבי', kind: 'technician', stops: 272, arrived: 218, completed: 197, notCompleted: 39, openFromPast: 36, activeDays: 40, closedSameDay: 178 },
+    { name: 'רודי', kind: 'driver', stops: 271, arrived: 173, completed: 75, notCompleted: 38, openFromPast: 156, activeDays: 26, closedSameDay: 67 },
+    { name: 'ישראל', kind: 'technician', stops: 50, arrived: 36, completed: 33, notCompleted: 3, openFromPast: 14, activeDays: 6, closedSameDay: 33 },
+    { name: 'מוהנד', kind: 'driver', stops: 35, arrived: 30, completed: 29, notCompleted: 3, openFromPast: 3, activeDays: 3, closedSameDay: 29 },
+    { name: 'אולג', kind: 'technician', stops: 33, arrived: 0, completed: 0, notCompleted: 1, openFromPast: 27, activeDays: 1, closedSameDay: 0 },
+    { name: 'מוחמד', kind: 'driver', stops: 7, arrived: 0, completed: 0, notCompleted: 1, openFromPast: 6, activeDays: 1, closedSameDay: 0 },
+  ],
+  reasons: [
+    { reason: 'לא מסווג', n: 86 },
+    { reason: 'הלקוח לא היה בבית', n: 15 },
+    { reason: 'הלקוח ביטל', n: 11 },
+    { reason: 'לא הצלחתי ליצור קשר', n: 8 },
+    { reason: 'חוסר במלאי / ציוד', n: 2 },
+  ],
+  totals: { stops: 980, completed: 571, notCompleted: 122, openFromPast: 280, closedSameDay: 544, withArrival: 705 },
+});
+
 const view = new URLSearchParams(location.search).get('view');
 
 /** כרטיסי סדרן לצילום: חיווי התמונה המוגדל + כפתור "כרטיס" עם שם ארוך. */
@@ -670,6 +698,7 @@ const VIEWS: Record<string, React.ReactElement> = {
       <SurveyDetailSheet survey={SURVEY_DETAIL_ROW} open onOpenChange={() => {}} />
     </div>
   ),
+  performance: <TeamPerformancePage />,
   'inbox-jump': <InboxBoard initialPhone={JUMP_PHONE} />,
   'inbox-jump-cold': <InboxBoard initialPhone={JUMP_PHONE} />,
   /** ⭐ בקרה חיובית: בלי קישור, השורה הראשונה עדיין נבחרת לבד. */
