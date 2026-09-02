@@ -46,6 +46,7 @@ import { DeliveryCalendar } from '@/components/deliveries/DeliveryCalendar';
 import { WaAutomationsPage } from '@/pages/WaAutomationsPage';
 import { CustomerCommentsList } from '@/components/surveys/CustomerCommentsList';
 import { SurveyDetailSheet } from '@/components/surveys/SurveyDetailSheet';
+import { InboxBoard } from '@/components/wa/InboxBoard';
 import { ImageThumb } from '@/components/wa/InboxBoard';
 import type { CalendarStop } from '@/types/calendar-stop';
 import { WeeklyTargetStrip } from '@/components/management/WeeklyTargetStrip';
@@ -400,6 +401,44 @@ const SURVEY_DETAIL_ROW = svy({
   at: '2026-08-28T09:12:00Z', phone: null, customerNumber: '204455667',
 }) as unknown as import('@/lib/surveys').Survey;
 
+/**
+ * ⭐ **קפיצה לשיחה מקישור** (`/inbox?phone=…`), עם נתונים מוזרקים.
+ * זה בדיוק המסלול שעידן דיווח עליו: הלשונית והחיפוש נכנסו, והשרשור
+ * נשאר על "בחר שיחה מהרשימה".
+ */
+const JUMP_PHONE = '0538323838';
+const JUMP_ITEM = {
+  id: 'conv-1', phone: JUMP_PHONE, title: 'עדי אהוד', customerNumber: '9011792',
+  unidentified: false, preview: 'שלום עדי אהוד, קיבלת לאחרונה שירות מחברת ר.שעל בע"מ. נשמח לשמוע…',
+  lastMessageAt: '2026-09-01T15:00:00Z', lastMessageDirection: 'out',
+  unansweredSince: null, waitingMinutes: null, read: true, messageCount: 2,
+  window: { open: false, expiresAt: null, minutesLeft: 0, reason: 'no_inbound' },
+  survey: { score: 2, answeredAt: '2026-08-28T09:12:00Z', comment: null },
+} as never;
+previewQc.setQueryData(['wa-inbox', 'waiting', ''], {
+  ok: true, tab: 'waiting', counts: { waiting: 15, all: 224 }, matched: 0,
+  truncated: false, items: [], phones: [JUMP_PHONE],
+});
+// 🔴 **הרשימה מוזנת רק כשלא מבקשים את המצב הקר.** `?view=inbox-jump-cold`
+// מדמה את הרגע שבו השיחה כבר נשאבה אבל השורה עדיין לא ברשימה שמוצגת,
+// וזה בדיוק המצב שבו המסך אמר "בחר שיחה מהרשימה" ליד לקוח שנבחר.
+if (!location.search.includes('inbox-jump-cold')) {
+  previewQc.setQueryData(['wa-inbox', 'all', JUMP_PHONE], {
+    ok: true, tab: 'all', counts: { waiting: 15, all: 224 }, matched: 1,
+    truncated: false, items: [JUMP_ITEM], phones: [JUMP_PHONE],
+  });
+}
+previewQc.setQueryData(['wa-thread', JUMP_PHONE], {
+  ok: true,
+  conversation: {
+    id: 'conv-1', phone: JUMP_PHONE, phoneE164: '+972538323838', contactName: null,
+    customerNumber: '9011792', customerName: 'עדי אהוד', messageCount: 2,
+    lastMessageAt: '2026-09-01T15:00:00Z', unansweredSince: null, waiting: false,
+    window: { open: false, expiresAt: null, minutesLeft: 0, reason: 'no_inbound' },
+  },
+  messages: [],
+});
+
 const view = new URLSearchParams(location.search).get('view');
 
 /** כרטיסי סדרן לצילום: חיווי התמונה המוגדל + כפתור "כרטיס" עם שם ארוך. */
@@ -607,6 +646,8 @@ const VIEWS: Record<string, React.ReactElement> = {
       <SurveyDetailSheet survey={SURVEY_DETAIL_ROW} open onOpenChange={() => {}} />
     </div>
   ),
+  'inbox-jump': <InboxBoard initialPhone={JUMP_PHONE} />,
+  'inbox-jump-cold': <InboxBoard initialPhone={JUMP_PHONE} />,
   /** תמונה בבועת שיחה עם כפתור השמירה הצף. */
   'wa-image': (
     <div dir="rtl" className="min-h-screen bg-slate-50 p-6">

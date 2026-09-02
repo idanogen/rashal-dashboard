@@ -613,6 +613,32 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
     [items, selected],
   );
 
+  /**
+   * כותרת השרשור.
+   *
+   * 🔴🔴 **נגזרת מהשיחה שנטענה, ולא רק מהשורה שברשימה.** עידן,
+   * <bdi>02/09/2026</bdi>: הגיע לתיבה מקישור, השורה הופיעה, והצד השני
+   * אמר "בחר שיחה מהרשימה". השורש הוא שהשרשור היה תלוי ב-`items`,
+   * כלומר בלשונית ובחיפוש שמוצגים באותו רגע, ולא בשיחה עצמה: כל עוד
+   * הרשימה עדיין נטענת, או שהלקוח סונן ממנה, המסך הכריז שלא נבחר כלום
+   * בזמן ש-`selected` דווקא היה מלא והשרשור כבר נשאב.
+   *
+   * ⭐ עכשיו השרשור נשען על `thread`, שהוא הנתון האמיתי שלו, והרשימה
+   * רק משפרת את הכותרת כשהיא במקרה כוללת את השורה.
+   */
+  const head = useMemo(() => {
+    if (current) {
+      return { title: current.title, customerNumber: current.customerNumber, phone: current.phone };
+    }
+    const c = thread.data?.conversation;
+    if (!selected || !c) return null;
+    return {
+      title: c.customerName?.trim() || c.contactName?.trim() || c.phone || 'לא מזוהה',
+      customerNumber: c.customerNumber,
+      phone: c.phone ?? selected,
+    };
+  }, [current, thread.data, selected]);
+
   const messages = thread.data?.messages ?? [];
   const win = thread.data?.window;
 
@@ -766,32 +792,34 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
 
         {/* השרשור */}
         <div className="flex min-h-[420px] flex-1 flex-col overflow-hidden rounded-xl border bg-slate-50">
-          {!current && (
+          {/* 🔴 שלושה מצבים ולא שניים. "בחר שיחה מהרשימה" בזמן שהשיחה
+              נטענת נקרא כמו מסך שלא הבין את הלחיצה. [[empty_state_must_speak]] */}
+          {!head && (
             <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-              בחר שיחה מהרשימה
+              {selected && thread.isLoading ? 'טוען את השיחה…' : 'בחר שיחה מהרשימה'}
             </div>
           )}
 
-          {current && (
+          {head && (
             <>
               <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-white px-4 py-2.5">
                 <div>
                   <div className="flex items-center gap-1 font-semibold text-slate-900">
-                    {current.title}
+                    {head.title}
                     {/* ⭐ מי כתב, ומה פתוח אצלו. אותו כרטיס בדיוק שבמסך הייעודי. */}
                     <CustomerCardButton
-                      customerNumber={current.customerNumber}
-                      phone={current.phone}
-                      name={current.title}
+                      customerNumber={head.customerNumber}
+                      phone={head.phone}
+                      name={head.title}
                     />
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {current.customerNumber && (
+                    {head.customerNumber && (
                       <>
-                        לקוח <bdi>{current.customerNumber}</bdi> ·{' '}
+                        לקוח <bdi>{head.customerNumber}</bdi> ·{' '}
                       </>
                     )}
-                    <bdi>{current.phone}</bdi>
+                    <bdi>{head.phone}</bdi>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -927,7 +955,7 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
         open={templateOpen}
         onOpenChange={setTemplateOpen}
         phone={selected}
-        customerName={current?.title}
+        customerName={head?.title}
         onSent={() => {
           void qc.invalidateQueries({ queryKey: threadKey(selected) });
           void qc.invalidateQueries({ queryKey: [WA_INBOX_KEY] });
