@@ -72,54 +72,21 @@ async function toDataUri(url: string): Promise<{ dataUri: string; ext: string } 
 async function handleGet(req: VercelRequest, res: VercelResponse) {
   const testCust = s(req.query.test_custname);
 
-  // claim timeout: אירוע שנתפס ולא אושר תוך 10 דק' (ריצה שקרסה) — משוחרר לניסיון חוזר
-  const claimCutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-
-  let query = supabaseAdmin
-    .from('timeline_events')
-    .select('id, order_id, service_call_id, type, user_name, content, metadata, created_at')
-    .is('pushed_to_priority_at', null)
-    .or(`push_claimed_at.is.null,push_claimed_at.lt.${claimCutoff}`)
-    .in('type', ['comment', 'file_upload']);
-
-  if (testCust) {
-    const [{ data: o }, { data: c }] = await Promise.all([
-      supabaseAdmin.from('orders').select('id').eq('customer_number', testCust),
-      supabaseAdmin.from('service_calls').select('id').eq('customer_number', testCust),
-    ]);
-    const oIds = (o ?? []).map((r) => (r as Row).id as string);
-    const cIds = (c ?? []).map((r) => (r as Row).id as string);
-    const clauses: string[] = [];
-    if (oIds.length) clauses.push(`order_id.in.(${oIds.join(',')})`);
-    if (cIds.length) clauses.push(`service_call_id.in.(${cIds.join(',')})`);
-    if (!clauses.length) return res.status(200).json({ writes: [] });
-    query = query.or(clauses.join(','));
-  }
-
-  const { data: events, error } = await query
-    .order('created_at', { ascending: true })
-    .limit(SCAN_LIMIT);
+  // 🔴🔴 **חסם ראש-תור, גלגול שני (03/09/2026).** הסריקה של 400 הישנים
+  // ביותר התמלאה באירועים שלעולם לא יידחפו (בלי הזמנה/קריאה, בלי מספר
+  // לקוח, העלאה בלי תמונה), וכל ריצה החזירה "success, writes: 0" בזמן
+  // ש-111 אירועים תקינים, 56 מהם תמונות, חיכו מאחור. תמונה של לקוחה
+  // חיכתה 30 שעות והיא שאלה "?????" בוואטסאפ.
+  // ⭐ הבחירה עוברת למסד (`priority_push_candidates`): הסינון על "יש לקוח"
+  // ו"יש תמונה" נעשה בשאילתה, ולכן אירוע שאי אפשר לדחוף לא תופס מקום.
+  const { data: events, error } = await supabaseAdmin
+    .rpc('priority_push_candidates', { p_limit: SCAN_LIMIT, p_custname: testCust });
   if (error) throw new Error(`outbox read: ${error.message}`);
   const rows = (events ?? []) as Row[];
-  if (!rows.length) return res.status(200).json({ writes: [] });
-
-  // resolve customer_number + context per event
-  const orderIds = [...new Set(rows.map((r) => s(r.order_id)).filter(Boolean))] as string[];
-  const callIds = [...new Set(rows.map((r) => s(r.service_call_id)).filter(Boolean))] as string[];
-  const orderMap = new Map<string, { cust: string | null; ctx: string }>();
-  const callMap = new Map<string, { cust: string | null; ctx: string }>();
-  if (orderIds.length) {
-    const { data } = await supabaseAdmin
-      .from('orders').select('id, customer_number, priority_order_id').in('id', orderIds);
-    for (const o of (data ?? []) as Row[])
-      orderMap.set(o.id as string, { cust: s(o.customer_number), ctx: `הזמנה ${s(o.priority_order_id) ?? ''}`.trim() });
-  }
-  if (callIds.length) {
-    const { data } = await supabaseAdmin
-      .from('service_calls').select('id, customer_number, priority_call_id').in('id', callIds);
-    for (const c of (data ?? []) as Row[])
-      callMap.set(c.id as string, { cust: s(c.customer_number), ctx: `קריאה ${s(c.priority_call_id) ?? ''}`.trim() });
-  }
+  // כמה עוד ממתינים מעבר למכסה: ריצה שמחזירה אפס כתיבות בזמן שיש ממתינים
+  // היא תקלה, לא שקט, וזה מה שהפונקציה הדוחפת והוואצ'דוג בודקים.
+  const pending = rows.length;
+  if (!rows.length) return res.status(200).json({ writes: [], skipped: 0, pending });
 
   const writes: Row[] = [];
   let payload = 0;
@@ -130,8 +97,8 @@ async function handleGet(req: VercelRequest, res: VercelResponse) {
     // המכסה נספרת על אירועים שנדחפו בפועל, לא על אירועים שנסרקו.
     if (pushedEvents.size >= EVENT_BATCH) break;
 
-    const src = ev.order_id ? orderMap.get(ev.order_id as string) : callMap.get(ev.service_call_id as string);
-    if (!src?.cust) { skipped++; continue; } // אין מפתח לקוח → יידחף כשיסונכרן
+    const src = { cust: s(ev.cust), ctx: s(ev.ctx) ?? '' };
+    if (!src.cust) { skipped++; continue; } // לא אמור לקרות: הפונקציה במסד כבר סיננה
     const cust = src.cust;
     const meta = ev.metadata as { imageUrls?: string[] } | null;
     const images = meta?.imageUrls ?? [];
@@ -172,7 +139,7 @@ async function handleGet(req: VercelRequest, res: VercelResponse) {
     if (claimErr) throw new Error(`claim: ${claimErr.message}`);
   }
 
-  return res.status(200).json({ writes, skipped });
+  return res.status(200).json({ writes, skipped, pending });
 }
 
 async function handleAck(req: VercelRequest, res: VercelResponse) {

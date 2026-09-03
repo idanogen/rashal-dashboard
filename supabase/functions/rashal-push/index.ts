@@ -76,8 +76,11 @@ Deno.serve(async (req: Request) => {
     await sb.from("sync_runs").update({ status: "error", finished_at: new Date().toISOString(), duration_ms: Date.now() - t0, retries, error_summary: `outbox: ${ob.body.slice(0, 300)}` }).eq("id", runId);
     return new Response(JSON.stringify({ run_id: runId, ok: false, stage: "outbox" }), { status: 200, headers: { "Content-Type": "application/json" } });
   }
-  const parsed = JSON.parse(ob.body) as { writes?: { event_id: string; url: string; body: string }[]; skipped?: number };
+  const parsed = JSON.parse(ob.body) as { writes?: { event_id: string; url: string; body: string }[]; skipped?: number; pending?: number };
   const writes = parsed.writes ?? [];
+  // 🔴 אפס כתיבות בזמן שיש ממתינים = תקלה, לא שקט. ב-02-03/09/2026 הריצות
+  // דיווחו success עם אפס דחיפות 30 שעות, והוואצ'דוג היה ירוק. [[silence_needs_a_positive_control]]
+  if (!writes.length && (parsed.pending ?? 0) > 0) errors.push(`outbox: ${parsed.pending} ממתינים ואפס כתיבות`);
 
   // 2) דחיפה לפריוריטי, כתיבה-כתיבה. מעקב הצלחה פר-אירוע.
   const evOk = new Map<string, boolean>();
