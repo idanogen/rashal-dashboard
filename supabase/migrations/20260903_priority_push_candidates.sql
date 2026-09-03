@@ -12,9 +12,9 @@
 -- אירוע שאי אפשר לדחוף אינו תופס מקום בחלון בכלל. [[endpoint_hardening_orphans_callers]]
 create or replace function public.priority_push_candidates(p_limit integer default 60, p_custname text default null)
 returns table (
-  id uuid,
-  order_id uuid,
-  service_call_id uuid,
+  id text,
+  order_id text,
+  service_call_id text,
   type text,
   user_name text,
   content text,
@@ -29,7 +29,7 @@ security definer
 set search_path = public
 as $$
   select
-    te.id, te.order_id, te.service_call_id, te.type::text, te.user_name, te.content, te.metadata, te.created_at,
+    te.id::text, te.order_id::text, te.service_call_id::text, te.type::text, te.user_name, te.content, te.metadata, te.created_at,
     coalesce(nullif(trim(o.customer_number), ''), nullif(trim(sc.customer_number), '')) as cust,
     case
       when te.order_id is not null then trim('הזמנה ' || coalesce(o.priority_order_id, ''))
