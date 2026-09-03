@@ -30,18 +30,27 @@ set search_path = public
 as $$
   select
     te.id::text, te.order_id::text, te.service_call_id::text, te.type::text, te.user_name, te.content, te.metadata, te.created_at,
-    coalesce(nullif(trim(o.customer_number), ''), nullif(trim(sc.customer_number), '')) as cust,
+    coalesce(nullif(trim(o.customer_number), ''), nullif(trim(sc.customer_number), ''),
+             nullif(trim(p.customer_number), ''), nullif(trim(cs.customer_number), '')) as cust,
     case
       when te.order_id is not null then trim('הזמנה ' || coalesce(o.priority_order_id, ''))
-      else trim('קריאה ' || coalesce(sc.priority_call_id, ''))
+      when te.service_call_id is not null then trim('קריאה ' || coalesce(sc.priority_call_id, ''))
+      when p.id is not null then trim('איסוף ' || coalesce(p.priority_pickup_id, ''))
+      else 'משימה'
     end as ctx
   from public.timeline_events te
   left join public.orders o on o.id = te.order_id
   left join public.service_calls sc on sc.id = te.service_call_id
+  -- 🔴 תמונות על איסופים ומשימות ידניות: אין להן הזמנה או קריאה, ולכן
+  -- מעולם לא הגיעו לפריוריטי (48 בשבועיים, נמדד 03/09). מספר הלקוח יושב
+  -- על האיסוף או על העצירה (הטריגר מ-02/09), ומשימה בלי לקוח נשארת בחוץ.
+  left join public.calendar_stops cs on cs.id = te.calendar_stop_id
+  left join public.pickups p on p.id = cs.pickup_id
   where te.pushed_to_priority_at is null
     and (te.push_claimed_at is null or te.push_claimed_at < now() - interval '10 minutes')
     and te.type::text in ('comment', 'file_upload')
-    and coalesce(nullif(trim(o.customer_number), ''), nullif(trim(sc.customer_number), '')) is not null
+    and coalesce(nullif(trim(o.customer_number), ''), nullif(trim(sc.customer_number), ''),
+                 nullif(trim(p.customer_number), ''), nullif(trim(cs.customer_number), '')) is not null
     and (te.type::text <> 'file_upload'
          or jsonb_array_length(coalesce(te.metadata->'imageUrls', '[]'::jsonb)) > 0)
     and (p_custname is null or o.customer_number = p_custname or sc.customer_number = p_custname)
