@@ -15,6 +15,7 @@ import { useCalendarStops } from '@/hooks/useCalendarStops';
 import { computeManagementMetrics, SLA_DAYS } from '@/lib/management-metrics';
 import { useSurveys } from '@/hooks/useSurveys';
 import { useDeliveryNotes, useConsolidatedInvoices } from '@/hooks/useDocuments';
+import { useOrdersOpenedByMonth } from '@/hooks/useOrdersOpenedByMonth';
 import { computeSurveyMetrics, formatScore } from '@/lib/surveys';
 import { WeeklyTargetStrip } from '@/components/management/WeeklyTargetStrip';
 
@@ -115,11 +116,12 @@ export function ManagementDashboard() {
   const { data: surveys = [], isLoading: l5 } = useSurveys(30);
   const { data: notes = [], isLoading: l6 } = useDeliveryNotes();
   const { data: invoices = [], isLoading: l7 } = useConsolidatedInvoices();
-  const loading = l1 || l2 || l3 || l4 || l5 || l6 || l7;
+  const { data: ordersOpened = [], isLoading: l8 } = useOrdersOpenedByMonth(6);
+  const loading = l1 || l2 || l3 || l4 || l5 || l6 || l7 || l8;
 
   const m = useMemo(
-    () => computeManagementMetrics(orders, serviceCalls, pickups, stops, notes, invoices),
-    [orders, serviceCalls, pickups, stops, notes, invoices],
+    () => computeManagementMetrics(orders, serviceCalls, pickups, stops, notes, invoices, ordersOpened),
+    [orders, serviceCalls, pickups, stops, notes, invoices, ordersOpened],
   );
   const sv = useMemo(() => computeSurveyMetrics(surveys), [surveys]);
 
@@ -322,7 +324,7 @@ export function ManagementDashboard() {
           </div>
         </Panel>
 
-        <Panel icon={<TrendingUp className="h-4 w-4" />} title="אספקות לפי חודש" hint="6 חודשים · הוזמנו מול סופקו">
+        <Panel icon={<TrendingUp className="h-4 w-4" />} title="אספקות לפי חודש" hint="6 חודשים · הזמנות שנפתחו בפריוריטי מול תעודות משלוח">
           <div className="h-[220px] w-full" dir="ltr">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={m.ordersByMonth} margin={{ top: 5, right: 8, left: -18, bottom: 0 }}>

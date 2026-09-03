@@ -12,6 +12,7 @@ import { countOpenOverDays, countRepeatCalls } from './repeat-calls';
 import {
   deliveryTargetStatus, weekStart, countsTowardTarget, type TargetStatus,
 } from './delivery-target';
+import { ordersVsNotesByMonth, type OpenedByMonthRow } from './month-series';
 
 /** יעד SLA לאספקה (עידן, 04/08): שבוע. */
 export const SLA_DAYS = 7;
@@ -56,7 +57,12 @@ export interface ManagementMetrics {
   kpi: KpiBlock;
   serviceByDay: Series[];      // פתוחות (נפתחו) מול נסגרו, 14 יום
   docsByMonth: Series[];       // תעודות משלוח: נפתחו מול נסגרו, 6 חודשים
-  ordersByMonth: Series[];     // הוזמנו מול סופקו, 6 חודשים
+  /**
+   * הזמנות שנפתחו בפריוריטי מול תעודות משלוח, 6 חודשים.
+   * 🔴 לא מרשימת ההזמנות שהמסך טוען (מסננת ארכיון) ולא מעצירות שנסגרו
+   * באפליקציה (מודד שימוש). ראה `month-series.ts`.
+   */
+  ordersByMonth: Series[];
   pickupFunnel: FunnelStep[];  // ממתין → תואם → נאסף
   callsByTechnician: NamedCount[];
   activityByRegion: NamedCount[];
@@ -90,6 +96,8 @@ export function computeManagementMetrics(
   stops: CalendarStop[],
   notes: DeliveryNote[] = [],
   invoices: ConsolidatedInvoice[] = [],
+  /** ספירת ההזמנות שנפתחו לפי חודש, מהמסד, כולל ארכיון. */
+  ordersOpened: OpenedByMonthRow[] = [],
 ): ManagementMetrics {
   const o = real(orders);
   const sc = real(serviceCalls);
@@ -172,28 +180,10 @@ export function computeManagementMetrics(
   }
 
   // ---- אספקות לפי חודש (6) ----
-  const ordersByMonth: Series[] = [];
-  const monthIndex = new Map<string, number>();
-  const MON = ['ינו', 'פבר', 'מרץ', 'אפר', 'מאי', 'יונ', 'יול', 'אוג', 'ספט', 'אוק', 'נוב', 'דצמ'];
-  const base = new Date(); base.setDate(1);
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(base.getFullYear(), base.getMonth() - i, 1);
-    const key = `${d.getFullYear()}-${d.getMonth()}`;
-    monthIndex.set(key, ordersByMonth.length);
-    ordersByMonth.push({ label: MON[d.getMonth()], a: 0, b: 0 });
-  }
-  for (const r of o) {
-    if (!r.created) continue;
-    const d = new Date(r.created);
-    const i = monthIndex.get(`${d.getFullYear()}-${d.getMonth()}`);
-    if (i != null) ordersByMonth[i].a++;
-  }
-  for (const s of deliveryStops) {
-    if (!isCompleted(s) || !s.completedAt) continue;
-    const d = new Date(s.completedAt);
-    const i = monthIndex.get(`${d.getFullYear()}-${d.getMonth()}`);
-    if (i != null) ordersByMonth[i].b++;
-  }
+  // 🔴🔴 שלומי, 03/09/2026: הגרף ספר "הוזמנו" מההזמנות שהמסך טוען (בלי
+  // ארכיון: אפריל 83 מול 255 בפריוריטי) ו"סופקו" מעצירות שנסגרו באפליקציה
+  // (מדד שימוש, לא אספקה). עכשיו: ספירה במסד מול תעודות משלוח.
+  const ordersByMonth: Series[] = ordersVsNotesByMonth(ordersOpened, notes, 6, new Date(now));
 
   // ---- משפך איסופים ----
   const pickupFunnel: FunnelStep[] = [
