@@ -1271,7 +1271,8 @@ Deno.serve(async (req: Request) => {
     const expand = String(body?.expand ?? "");
     // 🔴 רשימה סגורה ולא נתיב מהקורא: הפונקציה עונה בלי טוקן, וישות
     // חופשית הייתה הופכת אותה לפרוקסי לכל מסך בפריוריטי.
-    const ALLOWED = ["CUSTOMERS", "ORDERS", "DOCUMENTS_D", "DOCUMENTS_N", "AINVOICES", "CINVOICES", "SERVCALL"];
+    // GENINVOICES נוסף 03/09/2026 אחרי שעידן פתח את המסך ל-API (ספר כספי: כאן הקבלות).
+    const ALLOWED = ["CUSTOMERS", "ORDERS", "DOCUMENTS_D", "DOCUMENTS_N", "AINVOICES", "CINVOICES", "GENINVOICES", "SERVCALL"];
     const ent = ALLOWED.includes(String(body?.entity ?? "")) ? String(body.entity) : "CUSTOMERS";
     const sel = String(body?.select ?? (ent === "CUSTOMERS" ? "CUSTNAME,PHONE" : "IVNUM,CUSTNAME,IVDATE,IVRECONDATE,TOTPRICE"));
     return new Response(JSON.stringify(await probeFilters(filters, mode, expand, ent, sel), null, 2),
