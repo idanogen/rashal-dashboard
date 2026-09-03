@@ -112,6 +112,12 @@ const Q = {
   cinvoices_recon: (since: string) =>
     `/CINVOICES?$select=IVNUM,DOCNO,CUSTNAME,CDES,IVDATE,STATDES,ORDNAME,AGENTNAME,BOOKNUM,FNCNUM,IVRECONDATE,DEBIT,IVTYPE,VAT,TOTPRICE,TOTQUANT,FINAL` +
     `&$filter=${encodeURIComponent(`IVRECONDATE ge ${since}`)}&$orderby=IVRECONDATE%20asc&$top=4000`,
+  // קבלות: אין UDATE בספר הכספי, ולכן חלון מתגלגל ולא ווטרמרק. קבלה נרשמת
+  // לרוב ביום קבלתה, ו-45 יום מכסים גם רישום מאוחר.
+  receipts: (since: string) =>
+    `/GENINVOICES?$select=${RECEIPT_SELECT}` +
+    `&$filter=${encodeURIComponent(`IVDATE ge ${since} and (TYPE eq 'T' or TYPE eq 'E')`)}` +
+    `&$orderby=IVDATE%20asc&$top=4000`,
   pickups_addresses: (since: string) =>
     `/DOCUMENTS_N?$select=DOCNO,DOC,CUSTNAME,CDES,CURDATE,STATDES,ORDNAME,ODOCNO,REFERENCE,TOWARHSDES,AGENTNAME,OWNERLOGIN,TOTQUANT,TOTPRICE,UDATE` +
     `&$expand=${encodeURIComponent("DOCUMENTS_DCONT_SUBFORM($select=ADRS,STATE,PHONE,FAX)")}` +
@@ -133,6 +139,8 @@ const Q = {
 // (לקח #1 של רוני), אז לא מנחשים ולא מקצרים.
 // 🔴 Priority Connect עוצרת על 2,000 שורות לקריאה, בלי קשר ל-`$top`.
 const PAGE_CAP = 2000;
+
+const RECEIPT_SELECT = "IVNUM,TYPE,CODE,IVDES,IVDATE,TOTPRICE,DEBIT,CUSTNAME,CUSTDES,FNCNUM,BOOKNUM";
 
 const BACKFILL_Q: Record<string, { kind: string; url: (f: string, t: string) => string }> = {
   customers: {
@@ -179,6 +187,16 @@ const BACKFILL_Q: Record<string, { kind: string; url: (f: string, t: string) => 
       `/DOCUMENTS_D?$select=DOCNO,DOC,CUSTNAME,CDES,CURDATE,UDATE,STATDES,IVALL,ORDNAME,WARHSDES,AGENTNAME,USERLOGIN,TOTQUANT,TOTPRICE` +
       `&$filter=${encodeURIComponent(`CURDATE ge ${f} and CURDATE lt ${t}`)}` +
       `&$orderby=CURDATE%20asc&$top=4000`,
+  },
+  // קבלות מהספר הכספי (GENINVOICES, נפתח ל-API 03/09/2026). רק כסף מלקוחות:
+  // T = קבלות (RC), E = חשבוניות מס קבלה (OV/ON). Q/H שם הם תשלומים לספקים.
+  // ⭐ סוגריים בפילטר עוברים במצב encoded (נבדק חי 03/09 דרך probe-filters).
+  receipts: {
+    kind: "receipts",
+    url: (f, t) =>
+      `/GENINVOICES?$select=${RECEIPT_SELECT}` +
+      `&$filter=${encodeURIComponent(`IVDATE ge ${f} and IVDATE lt ${t} and (TYPE eq 'T' or TYPE eq 'E')`)}` +
+      `&$orderby=IVDATE%20asc&$top=4000`,
   },
   invoices: {
     kind: "invoices",
@@ -427,6 +445,8 @@ const JOBS: Record<string, Step[]> = {
     // ⭐ חלון מתגלגל של 30 יום ולא ווטרמרק: התאמה יכולה להירשם רטרואקטיבית,
     // וווטרמרק שרץ קדימה היה מדלג עליה. 3,000 שורות בסך הכל, זה זול.
     { entity: "cinvoices_recon", kind: "cinvoices", buildUrl: () => Q.cinvoices_recon(rollingDays(30)) },
+    // קבלות מהספר הכספי: "כמה נכנס", ולא רק "כמה פתוח". שלומי, 03/09/2026.
+    { entity: "receipts", kind: "receipts", buildUrl: () => Q.receipts(rollingDays(45)) },
   ],
   "pull-pickup-addresses": [
     { entity: "pickups_addresses", kind: "pickups", buildUrl: () => Q.pickups_addresses(rolling3Days()) },

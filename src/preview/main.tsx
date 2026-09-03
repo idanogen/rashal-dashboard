@@ -331,6 +331,24 @@ const AGING_FIXTURE = [
     lastNoteAt: null, nextActionDate: null },
 ];
 previewQc.setQueryData(['debt-aging'], AGING_FIXTURE);
+// קבלות מהספר הכספי, המספרים האמיתיים מסוף אוגוסט ותחילת ספטמבר 2026.
+previewQc.setQueryData(['receipts-by-month'], [
+  { month: '2026-09-01', customerNumber: '589904029', customerName: 'קופת חולים לאומית', n: 1, total: 199843 },
+  { month: '2026-09-01', customerNumber: '5501318', customerName: 'דדון אבי', n: 1, total: 400 },
+  { month: '2026-08-01', customerNumber: '589902279', customerName: 'מכבי שירותי בריאות', n: 2, total: 541835.81 },
+  { month: '2026-08-01', customerNumber: '589958495', customerName: 'קופת חולים מאוחדת', n: 1, total: 324491.29 },
+  { month: '2026-08-01', customerNumber: '059308247', customerName: 'גונן יעל', n: 1, total: -9000 },
+]);
+previewQc.setQueryData(['debt-drafts'], [
+  { customerNumber: '589902279', customerName: 'מכבי שירותי בריאות', draftCount: 1, total: 197110, oldestDate: '2026-08-30' },
+  { customerNumber: '589904029', customerName: 'קופת חולים לאומית', draftCount: 1, total: 142491, oldestDate: '2026-08-31' },
+  { customerNumber: '930103742', customerName: 'משרד הבטחון', draftCount: 1, total: 49662, oldestDate: '2026-08-31' },
+  { customerNumber: '511941213', customerName: 'כללית הנדסה רפואית בעמ', draftCount: 5, total: 4241, oldestDate: '2026-08-16' },
+]);
+previewQc.setQueryData(['customer-receipts', '930103742'], [
+  { docNo: 'RC2600161', receiptDate: '2026-07-19', totalPrice: 120000, docType: 'T', docDesc: 'קבלות' },
+  { docNo: 'RC2600122', receiptDate: '2026-04-02', totalPrice: 84200, docType: 'T', docDesc: 'קבלות' },
+]);
 
 // ⭐ החשבוניות של משרד הביטחון, כי זה בדיוק הלקוח שהצלבת הדוח סימנה
 // כמסובך: 13 חשבוניות פרוסות על שבעה חודשים.

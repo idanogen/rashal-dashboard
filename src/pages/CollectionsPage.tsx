@@ -25,10 +25,12 @@ import {
   AlertTriangle,
   CalendarClock,
   Coins,
+  FileClock,
   Info,
   Loader2,
   MessageSquarePlus,
   Phone,
+  Receipt,
   Search,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -62,6 +64,8 @@ import {
   type AgingRow,
   type CollectionOutcome,
 } from '@/lib/collections';
+import { fetchCustomerReceipts, fetchDebtDrafts, fetchReceiptsByMonth } from '@/lib/receipts';
+import { receiptKindLabel, receiptsFrom, summarizeReceipts } from '@/lib/receipts-summary';
 import { useCurrentProfile } from '@/hooks/useProfile';
 
 const NAVY = '#14223a';
@@ -104,6 +108,22 @@ export function CollectionsPage() {
     queryFn: fetchAging,
     staleTime: 60_000,
   });
+  // ⭐ קבלות וטיוטות בשתי שליפות נפרדות: כישלון באחת לא מפיל את החוב.
+  const { data: receiptRows = [], isLoading: loadingReceipts } = useQuery({
+    queryKey: ['receipts-by-month'],
+    queryFn: () => fetchReceiptsByMonth(receiptsFrom()),
+    staleTime: 60_000,
+  });
+  const { data: drafts = [] } = useQuery({
+    queryKey: ['debt-drafts'],
+    queryFn: fetchDebtDrafts,
+    staleTime: 60_000,
+  });
+  const receipts = useMemo(() => summarizeReceipts(receiptRows), [receiptRows]);
+  const draftsTotal = useMemo(
+    () => ({ n: drafts.reduce((a, d) => a + d.draftCount, 0), total: drafts.reduce((a, d) => a + d.total, 0) }),
+    [drafts],
+  );
 
   const filtered = useMemo(() => {
     const q = search.trim();
@@ -150,8 +170,9 @@ export function CollectionsPage() {
         <Info className="mt-0.5 h-4 w-4 flex-none" />
         <span>
           המספרים כאן נכונים לסנכרון האחרון מפריוריטי ומיועדים לעבודת הגבייה, לא לדיווח
-          חשבונאי. חלק מהזיכויים אינם מגיעים אלינו, ולכן לקוח שקיבל זיכוי עשוי להיראות
-          חייב יותר. <b>לסכום המחייב עובדים מול פריוריטי.</b>
+          חשבונאי. זיכויים ממסך חשבוניות המס (לקוחות פרטיים) אינם נכללים, ולכן לקוח כזה עשוי
+          להיראות חייב יותר. טיוטות שטרם הופקו אינן חוב ומוצגות בנפרד.{' '}
+          <b>לסכום המחייב עובדים מול פריוריטי.</b>
         </span>
       </div>
 
@@ -183,6 +204,90 @@ export function CollectionsPage() {
               <div className="mt-0.5 text-[10px] text-slate-400">{BUCKET_LABELS[b]}</div>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* ⭐ שני הצדדים של אותו כסף על אותו מסך: מה נכנס (קבלות מהספר
+          הכספי) ומה עוד לא יצא (טיוטות). שלומי, 03/09/2026. */}
+      <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="rounded-2xl border bg-white p-5 shadow-sm" style={{ borderColor: '#eef1f6' }}>
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-1.5 text-sm font-bold" style={{ color: NAVY }}>
+                <Receipt className="h-4 w-4 text-emerald-700" />
+                נגבה
+              </div>
+              <div className="text-[11px] text-slate-400">
+                קבלות וחשבוניות מס קבלה מהספר הכספי בפריוריטי{loadingReceipts ? ' · טוען…' : ''}
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Stat n={<bdi>{shekel(receipts.thisMonth)}</bdi>} t={`החודש · ${receipts.thisMonthCount} קבלות`} color="#047857" />
+            <Stat n={<bdi>{shekel(receipts.prevMonth)}</bdi>} t="חודש קודם" />
+          </div>
+          {receipts.byCustomer.length > 0 ? (
+            <table className="mt-3 w-full border-t text-xs" style={{ borderColor: '#eef1f6' }}>
+              <thead>
+                <tr className="text-[10px] text-slate-400">
+                  <th className="pt-2 pb-1 text-start font-medium">לקוח</th>
+                  <th className="pt-2 pb-1 text-start font-medium">החודש</th>
+                  <th className="pt-2 pb-1 text-start font-medium">חודש קודם</th>
+                </tr>
+              </thead>
+              <tbody>
+                {receipts.byCustomer.slice(0, 6).map((c) => (
+                  <tr key={c.customerNumber} className="border-t" style={{ borderColor: '#f1f4f9' }}>
+                    <td className="py-1.5 font-semibold" style={{ color: NAVY }}>{c.customerName}</td>
+                    <td className={`py-1.5 ${c.thisMonth ? 'text-emerald-700 font-semibold' : 'text-slate-300'}`}>
+                      <bdi>{c.thisMonth ? shekel(c.thisMonth) : '·'}</bdi>
+                    </td>
+                    <td className={`py-1.5 ${c.prevMonth ? 'text-slate-600' : 'text-slate-300'}`}>
+                      <bdi>{c.prevMonth ? shekel(c.prevMonth) : '·'}</bdi>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : !loadingReceipts ? (
+            <p className="mt-3 border-t pt-3 text-center text-[11px] text-slate-400" style={{ borderColor: '#eef1f6' }}>
+              אין קבלות בחודשיים האחרונים, או שהספר הכספי טרם נמשך.
+            </p>
+          ) : null}
+        </div>
+
+        <div className="rounded-2xl border bg-white p-5 shadow-sm" style={{ borderColor: '#eef1f6' }}>
+          <div className="mb-3">
+            <div className="flex items-center gap-1.5 text-sm font-bold" style={{ color: NAVY }}>
+              <FileClock className="h-4 w-4 text-slate-500" />
+              ממתין להפקה
+            </div>
+            <div className="text-[11px] text-slate-400">
+              חשבוניות מרכזות בטיוטא. עוד לא יצאו לקופה, ולכן אינן נספרות בחוב.
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <Stat n={<bdi>{shekel(draftsTotal.total)}</bdi>} t="סכום בטיוטות" />
+            <Stat n={draftsTotal.n} t="טיוטות" />
+          </div>
+          {drafts.length > 0 ? (
+            <table className="mt-3 w-full border-t text-xs" style={{ borderColor: '#eef1f6' }}>
+              <tbody>
+                {drafts.slice(0, 6).map((d) => (
+                  <tr key={d.customerNumber} className="border-t" style={{ borderColor: '#f1f4f9' }}>
+                    <td className="py-1.5 font-semibold" style={{ color: NAVY }}>{d.customerName}</td>
+                    <td className="py-1.5 text-slate-500"><bdi>{d.draftCount}</bdi> טיוטות</td>
+                    <td className="py-1.5 text-slate-500">מ-<bdi>{dayLabel(d.oldestDate)}</bdi></td>
+                    <td className="py-1.5 font-semibold" style={{ color: NAVY }}><bdi>{shekel(d.total)}</bdi></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <p className="mt-3 border-t pt-3 text-center text-[11px] text-slate-400" style={{ borderColor: '#eef1f6' }}>
+              אין טיוטות ממתינות.
+            </p>
+          )}
         </div>
       </div>
 
@@ -319,6 +424,10 @@ export function CustomerDebtDialog({
     queryKey: ['collection-notes', row.customerNumber],
     queryFn: () => fetchNotes(row.customerNumber),
   });
+  const { data: customerReceipts = [] } = useQuery({
+    queryKey: ['customer-receipts', row.customerNumber],
+    queryFn: () => fetchCustomerReceipts(row.customerNumber),
+  });
 
   const save = async () => {
     if (!note.trim() || saving) return;
@@ -397,6 +506,36 @@ export function CustomerDebtDialog({
                       <div className={`text-[11px] font-semibold ${BUCKET_TONE[bucketOf(inv.ageDays)]}`}>
                         <bdi>{inv.ageDays}</bdi> ימים
                       </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <h4 className="mb-2 mt-4 flex items-center gap-1.5 text-sm font-bold" style={{ color: NAVY }}>
+              <Receipt className="h-4 w-4 text-emerald-700" />
+              קבלות בשנה האחרונה
+            </h4>
+            <div className="max-h-44 overflow-y-auto rounded-xl border" style={{ borderColor: '#eef1f6' }}>
+              {customerReceipts.length === 0 ? (
+                <p className="py-5 text-center text-xs text-slate-400">לא נמצאו קבלות</p>
+              ) : (
+                customerReceipts.map((rc, i) => (
+                  <div
+                    key={`${rc.docNo}-${i}`}
+                    className="flex items-center justify-between border-b px-3 py-2 text-xs last:border-0"
+                    style={{ borderColor: '#f1f4f9' }}
+                  >
+                    <div>
+                      <div className="font-semibold" style={{ color: NAVY }}>
+                        <bdi>{rc.docNo || '·'}</bdi>
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        <bdi>{dayLabel(rc.receiptDate)}</bdi> · {receiptKindLabel(rc.docNo, rc.docType)}
+                      </div>
+                    </div>
+                    <div className={`font-bold ${rc.totalPrice < 0 ? 'text-red-700' : 'text-emerald-700'}`}>
+                      <bdi>{shekel(rc.totalPrice)}</bdi>
                     </div>
                   </div>
                 ))

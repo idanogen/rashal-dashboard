@@ -863,7 +863,7 @@ async function upsertPickups(rows: Row[], backfill = false) {
 // ---------------------------------------------------------------------------
 async function upsertDocs(
   rows: Row[],
-  table: 'delivery_notes' | 'invoices' | 'consolidated_invoices',
+  table: 'delivery_notes' | 'invoices' | 'consolidated_invoices' | 'receipts',
   keyCol: 'priority_doc_id' | 'priority_iv_id',
   map: (r: Row) => Row,
   wmField: string,
@@ -943,6 +943,22 @@ const mapCInvoice = (r: Row): Row => ({
   is_final: s(r.FINAL),
 });
 
+// קבלה מהספר הכספי (GENINVOICES). T = קבלה (RC), E = חשבונית מס קבלה (OV/ON).
+// 🔴 FNCNUM ריק = טיוטה שעוד לא נרשמה, והפונקציות במסד מסננות אותה.
+const mapReceipt = (r: Row): Row => ({
+  priority_iv_id: s(r.IVNUM),
+  doc_type: s(r.TYPE),
+  doc_desc: s(r.IVDES),
+  customer_number: s(r.CUSTNAME),
+  customer_name: s(r.CUSTDES),
+  receipt_date: s(r.IVDATE),
+  total_price: num(r.TOTPRICE),
+  currency: s(r.CODE),
+  debit: s(r.DEBIT),
+  fnc_num: s(r.FNCNUM),
+  book_num: s(r.BOOKNUM),
+});
+
 const mapInvoice = (r: Row): Row => ({
   priority_iv_id: s(r.IVNUM),
   customer_number: s(r.CUSTNAME),
@@ -995,6 +1011,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (kind === 'invoices') {
         return res.status(200).json(await upsertDocs(
           rows, 'invoices', 'priority_iv_id', mapInvoice, 'IVDATE', 'invoices', backfill));
+      }
+      if (kind === 'receipts') {
+        return res.status(200).json(await upsertDocs(
+          rows, 'receipts', 'priority_iv_id', mapReceipt, 'IVDATE', 'receipts', backfill));
       }
       return res.status(400).json({ error: `unknown kind: ${kind}` });
     }

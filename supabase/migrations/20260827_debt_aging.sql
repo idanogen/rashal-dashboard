@@ -83,6 +83,9 @@ as $$
       -- 🔴 חשבונית מבוטלת אינה חוב. הסכום שלה שלילי, ובלי הסינון הזה היא
       -- מקזזת חוב אמיתי של לקוח אחר בשורת הסיכום.
       and ci.status <> 'מבוטלת'
+      -- 🔴 וטיוטה אינה חוב עדיין: היא לא יצאה לקופה. נמדד 03/09/2026: 12
+      -- טיוטות מאוגוסט נספרו כ-₪430K חוב. מוצגות בנפרד ב-`debt_drafts`.
+      and ci.status <> 'טיוטא'
       and ci.invoice_date is not null
   ),
   agg as (
@@ -125,7 +128,7 @@ as $$
 $$;
 
 comment on function public.debt_aging(date) is
-  'גיול חובות פתוחים לפי לקוח. קירוב ולא ספר חשבונות: ב-CINVOICES אין זיכויים.';
+  'גיול חובות פתוחים לפי לקוח, בלי מבוטלות ובלי טיוטות. זיכויים באותו מסך (שורות שליליות) מקוזזים; זיכויי חשבוניות מס (IK) אינם כאן.';
 
 grant execute on function public.debt_aging(date) to authenticated;
 
@@ -157,6 +160,7 @@ as $$
   where ci.recon_date is null
     and ci.archived_at is null
     and ci.status <> 'מבוטלת'
+    and ci.status <> 'טיוטא'
     and ci.invoice_date is not null
     and coalesce(nullif(trim(ci.customer_number), ''), ci.customer_name, 'ללא מספר') = p_customer
   order by ci.invoice_date asc;
