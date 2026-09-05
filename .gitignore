@@ -28,3 +28,5 @@ dist-ssr
 
 # קבצי עזר של ה-CLI של Supabase, לא שייכים לריפו
 supabase/.temp/
+.env.vercel
+.env.*.local
