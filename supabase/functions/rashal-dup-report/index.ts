@@ -112,6 +112,15 @@ Deno.serve(async (req) => {
   const newFlags = Number(nf.orders) + Number(nf.service_calls);
   const tag = newFlags > 0 ? "🔴 " : suspects > 0 ? "⚠️ " : "✅ ";
 
+  // 05/09, מפת ההודעות (הכרעה 6 וכלל 5): דוח נקי לא נשלח פעמיים ביום. ✅ יוצא פעם בשבוע,
+  // בריצת הבוקר של יום ראשון, כהוכחת חיים; ⚠️ ו-🔴 יוצאים מיד כמו קודם. הריצה נרשמת תמיד.
+  const nowUtc = new Date();
+  const weeklySlot = nowUtc.getUTCDay() === 0 && nowUtc.getUTCHours() < 12;
+  if (tag === "✅ " && !weeklySlot) {
+    await sb.from("dup_report_runs").insert({ report: rep, emailed: false });
+    return json({ ok: true, emailed: false, skipped: "clean, weekly email on Sunday morning", new_flags: newFlags, suspects });
+  }
+
   const sent = await sendMail(`${tag}דוח מצב כפילויות · רשעל`, buildHtml(rep));
 
   // רק עכשיו, ורק אם המייל באמת יצא.

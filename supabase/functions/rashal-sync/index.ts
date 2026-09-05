@@ -1218,7 +1218,23 @@ async function reconcileDaily(days: number): Promise<Record<string, unknown>> {
       : null,
   });
 
-  if (totalReal > 0 || invisible.length > 0 || visibilityError) {
+  // 05/09, מפת ההודעות כלל 4: פריט ידוע לא מתריע כל יום. אותן "2 קיימות ולא מוצגות" יצאו
+  // במייל שבעה ימים ברצף. טביעת האצבע של הממצאים נשמרת ב-sync_alerts (job reconcile-email),
+  // ומייל יוצא רק כשהתמונה השתנתה: רשומה חדשה, רשומה שנעלמה, או שגיאה בגלאי.
+  const fingerprint = [
+    ...anomalies.flatMap((a) => a.rows.map((r) => `${a.entity}:${r.key}`)),
+    ...invisible.map((s) => `inv:${s.pkey ?? ""}:${s.reason ?? ""}`),
+    visibilityError ? `err:${visibilityError}` : "",
+  ].filter(Boolean).sort().join("|");
+  const { data: prevAlert } = await sb.from("sync_alerts").select("detail").eq("job", "reconcile-email").maybeSingle();
+  const alreadyReported = !!fingerprint && (prevAlert?.detail as string | null) === fingerprint;
+  if (!fingerprint && prevAlert?.detail) {
+    await sb.from("sync_alerts").upsert({ job: "reconcile-email", state: "ok", detail: null, updated_at: new Date().toISOString() });
+  }
+  if (alreadyReported) summary.email = "skipped, same findings as last email";
+
+  if ((totalReal > 0 || invisible.length > 0 || visibilityError) && !alreadyReported) {
+    await sb.from("sync_alerts").upsert({ job: "reconcile-email", state: "alerting", detail: fingerprint, last_alerted_at: new Date().toISOString(), updated_at: new Date().toISOString() });
     const blocks = anomalies.map((a) => {
       const rows = a.rows.slice(0, 25).map((s) =>
         `<tr><td style="padding:4px 10px;font-family:monospace">${s.key}</td>` +
@@ -1259,7 +1275,7 @@ async function reconcileDaily(days: number): Promise<Record<string, unknown>> {
       `רשעל · ${parts.join(" · ")}`,
       `<div dir="rtl" style="font-family:system-ui,sans-serif;color:#14223a">
          <p>ריצת הבוקר בודקת שני דברים: מה קיים בפריוריטי ולא אצלנו, ומה קיים אצלנו ולא יוצג באף מסך.</p>
-         <p style="color:#666;font-size:13px">רשומות שנוצרו היום לא נספרות בחוסר, הן פיגור רגיל בין ריצות.</p>
+         <p style="color:#666;font-size:13px">רשומות שנוצרו היום לא נספרות בחוסר, הן פיגור רגיל בין ריצות. המייל הזה יוצא רק כשהתמונה משתנה, לא כל בוקר מחדש.</p>
          ${blocks}
          ${invisibleBlock}
          ${visibilityErrorBlock}

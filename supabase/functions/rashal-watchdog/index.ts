@@ -19,9 +19,9 @@ const REALERT_HOURS = 6;
 
 interface Mon { job: string; label: string; thresholdMin: number; activeDowUtc?: number[]; activeHourUtc?: [number, number] }
 const MONITORS: Mon[] = [
-  { job: "pull-core", label: "משיכת ליבה (הזמנות/קריאות/לקוחות)", thresholdMin: 90, activeDowUtc: [0,1,2,3,4], activeHourUtc: [4,15] },
-  { job: "pull-pickups", label: "משיכת איסופים", thresholdMin: 90, activeDowUtc: [0,1,2,3,4], activeHourUtc: [4,15] },
-  { job: "pull-pickup-addresses", label: "משיכת כתובות איסוף", thresholdMin: 90, activeDowUtc: [0,1,2,3,4], activeHourUtc: [4,15] },
+  { job: "pull-core", label: "משיכת ליבה (הזמנות/קריאות/לקוחות)", thresholdMin: 180, activeDowUtc: [0,1,2,3,4], activeHourUtc: [4,15] },
+  { job: "pull-pickups", label: "משיכת איסופים", thresholdMin: 180, activeDowUtc: [0,1,2,3,4], activeHourUtc: [4,15] },
+  { job: "pull-pickup-addresses", label: "משיכת כתובות איסוף", thresholdMin: 180, activeDowUtc: [0,1,2,3,4], activeHourUtc: [4,15] },
   { job: "push-chat", label: "דחיפת צ'אט לפריוריטי", thresholdMin: 90 },
 ];
 
@@ -198,6 +198,14 @@ Deno.serve(async () => {
     const inGrace = sinceOpen !== null && sinceOpen >= 0 && sinceOpen < m.thresholdMin;
 
     if (active && stale && !inGrace) {
+      // 05/09: ארבעה מיילים "תקוע/חזר" ביום אחד על ריצות של 95 עד 125 דקות מול סף 90.
+      // הסף עלה ל-180, ובדיקה ראשונה שרואה שתיקה רק רושמת "stale_once"; מתריעים
+      // רק כשהבדיקה הבאה (שעה אחרי) עדיין רואה שתיקה. היסטרזיס, לא רגישות.
+      if (prevState !== "stale_once" && prevState !== "alerting") {
+        await sb.from("sync_alerts").upsert({ job: m.job, state: "stale_once", updated_at: now.toISOString() });
+        report[m.job] = "stale once (silent, waiting for a second check)";
+        continue;
+      }
       const alertedAt = prev?.last_alerted_at ? new Date(prev.last_alerted_at as string) : null;
       const hoursSinceAlert = alertedAt ? (now.getTime() - alertedAt.getTime()) / 3600000 : Infinity;
       if (prevState !== "alerting" || hoursSinceAlert >= REALERT_HOURS) {
@@ -223,6 +231,10 @@ Deno.serve(async () => {
         });
         report[m.job] = "ALERT sent";
       } else report[m.job] = "stale (throttled)";
+    } else if (!stale && prevState === "stale_once") {
+      // נרגע לפני שהתרענו: שקט, רק מאפסים
+      await sb.from("sync_alerts").upsert({ job: m.job, state: "ok", detail: null, updated_at: now.toISOString() });
+      report[m.job] = "ok (stale_once cleared quietly)";
     } else if (!stale && prevState === "alerting") {
       await sendEmail(
         `✅ סנכרון רשעל חזר לעבוד: ${m.label}`,
