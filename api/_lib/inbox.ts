@@ -38,6 +38,8 @@ export interface ConversationRow {
   unanswered_since: string | null;
   message_count: number | null;
   read_at: string | null;
+  contact_label?: string | null;
+  suggested?: unknown;
 }
 
 export interface InboxItem {
@@ -48,6 +50,10 @@ export interface InboxItem {
   customerNumber: string | null;
   /** true כשהשם מגיע מפרופיל הוואטסאפ ולא מהמחסן, כלומר טרם זוהה לקוח. */
   unidentified: boolean;
+  /** מי מדבר איתנו כשזה לא הלקוח עצמו: "הבת, מיכל". */
+  contactLabel: string | null;
+  /** מועמדים לשיוך שהמערכת הכינה (ת.ז. בתשובה, או טלפון של שני לקוחות). */
+  suggested: Array<{ customer_number: string; customer_name: string | null; city?: string | null; by?: string; label?: string | null }> | null;
   preview: string;
   lastMessageAt: string | null;
   lastMessageDirection: string | null;
@@ -130,6 +136,8 @@ export function toItem(row: ConversationRow, win: WindowState, now = Date.now())
     title,
     customerNumber: row.customer_number,
     unidentified: !identified,
+    contactLabel: row.contact_label ?? null,
+    suggested: Array.isArray(row.suggested) ? (row.suggested as InboxItem['suggested']) : null,
     preview: (row.last_message_preview ?? '').trim(),
     lastMessageAt: row.last_message_at,
     lastMessageDirection: row.last_message_direction,

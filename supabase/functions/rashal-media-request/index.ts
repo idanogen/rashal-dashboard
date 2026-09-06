@@ -27,6 +27,8 @@ interface DueRow {
   stage: "first" | "reminder";
   customer_name: string | null;
   phone_e164: string;
+  /** בני משפחה שקישרנו ללקוח (customer_contacts). החלטת עידן 06/09: גם אליהם. */
+  extra_phones?: string[] | null;
   device_name: string | null;
 }
 
@@ -114,6 +116,12 @@ Deno.serve(async (req: Request) => {
       const nowIso = new Date().toISOString();
       if (res.ok) {
         sent++;
+        // ⭐ גם אל בני המשפחה שקישרנו ללקוח. כישלון אצלם לא משנה את מצב
+        // הבקשה: ההודעה ללקוח כבר יצאה, והמצב נרשם עליה.
+        for (const extra of row.extra_phones ?? []) {
+          const r2 = await sendOne({ ...row, phone_e164: extra }, cfg);
+          if (!r2.ok) console.error("[media-request] extra recipient failed", extra, r2.error);
+        }
         if (row.stage === "first") {
           const dueAt = new Date(Date.now() + cfg.reminder_delay_hours * 3_600_000).toISOString();
           await sb.from("media_requests").update({

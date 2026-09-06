@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { requireUser } from './_lib/require-user.js';
+import { linkConversation, rememberContact, candidatesForPhone } from './_lib/wa-link.js';
 import { supabaseAdmin } from './_lib/supabase-admin.js';
 import { loadThread, windowState } from './_lib/thread.js';
 import { listActiveTemplates } from './_lib/templates-store.js';
@@ -38,7 +39,7 @@ const HARD_CAP = 1000;
 const LIST_COLUMNS =
   'id, phone_local, phone_e164, contact_name, customer_number, customer_name, ' +
   'last_inbound_at, last_message_at, last_message_preview, last_message_direction, ' +
-  'unanswered_since, message_count, read_at';
+  'unanswered_since, message_count, read_at, contact_label, suggested';
 
 async function listInbox(req: VercelRequest, res: VercelResponse) {
   const tab = req.query.tab === 'all' ? 'all' : 'waiting';
@@ -166,12 +167,53 @@ async function markRead(
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Cache-Control', 'no-store');
 
-  if (req.method !== 'GET') {
+  if (req.method !== 'GET' && req.method !== 'POST') {
     return res.status(405).json({ ok: false, error: 'method_not_allowed' });
   }
 
   const user = await requireUser(req);
   if (!user) return res.status(401).json({ ok: false, error: 'unauthorized' });
+
+  // ── שיוך מספר ללקוח (06/09/2026) ─────────────────────────────────────
+  // על אותה נקודת קצה, כמו כל השאר, בגלל תקרת 12 הפונקציות.
+  //   { action: 'link',       conversationId, customerNumber, label?, remember? }
+  //   { action: 'remember',   customerNumber, phone, label? }   ← שליחה "למספר אחר"
+  //   { action: 'candidates', phone }                            ← מי יכול להיות מאחורי המספר
+  // ההחלטה מי הלקוח היא של העובד. השרת רק מבצע ומעביר את התמונות.
+  if (req.method === 'POST') {
+    const body = (typeof req.body === 'string' ? JSON.parse(req.body) : req.body) ?? {};
+    const author = `user:${user.email ?? user.id}`;
+    try {
+      if (body.action === 'link') {
+        const r = await linkConversation({
+          conversationId: String(body.conversationId ?? ''),
+          customerNumber: String(body.customerNumber ?? '').trim(),
+          label: typeof body.label === 'string' && body.label.trim() ? body.label.trim() : null,
+          remember: body.remember !== false,
+          author,
+        });
+        return res.status(200).json(r);
+      }
+      if (body.action === 'remember') {
+        await rememberContact({
+          customerNumber: String(body.customerNumber ?? '').trim(),
+          phone: String(body.phone ?? ''),
+          label: typeof body.label === 'string' && body.label.trim() ? body.label.trim() : null,
+          author,
+        });
+        return res.status(200).json({ ok: true });
+      }
+      if (body.action === 'candidates') {
+        const list = await candidatesForPhone(String(body.phone ?? ''));
+        return res.status(200).json({ ok: true, candidates: list });
+      }
+      return res.status(400).json({ ok: false, error: 'unknown_action' });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error('[conversation] link action failed', msg);
+      return res.status(400).json({ ok: false, error: msg });
+    }
+  }
 
   const phone = typeof req.query.phone === 'string' ? req.query.phone : null;
   const customer = typeof req.query.customer === 'string' ? req.query.customer : null;

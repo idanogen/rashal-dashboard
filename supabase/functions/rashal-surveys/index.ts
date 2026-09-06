@@ -50,6 +50,8 @@ interface DueRow {
   token: string;
   customer_name: string | null;
   phone_e164: string;
+  /** בני משפחה שקישרנו ללקוח (customer_contacts). החלטת עידן 06/09: גם אליהם. */
+  extra_phones?: string[] | null;
 }
 
 Deno.serve(async (req: Request) => {
@@ -134,6 +136,12 @@ Deno.serve(async (req: Request) => {
       const res = await sendOne(row, cfg.template_id);
       if (res.ok) {
         sent++;
+        // ⭐ גם אל בני המשפחה שקישרנו ללקוח. אותו טוקן, כלומר אותו סקר:
+        // מי שעונה ראשון עונה בשם הלקוח.
+        for (const extra of row.extra_phones ?? []) {
+          const r2 = await sendOne({ ...row, phone_e164: extra }, cfg.template_id);
+          if (!r2.ok) console.error("[surveys] extra recipient failed", extra, r2.error);
+        }
         await sb.from("customer_surveys").update({
           status: "sent",
           sent_at: new Date().toISOString(),

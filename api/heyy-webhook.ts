@@ -3,6 +3,7 @@ import { supabaseAdmin } from './_lib/supabase-admin.js';
 import { extractMessage, parseCustomerReply } from './_lib/extract.js';
 import { normalizePhone, toE164 } from './_lib/phone.js';
 import { recordToThread } from './_lib/wa-thread.js';
+import { afterInboundUnidentified } from './_lib/wa-link.js';
 import { copyMediaForMessage } from './_lib/wa-media.js';
 import { describeAttachments } from './_lib/attachments.js';
 
@@ -151,6 +152,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (payload?.data) {
     const thread = await recordToThread(payload.data);
     if (!thread.ok) console.error('[heyy-webhook] thread record failed:', thread.error);
+
+    // ── שיחה לא מזוהה: לבקש שם ות.ז., ולהציע לקוח (06/09/2026) ──────
+    // רק על הודעה נכנסת. ההחלטה מי הלקוח נשארת אצל העובד: כאן רק
+    // שואלים פעם אחת ומכינים הצעה. ראה `_lib/wa-link.ts`.
+    if (thread.ok && thread.conversationId && route === 'inbound') {
+      const inPhone = pick(payload, ['data.contact.phoneNumber', 'data.handle.value']);
+      const inFiles = describeAttachments(payload.data?.content?.attachments);
+      const outcome = await afterInboundUnidentified({
+        conversationId: thread.conversationId,
+        phoneE164: typeof inPhone === 'string' ? inPhone : '',
+        text: typeof payload.data?.content?.body === 'string' ? payload.data.content.body : null,
+        hasVisualMedia: inFiles.some((f) => f.kind === 'image' || f.kind === 'video'),
+      });
+      if (outcome !== 'identified' && outcome !== 'nothing') console.log('[heyy-webhook] unidentified', outcome);
+    }
 
     // ── עותק משלנו לקבצים ────────────────────────────────
     //

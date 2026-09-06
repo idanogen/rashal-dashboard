@@ -15,12 +15,25 @@ export interface WaWindow {
   reason: string | null;
 }
 
+export interface SuggestedCustomer {
+  customer_number: string;
+  customer_name: string | null;
+  city?: string | null;
+  /** id = לפי ת.ז. שנכתבה · name = לפי שם · phone = הטלפון שייך לכמה לקוחות */
+  by?: 'id' | 'name' | 'phone' | string;
+  label?: string | null;
+}
+
 export interface InboxItem {
   id: string;
   phone: string | null;
   title: string;
   customerNumber: string | null;
   unidentified: boolean;
+  /** מי מדבר איתנו כשזה לא הלקוח עצמו: "הבת, מיכל". */
+  contactLabel?: string | null;
+  /** מועמדים לשיוך שהשרת הכין (ת.ז. בתשובה, או טלפון של שני לקוחות). */
+  suggested?: SuggestedCustomer[] | null;
   preview: string;
   lastMessageAt: string | null;
   lastMessageDirection: string | null;
@@ -130,6 +143,9 @@ export interface ThreadResponse {
     contactName: string | null;
     customerNumber: string | null;
     customerName: string | null;
+    contactLabel?: string | null;
+    suggested?: SuggestedCustomer[] | null;
+    identityAskedAt?: string | null;
     messageCount: number | null;
     lastMessageAt: string | null;
     unansweredSince: string | null;
@@ -275,4 +291,39 @@ export function waitLabel(minutes: number | null): string {
   if (hours < 24) return hours === 1 ? 'שעה' : hours === 2 ? 'שעתיים' : `${hours} שעות`;
   const days = Math.floor(hours / 24);
   return days === 1 ? 'יום' : days === 2 ? 'יומיים' : `${days} ימים`;
+}
+
+// ─── שיוך מספר לא מזוהה ללקוח (06/09/2026) ──────────────────────────────
+// ההחלטה מי הלקוח היא של העובד; השרת מבצע, זוכר את המספר, ומעביר את
+// התמונות שכבר נשלחו לכרטיס הלקוח ולפריוריטי.
+export interface LinkResult {
+  ok: true;
+  customerNumber: string;
+  customerName: string;
+  /** כמה תמונות עברו ללקוח רטרואקטיבית */
+  photos: number;
+  serviceCallId: string | null;
+}
+
+export async function linkConversation(opts: {
+  conversationId: string;
+  customerNumber: string;
+  label?: string | null;
+  remember?: boolean;
+}): Promise<LinkResult> {
+  return authFetch('/api/conversation', {
+    method: 'POST',
+    body: JSON.stringify({ action: 'link', ...opts }),
+  });
+}
+
+export async function rememberContact(opts: {
+  customerNumber: string;
+  phone: string;
+  label?: string | null;
+}): Promise<void> {
+  await authFetch('/api/conversation', {
+    method: 'POST',
+    body: JSON.stringify({ action: 'remember', ...opts }),
+  });
 }

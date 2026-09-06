@@ -7,6 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { TemplateSendDialog } from '@/components/wa/TemplateSendDialog';
 import { CustomerCardButton } from '@/components/customer/CustomerCardSheet';
+import { LinkCustomerDialog } from '@/components/wa/LinkCustomerDialog';
+import { linkConversation, type SuggestedCustomer } from '@/lib/wa-inbox';
 import { searchCustomers, customerSearchKey } from '@/lib/customer-card';
 import { surveyMark, SURVEY_TONE } from '@/lib/survey-badge';
 import {
@@ -471,6 +473,10 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
+  // שיוך שיחה לא מזוהה ללקוח (06/09/2026). `linkPreset` = הצעה שנלחצה.
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkPreset, setLinkPreset] = useState<SuggestedCustomer | null>(null);
+  const [linkBusy, setLinkBusy] = useState(false);
   // 🔴 מתג חד-פעמי. בלעדיו כל רענון של הרשימה היה מחזיר את הלשונית
   // ל"כל השיחות" גם אחרי שהעובד בחר במפורש "ממתינים", וזה נקרא כמו מסך
   // שנלחם בך. מעבר אוטומטי הוא עזרה בפתיחה, לא כלל שרץ כל הזמן.
@@ -813,6 +819,64 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
 
           {head && (
             <>
+              {/* ⭐ רצועת "לא מזוהה" עם הצעה ושיוך (עידן, 06/09/2026).
+                  המערכת מציעה, העובד מחליט: "כן, זה הלקוח" הוא לחיצה אחת,
+                  "שייך ללקוח" פותח את החיפוש. אף פעם לא שיוך בלי לחיצה. */}
+              {thread.data?.conversation && !thread.data.conversation.customerNumber && (
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-amber-50 px-4 py-2 text-xs text-amber-900">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold">לא מזוהה</span>
+                    {(thread.data.conversation.suggested ?? []).length > 0 ? (
+                      <>
+                        <span>· נראה שזה:</span>
+                        {(thread.data.conversation.suggested ?? []).slice(0, 3).map((s) => (
+                          <Button
+                            key={s.customer_number}
+                            size="sm"
+                            variant="outline"
+                            disabled={linkBusy}
+                            className="h-7 border-emerald-400 bg-white text-emerald-800 hover:bg-emerald-50"
+                            onClick={async () => {
+                              if (!thread.data?.conversation) return;
+                              setLinkBusy(true);
+                              try {
+                                const r = await linkConversation({
+                                  conversationId: thread.data.conversation.id,
+                                  customerNumber: s.customer_number,
+                                  label: s.label ?? null,
+                                  remember: true,
+                                });
+                                toast.success(r.photos ? `שויך ל${r.customerName}. ${r.photos} תמונות עברו לכרטיס.` : `שויך ל${r.customerName}.`);
+                                await qc.invalidateQueries({ queryKey: threadKey(selected) });
+                                await qc.invalidateQueries({ queryKey: [WA_INBOX_KEY] });
+                              } catch (e) {
+                                toast.error(e instanceof Error ? e.message : 'השיוך נכשל');
+                              } finally {
+                                setLinkBusy(false);
+                              }
+                            }}
+                          >
+                            כן, זה {s.customer_name ?? s.customer_number}
+                            {s.by === 'id' ? ' (לפי ת.ז.)' : s.by === 'phone' ? ' (הטלפון רשום אצלו)' : ''}
+                          </Button>
+                        ))}
+                      </>
+                    ) : thread.data.conversation.identityAskedAt ? (
+                      <span>· ביקשנו שם ות.ז., עדיין אין תשובה</span>
+                    ) : (
+                      <span>· המספר לא שייך לאף לקוח</span>
+                    )}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 border-amber-400 bg-white text-amber-900 hover:bg-amber-100"
+                    onClick={() => { setLinkPreset(null); setLinkOpen(true); }}
+                  >
+                    שייך ללקוח
+                  </Button>
+                </div>
+              )}
               <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-white px-4 py-2.5">
                 <div>
                   <div className="flex items-center gap-1 font-semibold text-slate-900">
@@ -831,6 +895,9 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
                       </>
                     )}
                     <bdi>{head.phone}</bdi>
+                    {thread.data?.conversation?.contactLabel && (
+                      <> · <span className="text-violet-700">{thread.data.conversation.contactLabel}</span></>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -960,6 +1027,20 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
         </div>
       </div>
 
+      {thread.data?.conversation && (
+        <LinkCustomerDialog
+          open={linkOpen}
+          onOpenChange={setLinkOpen}
+          conversationId={thread.data.conversation.id}
+          phone={thread.data.conversation.phone}
+          suggested={thread.data.conversation.suggested ?? null}
+          preset={linkPreset}
+          onLinked={async () => {
+            await qc.invalidateQueries({ queryKey: threadKey(selected) });
+            await qc.invalidateQueries({ queryKey: [WA_INBOX_KEY] });
+          }}
+        />
+      )}
       <TemplateSendDialog
         templates={thread.data?.templates}
         loading={thread.isLoading}

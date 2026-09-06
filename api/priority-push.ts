@@ -129,6 +129,39 @@ async function handleGet(req: VercelRequest, res: VercelResponse) {
     if (payload > MAX_PAYLOAD) break;
   }
 
+  // ─── אנשי קשר חדשים → CUSTPERSONNEL_SUBFORM (החלטת עידן, 06/09/2026) ──
+  // מספר של בן משפחה שקישרנו לוואטסאפ נכתב גם לכרטיס הלקוח בפריוריטי, כאיש
+  // קשר. המיפוי מבית הידע של רוני (אומת חי אצל ר.שעל 12/07): NAME = שם מלא,
+  // POSITIONDES = קרבה או תפקיד, CELLPHONE = נייד, STATDES = פעיל.
+  // 🔴 `PHONE` בתת-הטופס הוא מזהה שורה פנימי, לא טלפון. לא נוגעים בו.
+  // ה-ack חוזר עם מזהה בקידומת `contact:` ומסומן על customer_contacts.
+  const contactIds: string[] = [];
+  if (!testCust) {
+    const { data: contacts, error: cErr } = await supabaseAdmin.rpc('priority_contact_candidates', { p_limit: 20 });
+    if (cErr) console.error('[priority-push] contact candidates', cErr.message);
+    for (const c of (contacts as Array<Record<string, unknown>> | null) ?? []) {
+      const cust = s(c.customer_number);
+      const phone = s(c.phone_local);
+      if (!cust || !phone) continue;
+      const label = (s(c.label) ?? '').trim();
+      // "הבת, מיכל" → NAME "מיכל", POSITIONDES "הבת". בלי פסיק: הכל בשם.
+      const [rel, name] = label.includes(',') ? label.split(',', 2).map((x) => x.trim()) : ['', label];
+      const body = JSON.stringify({
+        NAME: (name || 'איש קשר וואטסאפ').slice(0, 48),
+        POSITIONDES: (rel || 'וואטסאפ').slice(0, 48),
+        CELLPHONE: phone,
+        STATDES: 'פעיל',
+      });
+      writes.push({ event_id: `contact:${c.id}`, url: custUrl(cust, 'CUSTPERSONNEL_SUBFORM'), body });
+      contactIds.push(c.id as string);
+    }
+    if (contactIds.length) {
+      await supabaseAdmin.from('customer_contacts')
+        .update({ priority_push_claimed_at: new Date().toISOString() })
+        .in('id', contactIds);
+    }
+  }
+
   // תופסים את האירועים שאנו מחזירים — GET מקביל/כפול לא יקבל אותם שוב (מונע כפילות בפריוריטי)
   const claimedIds = [...new Set(writes.map((w) => w.event_id as string))];
   if (claimedIds.length) {
@@ -144,14 +177,25 @@ async function handleGet(req: VercelRequest, res: VercelResponse) {
 
 async function handleAck(req: VercelRequest, res: VercelResponse) {
   const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
-  const ids: string[] = Array.isArray(body?.ids) ? body.ids : [];
-  if (!ids.length) return res.status(200).json({ acked: 0 });
-  const { error } = await supabaseAdmin
-    .from('timeline_events')
-    .update({ pushed_to_priority_at: new Date().toISOString() })
-    .in('id', ids);
-  if (error) throw new Error(`ack: ${error.message}`);
-  return res.status(200).json({ acked: ids.length });
+  const all: string[] = Array.isArray(body?.ids) ? body.ids.map(String) : [];
+  if (!all.length) return res.status(200).json({ acked: 0 });
+  const contactIds = all.filter((x) => x.startsWith('contact:')).map((x) => x.slice('contact:'.length));
+  const ids = all.filter((x) => !x.startsWith('contact:'));
+  if (ids.length) {
+    const { error } = await supabaseAdmin
+      .from('timeline_events')
+      .update({ pushed_to_priority_at: new Date().toISOString() })
+      .in('id', ids);
+    if (error) throw new Error(`ack: ${error.message}`);
+  }
+  if (contactIds.length) {
+    const { error } = await supabaseAdmin
+      .from('customer_contacts')
+      .update({ priority_pushed_at: new Date().toISOString(), priority_push_claimed_at: null })
+      .in('id', contactIds);
+    if (error) throw new Error(`ack contacts: ${error.message}`);
+  }
+  return res.status(200).json({ acked: all.length });
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

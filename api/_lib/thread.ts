@@ -55,6 +55,9 @@ export interface ThreadResult {
     contactName: string | null;
     customerNumber: string | null;
     customerName: string | null;
+    contactLabel: string | null;
+    suggested: Array<{ customer_number: string; customer_name: string | null; city?: string | null; by?: string; label?: string | null }> | null;
+    identityAskedAt: string | null;
     messageCount: number | null;
     lastMessageAt: string | null;
     unansweredSince: string | null;
@@ -193,6 +196,9 @@ export async function loadThread(by: { phone?: string | null; customer?: string 
       contactName: conv.contact_name,
       customerNumber: conv.customer_number,
       customerName: conv.customer_name,
+      contactLabel: conv.contact_label ?? null,
+      suggested: Array.isArray(conv.suggested) ? conv.suggested : null,
+      identityAskedAt: conv.identity_asked_at ?? null,
       messageCount: conv.message_count,
       lastMessageAt: conv.last_message_at,
       unansweredSince: conv.unanswered_since,

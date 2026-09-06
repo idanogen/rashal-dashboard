@@ -28,6 +28,8 @@ interface Candidate {
   /** שם העובד והטלפון שלו מטבלת הצוות (בקשת שלומי, 31/08/2026). */
   worker_name: string | null;
   worker_phone: string | null;
+  /** בני משפחה שקישרנו ללקוח (customer_contacts). החלטת עידן 06/09: גם אליהם. */
+  extra_phones?: string[] | null;
 }
 
 Deno.serve(async (req: Request) => {
@@ -76,6 +78,11 @@ Deno.serve(async (req: Request) => {
       const res = await sendOne(c, String(cfg.template_id ?? ""), String(cfg.template_v2_id ?? ""));
       if (res.ok) {
         sent++;
+        // ⭐ גם אל בני המשפחה שקישרנו ללקוח. הרישום נשאר על העצירה.
+        for (const extra of c.extra_phones ?? []) {
+          const r2 = await sendOne({ ...c, phone_e164: extra }, String(cfg.template_id ?? ""), String(cfg.template_v2_id ?? ""));
+          if (!r2.ok) console.error("[on-way] extra recipient failed", extra, r2.error);
+        }
         await sb.rpc("on_way_mark_sent", {
           p_event: c.event_id,
           p_stop: c.next_stop_id,
