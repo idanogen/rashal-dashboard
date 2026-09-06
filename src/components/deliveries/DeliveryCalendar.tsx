@@ -4,6 +4,8 @@ import type { CalendarDelivery, CalendarStop } from '@/types/delivery';
 import { assigneeStyle } from '@/types/delivery';
 import { useAssignees } from '@/hooks/useAssignees';
 import { RAIL_DAY_EVENT, railSetDays } from '@/lib/dispatch-rail-store';
+import { usePersistedCollapse } from '@/hooks/usePersistedCollapse';
+import { useRailSection } from '@/hooks/useRailSection';
 import { compareStopsByTime } from '@/lib/stop-order';
 import { ReturnedNote } from '@/components/ReturnedNote';
 
@@ -35,6 +37,8 @@ import {
   Map as MapIcon,
   MessageCircle,
   EyeOff,
+  ChevronsDownUp,
+  ChevronsUpDown,
 } from 'lucide-react';
 import { useDroppable } from '@dnd-kit/core';
 import { ScheduleCoordinationDialog } from '@/components/whatsapp/ScheduleCoordinationDialog';
@@ -455,14 +459,26 @@ export function DeliveryCalendar({
       return next;
     });
   const [coordinationStop, setCoordinationStop] = useState<CalendarStop | null>(null);
-  // קבוצות נהג מקופלות ביומן (key = delivery.id = "date__driver")
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  // קבוצות נהג מקופלות ביומן (key = delivery.id = "date__driver").
+  // ⭐ עידן, 06/09/2026: "כווץ הכל / פתח הכל" גם ביומן, שמשפיע על כל הנהגים.
+  // ברירת המחדל (הכל מכווץ או הכל פתוח) נזכרת לכל משתמש; לחיצה על נהג
+  // בודד היא חריגה ממנה, ו"כווץ הכל" הבא מנקה את החריגות.
+  const [groupsAllCollapsed, toggleGroupsAll] = usePersistedCollapse('collapse:calendar-groups');
+  const [groupOverrides, setGroupOverrides] = useState<Set<string>>(new Set());
+  const isGroupCollapsed = (id: string) =>
+    groupsAllCollapsed ? !groupOverrides.has(id) : groupOverrides.has(id);
   const toggleGroup = (id: string) =>
-    setCollapsedGroups((prev) => {
+    setGroupOverrides((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+  const toggleAllGroups = () => { setGroupOverrides(new Set()); toggleGroupsAll(); };
+  // במסילת הניווט: החץ של "היומן" מכווץ ופותח את כל הנהגים.
+  useRailSection({
+    id: 'calendar', title: 'היומן', order: 90, tone: 'emerald', icon: 'calendar', count: null,
+    collapsed: groupsAllCollapsed, toggle: toggleAllGroups,
+  });
 
   const dayNames = [
     'ראשון',
@@ -607,6 +623,16 @@ export function DeliveryCalendar({
             היום
           </Button>
           <div className="flex items-center gap-0.5 rounded-lg border p-0.5">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={toggleAllGroups}
+              className="h-8 gap-1 px-2 text-xs"
+              title={groupsAllCollapsed ? 'פתח את כל הנהגים בכל הימים' : 'כווץ את כל הנהגים בכל הימים'}
+            >
+              {groupsAllCollapsed ? <ChevronsUpDown className="h-3.5 w-3.5" /> : <ChevronsDownUp className="h-3.5 w-3.5" />}
+              {groupsAllCollapsed ? 'פתח הכל' : 'כווץ הכל'}
+            </Button>
             <Button
               variant="ghost"
               size="icon"
@@ -785,7 +811,7 @@ export function DeliveryCalendar({
                     const driverCfg = assigneeStyle(delivery.driver);
                     // סדר קנוני משותף לכל המסכים: שעת תיאום ראשי, sequence שובר-שוויון.
                     const sortedStops = [...delivery.stops].sort(compareStopsByTime);
-                    const isCollapsed = collapsedGroups.has(delivery.id);
+                    const isCollapsed = isGroupCollapsed(delivery.id);
                     return (
                       <div key={delivery.id} className="space-y-1.5">
                         {/* Driver subheader — לחיצה מקפלת/פותחת את כל העצירות שתחתיו */}

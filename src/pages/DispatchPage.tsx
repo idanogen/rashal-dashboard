@@ -508,7 +508,6 @@ export function DispatchPage() {
     id: 'stats', title: 'סטטוס וכפילויות', order: 30, tone: 'slate', icon: 'gauge',
     count: ordersHiddenCount || null, collapsed: statsCollapsed, toggle: toggleStatsCollapsed,
   } : null);
-  useRailSection({ id: 'calendar', title: 'היומן', order: 90, tone: 'emerald', icon: 'calendar', count: null });
 
   // ─── סינון היומן לפי סוג פעילות (נשמר ב-localStorage) ───
   const [visibleTypes, setVisibleTypes] = useState<Set<CalendarStopSource>>(loadCalendarFilter);
