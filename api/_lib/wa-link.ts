@@ -204,8 +204,10 @@ export async function afterInboundUnidentified(opts: {
       return 'phone_candidates';
     }
 
-    // תשובה לבקשת הזיהוי: ת.ז. או שם.
-    if (opts.text && conv.identity_asked_at) {
+    // טקסט בשיחה לא מזוהה: ת.ז. או שם, גם בלי שביקשנו (עידן, 06/09:
+    // "אם הוא רושם ת.ז. או שם של איש קשר שכן מוכר אצלנו"). על רעש
+    // הפונקציה מחזירה רשימה ריקה, ואז לא נוגעים במה שכבר הוצע.
+    if (opts.text && opts.text.trim().length >= 2) {
       const { data: sug, error } = await supabaseAdmin.rpc('wa_suggest_customers', { p_text: opts.text });
       if (error) throw new Error(error.message);
       const list = Array.isArray(sug) ? sug : [];
@@ -213,7 +215,7 @@ export async function afterInboundUnidentified(opts: {
         await supabaseAdmin.from('wa_conversations').update({ suggested: list }).eq('id', conv.id);
         return `suggested:${list.length}`;
       }
-      return 'no_match';
+      if (!opts.hasVisualMedia) return 'no_match';
     }
 
     // תמונה ראשונה ממספר זר: מבקשים שם ות.ז., פעם אחת.

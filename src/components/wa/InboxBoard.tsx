@@ -857,7 +857,7 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
                             }}
                           >
                             כן, זה {s.customer_name ?? s.customer_number}
-                            {s.by === 'id' ? ' (לפי ת.ז.)' : s.by === 'phone' ? ' (הטלפון רשום אצלו)' : ''}
+                            {s.by === 'id' ? ' (לפי ת.ז.)' : s.by === 'phone' ? ' (הטלפון רשום אצלו)' : s.by === 'contact' ? ` (איש קשר: ${s.label ?? ''})` : s.by === 'name' ? ' (לפי השם)' : ''}
                           </Button>
                         ))}
                       </>

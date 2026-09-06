@@ -82,7 +82,7 @@ export function LinkCustomerDialog({
   }
 
   const byLabel = (by?: string) =>
-    by === 'id' ? 'לפי ת.ז. שנכתבה' : by === 'name' ? 'לפי השם שנכתב' : by === 'phone' ? 'הטלפון רשום אצלו' : '';
+    by === 'id' ? 'לפי ת.ז. שנכתבה' : by === 'name' ? 'לפי השם שנכתב' : by === 'phone' ? 'הטלפון רשום אצלו' : by === 'contact' ? 'איש קשר מוכר' : '';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
