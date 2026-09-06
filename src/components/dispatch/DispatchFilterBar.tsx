@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { usePersistedCollapse } from '@/hooks/usePersistedCollapse';
 import { useRailSection } from '@/hooks/useRailSection';
-import { railAnchorId } from '@/lib/dispatch-rail-store';
+import { railAnchorId, railScrollTo } from '@/lib/dispatch-rail-store';
 
 /**
  * חיפוש וסינון אזורים אחד לכל מסך הסדרן. עד 12/08/2026 לכל סוג מסמך היו
@@ -24,6 +24,8 @@ interface DispatchFilterBarProps {
   /** כמה רשומות מוצגות אחרי הסינון, מתוך כמה בסך הכל */
   matchCount: number;
   totalCount: number;
+  /** תוצאות החיפוש לפי סוג מסמך, לרצועת התוצאות. ריק כשאין חיפוש. */
+  breakdown?: Array<{ key: string; label: string; count: number }>;
 }
 
 export function DispatchFilterBar({
@@ -35,6 +37,7 @@ export function DispatchFilterBar({
   countByZone,
   matchCount,
   totalCount,
+  breakdown = [],
 }: DispatchFilterBarProps) {
   // מסנן = סגור כברירת מחדל (החלטת עידן 06/09). v2 כדי שיחול גם על מי שכבר נגע בו.
   const [zoneCollapsed, toggleZoneCollapsed] = usePersistedCollapse(
@@ -91,6 +94,37 @@ export function DispatchFilterBar({
           </>
         )}
       </div>
+
+      {/* ⭐ רצועת התוצאות (עידן, 06/09/2026): כמה נמצאו ואיפה, בלחיצה אחת לכל מקום.
+          תוצאה אחת = "נמצאה תוצאה אחת" והמסך כבר קפץ אליה. */}
+      {search.trim().length >= 2 && breakdown.length > 0 && (() => {
+        const total = breakdown.reduce((s, b) => s + b.count, 0);
+        return (
+          <div className={`flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
+            total === 0 ? 'border-slate-200 bg-slate-50 text-slate-600' : total === 1 ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : 'border-blue-200 bg-blue-50 text-blue-900'
+          }`}>
+            <span className="font-semibold">
+              {total === 0 ? `אין תוצאות ל"${search.trim()}"` : total === 1 ? 'נמצאה תוצאה אחת' : `${total} תוצאות ל"${search.trim()}"`}
+            </span>
+            {total > 0 && <span className="text-xs opacity-70">·</span>}
+            {breakdown.map((b) => (
+              <button
+                key={b.key}
+                type="button"
+                disabled={b.count === 0}
+                onClick={() => railScrollTo(`${b.key}-list`)}
+                className={`flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs transition ${
+                  b.count === 0 ? 'cursor-default border-transparent text-slate-400' : 'border-current/30 bg-white hover:bg-white/70'
+                }`}
+                title={b.count ? `קפוץ ל${b.label}` : undefined}
+              >
+                {b.label}
+                <span className={`rounded-full px-1.5 font-semibold tabular-nums ${b.count ? 'bg-current/10' : ''}`}>{b.count}</span>
+              </button>
+            ))}
+          </div>
+        );
+      })()}
 
       <ZoneFilter
         selectedZones={selectedZones}

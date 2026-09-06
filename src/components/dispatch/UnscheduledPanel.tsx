@@ -39,7 +39,7 @@ import { usePersistedCollapse } from '@/hooks/usePersistedCollapse';
 import { useRailSection } from '@/hooks/useRailSection';
 import { railAnchorId, type RailSection } from '@/lib/dispatch-rail-store';
 import { getDaysColor, getDaysSinceCreated, cn } from '@/lib/utils';
-import { matchesSearch } from '@/lib/search-match';
+import { matchesSearch, searchRank } from '@/lib/search-match';
 import { CustomerCardButton } from '@/components/customer/CustomerCardSheet';
 import { NO_ADDRESS_ZONE, ZONES, getZoneById } from '@/types/zone';
 
@@ -457,8 +457,26 @@ export function UnscheduledPanel({
   const searched = useMemo(() => {
     const q = search.trim();
     if (!q) return items;
-    return items.filter((i) => matchesSearch(i.searchText, q));
+    // ⭐ התאמה בתחילת מילה קודמת להתאמה בתוך מילה ("סעדה" לפני "מסעדה").
+    return items
+      .map((i, idx) => ({ i, idx, r: searchRank(i.searchText, q) }))
+      .filter((x) => x.r >= 0)
+      .sort((a, b) => a.r - b.r || a.idx - b.idx)
+      .map((x) => x.i);
   }, [items, search]);
+  // 🔴 "חזרו מהקו" לא עבר את החיפוש עד 06/09/2026: חיפוש "סעדה" השאיר 23
+  // כרטיסים אדומים של לקוחות אחרים מעל התוצאה היחידה. עידן: "אם יש בחיפוש
+  // הזה באמת 1 שנמצא הוא צריך להיות יותר בולט".
+  const returnedShown = useMemo(() => {
+    const q = search.trim();
+    if (!q) return returnedItems;
+    return returnedItems
+      .map((i, idx) => ({ i, idx, r: searchRank(i.searchText, q) }))
+      .filter((x) => x.r >= 0)
+      .sort((a, b) => a.r - b.r || a.idx - b.idx)
+      .map((x) => x.i);
+  }, [returnedItems, search]);
+  const searching = search.trim().length >= 2;
 
   const zoneCounts = useMemo(() => {
     if (countByZone) return countByZone;
@@ -523,9 +541,9 @@ export function UnscheduledPanel({
     customers: { base: 70, tone: 'violet', icon: 'user', short: 'לקוחות חדשים' },
   };
   const rail = RAIL[storageKey] ?? { base: 80, tone: 'slate' as const, icon: 'package' as const, short: title };
-  useRailSection(returnedItems.length > 0 ? {
+  useRailSection(returnedShown.length > 0 ? {
     id: `${storageKey}-returned`, title: 'חזרו מהקו', order: rail.base, tone: 'red', icon: 'undo',
-    count: returnedItems.length, collapsed: returnedCollapsed, toggle: toggleReturnedCollapsed,
+    count: returnedShown.length, collapsed: returnedCollapsed, toggle: toggleReturnedCollapsed,
   } : null);
   useRailSection({
     id: `${storageKey}-list`, title, short: rail.short, order: rail.base + 1, tone: rail.tone, icon: rail.icon,
@@ -546,9 +564,10 @@ export function UnscheduledPanel({
     );
   }
 
-  const renderCard = (vm: DispatchItemVM, opts?: { returned?: boolean }) => (
+  // ⭐ התוצאה הראשונה בחיפוש מקבלת טבעת, כדי שהעין תמצא אותה מיד.
+  const renderCard = (vm: DispatchItemVM, opts?: { returned?: boolean; highlight?: boolean }) => (
+    <div key={vm.id} className={opts?.highlight ? 'rounded-lg ring-2 ring-emerald-500 ring-offset-2 ring-offset-background' : undefined}>
     <DispatchCard
-      key={vm.id}
       vm={vm}
       accentBorder={accentBorder}
       isReturned={opts?.returned}
@@ -560,20 +579,49 @@ export function UnscheduledPanel({
       onRestore={handleRestore}
       onToggleSelect={onToggleSelect}
     />
+    </div>
   );
 
+
+  // ⭐ בזמן חיפוש, פאנל בלי תוצאות מתכווץ לשורה אחת, כדי שהתוצאה האמיתית תבלוט.
+  if (searching && filteredItems.length === 0 && returnedShown.length === 0) {
+    return (
+      <div id={railAnchorId(`${storageKey}-list`)} className="scroll-mt-32 space-y-2">
+        <div className="flex items-center gap-2 rounded-lg border border-dashed bg-muted/30 px-4 py-2 text-sm text-muted-foreground">
+          <Icon className="h-4 w-4" />
+          <span className="font-semibold text-foreground/70">{title}</span>
+          <span>· אין תוצאות ל"{search.trim()}"</span>
+          {handledMatches.length > 0 && (
+            <span className="text-blue-700">· {handledMatches.length} לקוחות תואמים שכבר טופלו</span>
+          )}
+        </div>
+        {handledMatches.length > 0 && (
+          <div className="rounded-lg border border-blue-200 bg-blue-50/60 p-3 text-xs dark:border-blue-900 dark:bg-blue-950/10">
+            {handledMatches.slice(0, 5).map((h) => (
+              <div key={h.id} className="flex flex-wrap items-center gap-2 py-0.5">
+                <span className="font-semibold">{h.customerName}</span>
+                {h.customerNumber && <bdi className="text-muted-foreground">{h.customerNumber}</bdi>}
+                {h.status && <span className="rounded-full bg-white px-2 text-[11px]">{h.status}</span>}
+                {h.scheduledLine && <span className="text-muted-foreground">{h.scheduledLine}</span>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
       {intro}
 
       {/* חזרו מהקו */}
-      {returnedItems.length > 0 && (
+      {returnedShown.length > 0 && (
         <div id={railAnchorId(`${storageKey}-returned`)} className="scroll-mt-32 rounded-lg border border-red-300 bg-red-50/60 p-3 shadow-sm dark:border-red-900 dark:bg-red-950/10">
           <div className={cn('flex items-center gap-2', !returnedCollapsed && 'mb-2')}>
             <Undo2 className="h-4 w-4 text-red-600" />
             <h3 className="text-sm font-bold text-red-700 dark:text-red-400">
-              חזרו מהקו ({returnedItems.length})
+              חזרו מהקו ({returnedShown.length})
             </h3>
             <span className="text-[11px] text-red-600/70">
               סומנו "לא בוצע" — ממתינות לשיבוץ מחדש
@@ -593,7 +641,7 @@ export function UnscheduledPanel({
           </div>
           {!returnedCollapsed && (
             <div className="grid max-h-[240px] gap-2 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3">
-              {returnedItems.map((vm) => renderCard(vm, { returned: true }))}
+              {returnedShown.map((vm, idx) => renderCard(vm, { returned: true, highlight: searching && idx === 0 }))}
             </div>
           )}
         </div>
@@ -622,7 +670,7 @@ export function UnscheduledPanel({
               {/* בלי זה המספר כאן נמוך מזה שעל המתג למעלה, וזה נראה כמו תקלה */}
               {returnedItems.length > 0 && (
                 <span className="text-xs text-muted-foreground">
-                  ועוד {returnedItems.length} חזרו מהקו
+                  ועוד {returnedShown.length} חזרו מהקו
                 </span>
               )}
               {onSelectAll &&
@@ -785,7 +833,7 @@ export function UnscheduledPanel({
             </div>
           ) : (
             <div className="grid max-h-[380px] grid-cols-1 gap-3 overflow-y-auto p-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-              {filteredItems.map((vm) => renderCard(vm))}
+              {filteredItems.map((vm, idx) => renderCard(vm, { highlight: searching && idx === 0 && returnedShown.length === 0 }))}
             </div>
           )
         ) : (

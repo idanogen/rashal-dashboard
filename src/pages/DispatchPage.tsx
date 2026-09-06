@@ -86,7 +86,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { usePersistedCollapse } from '@/hooks/usePersistedCollapse';
 import { useRailSection } from '@/hooks/useRailSection';
-import { railAnchorId } from '@/lib/dispatch-rail-store';
+import { railAnchorId, railScrollTo } from '@/lib/dispatch-rail-store';
 import { DispatchRail, DispatchRailFab } from '@/components/dispatch/DispatchRail';
 import type { Order } from '@/types/order';
 import type { ServiceCall } from '@/types/service-call';
@@ -467,6 +467,31 @@ export function DispatchPage() {
     if (!q) return visibleItems;
     return visibleItems.filter((i) => matchesSearch(i.searchText, q));
   }, [visibleItems, filterSearch]);
+
+  // ⭐ פירוט התוצאות לפי סוג מסמך, לרצועת התוצאות שמתחת לחיפוש (06/09/2026).
+  // עידן חיפש "סעדה", קיבל 3 מתוך 1714, והתוצאה היחידה בקריאות הייתה קבורה.
+  const searchBreakdown = useMemo(() => {
+    const q = filterSearch.trim();
+    if (q.length < 2) return [];
+    const spec: Array<{ tab: keyof typeof itemsByTab; key: string; label: string }> = [
+      { tab: 'deliveries', key: 'orders', label: 'משלוחים' },
+      { tab: 'service', key: 'calls', label: 'קריאות שירות' },
+      { tab: 'pickups', key: 'pickups', label: 'איסופים' },
+      { tab: 'customers', key: 'customers', label: 'לקוחות חדשים' },
+    ];
+    return spec
+      .filter((s) => tab === 'all' || tab === s.tab)
+      .map((s) => ({ key: s.key, label: s.label, count: (itemsByTab[s.tab] ?? []).filter((i) => matchesSearch(i.searchText, q)).length }));
+  }, [filterSearch, itemsByTab, tab]);
+  // תוצאה אחת בלבד: קופצים אליה, אחרי שההקלדה נרגעה.
+  useEffect(() => {
+    const total = searchBreakdown.reduce((s, b) => s + b.count, 0);
+    if (total !== 1) return;
+    const hit = searchBreakdown.find((b) => b.count === 1);
+    if (!hit) return;
+    const id = setTimeout(() => railScrollTo(`${hit.key}-list`), 500);
+    return () => clearTimeout(id);
+  }, [searchBreakdown]);
 
   /** ספירת האזורים על מה שעבר את החיפוש, כדי שהצ'יפים לא ישקרו. */
   const filterZoneCounts = useMemo(() => {
@@ -1320,6 +1345,7 @@ export function DispatchPage() {
           countByZone={filterZoneCounts}
           matchCount={filterMatchCount}
           totalCount={visibleItems.length}
+          breakdown={searchBreakdown}
         />
 
         {/* ─── אזור מתחלף: הממתינים של הסוג הנבחר ─── */}

@@ -26,6 +26,21 @@ function fold(text: string): string {
   return text.toLowerCase().replace(/[ךםןףץ]/g, (c) => FINALS[c]);
 }
 
+/**
+ * דירוג התאמה, לסידור התוצאות: 0 = השאילתה בתחילת מילה ("סעדה" ב"סעדה מחמוד"),
+ * 1 = בתוך מילה ("סעדה" ב"מסעדה"), 2 = התאמה של כל המילים או של ספרות, -1 = אין.
+ * עידן, 06/09/2026: חיפוש "סעדה" הציג קריאה של לקוח אחר רק כי הכתובת שלו
+ * "מסעדה", באותה בולטות כמו שני הלקוחות שבאמת נקראים סעדה.
+ */
+export function searchRank(haystack: string, rawQuery: string): number {
+  const q = fold(rawQuery.trim());
+  if (!q) return 0;
+  const hay = fold(haystack);
+  if (new RegExp('(^|[\\s,.:;/()\\-])' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(hay)) return 0;
+  if (hay.includes(q)) return 1;
+  return matchesSearch(haystack, rawQuery) ? 2 : -1;
+}
+
 export function matchesSearch(haystack: string, rawQuery: string): boolean {
   const q = fold(rawQuery.trim());
   if (!q) return true;
