@@ -7,10 +7,13 @@ import { supabaseAdmin } from './_lib/supabase-admin.js';
 // CUSTOMER CARD. Our chat is per-order / per-service-call; we aggregate to the
 // customer (customer_number = Priority CUSTNAME).
 //
-// Symmetric to the pull: Priority credentials live in the client's Make keychain,
-// so Make drives the write. This endpoint is the outbox. It returns a FLAT list
-// of "writes" — each is one ready-to-POST Priority OData call (url + json body).
-// Make iterates, POSTs each to Priority, then acks per event.
+// 🔴🔴 **ר.שעל לא עובדים עם Make מ-04/08/2026.** מי שמריץ את הכתיבה הוא
+// ה-Edge Function שלנו `supabase/functions/rashal-push` (pg_cron, כל רבע
+// שעה, סיסמת פריוריטי ב-Edge Secrets). ההערה הישנה כאן ("Make drives the
+// write") הטעתה ב-06/09 ועידן הדליק מנורה אדומה. [[rashal_make_to_code_migration]]
+// This endpoint is the outbox. It returns a FLAT list of "writes" — each is one
+// ready-to-POST Priority OData call (url + json body). `rashal-push` iterates,
+// POSTs each to Priority, then acks per event id (including `contact:<uuid>`).
 //   GET  /api/priority-push          → { writes: [{event_id, url, body}, ...] }
 //   POST /api/priority-push?ack      → mark event ids pushed  { ids: [...] }
 //
