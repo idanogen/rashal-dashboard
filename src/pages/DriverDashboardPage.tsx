@@ -244,9 +244,9 @@ export function DriverDashboardPage() {
     return map;
   }, [allStops]);
 
-  // 🔴🔴 **לוח העבודה מסונן לשלו, וההיסטוריה לא.** מ-02/09/2026 ה-RLS
-  // מחזיר גם עצירות **סגורות** של עובדים אחרים אצל לקוח שהנהג נוסע אליו,
-  // וזו בדיוק המטרה. אבל בלי ההפרדה הזאת עצירה שעמית סגר היום אצל אותו
+  // 🔴🔴 **לוח העבודה מסונן לשלו, וההיסטוריה לא.** מ-06/09/2026 ה-RLS
+  // מחזיר גם את כל העצירות **הסגורות** של עובדים אחרים (עד אז רק אצל
+  // לקוח שהנהג נוסע אליו), וזו בדיוק המטרה. אבל בלי ההפרדה הזאת עצירה שעמית סגר היום אצל אותו
   // לקוח הייתה נוחתת ב"היום שלי" ונראית כמו עבודה שלו.
   const myStopsByDate = useMemo(() => {
     const mine = profile?.linkedDriver;
@@ -301,9 +301,10 @@ export function DriverDashboardPage() {
     return result.sort((a, b) => a.date.localeCompare(b.date));
   }, [myStopsByDate, today, tomorrow]);
 
-  // היסטוריה: ברירת המחדל 7 ימים אחורה, אבל חיפוש רץ על **הכל** (בקשת
-  // עמי 30/08). ה-RLS כבר תוחם לעצירות של הנהג הזה בלבד, אז "הכל" הוא
-  // כל מה שהוא עצמו ביצע, כולל "לא בוצע" עם הסיבה.
+  // היסטוריה: ברירת המחדל 7 ימים אחורה של העבודה שלו, אבל חיפוש רץ על
+  // **כל ההיסטוריה של החברה** (החלטת עידן 06/09/2026: "כולם רואים את
+  // ההיסטוריה של כל מה שעשינו"). ה-RLS נותן לנהג את כל העצירות הסגורות
+  // של כל עובד, ועבודה פתוחה של אחרים נשארת חסויה.
   const [historyQuery, setHistoryQuery] = useState('');
   const historyStops = useMemo(
     () =>
@@ -604,13 +605,13 @@ export function DriverDashboardPage() {
             <Input
               value={historyQuery}
               onChange={(e) => setHistoryQuery(e.target.value)}
-              placeholder="חיפוש לקוח, כתובת או סיבה, בכל ההיסטוריה שלך"
+              placeholder="חיפוש לקוח, כתובת או סיבה, בכל ההיסטוריה של החברה"
               className="ps-9"
             />
           </div>
           {historyQuery.trim() !== '' && historyStops.length > 0 && (
             <p className="px-1 text-[11px] text-muted-foreground">
-              מציג התאמות מכל ההיסטוריה שלך, לא רק מהשבוע האחרון
+              מציג התאמות מכל ההיסטוריה של החברה, לא רק מהשבוע שלך
             </p>
           )}
           {historyStops.length === 0 ? (
@@ -656,7 +657,7 @@ export function DriverDashboardPage() {
                   </div>
                   {day.stops.map((stop, idx) => (
                     <div key={stop.id}>
-                      {/* ⭐ ביקור של עובד אחר אצל לקוח שאני נוסע אליו.
+                      {/* ⭐ ביקור של עובד אחר (מ-06/09/2026 כל ההיסטוריה של החברה).
                           בלי השורה הזאת הנהג קורא הערה ומניח שהוא כתב אותה. */}
                       {!isMineStop(stop) && (
                         <div className="mb-1 flex items-center gap-1.5 px-1 text-[11px] font-semibold text-violet-700">
