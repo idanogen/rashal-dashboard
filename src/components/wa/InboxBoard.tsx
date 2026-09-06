@@ -268,6 +268,89 @@ function ButtonLink({ b }: { b: WaButton }) {
   );
 }
 
+const AUTO_LABEL: Record<string, string> = {
+  survey: 'בקשת סקר', photo_request: 'בקשת תמונה', photo_reminder: 'תזכורת לתמונה',
+  on_way: 'בדרך אליך', coordination: 'תיאום הגעה', other: 'הודעה אוטומטית',
+};
+const autoLabel = (m: WaMessage) => AUTO_LABEL[m.autoKind ?? 'other'] ?? AUTO_LABEL.other;
+
+type ThreadPiece =
+  | { type: 'bubble'; key: string; m: WaMessage; newDay: boolean; at: string }
+  | { type: 'sys'; key: string; m: WaMessage; newDay: boolean; at: string }
+  | { type: 'group'; key: string; run: WaMessage[]; newDay: boolean; at: string };
+
+/** מקבץ רצפים של הודעות אוטומטיות שלא נענו לשורה אחת, ושומר את מפרידי הימים. */
+function groupThread(messages: WaMessage[], opened: Set<string>): ThreadPiece[] {
+  const out: ThreadPiece[] = [];
+  let lastDay = '';
+  let run: WaMessage[] = [];
+  let runNewDay = false;
+  const flush = () => {
+    if (!run.length) return;
+    if (run.length === 1 || run.some((m) => opened.has(m.id))) {
+      run.forEach((m, i) => out.push(opened.has(m.id)
+        ? { type: 'bubble', key: m.id, m, newDay: i === 0 && runNewDay, at: m.sent_at }
+        : { type: 'sys', key: m.id, m, newDay: i === 0 && runNewDay, at: m.sent_at }));
+    } else {
+      out.push({ type: 'group', key: 'g-' + run[0].id, run, newDay: runNewDay, at: run[0].sent_at });
+    }
+    run = []; runNewDay = false;
+  };
+  for (const m of messages) {
+    const day = new Date(m.sent_at).toDateString();
+    const newDay = day !== lastDay;
+    if (newDay) { flush(); lastDay = day; }
+    const isAuto = m.kind === 'auto';
+    if (isAuto && m.autoState !== 'answered' && !opened.has(m.id)) {
+      if (!run.length) runNewDay = newDay;
+      run.push(m);
+      continue;
+    }
+    flush();
+    if (isAuto && m.autoState === 'answered' && !opened.has(m.id)) out.push({ type: 'sys', key: m.id, m, newDay, at: m.sent_at });
+    else out.push({ type: 'bubble', key: m.id, m, newDay, at: m.sent_at });
+  }
+  flush();
+  return out;
+}
+
+function SystemLine({ m, onOpen }: { m: WaMessage; onOpen: () => void }) {
+  const answered = m.autoState === 'answered';
+  const text = answered && m.autoResult
+    ? m.autoResult
+    : `${autoLabel(m)} · ${timeText(m.sent_at)}${m.autoState === 'pending' ? ' · ממתין' : ''}`;
+  return (
+    <div className="flex justify-center">
+      <button
+        type="button"
+        onClick={onOpen}
+        title="לחיצה מציגה את ההודעה המלאה"
+        className={`max-w-[92%] rounded-full px-3 py-0.5 text-[11px] ${
+          answered ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+        }`}
+      >
+        {text}
+      </button>
+    </div>
+  );
+}
+
+function GroupLine({ run, onOpen }: { run: WaMessage[]; onOpen: () => void }) {
+  const kinds = Array.from(new Set(run.map(autoLabel)));
+  return (
+    <div className="flex justify-center">
+      <button
+        type="button"
+        onClick={onOpen}
+        title="לחיצה פותחת את ההודעות"
+        className="max-w-[92%] rounded-full border border-dashed border-slate-300 bg-white px-3 py-0.5 text-[11px] text-slate-500 hover:bg-slate-50"
+      >
+        {run.length} הודעות אוטומטיות · {kinds.join(', ')} <span className="text-slate-400">▾</span>
+      </button>
+    </div>
+  );
+}
+
 function Bubble({ m }: { m: WaMessage }) {
   const out = m.direction === 'out';
   const atts = Array.isArray(m.attachments) ? m.attachments : [];
@@ -373,7 +456,7 @@ function Row({
   return (
     <button
       onClick={onClick}
-      className={`w-full rounded-xl border px-3 py-2.5 text-start transition ${
+      className={`w-full rounded-xl border px-3 py-2.5 text-start transition ${item.autoOnly ? 'opacity-60 ' : ''}${
         active
           ? 'border-emerald-300 bg-emerald-50/70'
           : waiting
@@ -477,6 +560,10 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkPreset, setLinkPreset] = useState<SuggestedCustomer | null>(null);
   const [linkBusy, setLinkBusy] = useState(false);
+  // להרזות את ההתכתבות (06/09/2026): שיחות אוטומטיות בלבד מאחורי מתג,
+  // ושורות מערכת שנפתחו לבועה מלאה.
+  const [includeAuto, setIncludeAuto] = useState(false);
+  const [openedAuto, setOpenedAuto] = useState<Set<string>>(() => new Set());
   // 🔴 מתג חד-פעמי. בלעדיו כל רענון של הרשימה היה מחזיר את הלשונית
   // ל"כל השיחות" גם אחרי שהעובד בחר במפורש "ממתינים", וזה נקרא כמו מסך
   // שנלחם בך. מעבר אוטומטי הוא עזרה בפתיחה, לא כלל שרץ כל הזמן.
@@ -488,8 +575,8 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
   // 🔴 **אותו מפתח בדיוק שהכפתור הצף משתמש בו.** קודם היו שני מפתחות
   // לאותם נתונים, ולכן יצאו שתי בקשות זהות לשרת על כל סבב.
   const inbox = useQuery({
-    queryKey: inboxKey(tab, q),
-    queryFn: () => fetchInbox(tab, q),
+    queryKey: [...inboxKey(tab, q), includeAuto ? 'auto' : 'human'],
+    queryFn: () => fetchInbox(tab, q, includeAuto),
     refetchInterval: WA_INBOX_POLL_MS,
     // ⭐ ראה את ההערה על השרשור. הרשימה מתרעננת גם היא בחזרה לחלון,
     // אבל רק אם עברה חצי דקה, כי סדר השורות משתנה לאט.
@@ -706,6 +793,12 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
               </button>
             ))}
           </div>
+          {tab === 'all' && (
+            <label className="flex w-fit cursor-pointer items-center gap-2 px-1 text-xs text-muted-foreground">
+              <input type="checkbox" className="accent-emerald-700" checked={includeAuto} onChange={(e) => setIncludeAuto(e.target.checked)} />
+              הצג גם שיחות אוטומטיות בלבד{counts.autoOnly ? ` (${counts.autoOnly})` : ''}
+            </label>
+          )}
 
           <div className="relative">
             <Search className="absolute inset-inline-start-2 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -955,21 +1048,31 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
                 {thread.isLoading && (
                   <div className="text-center text-sm text-muted-foreground">טוען שיחה…</div>
                 )}
-                {messages.map((m, idx) => {
-                  const prev = messages[idx - 1];
-                  const newDay =
-                    !prev || new Date(prev.sent_at).toDateString() !== new Date(m.sent_at).toDateString();
-                  return (
-                    <div key={m.id}>
-                      {newDay && (
-                        <div className="my-2 text-center text-[11px] text-muted-foreground">
-                          {dayLabel(m.sent_at)}
-                        </div>
-                      )}
-                      <Bubble m={m} />
-                    </div>
-                  );
-                })}
+                {/*
+                  ⭐⭐ **אדם מקבל בועה, אוטומט מקבל שורה** (עידן, 06/09/2026: "בקשה
+                  למילוי סקר, אין סיבה שהיא תרדוף אותנו לעד"). הסיווג מהשרת.
+                  בקשה שנענתה מוחלפת בתוצאה; רצף בקשות שלא נענו מתקפל לשורה
+                  אחת שנפתחת בלחיצה. שום דבר לא נמחק.
+                */}
+                {groupThread(messages, openedAuto).map((g) => (
+                  <div key={g.key}>
+                    {g.newDay && (
+                      <div className="my-2 text-center text-[11px] text-muted-foreground">
+                        {dayLabel(g.at)}
+                      </div>
+                    )}
+                    {g.type === 'bubble' && <Bubble m={g.m} />}
+                    {g.type === 'sys' && (
+                      <SystemLine m={g.m} onOpen={() => setOpenedAuto((s) => new Set(s).add(g.m.id))} />
+                    )}
+                    {g.type === 'group' && (
+                      <GroupLine
+                        run={g.run}
+                        onOpen={() => setOpenedAuto((s) => { const n = new Set(s); for (const x of g.run) n.add(x.id); return n; })}
+                      />
+                    )}
+                  </div>
+                ))}
                 {!thread.isLoading && messages.length === 0 && (
                   <div className="text-center text-sm text-muted-foreground">
                     עוד לא דיברתם איתו בוואטסאפ.

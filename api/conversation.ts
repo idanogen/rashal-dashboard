@@ -39,11 +39,16 @@ const HARD_CAP = 1000;
 const LIST_COLUMNS =
   'id, phone_local, phone_e164, contact_name, customer_number, customer_name, ' +
   'last_inbound_at, last_message_at, last_message_preview, last_message_direction, ' +
-  'unanswered_since, message_count, read_at, contact_label, suggested';
+  'unanswered_since, message_count, read_at, contact_label, suggested, ' +
+  'last_human_preview, last_human_at, last_human_direction, human_count';
 
 async function listInbox(req: VercelRequest, res: VercelResponse) {
   const tab = req.query.tab === 'all' ? 'all' : 'waiting';
   const q = typeof req.query.q === 'string' ? req.query.q : '';
+  // ⭐ "להרזות את ההתכתבות" (עידן, 06/09/2026): שיחה שכולה הודעות
+  // אוטומטיות (189 מ-274) יורדת מ"כל השיחות" כברירת מחדל, מאחורי מתג.
+  // "ממתינים" לא משתנה: שם תמיד יש אדם שכתב.
+  const includeAuto = req.query.includeAuto === '1';
   const limit = Math.min(Math.max(Number(req.query.limit ?? 100) || 100, 1), 200);
 
   // 🔴 `.range()` בלי `.order()` מחזיר שורות בסדר שרירותי.
@@ -109,13 +114,15 @@ async function listInbox(req: VercelRequest, res: VercelResponse) {
   // ⭐ "מחכה" ולא "לא נענה". שיחה שנפתחה ונקראה יורדת מכאן גם בלי תשובה,
   // וההכרעה יושבת ב-`isWaiting` שהוא המקום היחיד שמחזיק אותה.
   const waitingAll = all.filter((i) => i.waitingMinutes != null);
-  const pool = tab === 'waiting' ? waitingAll : all;
+  const autoOnlyCount = all.filter((i) => i.autoOnly).length;
+  // 🔴 חיפוש מפורש מחפש בכל השיחות, גם האוטומטיות: מי שמקליד שם רוצה למצוא.
+  const pool = tab === 'waiting' ? waitingAll : (includeAuto || q ? all : all.filter((i) => !i.autoOnly));
   const filtered = q ? pool.filter((i) => matchesQuery(i, q)) : pool;
 
   return res.status(200).json({
     ok: true,
     tab,
-    counts: { waiting: waitingAll.length, all: all.length },
+    counts: { waiting: waitingAll.length, all: all.length, autoOnly: autoOnlyCount },
     matched: filtered.length,
     truncated: rows.length >= HARD_CAP,
     items: sortItems(filtered, tab).slice(0, limit),

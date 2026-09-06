@@ -34,6 +34,9 @@ export interface InboxItem {
   contactLabel?: string | null;
   /** מועמדים לשיוך שהשרת הכין (ת.ז. בתשובה, או טלפון של שני לקוחות). */
   suggested?: SuggestedCustomer[] | null;
+  /** כל ההודעות בשיחה אוטומטיות; יורדת מ"כל השיחות" מאחורי מתג. */
+  autoOnly?: boolean;
+  lastHumanAt?: string | null;
   preview: string;
   lastMessageAt: string | null;
   lastMessageDirection: string | null;
@@ -52,7 +55,7 @@ export interface InboxItem {
 export interface InboxResponse {
   ok: true;
   tab: 'waiting' | 'all';
-  counts: { waiting: number; all: number };
+  counts: { waiting: number; all: number; autoOnly?: number };
   matched: number;
   truncated: boolean;
   items: InboxItem[];
@@ -109,6 +112,15 @@ export interface WaMessage {
    * ⭐ ההצמדה לפי הטוקן שבכתובת הכפתור, ולכן היא חד-חד-ערכית.
    */
   survey?: { score: number | null; answeredAt: string | null; comment: string | null };
+  /**
+   * ⭐ הסיווג מהשרת ("להרזות את ההתכתבות", 06/09/2026): אדם מקבל בועה,
+   * אוטומט מקבל שורת מערכת. המצב אומר אם הבקשה עדיין רלוונטית.
+   */
+  kind?: 'human' | 'auto';
+  autoKind?: 'survey' | 'photo_request' | 'photo_reminder' | 'on_way' | 'coordination' | 'other' | string | null;
+  autoState?: 'pending' | 'answered' | 'expired' | null;
+  /** הטקסט שמחליף את הבקשה כשנענתה: "סקר: 5 מתוך 5", "תמונה התקבלה". */
+  autoResult?: string | null;
 }
 
 /**
@@ -193,9 +205,11 @@ async function authFetch(path: string, init?: RequestInit) {
 export async function fetchInbox(
   tab: 'waiting' | 'all',
   q: string,
+  includeAuto = false,
 ): Promise<InboxResponse> {
   const params = new URLSearchParams({ tab });
   if (q.trim()) params.set('q', q.trim());
+  if (includeAuto) params.set('includeAuto', '1');
   // 🔴 הרשימה יושבת ב-`api/conversation` בלי פרמטר לקוח, כי תוכנית
   // Hobby של Vercel חוסמת ב-12 פונקציות לפריסה והקובץ ה-13 נפל.
   return authFetch(`/api/conversation?${params.toString()}`);

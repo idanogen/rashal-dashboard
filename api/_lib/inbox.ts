@@ -40,6 +40,10 @@ export interface ConversationRow {
   read_at: string | null;
   contact_label?: string | null;
   suggested?: unknown;
+  last_human_preview?: string | null;
+  last_human_at?: string | null;
+  last_human_direction?: string | null;
+  human_count?: number | null;
 }
 
 export interface InboxItem {
@@ -54,6 +58,10 @@ export interface InboxItem {
   contactLabel: string | null;
   /** מועמדים לשיוך שהמערכת הכינה (ת.ז. בתשובה, או טלפון של שני לקוחות). */
   suggested: Array<{ customer_number: string; customer_name: string | null; city?: string | null; by?: string; label?: string | null }> | null;
+  /** true כשכל ההודעות בשיחה אוטומטיות: אף אדם לא כתב, לא אצלנו ולא הלקוח. */
+  autoOnly: boolean;
+  /** מתי אדם כתב לאחרונה (הלקוח או עובד), לתצוגה המקדימה. */
+  lastHumanAt: string | null;
   preview: string;
   lastMessageAt: string | null;
   lastMessageDirection: string | null;
@@ -138,7 +146,11 @@ export function toItem(row: ConversationRow, win: WindowState, now = Date.now())
     unidentified: !identified,
     contactLabel: row.contact_label ?? null,
     suggested: Array.isArray(row.suggested) ? (row.suggested as InboxItem['suggested']) : null,
-    preview: (row.last_message_preview ?? '').trim(),
+    // ⭐ התצוגה המקדימה היא ההודעה האנושית האחרונה, לא הסקר האחרון.
+    preview: ((row.human_count ?? 0) > 0 ? row.last_human_preview : null)?.trim()
+      || ((row.human_count ?? 0) > 0 ? '' : 'רק הודעות אוטומטיות'),
+    autoOnly: (row.human_count ?? 0) === 0,
+    lastHumanAt: row.last_human_at ?? null,
     lastMessageAt: row.last_message_at,
     lastMessageDirection: row.last_message_direction,
     unansweredSince: row.unanswered_since,
