@@ -33,7 +33,9 @@ function formatDate(yyyyMmDd: string): string {
 
 export function StuckStopsAlert({ stops, onResolve }: StuckStopsAlertProps) {
   // ⭐ סגור כברירת מחדל (החלטת עידן 06/09: מסננים והתראות סגורים, אזורי עבודה פתוחים).
-  const [collapsed, toggle] = usePersistedCollapse('collapse:dispatch-stuck', true);
+  // 🔴 מפתח v2: מצב ישן שנשמר בדפדפן ("פתוח") היה גובר על ברירת המחדל החדשה, ועידן
+  // ראה הכל פתוח. המפתח החדש מחיל את ברירת המחדל פעם אחת על כולם, ומשם הבחירה נשמרת.
+  const [collapsed, toggle] = usePersistedCollapse('collapse:dispatch-stuck:v2', true);
 
   const stuck = useMemo(() => {
     const today = todayStr();

@@ -36,8 +36,9 @@ export function DispatchFilterBar({
   matchCount,
   totalCount,
 }: DispatchFilterBarProps) {
+  // מסנן = סגור כברירת מחדל (החלטת עידן 06/09). v2 כדי שיחול גם על מי שכבר נגע בו.
   const [zoneCollapsed, toggleZoneCollapsed] = usePersistedCollapse(
-    'collapse:dispatch-zone-filter'
+    'collapse:dispatch-zone-filter:v2', true
   );
 
   const filtering = search.trim().length > 0 || selectedZones.length > 0;

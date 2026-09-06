@@ -501,7 +501,7 @@ export function DispatchPage() {
   // שורת הסטטיסטיקה מתכווצת (משותפת לשלושת הטאבים, נשמרת)
   // ⭐ סגור כברירת מחדל (החלטת עידן 06/09: מסננים סגורים, אזורי עבודה פתוחים).
   const [statsCollapsed, toggleStatsCollapsed] = usePersistedCollapse(
-    'collapse:dispatch-stats', true
+    'collapse:dispatch-stats:v2', true
   );
   // ── מסילת הניווט: סטטוס וכפילויות, והיומן ──
   useRailSection(tab === 'deliveries' || tab === 'all' ? {
