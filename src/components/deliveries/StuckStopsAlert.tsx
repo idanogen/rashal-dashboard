@@ -2,6 +2,8 @@ import { useMemo } from 'react';
 import { AlertTriangle, Check, X, ChevronDown, ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { usePersistedCollapse } from '@/hooks/usePersistedCollapse';
+import { useRailSection } from '@/hooks/useRailSection';
+import { railAnchorId } from '@/lib/dispatch-rail-store';
 import type { CalendarStop } from '@/types/calendar-stop';
 import { STOP_SOURCE_LABELS } from '@/types/calendar-stop';
 
@@ -30,7 +32,8 @@ function formatDate(yyyyMmDd: string): string {
 }
 
 export function StuckStopsAlert({ stops, onResolve }: StuckStopsAlertProps) {
-  const [collapsed, toggle] = usePersistedCollapse('collapse:dispatch-stuck');
+  // ⭐ סגור כברירת מחדל (החלטת עידן 06/09: מסננים והתראות סגורים, אזורי עבודה פתוחים).
+  const [collapsed, toggle] = usePersistedCollapse('collapse:dispatch-stuck', true);
 
   const stuck = useMemo(() => {
     const today = todayStr();
@@ -43,12 +46,17 @@ export function StuckStopsAlert({ stops, onResolve }: StuckStopsAlertProps) {
       .sort((a, b) => b.deliveryDate.localeCompare(a.deliveryDate));
   }, [stops]);
 
+  useRailSection(stuck.length > 0 ? {
+    id: 'stuck', title: 'עצירות עבר פתוחות', short: 'עצירות עבר', order: 10, tone: 'amber', icon: 'alert',
+    count: stuck.length, collapsed, toggle,
+  } : null);
+
   if (stuck.length === 0) return null;
 
   const arrived = stuck.filter((s) => s.status === 'in_progress').length;
 
   return (
-    <div className="rounded-lg border border-amber-300 bg-amber-50/60 p-3">
+    <div id={railAnchorId('stuck')} className="scroll-mt-32 rounded-lg border border-amber-300 bg-amber-50/60 p-3">
       <div className="flex flex-wrap items-center gap-2">
         <AlertTriangle className="h-4 w-4 flex-none text-amber-600" />
         <span className="text-sm font-bold text-amber-900">

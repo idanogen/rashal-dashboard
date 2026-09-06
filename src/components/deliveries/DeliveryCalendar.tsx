@@ -3,6 +3,7 @@ import confetti from 'canvas-confetti';
 import type { CalendarDelivery, CalendarStop } from '@/types/delivery';
 import { assigneeStyle } from '@/types/delivery';
 import { useAssignees } from '@/hooks/useAssignees';
+import { RAIL_DAY_EVENT, railSetDays } from '@/lib/dispatch-rail-store';
 import { compareStopsByTime } from '@/lib/stop-order';
 import { ReturnedNote } from '@/components/ReturnedNote';
 
@@ -414,6 +415,7 @@ function DayDropZone({
   return (
     <div
       ref={setNodeRef}
+      data-rail-day={dateStr}
       className={`rounded-xl border bg-card shadow-sm transition-all duration-200 overflow-hidden ${widthClass} ${
         isToday ? 'ring-2 ring-primary shadow-md' : ''
       } ${isPast ? 'opacity-70' : ''} ${
@@ -526,6 +528,40 @@ export function DeliveryCalendar({
   // כל יום שעבר מכווץ כברירת מחדל, גם בשבוע שכולו בעבר. אחרת חמש עמודות
   // רחבות לא נכנסות לרוחב המסך, ויום חמישי נדחף לשורה שנייה מתחת לקפל.
   // כך כל חמשת ימי העבודה תמיד נראים, לפי הסדר, ולחיצה פותחת את מה שצריך.
+  // ── מסילת הניווט: ימי השבוע עם ספירה, וקפיצה לעמודת יום (06/09/2026) ──
+  useEffect(() => {
+    railSetDays(visibleDays.map((day) => {
+      const ds = toLocalDateStr(day);
+      return {
+        date: ds,
+        label: `${dayNames[day.getDay()]} ${day.getDate()}/${day.getMonth() + 1}`,
+        count: getStopsForDate(ds).length,
+        isToday: ds === todayStr,
+      };
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleDays, deliveries, todayStr]);
+  useEffect(() => () => railSetDays([]), []);
+  useEffect(() => {
+    const onJump = (e: Event) => {
+      const date = (e as CustomEvent<{ date: string }>).detail?.date;
+      if (!date) return;
+      const inWeek = visibleDays.some((d) => toLocalDateStr(d) === date);
+      if (!inWeek) setCurrentDate(new Date(date + 'T12:00:00'));
+      // אחרי הגלילה האנכית של המסילה, העמודה מובאת לתצוגה אופקית ומהבהבת.
+      setTimeout(() => {
+        const el = document.querySelector<HTMLElement>(`[data-rail-day="${date}"]`);
+        if (!el) return;
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        el.classList.add('ring-4', 'ring-emerald-400');
+        setTimeout(() => el.classList.remove('ring-4', 'ring-emerald-400'), 1400);
+      }, 450);
+    };
+    window.addEventListener(RAIL_DAY_EVENT, onJump);
+    return () => window.removeEventListener(RAIL_DAY_EVENT, onJump);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleDays]);
+
   const isCollapsedDay = (day: Date) =>
     isPastDay(day) && !expandedPastDays.has(toLocalDateStr(day));
 

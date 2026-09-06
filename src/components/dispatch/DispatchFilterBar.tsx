@@ -5,6 +5,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { usePersistedCollapse } from '@/hooks/usePersistedCollapse';
+import { useRailSection } from '@/hooks/useRailSection';
+import { railAnchorId } from '@/lib/dispatch-rail-store';
 
 /**
  * חיפוש וסינון אזורים אחד לכל מסך הסדרן. עד 12/08/2026 לכל סוג מסמך היו
@@ -40,8 +42,14 @@ export function DispatchFilterBar({
 
   const filtering = search.trim().length > 0 || selectedZones.length > 0;
 
+  // במסילת הניווט: החץ של המסילה סוגר את סינון האזור, החיפוש נשאר תמיד.
+  useRailSection({
+    id: 'filters', title: 'חיפוש ואזורים', order: 20, tone: 'slate', icon: 'search',
+    count: selectedZones.length || null, collapsed: zoneCollapsed, toggle: toggleZoneCollapsed,
+  });
+
   return (
-    <div className="space-y-2">
+    <div id={railAnchorId('filters')} className="scroll-mt-32 space-y-2">
       <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-2 shadow-sm">
         <div className="relative min-w-[240px] flex-1">
           <Search className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

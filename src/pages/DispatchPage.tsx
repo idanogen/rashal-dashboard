@@ -85,6 +85,9 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { usePersistedCollapse } from '@/hooks/usePersistedCollapse';
+import { useRailSection } from '@/hooks/useRailSection';
+import { railAnchorId } from '@/lib/dispatch-rail-store';
+import { DispatchRail, DispatchRailFab } from '@/components/dispatch/DispatchRail';
 import type { Order } from '@/types/order';
 import type { ServiceCall } from '@/types/service-call';
 import type { Pickup } from '@/types/pickup';
@@ -496,9 +499,16 @@ export function DispatchPage() {
   } | null>(null);
 
   // שורת הסטטיסטיקה מתכווצת (משותפת לשלושת הטאבים, נשמרת)
+  // ⭐ סגור כברירת מחדל (החלטת עידן 06/09: מסננים סגורים, אזורי עבודה פתוחים).
   const [statsCollapsed, toggleStatsCollapsed] = usePersistedCollapse(
-    'collapse:dispatch-stats'
+    'collapse:dispatch-stats', true
   );
+  // ── מסילת הניווט: סטטוס וכפילויות, והיומן ──
+  useRailSection(tab === 'deliveries' || tab === 'all' ? {
+    id: 'stats', title: 'סטטוס וכפילויות', order: 30, tone: 'slate', icon: 'gauge',
+    count: ordersHiddenCount || null, collapsed: statsCollapsed, toggle: toggleStatsCollapsed,
+  } : null);
+  useRailSection({ id: 'calendar', title: 'היומן', order: 90, tone: 'emerald', icon: 'calendar', count: null });
 
   // ─── סינון היומן לפי סוג פעילות (נשמר ב-localStorage) ───
   const [visibleTypes, setVisibleTypes] = useState<Set<CalendarStopSource>>(loadCalendarFilter);
@@ -1243,7 +1253,10 @@ export function DispatchPage() {
         screenReaderInstructions: silentScreenReaderInstructions,
       }}
     >
-      <div className="space-y-6">
+      <div className="flex items-start gap-4">
+      {/* ⭐ מסילת הניווט (עידן, 06/09/2026): מימין, דביקה, במסך רחב בלבד. */}
+      <DispatchRail />
+      <div className="min-w-0 flex-1 space-y-6">
         {/* ─── מתגי סוג פעילות ───
             דביקים מתחת לכותרת האתר, לפי הגובה שהיא מודדת. בין המתגים לרשימה יושבים
             שלושה אזורים מתקפלים, ובלי הדביקות הסדרן גולל ומאבד את הידיעה על
@@ -1314,7 +1327,7 @@ export function DispatchPage() {
         {(tab === 'deliveries' || tab === 'all') && (
           (tab === 'all' ? panelState(ordersLoading, ordersError as Error | null) : tabState) ?? (
             <>
-              <div className="flex items-center justify-between">
+              <div id={railAnchorId('stats')} className="flex scroll-mt-32 items-center justify-between">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1504,7 +1517,7 @@ export function DispatchPage() {
         )}
 
         {/* ─── יומן קבוע: נשאר mounted בכל החלפת טאב ─── */}
-        <div className="space-y-2">
+        <div id={railAnchorId('calendar')} className="scroll-mt-32 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-medium text-muted-foreground">
               מציג ביומן
@@ -1564,6 +1577,8 @@ export function DispatchPage() {
           />
         </div>
       </div>
+      </div>
+      <DispatchRailFab />
 
       {/* תיאום מיד אחרי שיבוץ, בלי לחפש את הכרטיס ביומן */}
       <ScheduleCoordinationDialog

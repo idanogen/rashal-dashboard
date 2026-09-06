@@ -36,6 +36,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { usePersistedCollapse } from '@/hooks/usePersistedCollapse';
+import { useRailSection } from '@/hooks/useRailSection';
+import { railAnchorId, type RailSection } from '@/lib/dispatch-rail-store';
 import { getDaysColor, getDaysSinceCreated, cn } from '@/lib/utils';
 import { matchesSearch } from '@/lib/search-match';
 import { CustomerCardButton } from '@/components/customer/CustomerCardSheet';
@@ -423,6 +425,7 @@ export function UnscheduledPanel({
     `collapse:${storageKey}-returned`
   );
 
+
   const handleZoneToggle = (zoneId: string) =>
     setSelectedZones((prev) =>
       prev.includes(zoneId) ? prev.filter((id) => id !== zoneId) : [...prev, zoneId]
@@ -512,6 +515,23 @@ export function UnscheduledPanel({
   const handleToggleAllZones = () =>
     setExpandedZones(allZonesExpanded ? new Set() : new Set(groupedByZone.keys()));
 
+  // ── מסילת הניווט: "חזרו מהקו" והרשימה, לפי סוג המסמך (06/09/2026) ──
+  const RAIL: Record<string, { base: number; tone: RailSection['tone']; icon: RailSection['icon']; short: string }> = {
+    orders: { base: 40, tone: 'blue', icon: 'package', short: 'ממתינים לתיאום' },
+    calls: { base: 50, tone: 'teal', icon: 'wrench', short: 'קריאות חדשות' },
+    pickups: { base: 60, tone: 'teal', icon: 'pickup', short: 'איסופים ממתינים' },
+    customers: { base: 70, tone: 'violet', icon: 'user', short: 'לקוחות חדשים' },
+  };
+  const rail = RAIL[storageKey] ?? { base: 80, tone: 'slate' as const, icon: 'package' as const, short: title };
+  useRailSection(returnedItems.length > 0 ? {
+    id: `${storageKey}-returned`, title: 'חזרו מהקו', order: rail.base, tone: 'red', icon: 'undo',
+    count: returnedItems.length, collapsed: returnedCollapsed, toggle: toggleReturnedCollapsed,
+  } : null);
+  useRailSection({
+    id: `${storageKey}-list`, title, short: rail.short, order: rail.base + 1, tone: rail.tone, icon: rail.icon,
+    count: filteredItems.length, collapsed: listCollapsed, toggle: toggleListCollapsed,
+  });
+
   if (items.length === 0 && returnedItems.length === 0) {
     return (
       <div className="space-y-3">
@@ -542,13 +562,14 @@ export function UnscheduledPanel({
     />
   );
 
+
   return (
     <div className="space-y-4">
       {intro}
 
       {/* חזרו מהקו */}
       {returnedItems.length > 0 && (
-        <div className="rounded-lg border border-red-300 bg-red-50/60 p-3 shadow-sm dark:border-red-900 dark:bg-red-950/10">
+        <div id={railAnchorId(`${storageKey}-returned`)} className="scroll-mt-32 rounded-lg border border-red-300 bg-red-50/60 p-3 shadow-sm dark:border-red-900 dark:bg-red-950/10">
           <div className={cn('flex items-center gap-2', !returnedCollapsed && 'mb-2')}>
             <Undo2 className="h-4 w-4 text-red-600" />
             <h3 className="text-sm font-bold text-red-700 dark:text-red-400">
@@ -591,7 +612,7 @@ export function UnscheduledPanel({
       )}
 
       {/* הפאנל */}
-      <div className="rounded-lg border bg-card shadow-sm">
+      <div id={railAnchorId(`${storageKey}-list`)} className="scroll-mt-32 rounded-lg border bg-card shadow-sm">
         <div className="sticky top-[calc(var(--app-header-h,61px)+56px)] z-20 border-b bg-muted/95 p-4 backdrop-blur-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
