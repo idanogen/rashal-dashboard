@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle, ArrowUp, CalendarDays, ChevronDown, ChevronsDownUp, ChevronsUpDown,
-  Gauge, ListTree, Package, Search, Undo2, UserPlus, Wrench, X,
+  Gauge, ListTree, Package, PanelRightClose, PanelRightOpen, Search, Undo2, UserPlus, Wrench, X,
 } from 'lucide-react';
+import { usePersistedCollapse } from '@/hooks/usePersistedCollapse';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 import {
@@ -85,7 +86,7 @@ function useRailHotkeys(sections: RailSection[]) {
   }, [sections]);
 }
 
-function RailList({ compact = false, onNavigate }: { compact?: boolean; onNavigate?: () => void }) {
+function RailList({ compact = false, onNavigate, onMini }: { compact?: boolean; onNavigate?: () => void; onMini?: () => void }) {
   const { sections, days } = useRail();
   const active = useActiveSection(sections);
   const collapsible = useMemo(() => sections.filter((s) => s.toggle), [sections]);
@@ -102,7 +103,19 @@ function RailList({ compact = false, onNavigate }: { compact?: boolean; onNaviga
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between px-2 pb-2 pt-1">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">במסך</span>
+        <span className="flex items-center gap-1">
+          {onMini && (
+            <button
+              type="button"
+              onClick={onMini}
+              title="כווץ את התפריט לפס סמלים"
+              className="flex h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-800"
+            >
+              <PanelRightClose className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">במסך</span>
+        </span>
         <button
           type="button"
           onClick={() => setAll(!allCollapsed)}
@@ -205,17 +218,80 @@ function RailList({ compact = false, onNavigate }: { compact?: boolean; onNaviga
   );
 }
 
-/** המסילה במסך רחב: דביקה מתחת ללשוניות, ברוחב 188 פיקסל. */
+/**
+ * המסילה המכווצת: פס סמלים צר (עידן, 06/09/2026: "תוסיף אפשרות לכווץ את
+ * התפריט צד"). אותם אזורים, אותה הדגשה של האזור הנוכחי, ספירה קטנה על
+ * הסמל, והכותרת בריחוף. לחיצה על סמל גוללת; החץ למעלה מרחיב חזרה.
+ */
+function RailMini({ onExpand }: { onExpand: () => void }) {
+  const { sections, days } = useRail();
+  const active = useActiveSection(sections);
+  const today = days.find((d) => d.isToday);
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <button
+        type="button"
+        onClick={onExpand}
+        title="הרחב את התפריט"
+        className="mb-1 flex h-8 w-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+      >
+        <PanelRightOpen className="h-4 w-4" />
+      </button>
+      {sections.map((s, idx) => {
+        const Icon = ICONS[s.icon];
+        const tone = TONES[s.tone];
+        const isActive = s.id === active;
+        const isCollapsed = Boolean(s.collapsed);
+        const count = s.id === 'calendar' && today ? today.count : s.count;
+        return (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => railScrollTo(s.id)}
+            title={`${s.title}${s.count ? ` (${s.count})` : ''}${isCollapsed ? ' · מכווץ' : ''}${idx < 9 ? ` · Alt+${idx + 1}` : ''}`}
+            className={cn(
+              'relative flex h-10 w-10 items-center justify-center rounded-xl transition-colors',
+              isActive ? tone.active : 'hover:bg-slate-50',
+            )}
+          >
+            {isActive && <span className={cn('absolute inset-y-2 start-0 w-[3px] rounded-full', tone.bar)} />}
+            <span className={cn('flex h-[26px] w-[26px] items-center justify-center rounded-lg', tone.icon, isCollapsed && !isActive && 'opacity-50')}>
+              <Icon className="h-3.5 w-3.5" />
+            </span>
+            {count != null && count > 0 && (
+              <span className={cn(
+                'absolute -end-0.5 -top-0.5 min-w-[18px] rounded-full px-1 text-center text-[9.5px] font-semibold leading-[16px] tabular-nums ring-2 ring-white',
+                isActive ? tone.pill : 'bg-slate-200 text-slate-700',
+              )}>
+                {count > 999 ? '999+' : count}
+              </span>
+            )}
+          </button>
+        );
+      })}
+      <div className="mt-1 flex flex-col gap-1 border-t pt-2">
+        <button type="button" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} title="למעלה" className="flex h-8 w-8 items-center justify-center rounded-lg border bg-white text-slate-600 hover:bg-slate-50"><ArrowUp className="h-3.5 w-3.5" /></button>
+        <button type="button" onClick={() => railScrollTo('calendar')} title="ליומן" className="flex h-8 w-8 items-center justify-center rounded-lg border bg-white text-slate-600 hover:bg-slate-50"><CalendarDays className="h-3.5 w-3.5" /></button>
+      </div>
+    </div>
+  );
+}
+
+/** המסילה במסך רחב: דביקה מתחת ללשוניות. רחבה (236px) או מכווצת לפס סמלים (56px), נזכר לכל משתמש. */
 export function DispatchRail() {
   const { sections } = useRail();
   useRailHotkeys(sections);
+  const [mini, toggleMini] = usePersistedCollapse('collapse:dispatch-rail-mini');
   if (!sections.length) return null;
   return (
     <aside
       dir="rtl"
-      className="sticky top-[calc(var(--app-header-h,61px)+68px)] hidden max-h-[calc(100vh-var(--app-header-h,61px)-84px)] w-[236px] shrink-0 overflow-y-auto rounded-2xl border bg-white/90 p-2 shadow-[0_8px_30px_-12px_rgba(20,34,58,.25)] backdrop-blur xl:block"
+      className={cn(
+        'sticky top-[calc(var(--app-header-h,61px)+68px)] hidden max-h-[calc(100vh-var(--app-header-h,61px)-84px)] shrink-0 overflow-y-auto rounded-2xl border bg-white/90 shadow-[0_8px_30px_-12px_rgba(20,34,58,.25)] backdrop-blur transition-[width] duration-200 xl:block',
+        mini ? 'w-[56px] p-1.5' : 'w-[236px] p-2',
+      )}
     >
-      <RailList />
+      {mini ? <RailMini onExpand={toggleMini} /> : <RailList onMini={toggleMini} />}
     </aside>
   );
 }

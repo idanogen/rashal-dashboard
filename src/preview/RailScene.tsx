@@ -16,6 +16,13 @@ const SECTIONS = [
   { id: 'calendar', title: 'היומן', order: 90, tone: 'emerald', icon: 'calendar', count: null, h: 1100, def: false },
 ] as const;
 
+// ?view=rail&mini=1 מצלם את המצב המכווץ.
+if (new URLSearchParams(location.search).get('mini') === '1') {
+  try { localStorage.setItem('collapse:dispatch-rail-mini', '1'); } catch { /* ignore */ }
+} else {
+  try { localStorage.removeItem('collapse:dispatch-rail-mini'); } catch { /* ignore */ }
+}
+
 export function RailScene() {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(SECTIONS.map((s) => [s.id, s.def])));
