@@ -63,3 +63,10 @@ test('short date handles ISO timestamps and empty values', () => {
   assert.equal(shortDate('2026-09-07T13:39:00Z'), '07/09/26');
   assert.equal(shortDate(null), '');
 });
+
+/** 🔴 שורה מהייבוא ההיסטורי בלי סטטוס שלנו אינה "פתוחה". */
+test('an unknown call status is neither open nor closed', () => {
+  const r = historyHitLine({ ...hit, openOrders: 0, lastOrderDate: null, lastCallDate: '2022-08-31', lastCallStatus: null, lastCallBy: 'אלכס', lastCallType: 'פרונטלית' });
+  assert.equal(r.text, 'קריאת שירות 31/08/22 · טכנאי אלכס');
+  assert.equal(r.tone, 'neutral');
+});

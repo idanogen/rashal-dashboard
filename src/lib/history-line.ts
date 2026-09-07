@@ -119,12 +119,14 @@ export function historyHitLine(h: HistoryHit): { text: string; tone: Tone } {
     events.push({ d: h.lastNoteDate, text: `אספקה ${shortDate(h.lastNoteDate)}`, tone: 'good' });
   }
   if (h.lastCallDate) {
-    const done = h.lastCallStatus && !CALL_OPEN.has(h.lastCallStatus);
+    // סטטוס ריק (ייבוא היסטורי בלי סטטוס שלנו) אינו "פתוחה": לא טוענים מה שלא יודעים.
+    const known = !!h.lastCallStatus;
+    const done = known && !CALL_OPEN.has(h.lastCallStatus!);
     const who = h.lastCallBy && h.lastCallType === 'פרונטלית' ? `טכנאי ${h.lastCallBy}` : null;
     events.push({
       d: h.lastCallDate,
-      text: [`קריאת שירות ${shortDate(h.lastCallDate)}`, done ? h.lastCallStatus : 'פתוחה', who].filter(Boolean).join(' · '),
-      tone: done ? 'neutral' : 'bad',
+      text: [`קריאת שירות ${shortDate(h.lastCallDate)}`, !known ? null : done ? h.lastCallStatus : 'פתוחה', who].filter(Boolean).join(' · '),
+      tone: !known || done ? 'neutral' : 'bad',
     });
   }
   if (h.lastOrderDate) {

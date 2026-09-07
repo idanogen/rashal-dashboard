@@ -34,7 +34,11 @@ language sql stable security definer set search_path = public as $$
          and coalesce(o.archived_reason,'') <> 'webhook-legacy-20260805'
        order by o.created_at desc limit 1) lo on cs.customer_number is not null
     left join lateral (
-      select coalesce(c.closed_on, c.created_at::date) d, c.service_call_status::text st,
+      -- שורה מהייבוא ההיסטורי נושאת סטטוס פריוריטי בלי סטטוס שלנו; מתרגמים.
+      select coalesce(c.closed_on, c.created_at::date) d,
+             coalesce(c.service_call_status::text,
+                      case when c.priority_status in ('בוצעה','סופית','טופל טכנאי') then 'בוצע'
+                           when c.priority_status = 'מבוטלת' then 'בוטל' end) st,
              c.priority_call_id ref, c.closed_by by, c.call_type ct
         from public.service_calls c
        where c.customer_number = cs.customer_number and c.duplicate_of is null
