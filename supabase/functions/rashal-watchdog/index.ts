@@ -19,9 +19,10 @@ const REALERT_HOURS = 6;
 
 interface Mon { job: string; label: string; thresholdMin: number; activeDowUtc?: number[]; activeHourUtc?: [number, number] }
 const MONITORS: Mon[] = [
-  { job: "pull-core", label: "משיכת ליבה (הזמנות/קריאות/לקוחות)", thresholdMin: 180, activeDowUtc: [0,1,2,3,4], activeHourUtc: [4,15] },
-  { job: "pull-pickups", label: "משיכת איסופים", thresholdMin: 180, activeDowUtc: [0,1,2,3,4], activeHourUtc: [4,15] },
-  { job: "pull-pickup-addresses", label: "משיכת כתובות איסוף", thresholdMin: 180, activeDowUtc: [0,1,2,3,4], activeHourUtc: [4,15] },
+  // 07/09/2026: הליבה כל 5 דקות בין 4 ל-17 UTC (07:00 עד 19:00 שעון ישראל גם בחורף).
+  { job: "pull-core", label: "משיכת ליבה (הזמנות/קריאות/לקוחות)", thresholdMin: 45, activeDowUtc: [0,1,2,3,4], activeHourUtc: [4,17] },
+  { job: "pull-pickups", label: "משיכת איסופים", thresholdMin: 180, activeDowUtc: [0,1,2,3,4], activeHourUtc: [4,17] },
+  { job: "pull-pickup-addresses", label: "משיכת כתובות איסוף", thresholdMin: 180, activeDowUtc: [0,1,2,3,4], activeHourUtc: [4,17] },
   { job: "push-chat", label: "דחיפת צ'אט לפריוריטי", thresholdMin: 90 },
 ];
 

@@ -122,6 +122,18 @@ const Q = {
     `/DOCUMENTS_N?$select=DOCNO,DOC,CUSTNAME,CDES,CURDATE,STATDES,ORDNAME,ODOCNO,REFERENCE,TOWARHSDES,AGENTNAME,OWNERLOGIN,TOTQUANT,TOTPRICE,UDATE` +
     `&$expand=${encodeURIComponent("DOCUMENTS_DCONT_SUBFORM($select=ADRS,STATE,PHONE,FAX)")}` +
     `&$filter=${encodeURIComponent(`UDATE ge ${since}`)}&$orderby=UDATE%20asc&$top=8000`,
+  // ⭐ הקריאה היומית המלאה (עידן, 07/09/2026): `STATUSDATE` זז רק על שינוי
+  // סטטוס, ולכן תיקון כתובת/טלפון/תאריך התקנה בפריוריטי לא נכנס לדלתא.
+  // פעם ביום קוראים את כל מה שנפתח בשבועיים האחרונים לפי תאריך הפתיחה
+  // (כ-250 הזמנות וכ-250 קריאות), ותיבת הקליטה מעדכנת את השדות בלי לגעת
+  // בסטטוס שלנו. סימן המים מוגן במסד: הוא רק מתקדם.
+  orders_recent: (since: string) =>
+    `/ORDERS?$select=ORDNAME,CUSTNAME,CDES,CURDATE,STATUSDATE,ORDSTATUSDES,AGENTNAME,TYPEDES,DOERNAME,Y_151_0_ESHB` +
+    `&$expand=${encodeURIComponent("ORDERITEMS_SUBFORM($select=PARTNAME,PDES,TQUANT,SERIALNAME)")}` +
+    `&$filter=${encodeURIComponent(`CURDATE ge ${since}`)}&$orderby=ORDNAME%20asc&$top=2000`,
+  calls_recent: (since: string) =>
+    `/DOCUMENTS_Q?$select=DOCNO,CUSTNAME,CDES,STARTDATE,STATUSDATE,PHONENUM,SUSERLOGIN,Y_149_0_ESHB,Y_2578_0_ESHB,Y_2632_5_ESH,MALFDES,SYMDES,CALLTYPECODE,CALLSTATUSCODE,SERVTDES,SERNUM,PARTNAME,PARTDES,WARDATEFINAL,RSHL_INSTDATE` +
+    `&$filter=${encodeURIComponent(`STARTDATE ge ${since}`)}&$orderby=DOCNO%20asc&$top=2000`,
 };
 
 // ─── משיכת היסטוריה (backfill) ──────────────────────────────────────────────
@@ -450,6 +462,11 @@ const JOBS: Record<string, Step[]> = {
   ],
   "pull-pickup-addresses": [
     { entity: "pickups_addresses", kind: "pickups", buildUrl: () => Q.pickups_addresses(rolling3Days()) },
+  ],
+  // הקריאה המלאה של שבועיים אחורה, פעם ביום לפני תחילת העבודה.
+  "refresh-recent": [
+    { entity: "orders_recent", kind: "orders", buildUrl: () => Q.orders_recent(rollingDays(14).slice(0, 10) + "T00:00:00Z") },
+    { entity: "calls_recent", kind: "service_calls", buildUrl: () => Q.calls_recent(rollingDays(14).slice(0, 10) + "T00:00:00Z") },
   ],
 };
 
@@ -1286,6 +1303,17 @@ async function reconcileDaily(days: number): Promise<Record<string, unknown>> {
   return { ran_at: new Date().toISOString(), window_days: days, missing_real: totalReal, summary };
 }
 
+/**
+ * הסוד של הפונקציה יושב ב-Vault של המסד, כדי ש-pg_cron יוכל לצרף אותו
+ * לכותרת בלי שהוא ייכתב בפקודת התזמון. הפונקציה עצמה היא היחידה שמחזיקה
+ * את הערך (כסוד סביבה), ולכן היא זו שזורעת אותו. ⭐ הפעולה חסרת מידע
+ * ואידמפוטנטית, ולכן היא הפעולה היחידה שנענית בלי הסוד.
+ */
+async function seedVault(): Promise<Record<string, unknown>> {
+  const { data, error } = await sb.rpc("sync_secret_seed", { p_value: syncSecret() });
+  return error ? { ok: false, error: error.message } : { ok: true, result: data };
+}
+
 Deno.serve(async (req: Request) => {
   let job = "pull-core", trigger = "manual";
   let body: Record<string, unknown> = {};
@@ -1294,6 +1322,15 @@ Deno.serve(async (req: Request) => {
     if (body?.job) job = String(body.job);
     if (body?.trigger) trigger = String(body.trigger);
   } catch { /* defaults */ }
+
+  if (job === "seed-vault") {
+    return new Response(JSON.stringify(await seedVault()), { headers: { "Content-Type": "application/json" } });
+  }
+  // 🔴🔴 07/09/2026: עד היום הפונקציה נענתה למפתח הציבורי של האפליקציה, כולל
+  // פעולות שכותבות (backfill, apply-cleanup). מהיום כל פעולה דורשת את הסוד.
+  if ((req.headers.get("x-sync-secret") ?? "") !== syncSecret() || !syncSecret()) {
+    return new Response(JSON.stringify({ error: "bad secret" }), { status: 401, headers: { "Content-Type": "application/json" } });
+  }
 
   if (job === "probe") {
     return new Response(JSON.stringify(await probe(), null, 2), { headers: { "Content-Type": "application/json" } });
@@ -1420,7 +1457,9 @@ Deno.serve(async (req: Request) => {
   const errors: string[] = [];
 
   if (job !== "pull-pickup-addresses") {
-    const wm = await fetchRetry(runId, "watermarks", INBOX, {
+    // חלון החשבוניות: 30 יום בריצה השעתית, 120 בלילית. ראה handleGet ב-inbox.
+    const invoiceDays = Number(body?.invoiceDays ?? 30) || 30;
+    const wm = await fetchRetry(runId, "watermarks", `${INBOX}?invoiceDays=${invoiceDays}`, {
       headers: { "x-sync-secret": syncSecret() },
     }, "/api/priority-sync GET");
     retries += wm.attempts - 1;

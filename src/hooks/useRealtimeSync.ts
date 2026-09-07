@@ -1,13 +1,40 @@
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase, uniqueChannelName } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
+import { probeFreshness, setChannelState } from '@/lib/sync-freshness';
 
 // A sync run touches many rows at once, so postgres_changes arrives as a burst.
 // Invalidating per event refetched whole tables repeatedly; coalesce the burst
 // into one invalidation per query key.
 const COALESCE_MS = 1500;
 
+/** בדיקת שינויים תקופתית (שכבה 1). ראה sync-freshness.ts. */
+const PROBE_EVERY_MS = 60_000;
+
+/** השהיות בין ניסיונות חיבור מחדש של הערוץ (שכבה 2). */
+const RECONNECT_DELAYS_MS = [3_000, 8_000, 20_000, 45_000];
+
+const TABLE_KEYS: Array<[table: string, key: string]> = [
+  ['orders', 'orders'],
+  ['routes', 'routes'],
+  ['service_calls', 'serviceCalls'],
+  ['calendar_stops', 'calendarStops'],
+  ['pickups', 'pickups'],
+];
+
+/**
+ * 🔴🔴 **07/09/2026: הערוץ החי הוא נוחות, לא ערבות.** עד היום הוא היה
+ * מסלול הרענון היחיד, בלי טיפול בנפילה ובלי גיבוי, ומסך שנשאר פתוח קפא עד
+ * F5 ברגע שהערוץ נפל (שינה, רשת, טאב שהוקפא, חידוש טוקן). יומן השרת הראה
+ * "אין משתמשים מחוברים" 6 עד 8 פעמים ביום עבודה.
+ *
+ * מהיום שלוש שכבות: הערוץ (מיידי), בדיקת שינויים כל דקה ובחזרה לחלון
+ * (זולה: קריאה אחת שמחזירה `max(updated_at)` לכל טבלה), וחיבור מחדש של
+ * הערוץ עם המתנה גדלה. כשהערוץ חוזר, בודקים שינויים מיד כדי להשלים מה
+ * שפוספס בזמן שהיה למטה.
+ */
 export function useRealtimeSync() {
   const queryClient = useQueryClient();
   const { loading } = useAuth();
@@ -23,6 +50,11 @@ export function useRealtimeSync() {
 
     const pendingKeys = new Set<string>();
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let channel: RealtimeChannel | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+    let attempt = 0;
+    let wasDown = false;
+    let disposed = false;
 
     const scheduleInvalidate = (key: string) => {
       pendingKeys.add(key);
@@ -35,38 +67,54 @@ export function useRealtimeSync() {
       }, COALESCE_MS);
     };
 
-    const channel = supabase
-      .channel(uniqueChannelName('db-changes'))
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'orders' },
-        () => scheduleInvalidate('orders')
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'routes' },
-        () => scheduleInvalidate('routes')
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'service_calls' },
-        () => scheduleInvalidate('serviceCalls')
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'calendar_stops' },
-        () => scheduleInvalidate('calendarStops')
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'pickups' },
-        () => scheduleInvalidate('pickups')
-      )
-      .subscribe();
+    const probe = () => { void probeFreshness(queryClient); };
+
+    const open = () => {
+      if (disposed) return;
+      if (channel) { void supabase.removeChannel(channel); channel = null; }
+      let ch = supabase.channel(uniqueChannelName('db-changes'));
+      for (const [table, key] of TABLE_KEYS) {
+        ch = ch.on('postgres_changes', { event: '*', schema: 'public', table }, () => scheduleInvalidate(key));
+      }
+      channel = ch.subscribe((status) => {
+        if (disposed) return;
+        if (status === 'SUBSCRIBED') {
+          attempt = 0;
+          setChannelState('live');
+          // חזרנו אחרי נפילה: מה שקרה בינתיים לא הגיע דרך הערוץ.
+          if (wasDown) { wasDown = false; void probeFreshness(queryClient, 0); }
+          return;
+        }
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          wasDown = true;
+          setChannelState('down');
+          if (reconnectTimer) return;
+          const delay = RECONNECT_DELAYS_MS[Math.min(attempt, RECONNECT_DELAYS_MS.length - 1)];
+          attempt += 1;
+          reconnectTimer = setTimeout(() => { reconnectTimer = undefined; open(); }, delay);
+        }
+      });
+    };
+
+    open();
+
+    // שכבה 1: בדיקת שינויים כל דקה, ובכל חזרה לחלון / לרשת.
+    probe();
+    const interval = setInterval(() => { if (document.visibilityState !== 'hidden') probe(); }, PROBE_EVERY_MS);
+    const onVisible = () => { if (document.visibilityState === 'visible') probe(); };
+    window.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', probe);
+    window.addEventListener('online', probe);
 
     return () => {
+      disposed = true;
       if (timer) clearTimeout(timer);
-      supabase.removeChannel(channel);
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      clearInterval(interval);
+      window.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', probe);
+      window.removeEventListener('online', probe);
+      if (channel) void supabase.removeChannel(channel);
     };
   }, [queryClient, loading]);
 }

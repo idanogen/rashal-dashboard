@@ -1,5 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabaseAdmin } from './_lib/supabase-admin.js';
+import { priorityLocalToUtc } from './_lib/priority-time.js';
+import { requireUser } from './_lib/require-user.js';
 
 // Priority OData Pull — sync endpoint (see docs/SYNC-PULL-PLAN.md)
 //
@@ -47,7 +49,14 @@ async function getWatermark(key: string, fallbackDays: number): Promise<Date> {
   return d;
 }
 
+// ⭐ סימן המים רק מתקדם. הקריאה היומית המלאה של שבועיים אחורה (07/09/2026)
+// מגישה שורות ישנות דרך אותה תיבה, ומקסימום התאריך שלהן יכול להיות מוקדם
+// מהסימן הנוכחי. בלי הגנה זה היה מזיז את הסימן אחורה ומושך מחדש ימים שלמים.
 async function setWatermark(key: string, iso: string) {
+  const { data } = await supabaseAdmin
+    .from('sync_state').select('watermark').eq('key', key).maybeSingle();
+  const cur = data?.watermark ? new Date(data.watermark as string).getTime() : 0;
+  if (new Date(iso).getTime() <= cur) return;
   const { error } = await supabaseAdmin
     .from('sync_state')
     .upsert({ key, watermark: iso, updated_at: new Date().toISOString() });
@@ -106,7 +115,7 @@ function maxDate(rows: Row[], field: string): string | null {
 // ---------------------------------------------------------------------------
 // GET — watermarks for the Make scenario's $filter clauses
 // ---------------------------------------------------------------------------
-async function handleGet(res: VercelResponse) {
+async function handleGet(res: VercelResponse, invoiceDays: number) {
   // Overlap windows: ORDERS.STATUSDATE has DAY granularity → look back a full
   // extra day. DOCUMENTS_Q.STATUSDATE has minute granularity → 15 min is plenty.
   const [orders, calls, customers, pickups, notes] = await Promise.all([
@@ -129,7 +138,10 @@ async function handleGet(res: VercelResponse) {
   // finalised later would sit "open" on the dashboard forever.
   // Instead the invoice pull always re-reads a fixed rolling window. Volume is
   // small (~1,000 invoices per quarter), so re-reading is cheap and correct.
-  const INVOICE_REPULL_DAYS = 120;
+  // 07/09/2026: החלון הוא פרמטר. הריצה השעתית מבקשת 30 יום (כ-500 שורות),
+  // והריצה הלילית 120 יום. לפני כן 120 יום נקראו כל שעה, כ-2,100 שורות
+  // בכל ריצה, שליש ממכסת השורות החודשית על מסמכים שלא זזו.
+  const INVOICE_REPULL_DAYS = Number.isFinite(invoiceDays) && invoiceDays > 0 ? Math.min(400, invoiceDays) : 30;
   const invoicesFrom = new Date();
   invoicesFrom.setUTCDate(invoicesFrom.getUTCDate() - INVOICE_REPULL_DAYS);
 
@@ -674,7 +686,8 @@ async function upsertServiceCalls(rows: Row[], backfill = false) {
       health_fund: s(r.Y_2632_5_ESH),
       opened_by: s(r.SUSERLOGIN),
       customer_status: 'לקוח קיים',
-      created_at: s(r.STARTDATE) ?? new Date().toISOString(),
+      // 🔴 שעון ישראל מסומן Z אצל פריוריטי; בלי ההמרה השעה במסך מאוחרת ב-3.
+      created_at: priorityLocalToUtc(s(r.STARTDATE)) ?? new Date().toISOString(),
       // פרטי מכשיר (עמי #4)
       device_serial: s(r.SERNUM),
       device_name: s(r.PARTNAME),
@@ -808,7 +821,7 @@ async function upsertPickups(rows: Row[], backfill = false) {
         total_qty: num(r.TOTQUANT),
         total_price: num(r.TOTPRICE),
         lines: mapPickupLines(r),
-        priority_udate: s(r.UDATE),
+        priority_udate: priorityLocalToUtc(s(r.UDATE)),
         // initial operational status derived from Priority (סופית→נאסף etc.),
         // open drafts start as 'ממתין לתאום'.
         pickup_status: pickupStatusFromPriority(s(r.STATDES)) ?? 'ממתין לתאום',
@@ -824,7 +837,7 @@ async function upsertPickups(rows: Row[], backfill = false) {
       const u: Row = {
         customer_number: s(r.CUSTNAME),
         priority_status: s(r.STATDES),
-        priority_udate: s(r.UDATE),
+        priority_udate: priorityLocalToUtc(s(r.UDATE)),
       };
       const name = s(r.CDES); if (name) u.customer_name = name;
       if (c.phone) u.phone = c.phone;
@@ -918,7 +931,7 @@ const mapDeliveryNote = (r: Row): Row => ({
   opened_by: s(r.USERLOGIN),
   total_qty: num(r.TOTQUANT),
   total_price: num(r.TOTPRICE),
-  priority_udate: s(r.UDATE),
+  priority_udate: priorityLocalToUtc(s(r.UDATE)),
 });
 
 // חשבונית מרכזת. אצל ר.שעל זהו מקור החיוב בפועל: 2,998 ב-2026 מול 54 ב-AINVOICES.
@@ -977,14 +990,62 @@ const mapInvoice = (r: Row): Row => ({
 });
 
 // ---------------------------------------------------------------------------
+const PULL_NOW_MIN_GAP_MS = 60_000;
+
+async function pullNow(req: VercelRequest): Promise<Record<string, unknown>> {
+  const user = await requireUser(req);
+  if (!user) throw new Error('unauthorized');
+  const { data: prof } = await supabaseAdmin.from('profiles').select('role').eq('id', user.id).maybeSingle();
+  const role = String(prof?.role ?? '');
+  // כל עובד משרד. נהג לא מושך מפריוריטי, המסך שלו מתעדכן מהמשיכה המתוזמנת.
+  if (!role || role === 'driver') throw new Error('forbidden');
+
+  const { data: last } = await supabaseAdmin
+    .from('sync_runs').select('id, started_at, status')
+    .eq('job', 'pull-core').order('started_at', { ascending: false }).limit(1).maybeSingle();
+  const lastMs = last?.started_at ? new Date(last.started_at as string).getTime() : 0;
+  if (Date.now() - lastMs < PULL_NOW_MIN_GAP_MS) {
+    return { ok: true, skipped: 'recent', last_started_at: last?.started_at ?? null };
+  }
+
+  const base = (process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL ?? '').replace(/\/$/, '');
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
+  const r = await fetch(`${base}/functions/v1/rashal-sync`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${key}`,
+      'x-sync-secret': SECRET!,
+    },
+    body: JSON.stringify({ job: 'pull-core', trigger: `user:${user.id}` }),
+  });
+  const text = await r.text();
+  if (!r.ok) throw new Error(`sync function HTTP ${r.status}: ${text.slice(0, 200)}`);
+  let out: Record<string, unknown> = {};
+  try { out = JSON.parse(text); } catch { out = { raw: text.slice(0, 200) }; }
+  return { ok: true, ...out };
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!SECRET) return res.status(500).json({ error: 'PRIORITY_SYNC_SECRET not configured' });
+
+  // ⭐ "משוך עכשיו" מהכותרת (07/09/2026). מאומת במשתמש ולא בסוד: הסדרנית
+  // לוחצת, ואנחנו מפעילים את פונקציית הסנכרון עם הסוד מכאן. פעם בדקה לכל
+  // היותר, כדי שלחיצה כפולה במשרד לא תייצר שתי משיכות מקבילות מפריוריטי.
+  if (req.method === 'POST' && String(req.query.action ?? '') === 'pull-now') {
+    try { return res.status(200).json(await pullNow(req)); }
+    catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return res.status(msg === 'unauthorized' ? 401 : msg === 'forbidden' ? 403 : 500).json({ error: msg });
+    }
+  }
+
   if (req.headers['x-sync-secret'] !== SECRET) {
     return res.status(401).json({ error: 'bad secret' });
   }
 
   try {
-    if (req.method === 'GET') return await handleGet(res);
+    if (req.method === 'GET') return await handleGet(res, Number(req.query.invoiceDays ?? 30));
 
     if (req.method === 'POST') {
       const kind = String(req.query.kind ?? '');

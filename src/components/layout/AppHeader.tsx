@@ -1,4 +1,4 @@
-import { RefreshCw, LogOut, Settings, ChevronDown } from 'lucide-react';
+import { RefreshCw, LogOut, Settings, ChevronDown, DownloadCloud } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -17,15 +17,7 @@ import { useCurrentProfile } from '@/hooks/useProfile';
 import { BrandMark } from '@/components/BrandMark';
 import { screenAllow } from '@/lib/screen-access';
 import { ROLE_LABELS } from '@/types/profile';
-
-// שאילתות הנתונים שהכותרת מדווחת עליהן.
-const TRACKED_KEYS = new Set([
-  'orders',
-  'serviceCalls',
-  'pickups',
-  'calendarStops',
-  'newCustomers',
-]);
+import { useFreshness, pullNow, formatAgo, isWorkHoursIL } from '@/lib/sync-freshness';
 
 /**
  * הקישורים בתפריט.
@@ -69,23 +61,6 @@ const navLinkClass = ({ isActive }: { isActive: boolean }) =>
       : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
   );
 
-/** ניסוח עברי תקין. "לפני 1 דקות" ו-"לפני 2822 דקות" שניהם לא תקינים. */
-function formatAgo(ms: number): string {
-  const minutes = Math.floor(ms / 60_000);
-  if (minutes < 1) return 'עכשיו';
-  if (minutes === 1) return 'לפני דקה';
-  if (minutes === 2) return 'לפני שתי דקות';
-  if (minutes < 60) return `לפני ${minutes} דקות`;
-  const hours = Math.floor(minutes / 60);
-  if (hours === 1) return 'לפני שעה';
-  if (hours === 2) return 'לפני שעתיים';
-  if (hours < 24) return `לפני ${hours} שעות`;
-  const days = Math.floor(hours / 24);
-  if (days === 1) return 'לפני יום';
-  if (days === 2) return 'לפני יומיים';
-  return `לפני ${days} ימים`;
-}
-
 /** האות הראשונה לעיגול. מדלגת על תווים שאינם אות, כדי ש-"ר.שעל" לא ייתן נקודה. */
 function userInitial(name?: string): string {
   const m = (name ?? '').match(/[\p{L}\p{N}]/u);
@@ -98,38 +73,21 @@ export function AppHeader() {
   const { data: profile } = useCurrentProfile();
   const role = profile?.role;
   const canSee = (to: string) => !!role && screenAllow(to).includes(role);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  // 🔴 עד כה נמדד הזמן שעבר מאז שהטאב נפתח, וזה נקרא "עודכן". טאב שנשאר
-  // פתוח לילה שלם הציג "עודכן לפני 2822 דקות" בזמן שהנתונים היו טריים.
-  // מודדים עכשיו את המשיכה האחרונה שבאמת הצליחה מול Supabase.
-  const [lastUpdated, setLastUpdated] = useState<number>(() => Date.now());
-  const [timeAgo, setTimeAgo] = useState('עכשיו');
-
+  // 🔴 07/09/2026: עד כה נמדד הזמן מאז הטעינה האחרונה מהמסד, וזה נקרא
+  // "עודכן". זה לא ענה על השאלה שהמשרד שואל: "מתי בפעם האחרונה משכתם
+  // מפריוריטי". מהיום השעון הוא ריצת הסנכרון האחרונה שהצליחה, מהשרת.
+  const fresh = useFreshness();
+  const [, force] = useState(0);
   useEffect(() => {
-    const cache = queryClient.getQueryCache();
-    const readLatestFetch = () => {
-      let latest = 0;
-      for (const query of cache.getAll()) {
-        const root = query.queryKey[0];
-        if (typeof root !== 'string' || !TRACKED_KEYS.has(root)) continue;
-        if (query.state.dataUpdatedAt > latest) latest = query.state.dataUpdatedAt;
-      }
-      // רק קדימה, כדי שמשיכה שנכשלה לא תחזיר את השעון אחורה.
-      if (latest > 0) setLastUpdated((prev) => (latest > prev ? latest : prev));
-    };
-    readLatestFetch();
-    return cache.subscribe(readLatestFetch);
-  }, [queryClient]);
-
-  useEffect(() => {
-    const tick = () => setTimeAgo(formatAgo(Date.now() - lastUpdated));
-    tick();
-    const interval = setInterval(tick, 15_000);
+    const interval = setInterval(() => force((n) => n + 1), 15_000);
     return () => clearInterval(interval);
-  }, [lastUpdated]);
-
-  // מעל שעה בלי משיכה מוצלחת — שווה לרענן.
-  const isStale = Date.now() - lastUpdated > 60 * 60_000;
+  }, []);
+  const pullAgoMs = fresh.pullAt ? Date.now() - new Date(fresh.pullAt).getTime() : null;
+  const timeAgo = pullAgoMs === null ? 'טוען' : formatAgo(pullAgoMs);
+  // מעל 30 דקות בשעות העבודה, או ערוץ שנפל ולא חזר: מכתימים.
+  const isStale =
+    (pullAgoMs !== null && pullAgoMs > 30 * 60_000 && isWorkHoursIL()) || fresh.channel === 'down';
+  const [pullNote, setPullNote] = useState<string | null>(null);
 
   // הגובה האמיתי של הכותרת נמסר כמשתנה CSS, כדי שאלמנטים דביקים אחרים
   // (שורת המתגים במסך הסדרן) ייצמדו בדיוק מתחתיה. הגובה משתנה בין מובייל
@@ -149,18 +107,16 @@ export function AppHeader() {
     return () => observer.disconnect();
   }, []);
 
-  async function handleRefresh() {
-    setIsRefreshing(true);
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['orders'] }),
-      queryClient.invalidateQueries({ queryKey: ['serviceCalls'] }),
-      queryClient.invalidateQueries({ queryKey: ['pickups'] }),
-      queryClient.invalidateQueries({ queryKey: ['calendarStops'] }),
-      queryClient.invalidateQueries({ queryKey: ['newCustomers'] }),
-    ]);
-    setLastUpdated(Date.now());
-    setTimeAgo('עכשיו');
-    setTimeout(() => setIsRefreshing(false), 600);
+  /**
+   * "משוך עכשיו": משיכה מיידית מפריוריטי (פעם בדקה לכל היותר, השרת שומר),
+   * ואז רענון של מה שהשתנה. הלחיצה השנייה בתוך דקה מקבלת "כבר נמשך".
+   */
+  async function handlePullNow() {
+    setPullNote(null);
+    const r = await pullNow(queryClient);
+    if (r.ok) setPullNote(r.skipped === 'recent' ? 'נמשך לפני פחות מדקה' : 'נמשך');
+    else setPullNote(r.skipped === 'busy' ? null : 'המשיכה נכשלה');
+    setTimeout(() => setPullNote(null), 4_000);
   }
 
   return (
@@ -235,21 +191,33 @@ export function AppHeader() {
           )}
           <span
             className={cn(
-              'hidden text-xs sm:block',
+              'hidden items-center gap-1.5 text-xs sm:flex',
               isStale ? 'font-medium text-amber-600' : 'text-muted-foreground'
             )}
-            title="הזמן שעבר מאז המשיכה האחרונה של הנתונים מהשרת. שינויים מגיעים גם בזמן אמת, וכפתור הרענון מושך הכל מחדש."
+            title={
+              fresh.channel === 'down'
+                ? 'הערוץ החי נפל ומנסה להתחבר מחדש. בינתיים המסך בודק שינויים פעם בדקה.'
+                : 'מתי המשיכה האחרונה מפריוריטי הצליחה. המסך בודק שינויים פעם בדקה ובכל חזרה לחלון, ושינויים מגיעים גם בזמן אמת.'
+            }
+            data-testid="sync-freshness"
           >
-            עודכן {timeAgo}
+            <span
+              aria-hidden
+              className={cn('inline-block h-2 w-2 rounded-full', isStale ? 'bg-amber-500' : 'bg-emerald-500')}
+            />
+            {pullNote ?? <>סונכרן מפריוריטי {timeAgo}</>}
           </span>
           <Button
             variant="outline"
             size="sm"
-            onClick={handleRefresh}
-            disabled={isRefreshing}
+            onClick={handlePullNow}
+            disabled={fresh.pulling}
+            title="משיכה מיידית מפריוריטי, למקרה של 'רגע רשמתי שם'. פעם בדקה לכל היותר."
           >
-            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">רענון</span>
+            {fresh.pulling
+              ? <RefreshCw className="h-4 w-4 animate-spin" />
+              : <DownloadCloud className="h-4 w-4" />}
+            <span className="hidden sm:inline">משוך עכשיו</span>
           </Button>
           <Button
             variant="ghost"
