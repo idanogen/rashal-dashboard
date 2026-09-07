@@ -678,7 +678,8 @@ function closedOn(r: Row): string | null {
   const e = s(r.EDATE)?.slice(0, 10);
   if (e) return e;
   const st = s(r.CALLSTATUSCODE) ?? '';
-  if (st === 'בוצעה' || st === 'סופית' || st === 'מבוטלת') return s(r.STATUSDATE)?.slice(0, 10) ?? null;
+  // 'טופל טכנאי' נמצא בנתונים ב-07/09/2026 ואינו ברשימת הסטטוסים שהכרנו.
+  if (st === 'בוצעה' || st === 'סופית' || st === 'מבוטלת' || st === 'טופל טכנאי') return s(r.STATUSDATE)?.slice(0, 10) ?? null;
   return null;
 }
 

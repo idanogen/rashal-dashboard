@@ -182,7 +182,9 @@ begin
              else null
            end as match_kind
       from public.orders o cross join me m
+     -- 07/09/2026: שאריות ה-webhook הישן הן כפילויות של מסמכי פריוריטי ולא היסטוריה.
      where o.duplicate_of is null
+       and coalesce(o.archived_reason, '') <> 'webhook-legacy-20260805'
   ),
   o_m as (select * from o where match_kind is not null),
   o_full as (
@@ -214,6 +216,7 @@ begin
            end as match_kind
       from public.service_calls c cross join me m
      where c.duplicate_of is null
+       and coalesce(c.archived_reason, '') <> 'webhook-legacy-20260805'
   ),
   c_m as (select * from c where match_kind is not null),
   c_full as (
@@ -470,15 +473,19 @@ begin
     -- 07/09/2026: קריאה שנסגרה אומרת מתי ומי (טכנאי בקריאה פרונטלית; בטלפונית
     -- מי במשרד סגר). פריוריטי לא מחזיקה טקסט של "מה נעשה", ולכן זה כל מה שיש.
     select c.created_at, 'call',
-           case when c.priority_status in ('בוצעה','סופית') then 'קריאת שירות בוצעה'
+           case when c.priority_status in ('בוצעה','סופית','טופל טכנאי') then 'קריאת שירות בוצעה'
                 when c.priority_status = 'מבוטלת' then 'קריאת שירות בוטלה'
                 else 'קריאת שירות נפתחה' end,
            coalesce(c.priority_call_id, ''),
            nullif(concat_ws(' · ', c.device_name, c.fault_desc,
+             -- "מי סגר" מלא ב-100% מהקריאות, גם הפתוחות (זה "מי נגע אחרון"),
+             -- ולכן הוא מוצג רק כשהקריאה נסגרה, ובקריאה משובצת כמי ששובץ.
              case when c.closed_by is null then null
-                  when c.call_type = 'פרונטלית' then 'טכנאי ' || c.closed_by
-                  else 'טופל טלפונית: ' || c.closed_by end,
-             case when c.closed_on is not null and c.priority_status in ('בוצעה','סופית')
+                  when c.priority_status in ('בוצעה','סופית','טופל טכנאי','מבוטלת') and c.call_type = 'פרונטלית' then 'טכנאי ' || c.closed_by
+                  when c.priority_status in ('בוצעה','סופית','טופל טכנאי','מבוטלת') then 'טופל טלפונית: ' || c.closed_by
+                  when c.priority_status = 'שובצה' then 'שובץ ל' || c.closed_by
+                  else null end,
+             case when c.closed_on is not null and c.priority_status in ('בוצעה','סופית','טופל טכנאי')
                   then 'סיום ' || to_char(c.closed_on, 'DD/MM/YY') end), ''),
            c.match_kind, c.id
       from c_full c

@@ -31,12 +31,14 @@ language sql stable security definer set search_path = public as $$
       select o.created_at::date d, o.order_status::text st, o.priority_order_id ref
         from public.orders o
        where o.customer_number = cs.customer_number and o.duplicate_of is null
+         and coalesce(o.archived_reason,'') <> 'webhook-legacy-20260805'
        order by o.created_at desc limit 1) lo on cs.customer_number is not null
     left join lateral (
       select coalesce(c.closed_on, c.created_at::date) d, c.service_call_status::text st,
              c.priority_call_id ref, c.closed_by by, c.call_type ct
         from public.service_calls c
        where c.customer_number = cs.customer_number and c.duplicate_of is null
+         and coalesce(c.archived_reason,'') <> 'webhook-legacy-20260805'
        order by c.created_at desc limit 1) lc on cs.customer_number is not null
     left join lateral (
       select coalesce(n.distributed_on, n.doc_date) d
@@ -98,7 +100,7 @@ language sql stable security definer set search_path = public as $$
            max(coalesce(c.closed_on, c.created_at::date)) d,
            (array_agg(c.closed_by order by c.created_at desc))[1] by
       from keys ky join public.service_calls c on ky.n is not null and c.customer_number = ky.n
-     where c.priority_status in ('בוצעה','סופית') and c.duplicate_of is null
+     where c.priority_status in ('בוצעה','סופית','טופל טכנאי') and c.duplicate_of is null
      group by ky.k
   )
   select ky.k, coalesce(v.visits,0)::int, v.d, v.dr, v.st,
@@ -116,4 +118,4 @@ grant execute on function public.customer_last_touch(jsonb) to authenticated, se
 create index if not exists calendar_stops_name_phone_closed_idx
   on public.calendar_stops (customer_name, delivery_date desc) where status in ('completed','not_completed');
 create index if not exists service_calls_customer_done_idx
-  on public.service_calls (customer_number, created_at desc) where priority_status in ('בוצעה','סופית');
+  on public.service_calls (customer_number, created_at desc) where priority_status in ('בוצעה','סופית','טופל טכנאי');
