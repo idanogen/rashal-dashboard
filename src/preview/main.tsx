@@ -13,6 +13,7 @@ import { StrictMode } from 'react';
 import type React from 'react';
 import { createRoot } from 'react-dom/client';
 import { RailScene } from './RailScene';
+import { HeaderScene } from './HeaderScene';
 import '@/index.css';
 import { CustomerCardBody } from '@/components/customer/CustomerCard';
 import { LastVisitBadge } from '@/components/customer/LastVisitBadge';
@@ -600,6 +601,7 @@ function DeadEndPreview({ withMatches }: { withMatches: boolean }) {
 const VIEWS: Record<string, React.ReactElement> = {
   /** מסילת הניווט של מסך הסדרן (06/09/2026). */
   rail: <RailScene />,
+  header: <HeaderScene />,
   /** מסך פתיחה לסדרן (עידן, 02/09/2026). כל המספרים אמיתיים, נמדדו במסד. */
   'dispatcher-home': (
     <div className="min-h-screen bg-slate-50 py-4">

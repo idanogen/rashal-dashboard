@@ -43,7 +43,7 @@
 ### State & Data
 - **TanStack React Query** 5.90.20 - ניהול state וcaching
 - **Supabase** (PostgreSQL + Auth + Realtime + Storage) - מסד הנתונים של המערכת
-- **`useRealtimeSync`** - מאזין ל-postgres_changes על `orders`, `routes`, `service_calls` ומעדכן את ה-cache אוטומטית
+- **`useRealtimeSync`** - שלוש שכבות רענון (07/09/2026): ערוץ postgres_changes על 5 הטבלאות עם חיבור מחדש, בדיקת שינויים כל דקה ובחזרה לחלון דרך `sync_freshness()` (רק מפתח שזז נטען), וחיווי "סונכרן מפריוריטי לפני X" + "משוך עכשיו" בכותרת (`src/lib/sync-freshness.ts`)
 
 ### Charts & Visualization
 - **Recharts** 3.7.0 - תרשימים
@@ -336,7 +336,7 @@ npm run lint       # Linting
 ### Utilities
 | Hook | קובץ | תיאור |
 |------|-------|--------|
-| `useRealtimeSync()` | hooks/useRealtimeSync.ts | Supabase channel על 4 הטבלאות → invalidate cache |
+| `useRealtimeSync()` | hooks/useRealtimeSync.ts | ערוץ על 5 טבלאות + חיבור מחדש + בדיקת שינויים כל דקה (`sync_freshness`) → invalidate רק מה שזז |
 | `useRouteOptimizer()` | hooks/useRouteOptimizer.ts | Nearest Neighbor מהמשרד |
 
 ---

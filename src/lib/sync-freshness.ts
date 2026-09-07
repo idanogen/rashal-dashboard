@@ -43,6 +43,11 @@ function set(patch: Partial<Freshness>) {
   for (const l of listeners) l();
 }
 
+/** לצילומי preview בלבד: מציב מצב בלי שרת. */
+export function seedFreshnessForPreview(patch: Partial<Freshness>) {
+  set(patch);
+}
+
 export function setChannelState(channel: Freshness['channel']) {
   if (state.channel !== channel) set({ channel });
 }
