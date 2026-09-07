@@ -24,6 +24,10 @@ const TONE_CLASS: Record<Tone, string> = {
   new: 'text-slate-400',
 };
 
+function latest(h: HistoryHit): string {
+  return [h.lastVisitDate, h.lastNoteDate, h.lastCallDate, h.lastOrderDate].filter(Boolean).sort().at(-1) ?? '';
+}
+
 function useDebounced(value: string, ms: number): string {
   const [v, setV] = useState(value);
   useEffect(() => {
@@ -43,14 +47,17 @@ export function HistoryStrip({
   const q = useDebounced(query.trim(), 300);
   const { data, isFetching, isError } = useQuery({
     queryKey: ['history-search', q],
-    queryFn: () => historySearch(q, 8),
+    queryFn: () => historySearch(q, 12),
     enabled: q.length >= 2,
     staleTime: 60_000,
   });
   if (q.length < 2) return null;
+  // ⭐ הכי טרי למעלה: "חייט" מחזיר גם לקוחות מ-2014, ומי שאצלו קרה משהו
+  // החודש צריך להיות בשורה הראשונה ולא לפי האלף-בית.
+  const hits = [...(data ?? [])].sort((a, b) => latest(b).localeCompare(latest(a)));
   return (
     <HistoryStripView
-      hits={data ?? []}
+      hits={hits}
       loading={isFetching && !data}
       error={isError}
       onScheduleVisit={onScheduleVisit}

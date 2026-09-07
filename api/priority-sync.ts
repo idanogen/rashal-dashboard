@@ -670,6 +670,18 @@ async function upsertOrders(rows: Row[], backfill = false) {
 // ---------------------------------------------------------------------------
 // service_calls ← DOCUMENTS_Q
 // ---------------------------------------------------------------------------
+/**
+ * מתי הקריאה הסתיימה. `EDATE` מלא רק ב-59% מהקריאות הסגורות (נמדד 07/09/2026),
+ * ולכן בקריאה שנסגרה נופלים לתאריך הסטטוס, שהוא רגע הסגירה. בקריאה פתוחה: ריק.
+ */
+function closedOn(r: Row): string | null {
+  const e = s(r.EDATE)?.slice(0, 10);
+  if (e) return e;
+  const st = s(r.CALLSTATUSCODE) ?? '';
+  if (st === 'בוצעה' || st === 'סופית' || st === 'מבוטלת') return s(r.STATUSDATE)?.slice(0, 10) ?? null;
+  return null;
+}
+
 async function upsertServiceCalls(rows: Row[], backfill = false) {
   const stats = await runAdoption(rows, {
     table: 'service_calls',
@@ -703,7 +715,7 @@ async function upsertServiceCalls(rows: Row[], backfill = false) {
       // ⭐ "מי סגר" ו"מתי סיים" (07/09/2026). בקריאה פרונטלית זה הטכנאי.
       // בטלפונית זה מי במשרד שסגר. מוצג לפי סוג הקריאה.
       closed_by: s(r.TECHNICIANLOGIN),
-      closed_on: s(r.EDATE)?.slice(0, 10) ?? null,
+      closed_on: closedOn(r),
       // service_call_status: terminal Priority states land closed; anything
       // still open falls through to the DB default 'קריאה חדשה'
       ...(CALL_TERMINAL[s(r.CALLSTATUSCODE) ?? '']
@@ -739,7 +751,7 @@ async function upsertServiceCalls(rows: Row[], backfill = false) {
       const sy = s(r.SYMDES); if (sy) u.symptom_desc = sy;
       const ct = s(r.CALLTYPECODE); if (ct) u.call_type = ct;
       const cb = s(r.TECHNICIANLOGIN); if (cb) u.closed_by = cb;
-      const co = s(r.EDATE)?.slice(0, 10); if (co) u.closed_on = co;
+      const co = closedOn(r); if (co) u.closed_on = co;
       const st = s(r.SERVTDES); if (st) u.service_type = st;
       return u;
     },
