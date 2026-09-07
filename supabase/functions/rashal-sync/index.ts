@@ -933,6 +933,49 @@ async function probeFilters(
   return out;
 }
 
+
+/**
+ * כיסוי שדות: כמה מתוך N השורות האחרונות נושאות ערך בכל שדה.
+ * ⭐ נבנה 07/09/2026 לפני שבונים "מה היה שם" על SOLUTIONDES/TECHNICIANLOGIN:
+ * שדה שקיים אבל ריק מייצר ציר היסטוריה ריק, ולכן סופרים לפני שמבטיחים.
+ * קריאה בלבד, ישות מרשימה סגורה, עד 500 שורות.
+ */
+async function probeCoverage(entity: string, fields: string[], filter: string, orderBy: string, top: number): Promise<Record<string, unknown>> {
+  const ALLOWED = ["CUSTOMERS", "ORDERS", "DOCUMENTS_D", "DOCUMENTS_N", "DOCUMENTS_Q", "AINVOICES", "CINVOICES", "GENINVOICES"];
+  if (!ALLOWED.includes(entity)) return { error: "entity not allowed" };
+  const safe = fields.filter((f) => /^[A-Z0-9_]{1,40}$/.test(f)).slice(0, 30);
+  const auth = { headers: { Authorization: basicAuth(), "User-Agent": UA, Accept: "application/json" } };
+  const url = `${PRIORITY}/${entity}?$select=${safe.join(",")}` +
+    (filter ? `&$filter=${encodeURIComponent(filter)}` : "") +
+    `&$orderby=${orderBy}%20desc&$top=${Math.min(500, Math.max(1, top))}`;
+  const res = await fetch(url, auth);
+  const body = await res.text();
+  if (!res.ok) return { error: `HTTP ${res.status}`, detail: body.slice(0, 300) };
+  const rows = (JSON.parse(body)?.value ?? []) as Row[];
+  const filled: Record<string, number> = {};
+  const samples: Record<string, unknown[]> = {};
+  // התפלגות ערכים (עד 12 הנפוצים) לכל שדה: "מי" ו"מה" נענים רק ככה,
+  // כי שלוש דוגמאות לא אומרות אם השדה מחזיק טכנאים או משתמשי משרד.
+  const dist: Record<string, Record<string, number>> = {};
+  for (const f of safe) { filled[f] = 0; samples[f] = []; dist[f] = {}; }
+  for (const r of rows) {
+    for (const f of safe) {
+      const v = r[f];
+      if (v !== null && v !== undefined && String(v).trim() !== "") {
+        filled[f]++;
+        if (samples[f].length < 3) samples[f].push(v);
+        const k = String(v).slice(0, 40);
+        dist[f][k] = (dist[f][k] ?? 0) + 1;
+      }
+    }
+  }
+  const topValues: Record<string, [string, number][]> = {};
+  for (const f of safe) {
+    topValues[f] = Object.entries(dist[f]).sort((a, b) => b[1] - a[1]).slice(0, 12);
+  }
+  return { entity, rows: rows.length, filled, samples, top: topValues };
+}
+
 async function probeChanges(since: string, custname: string | null): Promise<Record<string, unknown>> {
   const auth = { headers: { Authorization: basicAuth(), "User-Agent": UA, Accept: "application/json" } };
   const out: Record<string, unknown> = { since, custname };
@@ -1349,6 +1392,12 @@ Deno.serve(async (req: Request) => {
     const ent = ALLOWED.includes(String(body?.entity ?? "")) ? String(body.entity) : "CUSTOMERS";
     const sel = String(body?.select ?? (ent === "CUSTOMERS" ? "CUSTNAME,PHONE" : "IVNUM,CUSTNAME,IVDATE,IVRECONDATE,TOTPRICE"));
     return new Response(JSON.stringify(await probeFilters(filters, mode, expand, ent, sel), null, 2),
+      { headers: { "Content-Type": "application/json" } });
+  }
+  if (job === "probe-coverage") {
+    const fields = Array.isArray(body?.fields) ? (body.fields as unknown[]).map(String) : [];
+    return new Response(JSON.stringify(await probeCoverage(
+      String(body?.entity ?? ""), fields, String(body?.filter ?? ""), String(body?.orderBy ?? "STATUSDATE"), Number(body?.top ?? 300)), null, 2),
       { headers: { "Content-Type": "application/json" } });
   }
   if (job === "probe-changes") {
