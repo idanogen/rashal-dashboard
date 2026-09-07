@@ -30,13 +30,29 @@ export interface CustomerHit {
   last_visit_outcome: 'completed' | 'not_completed' | null;
 }
 
+/** הודעה מהשרשור של העצירה, כפי שהנהג (או המשרד) כתב אותה. */
+export interface TimelineMessage {
+  by: string | null;
+  text: string;
+  at: string;
+}
+
 export interface TimelineEvent {
   at: string;
-  kind: 'order' | 'call' | 'pickup' | 'stop' | 'note' | 'survey' | 'wa' | 'equipment' | 'returned';
+  /**
+   * 07/09/2026: `photo` ו-`comment` הן הודעות ותמונות מהשטח שאינן שייכות
+   * לביקור שכבר בוצע (על הזמנה, קריאה, או עצירה שטרם בוצעה). מה שכן שייך
+   * לביקור יושב על שורת ה-`stop` עצמה ב-`messages` ו-`photos`.
+   */
+  kind: 'order' | 'call' | 'pickup' | 'stop' | 'note' | 'survey' | 'wa' | 'equipment' | 'returned' | 'photo' | 'comment';
   title: string;
   ref: string | null;
   detail: string | null;
   match: MatchKind | null;
+  /** מי כתב / צילם / ביקר */
+  by?: string | null;
+  messages?: TimelineMessage[];
+  photos?: string[];
 }
 
 export interface CustomerCardData {

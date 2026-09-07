@@ -264,7 +264,35 @@ begin
      where cs.status in ('completed', 'not_completed')
        and (cs.order_id in (select id from o_m)
          or cs.service_call_id in (select id from c_m)
-         or cs.pickup_id in (select id from p_m))
+         or cs.pickup_id in (select id from p_m)
+         -- 07/09/2026: משימה יזומה ביומן ("שבץ ביקור") אין לה הזמנה, קריאה או
+         -- איסוף, והיא נעדרה מהציר לגמרי (225 עצירות שבוצעו, נמדד 07/09).
+         -- מזהים אותה לפי מספר לקוח, ובלעדיו לפי שם וטלפון.
+         or (cs.order_id is null and cs.service_call_id is null and cs.pickup_id is null
+             and ((v_num is not null and cs.customer_number = v_num)
+               or (v_num is null and v_name is not null
+                   and lower(btrim(cs.customer_name)) = lower(btrim(v_name))
+                   and (v_phone is null or public.wa_normalize_phone(cs.phone) = v_phone)))))
+  ),
+
+  -- ── השרשור: הודעות ותמונות מהשטח ──────────────────────
+  -- 🔴 07/09/2026, עידן: "למה אני לא רואה את התמונות שהוא שלח ואת ההערות
+  -- של הנהג שהיה אצלו בביקורים?" כי הכרטיס לא קרא את `timeline_events`
+  -- מעולם. שם חיות 587 תמונות ו-1,014 הודעות מ-90 יום (נמדד 07/09), והציר
+  -- הראה רק "בוצע בשטח · נהג". הודעה או תמונה על עצירה שכבר בוצעה נכנסת
+  -- לתוך שורת הביקור; כל השאר (על הזמנה, קריאה, עצירה שטרם בוצעה) הן
+  -- שורות משלהן על הציר.
+  thread as (
+    select te.*
+      from public.timeline_events te
+     where te.type in ('comment', 'file_upload')
+       and (te.order_id in (select id from o_m)
+         or te.service_call_id in (select id from c_m)
+         or te.calendar_stop_id in (select id from stops)
+         or (v_num is not null and te.customer_number = v_num))
+       and (te.type <> 'file_upload'
+            or jsonb_array_length(coalesce(te.metadata->'imageUrls', '[]'::jsonb)) > 0)
+       and (te.type <> 'comment' or nullif(btrim(te.content), '') is not null)
   ),
 
   -- ── מסמכים ────────────────────────────────────────────
@@ -467,7 +495,7 @@ begin
     select o.created_at as at, 'order' as kind, 'הזמנה נפתחה' as title,
            coalesce(o.priority_order_id, '') as ref,
            nullif(concat_ws(' · ', o.order_status, o.agent), '') as detail,
-           o.match_kind, o.id as row_id
+           o.match_kind, o.id as row_id, null::jsonb as extra
       from o_full o
     union all
     -- 07/09/2026: קריאה שנסגרה אומרת מתי ומי (טכנאי בקריאה פרונטלית; בטלפונית
@@ -487,21 +515,48 @@ begin
                   else null end,
              case when c.closed_on is not null and c.priority_status in ('בוצעה','סופית','טופל טכנאי')
                   then 'סיום ' || to_char(c.closed_on, 'DD/MM/YY') end), ''),
-           c.match_kind, c.id
+           c.match_kind, c.id, null::jsonb
       from c_full c
     union all
     select p.created_at, 'pickup', 'איסוף נפתח',
            coalesce(p.priority_doc::text, ''),
            nullif(concat_ws(' · ', p.pickup_status::text, p.to_warehouse), ''),
-           p.match_kind, p.id
+           p.match_kind, p.id, null::jsonb
       from p_full p
     union all
     select coalesce(s.completed_at, s.delivery_date::timestamptz), 'stop',
            case when s.status = 'completed' then 'בוצע בשטח' else 'לא בוצע בשטח' end,
            coalesce(s.driver, ''),
            coalesce(s.resolution_note, s.notes),
-           'number', s.id
+           case when s.order_id is not null or s.service_call_id is not null or s.pickup_id is not null
+                  or (v_num is not null and s.customer_number = v_num) then 'number'
+                when v_phone is not null and public.wa_normalize_phone(s.phone) = v_phone then 'phone'
+                else 'name' end,
+           s.id,
+           -- מה הנהג כתב וצילם באותו ביקור, בתוך שורת הביקור עצמה.
+           jsonb_build_object(
+             'by', s.driver,
+             'messages', coalesce((
+               select jsonb_agg(jsonb_build_object('by', t.user_name, 'text', left(t.content, 240), 'at', t.created_at)
+                                order by t.created_at)
+                 from thread t where t.calendar_stop_id = s.id and t.type = 'comment'), '[]'::jsonb),
+             'photos', coalesce((
+               select jsonb_agg(u order by t.created_at)
+                 from thread t, jsonb_array_elements(coalesce(t.metadata->'imageUrls', '[]'::jsonb)) u
+                where t.calendar_stop_id = s.id and t.type = 'file_upload'), '[]'::jsonb))
       from stops s
+    union all
+    select te.created_at,
+           case when te.type = 'file_upload' then 'photo' else 'comment' end,
+           case when te.type = 'file_upload' then 'תמונה מהשטח' else 'הודעה בשרשור' end,
+           '',
+           case when te.type = 'file_upload' then null else left(te.content, 240) end,
+           'number', null::uuid,
+           jsonb_build_object('by', te.user_name,
+             'photos', case when te.type = 'file_upload'
+                            then coalesce(te.metadata->'imageUrls', '[]'::jsonb) else '[]'::jsonb end)
+      from thread te
+     where te.calendar_stop_id is null or te.calendar_stop_id not in (select id from stops)
     union all
     -- 07/09/2026: תאריך החלוקה בפועל הוא "מתי היינו אצלו" לתעודה.
     select coalesce(n.distributed_on, n.doc_date)::timestamptz, 'note',
@@ -510,11 +565,11 @@ begin
            nullif(concat_ws(' · ', n.status, case when n.invoiced = 'Y' then 'חויבה' end,
              case when n.distributed_on is not null and n.distributed_on <> n.doc_date
                   then 'תעודה מ-' || to_char(n.doc_date, 'DD/MM/YY') end), ''),
-           'number', n.id
+           'number', n.id, null::jsonb
       from notes n
     union all
     select s.answered_at, 'survey', 'סקר שביעות רצון',
-           coalesce(s.q1_satisfaction::text, ''), s.comment, 'number', s.id
+           coalesce(s.q1_satisfaction::text, ''), s.comment, 'number', s.id, null::jsonb
       from surveys s where s.answered_at is not null
     union all
     -- ⭐⭐ **הציוד עצמו על הציר.** עידן, 25/08/2026: "בציר הפעילות אני
@@ -539,7 +594,7 @@ begin
                   then 'באחריות עד ' || to_char(f.warranty, 'DD/MM/YYYY') end
            ), ''),
            case f.match_rank when 1 then 'number' when 2 then 'phone' else 'name' end,
-           null::uuid
+           null::uuid, null::jsonb
       from stock_final f
      where f.net > 0 and coalesce(f.installed, f.last_seen) is not null
     union all
@@ -547,14 +602,14 @@ begin
     -- שלמה, ובלעדיה נשארת רק שתיקה.
     select f.returned_at::timestamptz, 'returned',
            'נאסף בחזרה: ' || coalesce(f.part, nullif(f.descr, ''), 'פריט'),
-           '', nullif(f.descr, ''), 'number', null::uuid
+           '', nullif(f.descr, ''), 'number', null::uuid, null::jsonb
       from stock_final f
      where f.net <= 0 and f.returned_at is not null
     union all
     -- הודעות וואטסאפ: רק האחרונות, אחרת שיחה ארוכה בולעת את הציר.
     select w.sent_at, 'wa',
            case when w.direction = 'in' then 'הודעה מהלקוח' else 'הודעה ללקוח' end,
-           '', left(coalesce(w.body, ''), 140), 'phone', w.id
+           '', left(coalesce(w.body, ''), 140), 'phone', w.id, null::jsonb
       from public.wa_messages w
      where w.conversation_id in (select id from conv)
      order by 1 desc
@@ -636,10 +691,10 @@ begin
       )
     ),
     'timeline', (
-      select coalesce(jsonb_agg(jsonb_build_object(
+      select coalesce(jsonb_agg((jsonb_build_object(
                'at', e.at, 'kind', e.kind, 'title', e.title,
                'ref', nullif(e.ref, ''), 'detail', e.detail, 'match', e.match_kind
-             ) order by e.at desc), '[]'::jsonb)
+             ) || coalesce(e.extra, '{}'::jsonb)) order by e.at desc), '[]'::jsonb)
         from (select * from events where at is not null order by at desc limit 150) e
     ),
     'wa', (

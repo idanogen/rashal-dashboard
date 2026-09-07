@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import {
   Truck, Wrench, PackageOpen, FileText, MessageSquare, Star, Boxes,
-  Loader2, AlertTriangle, Clock, User, MapPin, Phone,
+  Loader2, AlertTriangle, Clock, User, MapPin, Phone, Camera, MessageCircle,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { LastVisitBadge } from '@/components/customer/LastVisitBadge';
@@ -38,6 +38,8 @@ const KIND_ICON: Record<TimelineEvent['kind'], typeof Truck> = {
   wa: MessageSquare,
   equipment: Boxes,
   returned: PackageOpen,
+  photo: Camera,
+  comment: MessageCircle,
 };
 
 const KIND_COLOR: Record<TimelineEvent['kind'], string> = {
@@ -51,6 +53,8 @@ const KIND_COLOR: Record<TimelineEvent['kind'], string> = {
   // ⭐ הציוד הוא מה שהלקוח מחזיק, ולכן הוא הנקודה הכהה על הציר.
   equipment: 'bg-slate-800',
   returned: 'bg-slate-300',
+  photo: 'bg-pink-500',
+  comment: 'bg-slate-500',
 };
 
 function MatchTag({ kind }: { kind: OpenItem['match'] }) {
@@ -403,9 +407,38 @@ export function CustomerCardBody({
                       <Icon className="h-3 w-3 text-slate-400" />
                       <span className="text-[12.5px] font-semibold text-slate-800">{e.title}</span>
                       {e.ref && <bdi className="font-mono text-[11px] text-blue-700">{e.ref}</bdi>}
+                      {(e.kind === 'photo' || e.kind === 'comment') && e.by && (
+                        <span className="text-[11px] text-slate-500">{e.by}</span>
+                      )}
                       <MatchTag kind={e.match} />
                     </div>
                     {e.detail && <div className="text-[11.5px] leading-snug text-muted-foreground">{e.detail}</div>}
+                    {/* ⭐ 07/09/2026: מה הנהג כתב וצילם באותו ביקור, בתוך שורת הביקור.
+                        עידן: "למה אני לא רואה את התמונות שהוא שלח ואת ההערות של הנהג". */}
+                    {(e.messages ?? []).length > 0 && (
+                      <div className="mt-0.5 space-y-0.5">
+                        {e.messages!.map((m, j) => (
+                          <div key={j} className="text-[11.5px] leading-snug text-slate-700">
+                            {m.by && <span className="font-semibold text-slate-600">{m.by}: </span>}
+                            {m.text}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {(e.photos ?? []).length > 0 && (
+                      <div className="mt-1 flex flex-wrap gap-1" data-testid="timeline-photos">
+                        {e.photos!.map((url, j) => (
+                          <img
+                            key={j}
+                            src={url}
+                            alt="תמונה מהשטח"
+                            loading="lazy"
+                            className="h-14 w-14 cursor-pointer rounded-md border border-slate-200 object-cover hover:opacity-90"
+                            onClick={() => window.open(url, '_blank', 'noopener')}
+                          />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               })}
