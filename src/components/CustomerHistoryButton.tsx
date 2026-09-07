@@ -113,11 +113,15 @@ async function fetchHistory(ref: HistoryCustomerRef): Promise<HistoryEntry[]> {
       supabase.from('orders').select(ORDER_COLS)
         .eq('customer_number', ref.customerNumber)
         .is('duplicate_of', null)
+        // 🔴 07/09/2026: רשומות ארכיון (שאריות ה-webhook) הוצגו כאן כ"ממתין לתאום".
+        .is('archived_at', null)
         .order('created_at', { ascending: false }).limit(50)
         .then(({ data }) => collectOrders(data)),
       supabase.from('service_calls').select(CALL_COLS)
         .eq('customer_number', ref.customerNumber)
         .is('duplicate_of', null)
+        // 🔴 07/09/2026: רשומות ארכיון (שאריות ה-webhook) הוצגו כאן כ"ממתין לתאום".
+        .is('archived_at', null)
         .order('created_at', { ascending: false }).limit(50)
         .then(({ data }) => collectCalls(data)),
     );
