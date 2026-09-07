@@ -20,7 +20,9 @@ import {
   X,
 } from 'lucide-react';
 
-import { CustomerHistoryButton, type HistoryCustomerRef } from '@/components/CustomerHistoryButton';
+import { useQuery } from '@tanstack/react-query';
+import { fetchLastTouch } from '@/lib/history';
+import { lastTouchLine, type LastTouch, type Tone } from '@/lib/history-line';
 import { ReturnedNote } from '@/components/ReturnedNote';
 import type { ReturnedInfo } from '@/lib/returned-from-route';
 import { ZoneFilter } from '@/components/deliveries/ZoneFilter';
@@ -82,8 +84,6 @@ export interface DispatchItemVM {
   onShowDetails?: () => void;
   /** תווית כפתור הפרטים, ברירת מחדל "פרטים". */
   detailLabel?: string;
-  /** היסטוריית הלקוח — כשלא מוגדר הכפתור לא מוצג. */
-  history?: HistoryCustomerRef;
 }
 
 /** רשומה שכבר טופלה — מוצגת כשהחיפוש לא מחזיר ממתינים. */
@@ -109,6 +109,12 @@ export interface VisitPrefill {
 }
 
 // ─── Card ──────────────────────────────────────────────────
+const LAST_TOUCH_CLASS: Record<Tone, string> = {
+  good: 'text-emerald-700', bad: 'text-red-700', neutral: 'text-slate-600', new: 'text-slate-400',
+};
+const LAST_TOUCH_DOT: Record<Tone, string> = {
+  good: 'bg-emerald-500', bad: 'bg-red-500', neutral: 'bg-slate-400', new: 'bg-slate-300',
+};
 interface DispatchCardProps {
   vm: DispatchItemVM;
   accentBorder: string;
@@ -118,6 +124,8 @@ interface DispatchCardProps {
   isReturned?: boolean;
   /** מה שהנהג רשם כשסימן "לא בוצע". נוסע עם החיווי, לא במקומו. */
   returnedInfo?: ReturnedInfo;
+  /** "ביקור אחרון" (07/09/2026): מה היה אצל הלקוח לפני, בלי ללחוץ. undefined = עוד נטען. */
+  lastTouch?: LastTouch | null;
   onExclude?: (id: string) => void;
   onRestore?: (id: string) => void;
   onToggleSelect?: (id: string) => void;
@@ -132,6 +140,7 @@ export function DispatchCard({
   isPending,
   isReturned,
   returnedInfo,
+  lastTouch,
   onExclude,
   onRestore,
   onToggleSelect,
@@ -262,6 +271,16 @@ export function DispatchCard({
                 מס' לקוח: {vm.customerNumber}
               </p>
             )}
+            {/* ⭐ היסטוריה אחת: השורה אומרת מראש אם זה לקוח מוכר. "כרטיס" פותח את הציר המלא. */}
+            {lastTouch !== undefined && (() => {
+              const line = lastTouchLine(lastTouch);
+              return (
+                <p className={cn('mt-0.5 flex items-center gap-1 text-[11px]', LAST_TOUCH_CLASS[line.tone])} title="מה היה אצל הלקוח לפני. הציר המלא בכפתור 'כרטיס'.">
+                  <span aria-hidden className={cn('inline-block h-1.5 w-1.5 shrink-0 rounded-full', LAST_TOUCH_DOT[line.tone])} />
+                  <span className="truncate">{line.text}</span>
+                </p>
+              );
+            })()}
             {vm.meta}
             {vm.phone && (
               <div className="mt-1 flex items-center gap-1">
@@ -302,7 +321,6 @@ export function DispatchCard({
                   {vm.detailLabel ?? 'פרטים'}
                 </button>
               )}
-              {vm.history && <CustomerHistoryButton customer={vm.history} />}
             </div>
           </div>
         </div>
@@ -502,6 +520,18 @@ export function UnscheduledPanel({
     );
   }, [search, filteredItems.length, handled]);
 
+  // ⭐ "ביקור אחרון" לכל הכרטיסים בפאנל, בקריאה אחת (07/09/2026). מי שחסר במפה = לקוח חדש.
+  const touchKeys = useMemo(
+    () => items.map((vm) => ({ k: vm.id, n: vm.customerNumber ?? null, name: vm.customerName, phone: vm.phone ?? null })),
+    [items],
+  );
+  const { data: lastTouchMap } = useQuery({
+    queryKey: ['last-touch', storageKey, touchKeys.map((t) => t.k).join(',')],
+    queryFn: () => fetchLastTouch(touchKeys),
+    enabled: touchKeys.length > 0,
+    staleTime: 5 * 60_000,
+  });
+
   const activeItems = filteredItems.filter((i) => !excludedIds.has(i.id));
   const excludedCount = filteredItems.length - activeItems.length;
 
@@ -572,6 +602,7 @@ export function UnscheduledPanel({
       accentBorder={accentBorder}
       isReturned={opts?.returned}
       returnedInfo={returnedInfo?.get(vm.id)}
+      lastTouch={lastTouchMap ? (lastTouchMap.get(vm.id) ?? null) : undefined}
       isExcluded={excludedIds.has(vm.id)}
       isSelected={selectedIds.has(vm.id)}
       isPending={pendingScheduleIds?.has(vm.id)}

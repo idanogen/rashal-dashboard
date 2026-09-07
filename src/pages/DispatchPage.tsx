@@ -1346,6 +1346,7 @@ export function DispatchPage() {
           matchCount={filterMatchCount}
           totalCount={visibleItems.length}
           breakdown={searchBreakdown}
+          onScheduleVisit={setVisitPrefill}
         />
 
         {/* ─── אזור מתחלף: הממתינים של הסוג הנבחר ─── */}
@@ -1385,8 +1386,6 @@ export function DispatchPage() {
                 groupSize={ordersGroupSize}
                 returnedIds={returnedOrderIds}
                 returnedInfo={returnedOrderInfo}
-                handledOrders={[...scheduledOrders, ...deliveredOrders]}
-                handledStopLines={activeStopLines}
                 onScheduleVisit={setVisitPrefill}
                 search={filterSearch}
                 selectedZones={filterZones}
@@ -1430,8 +1429,6 @@ export function DispatchPage() {
                 pendingScheduleIds={pendingScheduleIds}
                 returnedIds={returnedCallIds}
                 returnedInfo={returnedCallInfo}
-                handledCalls={[...scheduledCalls, ...completedCalls]}
-                handledStopLines={activeStopLines}
                 onScheduleVisit={setVisitPrefill}
                 search={filterSearch}
                 selectedZones={filterZones}

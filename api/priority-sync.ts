@@ -700,6 +700,10 @@ async function upsertServiceCalls(rows: Row[], backfill = false) {
       call_type: s(r.CALLTYPECODE),
       service_type: s(r.SERVTDES),
       priority_status: s(r.CALLSTATUSCODE),
+      // ⭐ "מי סגר" ו"מתי סיים" (07/09/2026). בקריאה פרונטלית זה הטכנאי.
+      // בטלפונית זה מי במשרד שסגר. מוצג לפי סוג הקריאה.
+      closed_by: s(r.TECHNICIANLOGIN),
+      closed_on: s(r.EDATE)?.slice(0, 10) ?? null,
       // service_call_status: terminal Priority states land closed; anything
       // still open falls through to the DB default 'קריאה חדשה'
       ...(CALL_TERMINAL[s(r.CALLSTATUSCODE) ?? '']
@@ -734,6 +738,8 @@ async function upsertServiceCalls(rows: Row[], backfill = false) {
       const fd = s(r.MALFDES); if (fd) u.fault_desc = fd;
       const sy = s(r.SYMDES); if (sy) u.symptom_desc = sy;
       const ct = s(r.CALLTYPECODE); if (ct) u.call_type = ct;
+      const cb = s(r.TECHNICIANLOGIN); if (cb) u.closed_by = cb;
+      const co = s(r.EDATE)?.slice(0, 10); if (co) u.closed_on = co;
       const st = s(r.SERVTDES); if (st) u.service_type = st;
       return u;
     },
@@ -932,6 +938,8 @@ const mapDeliveryNote = (r: Row): Row => ({
   total_qty: num(r.TOTQUANT),
   total_price: num(r.TOTPRICE),
   priority_udate: priorityLocalToUtc(s(r.UDATE)),
+  // תאריך החלוקה בפועל (07/09/2026): "מתי היינו אצלו" לכל תעודה.
+  distributed_on: s(r.DISTRDATE)?.slice(0, 10) ?? null,
 });
 
 // חשבונית מרכזת. אצל ר.שעל זהו מקור החיוב בפועל: 2,998 ב-2026 מול 54 ב-AINVOICES.

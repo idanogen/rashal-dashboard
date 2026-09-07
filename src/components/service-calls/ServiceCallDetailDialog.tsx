@@ -19,7 +19,7 @@ import {
   Tag,
 } from 'lucide-react';
 import type { ServiceCall } from '@/types/service-call';
-import { CustomerHistoryButton } from '@/components/CustomerHistoryButton';
+import { CustomerCardButton } from '@/components/customer/CustomerCardSheet';
 import { OrderChatButton } from '@/components/OrderChatButton';
 import { getDaysSinceCreated, getDaysColor } from '@/lib/utils';
 
@@ -225,14 +225,7 @@ export function ServiceCallDetailDialog({ call, open, onClose }: ServiceCallDeta
           {/* פעולות */}
           <div className="flex items-center justify-end gap-2 border-t pt-3">
             <span className="me-auto text-xs text-muted-foreground">היסטוריה ושיחה:</span>
-            <CustomerHistoryButton
-              size="md"
-              customer={{
-                currentId: call.id,
-                customerNumber: call.customerNumber,
-                customerName: call.customerName,
-              }}
-            />
+            <CustomerCardButton customerNumber={call.customerNumber} phone={call.phone} name={call.customerName} />
             <OrderChatButton
               size="md"
               order={{ id: call.id, customerName: call.customerName, city: call.city, kind: 'service' }}

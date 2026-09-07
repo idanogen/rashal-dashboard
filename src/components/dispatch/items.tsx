@@ -84,11 +84,6 @@ export function buildOrderItems(
     renderDetail: (open, onClose) => (
       <OrderDetailDialog order={order} open={open} onClose={onClose} />
     ),
-    history: {
-      currentId: order.id,
-      customerNumber: order.customerNumber,
-      customerName: order.customerName,
-    },
   }));
 }
 
@@ -170,11 +165,6 @@ export function buildServiceCallItems(
     renderDetail: (open, onClose) => (
       <ServiceCallDetailDialog call={call} open={open} onClose={onClose} />
     ),
-    history: {
-      currentId: call.id,
-      customerNumber: call.customerNumber,
-      customerName: call.customerName,
-    },
     };
   });
 }
@@ -239,11 +229,6 @@ export function buildPickupItems(
         </>
       ),
       onShowDetails: () => onShowDetails(pickup),
-      history: {
-        currentId: pickup.id,
-        customerNumber: pickup.customerNumber,
-        customerName: pickup.customerName,
-      },
     };
   });
 }
@@ -303,10 +288,5 @@ export function buildCustomerItems(customers: NewCustomer[]): DispatchItemVM[] {
         )}
       </>
     ),
-    history: {
-      currentId: customer.customerNumber,
-      customerNumber: customer.customerNumber,
-      customerName: customer.customerName,
-    },
   }));
 }

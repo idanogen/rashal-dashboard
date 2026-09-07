@@ -467,9 +467,19 @@ begin
            o.match_kind, o.id as row_id
       from o_full o
     union all
-    select c.created_at, 'call', 'קריאת שירות נפתחה',
+    -- 07/09/2026: קריאה שנסגרה אומרת מתי ומי (טכנאי בקריאה פרונטלית; בטלפונית
+    -- מי במשרד סגר). פריוריטי לא מחזיקה טקסט של "מה נעשה", ולכן זה כל מה שיש.
+    select c.created_at, 'call',
+           case when c.priority_status in ('בוצעה','סופית') then 'קריאת שירות בוצעה'
+                when c.priority_status = 'מבוטלת' then 'קריאת שירות בוטלה'
+                else 'קריאת שירות נפתחה' end,
            coalesce(c.priority_call_id, ''),
-           nullif(concat_ws(' · ', c.device_name, c.fault_desc), ''),
+           nullif(concat_ws(' · ', c.device_name, c.fault_desc,
+             case when c.closed_by is null then null
+                  when c.call_type = 'פרונטלית' then 'טכנאי ' || c.closed_by
+                  else 'טופל טלפונית: ' || c.closed_by end,
+             case when c.closed_on is not null and c.priority_status in ('בוצעה','סופית')
+                  then 'סיום ' || to_char(c.closed_on, 'DD/MM/YY') end), ''),
            c.match_kind, c.id
       from c_full c
     union all
@@ -486,9 +496,13 @@ begin
            'number', s.id
       from stops s
     union all
-    select n.doc_date::timestamptz, 'note', 'תעודת משלוח',
+    -- 07/09/2026: תאריך החלוקה בפועל הוא "מתי היינו אצלו" לתעודה.
+    select coalesce(n.distributed_on, n.doc_date)::timestamptz, 'note',
+           case when n.distributed_on is not null then 'אספקה' else 'תעודת משלוח' end,
            coalesce(n.priority_doc::text, ''),
-           nullif(concat_ws(' · ', n.status, case when n.invoiced = 'Y' then 'חויבה' end), ''),
+           nullif(concat_ws(' · ', n.status, case when n.invoiced = 'Y' then 'חויבה' end,
+             case when n.distributed_on is not null and n.distributed_on <> n.doc_date
+                  then 'תעודה מ-' || to_char(n.doc_date, 'DD/MM/YY') end), ''),
            'number', n.id
       from notes n
     union all

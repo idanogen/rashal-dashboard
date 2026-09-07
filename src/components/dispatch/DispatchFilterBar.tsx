@@ -7,6 +7,8 @@ import { Input } from '@/components/ui/input';
 import { usePersistedCollapse } from '@/hooks/usePersistedCollapse';
 import { useRailSection } from '@/hooks/useRailSection';
 import { railAnchorId, railScrollTo } from '@/lib/dispatch-rail-store';
+import { HistoryStrip } from '@/components/dispatch/HistoryStrip';
+import type { VisitPrefill } from '@/components/dispatch/UnscheduledPanel';
 
 /**
  * חיפוש וסינון אזורים אחד לכל מסך הסדרן. עד 12/08/2026 לכל סוג מסמך היו
@@ -26,6 +28,8 @@ interface DispatchFilterBarProps {
   totalCount: number;
   /** תוצאות החיפוש לפי סוג מסמך, לרצועת התוצאות. ריק כשאין חיפוש. */
   breakdown?: Array<{ key: string; label: string; count: number }>;
+  /** "שבץ ביקור" מרצועת ההיסטוריה: שיבוץ יזום ללקוח מוכר שאינו ברשימות. */
+  onScheduleVisit?: (prefill: VisitPrefill) => void;
 }
 
 export function DispatchFilterBar({
@@ -38,6 +42,7 @@ export function DispatchFilterBar({
   matchCount,
   totalCount,
   breakdown = [],
+  onScheduleVisit,
 }: DispatchFilterBarProps) {
   // מסנן = סגור כברירת מחדל (החלטת עידן 06/09). v2 כדי שיחול גם על מי שכבר נגע בו.
   const [zoneCollapsed, toggleZoneCollapsed] = usePersistedCollapse(
@@ -125,6 +130,9 @@ export function DispatchFilterBar({
           </div>
         );
       })()}
+
+      {/* ⭐ היסטוריה אחת (07/09/2026): מי מוכר לנו בשם הזה, מכל השנים, גם כשיש ממתינים. */}
+      <HistoryStrip query={search} onScheduleVisit={onScheduleVisit} />
 
       <ZoneFilter
         selectedZones={selectedZones}
