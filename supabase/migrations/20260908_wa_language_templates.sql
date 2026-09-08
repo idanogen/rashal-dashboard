@@ -66,3 +66,9 @@ language sql stable security definer set search_path = public as $$
       where p_template_id in (m.template_first_id, m.template_reminder_id) limit 1),
     (select 'survey_invite' from public.survey_settings v where v.template_id = p_template_id limit 1));
 $$;
+
+-- 08/09/2026 20:10: מטא אישרה גם את שתי האחרונות (עידן: "כל התבניות אושרו").
+insert into public.wa_template_langs (key, lang, heyy_template_id) values
+  ('media_reminder', 'he', '3c987206-48b8-4778-b408-fe7d6b34a9b5'),
+  ('survey_invite',  'he', 'd42b7c89-7e71-43c9-ab6e-75ac05d2ae37')
+on conflict (key, lang) do update set heyy_template_id = excluded.heyy_template_id, approved_at = now();
