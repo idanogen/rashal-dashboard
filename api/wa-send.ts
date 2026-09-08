@@ -281,11 +281,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         p_key: template.key, p_phone: e164, p_customer: null, p_default: template.heyyTemplateId,
       });
       const pick = (Array.isArray(pickData) ? pickData[0] : pickData) as { lang?: string; template_id?: string } | null;
-      if (pick?.template_id && pick.lang && isLang(pick.lang) && pick.lang !== 'he' && pick.template_id !== template.heyyTemplateId) {
-        const { data: dictRows } = await supabaseAdmin.from('wa_texts').select('key, body').eq('lang', pick.lang).like('key', 'v:%');
-        const dict: Record<string, string> = {};
-        for (const r of dictRows ?? []) dict[r.key] = r.body;
-        variables = translateValues(variables, dict, pick.lang);
+      // שורת 'he' בטבלה היא העברית עם כפתורי השפה, ולכן ההחלפה חלה גם עליה;
+      // התרגום של הערכים רק לשפה זרה.
+      if (pick?.template_id && pick.lang && isLang(pick.lang) && pick.template_id !== template.heyyTemplateId) {
+        if (pick.lang !== 'he') {
+          const { data: dictRows } = await supabaseAdmin.from('wa_texts').select('key, body').eq('lang', pick.lang).like('key', 'v:%');
+          const dict: Record<string, string> = {};
+          for (const r of dictRows ?? []) dict[r.key] = r.body;
+          variables = translateValues(variables, dict, pick.lang);
+        }
         sendTemplateId = pick.template_id;
         sendLang = pick.lang;
       }
