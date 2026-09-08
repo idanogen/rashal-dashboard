@@ -172,14 +172,43 @@ Deno.serve(async (req: Request) => {
   });
 });
 
+
+/**
+ * שלב ב של ההודעות בארבע שפות (08/09/2026): לנמען עם שפה שמורה, התבנית
+ * בשפה שלו כשהיא מאושרת, אחרת ברירת המחדל (עברית עם כפתורי השפה).
+ * ערכים מרשימה סגורה מתורגמים רק כשבאמת נשלחת תבנית בשפה אחרת.
+ */
+async function pickTemplate(key: string, phone: string, fallback: string): Promise<{ lang: string; templateId: string; translated: boolean }> {
+  try {
+    const { data } = await sb.rpc("wa_pick_template", { p_key: key, p_phone: phone, p_customer: null, p_default: fallback });
+    const row = (Array.isArray(data) ? data[0] : data) as { lang?: string; template_id?: string } | null;
+    const templateId = row?.template_id || fallback;
+    const lang = row?.lang || "he";
+    return { lang, templateId, translated: lang !== "he" && templateId !== fallback };
+  } catch (e) {
+    console.error("[lang] pick failed, falling back to hebrew", String(e).slice(0, 200));
+    return { lang: "he", templateId: fallback, translated: false };
+  }
+}
+async function translateValue(value: string, lang: string): Promise<string> {
+  try {
+    const { data } = await sb.rpc("wa_translate_value", { p_value: value, p_lang: lang });
+    return typeof data === "string" && data ? data : value;
+  } catch { return value; }
+}
+
 async function sendOne(
   row: DueRow,
   cfg: Record<string, unknown>,
 ): Promise<{ ok: true } | { ok: false; error: string; retryable: boolean }> {
-  const product = (row.device_name ?? "").trim() || String(cfg.product_fallback ?? "המוצר שברשותך");
-  const templateId = row.stage === "first"
+  const fallbackId = row.stage === "first"
     ? String(cfg.template_first_id)
     : String(cfg.template_reminder_id);
+  const pick = await pickTemplate(row.stage === "first" ? "media_first" : "media_reminder", row.phone_e164, fallbackId);
+  const templateId = pick.templateId;
+  const rawProduct = (row.device_name ?? "").trim() || String(cfg.product_fallback ?? "המוצר שברשותך");
+  // שם מוצר אמיתי (RUBIX52) אינו מתורגם; רק "המוצר שברשותך" ברירת המחדל.
+  const product = pick.translated ? await translateValue(rawProduct, pick.lang) : rawProduct;
   // 🔴 משתנים לפי שם, כמו שהוגדרו בעורך של heyy. לתזכורת אין משתנה שם.
   const variables = row.stage === "first"
     ? [
@@ -200,7 +229,7 @@ async function sendOne(
         phoneE164: row.phone_e164,
         templateId,
         variables,
-        triggeredBy: `media-request-${row.stage}`,
+        triggeredBy: pick.translated ? `media-request-${row.stage}:${pick.lang}` : `media-request-${row.stage}`,
       }),
     });
     const body = await res.json().catch(() => ({}));

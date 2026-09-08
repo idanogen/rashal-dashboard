@@ -46,3 +46,9 @@ test('translated button captions are understood as coordination replies', () => 
   assert.equal(parseCustomerReply('สะดวก').status, 'מתאים');
   assert.equal(parseCustomerReply('ไม่สะดวก').status, 'לא מתאים');
 });
+
+test('translateValues maps every closed-list value of a template for a foreign template', async () => {
+  const { translateValues } = await import('../api/_lib/wa-lang-core.ts');
+  const out = translateValues({ customer_name: 'Sana', purpose: 'לאספקת הציוד', day: 'שני, 7.9.2026', hours: '09:00 עד 11:00' }, dict, 'en');
+  assert.deepEqual(out, { customer_name: 'Sana', purpose: 'to deliver the equipment', day: 'Monday, 7.9.2026', hours: '09:00 and 11:00' });
+});

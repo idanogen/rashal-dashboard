@@ -13,6 +13,7 @@ import {
   renderPreview,
   type WaTemplate,
 } from './_lib/templates-store.js';
+import { isLang, translateValues } from './_lib/wa-lang-core.js';
 
 /**
  * מסלול השליחה של החלונית בפריוריטי.
@@ -190,6 +191,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // ── התבנית, ואימות מלא שלה בשרת ─────────────────────────
   let template: WaTemplate | null = null;
   let variables: Record<string, string> = {};
+  let sendTemplateId: string | null = null;
+  let sendLang = 'he';
   let documentUrl: string | null = null;
   let documentBytes: Buffer | null = null;
 
@@ -269,6 +272,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
     variables = built.variables;
+
+    // ⭐ שלב ב של ההודעות בארבע שפות (08/09/2026): לנמען עם שפה שמורה
+    // ותבנית מאושרת בשפה שלו, נשלחת התבנית ההיא, והערכים מהרשימות
+    // הסגורות (מטרה, יום, שעות) מתורגמים. אחרת ברירת המחדל בעברית.
+    try {
+      const { data: pickData } = await supabaseAdmin.rpc('wa_pick_template', {
+        p_key: template.key, p_phone: e164, p_customer: null, p_default: template.heyyTemplateId,
+      });
+      const pick = (Array.isArray(pickData) ? pickData[0] : pickData) as { lang?: string; template_id?: string } | null;
+      if (pick?.template_id && pick.lang && isLang(pick.lang) && pick.lang !== 'he' && pick.template_id !== template.heyyTemplateId) {
+        const { data: dictRows } = await supabaseAdmin.from('wa_texts').select('key, body').eq('lang', pick.lang).like('key', 'v:%');
+        const dict: Record<string, string> = {};
+        for (const r of dictRows ?? []) dict[r.key] = r.body;
+        variables = translateValues(variables, dict, pick.lang);
+        sendTemplateId = pick.template_id;
+        sendLang = pick.lang;
+      }
+    } catch (e) {
+      console.error('[wa-send] language pick failed, sending hebrew', e instanceof Error ? e.message : e);
+    }
   }
 
   // ── המסמך: פריוריטי מפיקה בדפדפן, **והדפדפן גם מוסר את הבייטים** ────
@@ -328,7 +351,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const t = template!;
           const r = await sendTemplateV3({
             phoneE164: e164,
-            templateId: t.heyyTemplateId,
+            templateId: sendTemplateId ?? t.heyyTemplateId,
             variables,
             attachments,
           });
@@ -350,7 +373,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       vendor_message_id: result.vendorMessageId || null,
       phone_e164: e164,
       message_kind: kind,
-      template_id: template ? template.heyyTemplateId : null,
+      template_id: template ? (sendTemplateId ?? template.heyyTemplateId) : null,
       // המשתנים נשמרים כדי שבחירת שפה (08/09) תוכל לשלוח את אותה הודעה
       // מתורגמת. ראה `_lib/wa-lang.ts`.
       template_params: template ? (body.values ?? {}) : null,
@@ -363,7 +386,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       status: result.status,
       status_detail: result.statusDetail,
       // ⭐ מי שלח, ומאיזה מסמך. זה מה שהופך את השרשור לקריא בדיעבד.
-      triggered_by: `priority-panel:${user.email ?? user.id}`,
+      triggered_by: `priority-panel:${user.email ?? user.id}${sendLang !== 'he' ? `:${sendLang}` : ''}`,
       is_demo: isHeyyDemo,
     })
     .select('id')

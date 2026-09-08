@@ -34,13 +34,8 @@ const VAR_RE = /\{\{\s*(?:var\.)?(\w+)\s*\}\}/g;
  * "טכנאי"/"נהג", יום בשבוע, "09:00 עד 13:00"), ולכן כל ערך עובר קודם
  * דרך מילון הרשימות הסגורות של השפה ('v:<ערך עברי>' → תרגום).
  */
-export function renderTranslated(
-  body: string,
-  values: Record<string, string>,
-  dict: Record<string, string>,
-  lang: Lang,
-): string {
-  const tr = (v: string): string => {
+/** ערך אחד של משתנה, מתורגם לשפה כשהוא מרשימה סגורה, יום או טווח שעות. */
+export function translateValue(v: string, dict: Record<string, string>, lang: Lang): string {
     const s = v.trim();
     if (!s) return s;
     if (dict[`v:${s}`]) return dict[`v:${s}`];
@@ -56,8 +51,22 @@ export function renderTranslated(
     // 🔴 `\b` אינו מזהה גבול מילה באותיות עבריות, ולכן רווחים מפורשים.
     if (/(^|\s)עד(\s|$)/.test(s) && dict['v:עד']) return s.replace(/\s*(^|\s)עד(\s|$)\s*/, ` ${dict['v:עד']} `);
     return s;
-  };
-  return body.replace(VAR_RE, (_m, name: string) => tr(values[name] ?? ''));
+}
+
+/** כל המשתנים של תבנית, מתורגמים. לתבנית בשפה זרה (שלב ב). */
+export function translateValues(values: Record<string, string>, dict: Record<string, string>, lang: Lang): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(values)) out[k] = translateValue(v ?? '', dict, lang);
+  return out;
+}
+
+export function renderTranslated(
+  body: string,
+  values: Record<string, string>,
+  dict: Record<string, string>,
+  lang: Lang,
+): string {
+  return body.replace(VAR_RE, (_m, name: string) => translateValue(values[name] ?? '', dict, lang));
 }
 
 export function paramsToValues(raw: unknown): Record<string, string> {

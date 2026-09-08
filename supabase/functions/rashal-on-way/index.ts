@@ -110,6 +110,31 @@ Deno.serve(async (req: Request) => {
   return json({ ok: true, run_id: runId, dry, candidates: candidates.length, sent, failed, detail });
 });
 
+
+/**
+ * שלב ב של ההודעות בארבע שפות (08/09/2026): לנמען עם שפה שמורה, התבנית
+ * בשפה שלו כשהיא מאושרת, אחרת ברירת המחדל (עברית עם כפתורי השפה).
+ * ערכים מרשימה סגורה מתורגמים רק כשבאמת נשלחת תבנית בשפה אחרת.
+ */
+async function pickTemplate(key: string, phone: string, fallback: string): Promise<{ lang: string; templateId: string; translated: boolean }> {
+  try {
+    const { data } = await sb.rpc("wa_pick_template", { p_key: key, p_phone: phone, p_customer: null, p_default: fallback });
+    const row = (Array.isArray(data) ? data[0] : data) as { lang?: string; template_id?: string } | null;
+    const templateId = row?.template_id || fallback;
+    const lang = row?.lang || "he";
+    return { lang, templateId, translated: lang !== "he" && templateId !== fallback };
+  } catch (e) {
+    console.error("[lang] pick failed, falling back to hebrew", String(e).slice(0, 200));
+    return { lang: "he", templateId: fallback, translated: false };
+  }
+}
+async function translateValue(value: string, lang: string): Promise<string> {
+  try {
+    const { data } = await sb.rpc("wa_translate_value", { p_value: value, p_lang: lang });
+    return typeof data === "string" && data ? data : value;
+  } catch { return value; }
+}
+
 async function sendOne(
   c: Candidate,
   templateId: string,
@@ -120,9 +145,11 @@ async function sendOne(
   const useV2 = Boolean(templateV2Id && c.worker_phone && c.worker_name);
   const chosen = useV2 ? templateV2Id : templateId;
   if (!chosen) return { ok: false, error: "no template id", retryable: false };
+  const pick = await pickTemplate(useV2 ? "on_the_way" : "on_the_way_v1", c.phone_e164, chosen);
+  const worker = pick.translated ? await translateValue(c.worker, pick.lang) : c.worker;
   const variables = [
     { name: "name", value: c.customer_name ?? "" },
-    { name: "worker", value: c.worker },
+    { name: "worker", value: worker },
     ...(useV2
       ? [
           { name: "worker_name", value: c.worker_name ?? "" },
@@ -137,9 +164,9 @@ async function sendOne(
       body: JSON.stringify({
         kind: "template",
         phoneE164: c.phone_e164,
-        templateId: chosen,
+        templateId: pick.templateId,
         variables,
-        triggeredBy: "on-way-engine",
+        triggeredBy: pick.translated ? `on-way-engine:${pick.lang}` : "on-way-engine",
       }),
     });
     const body = await res.json().catch(() => ({}));

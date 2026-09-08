@@ -283,10 +283,36 @@ async function sendAlertMail(subject: string, html: string): Promise<boolean> {
   }
 }
 
+
+/**
+ * שלב ב של ההודעות בארבע שפות (08/09/2026): לנמען עם שפה שמורה, התבנית
+ * בשפה שלו כשהיא מאושרת, אחרת ברירת המחדל (עברית עם כפתורי השפה).
+ * ערכים מרשימה סגורה מתורגמים רק כשבאמת נשלחת תבנית בשפה אחרת.
+ */
+async function pickTemplate(key: string, phone: string, fallback: string): Promise<{ lang: string; templateId: string; translated: boolean }> {
+  try {
+    const { data } = await sb.rpc("wa_pick_template", { p_key: key, p_phone: phone, p_customer: null, p_default: fallback });
+    const row = (Array.isArray(data) ? data[0] : data) as { lang?: string; template_id?: string } | null;
+    const templateId = row?.template_id || fallback;
+    const lang = row?.lang || "he";
+    return { lang, templateId, translated: lang !== "he" && templateId !== fallback };
+  } catch (e) {
+    console.error("[lang] pick failed, falling back to hebrew", String(e).slice(0, 200));
+    return { lang: "he", templateId: fallback, translated: false };
+  }
+}
+async function translateValue(value: string, lang: string): Promise<string> {
+  try {
+    const { data } = await sb.rpc("wa_translate_value", { p_value: value, p_lang: lang });
+    return typeof data === "string" && data ? data : value;
+  } catch { return value; }
+}
+
 async function sendOne(
   row: DueRow,
   templateId: string,
 ): Promise<{ ok: true } | { ok: false; error: string; retryable: boolean }> {
+  const pick = await pickTemplate("survey_invite", row.phone_e164, templateId);
   try {
     const res = await fetch(SEND_URL, {
       method: "POST",
@@ -297,14 +323,14 @@ async function sendOne(
       body: JSON.stringify({
         kind: "template",
         phoneE164: row.phone_e164,
-        templateId,
+        templateId: pick.templateId,
         // 🔴 משתנים **לפי שם**, כמו שהוגדרו בעורך של heyy. `token` נכנס כסיומת
         //    בכתובת של כפתור ה-URL, ולכן הוא הקישור האישי של הלקוח.
         variables: [
           { name: "name", value: row.customer_name ?? "" },
           { name: "token", value: row.token },
         ],
-        triggeredBy: "survey-engine",
+        triggeredBy: pick.translated ? `survey-engine:${pick.lang}` : "survey-engine",
       }),
     });
     const body = await res.json().catch(() => ({}));
