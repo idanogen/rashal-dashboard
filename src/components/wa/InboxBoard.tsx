@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { TemplateSendDialog } from '@/components/wa/TemplateSendDialog';
 import { CustomerCardButton } from '@/components/customer/CustomerCardSheet';
 import { LinkCustomerDialog } from '@/components/wa/LinkCustomerDialog';
-import { linkConversation, type SuggestedCustomer } from '@/lib/wa-inbox';
+import { linkConversation, setConversationLanguage, WA_LANG_LABELS, type SuggestedCustomer } from '@/lib/wa-inbox';
 import { searchCustomers, customerSearchKey } from '@/lib/customer-card';
 import { surveyMark, SURVEY_TONE } from '@/lib/survey-badge';
 import {
@@ -500,6 +500,12 @@ function Row({
         {item.unidentified && (
           <Badge variant="outline" className="border-slate-300 text-[10px] text-slate-500">
             לא מזוהה
+          </Badge>
+        )}
+        {/* השפה שהלקוח בחר (08/09/2026). בלי תג = עברית, וזה הרוב. */}
+        {item.lang && item.lang !== 'he' && (
+          <Badge variant="outline" className="border-blue-300 bg-blue-50 text-[10px] text-blue-800">
+            <bdi>{WA_LANG_LABELS[item.lang] ?? item.lang}</bdi>
           </Badge>
         )}
       </div>
@@ -994,6 +1000,30 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                {/* שפת ההודעות ללקוח הזה (08/09/2026). נקבעת מלחיצה שלו על
+                    כפתור שפה, והעובד יכול לקבוע או לתקן כאן ביד. */}
+                {head.phone && (
+                  <select
+                    value={thread.data?.conversation?.lang ?? 'he'}
+                    onChange={(e) => {
+                      const lang = e.target.value;
+                      if (!selected) return;
+                      void setConversationLanguage(head.phone as string, lang)
+                        .then(() => {
+                          toast.success(`שפת ההודעות: ${WA_LANG_LABELS[lang] ?? lang}`);
+                          void qc.invalidateQueries({ queryKey: [WA_INBOX_KEY] });
+                          void qc.invalidateQueries({ queryKey: threadKey(selected) });
+                        })
+                        .catch((err: unknown) => toast.error(err instanceof Error ? err.message : 'שמירת השפה נכשלה'));
+                    }}
+                    title="שפת ההודעות האוטומטיות ללקוח הזה"
+                    className="h-7 rounded-md border border-slate-300 bg-white px-1.5 text-[11px] text-slate-700"
+                  >
+                    {Object.entries(WA_LANG_LABELS).map(([code, label]) => (
+                      <option key={code} value={code}>{label}</option>
+                    ))}
+                  </select>
+                )}
                 {/*
                   🔴🔴 **סימון "נקרא" מתוך השרשור, לא רק מלחיצה על השורה.**
                   עידן, 25/08/2026: "פתחתי כמה פעמים את התשובה של שלומי

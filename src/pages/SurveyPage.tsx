@@ -1,5 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import {
+  SURVEY_LANGS,
+  SURVEY_TEXT,
+  isSurveyLang,
+  surveyDir,
+  type SurveyLang,
+  type SurveyStrings,
+} from '@/lib/i18n/survey';
 
 /**
  * עמוד הסקר של הלקוח.
@@ -15,6 +23,9 @@ import { useParams } from 'react-router-dom';
  * הניסוח של שתי השאלות נלקח מילה במילה מטופס שביעות הרצון של ר.שעל.
  * המכתב יוצא בשמו של שלומי קורן, סמנכ"ל החברה, כדי שהפנייה תרגיש אישית
  * ולא כמו טופס אוטומטי (החלטת עידן, 17/08/2026).
+ *
+ * חמש שפות (08/09/2026). כל המחרוזות ב-`src/lib/i18n/survey.ts`, והשפה
+ * נקבעת בסדר הזה: `?lang=` בכתובת, אחרת מה שהשרת יודע על הלקוח, אחרת עברית.
  */
 
 const NAVY = '#14223a';
@@ -29,26 +40,32 @@ interface Question {
   high: string;
 }
 
-const QUESTIONS: Question[] = [
-  {
-    key: 'q1',
-    text: 'באיזו מידה היית שבע רצון מהשירות שקיבלת?',
-    low: 'לא מרוצה כלל',
-    high: 'מרוצה מאוד',
-  },
-  {
-    key: 'q2',
-    text: 'באיזו מידה היית ממליץ עלינו לחבר או קולגה?',
-    low: 'בכלל לא',
-    high: 'בהחלט',
-  },
-];
+function buildQuestions(t: SurveyStrings): Question[] {
+  return [
+    { key: 'q1', text: t.q1, low: t.q1Low, high: t.q1High },
+    { key: 'q2', text: t.q2, low: t.q2Low, high: t.q2High },
+  ];
+}
+
+/** השפה מהכתובת, אם יש כזו והיא מוכרת. */
+function langFromUrl(): SurveyLang | null {
+  if (typeof window === 'undefined') return null;
+  const raw = new URLSearchParams(window.location.search).get('lang');
+  return isSurveyLang(raw) ? raw : null;
+}
+
+/** מעדכן את `?lang=` בכתובת בלי טעינה מחדש, כדי ששיתוף של הקישור ישמור את השפה. */
+function writeLangToUrl(lang: SurveyLang) {
+  const url = new URL(window.location.href);
+  url.searchParams.set('lang', lang);
+  window.history.replaceState(window.history.state, '', url.toString());
+}
 
 /**
  * שורת כוכבים.
  *
- * ב-RTL הילד הראשון ב-flex יושב בימין, ולכן כוכב מספר 1 הוא הימני והמילוי
- * מתקדם ימינה לשמאלה. זה מה שמצופה, ולכן אין כאן שום היפוך ידני.
+ * תמיד משמאל לימין, בכל שפה: כוכב 1 בקצה השמאלי והמילוי מתקדם ימינה. ככה
+ * הסקאלה זהה לזו שמכירים מכל אפליקציה, ולא מתהפכת בין עברית לאנגלית.
  * גודל הכוכב נבחר כך שאזור ההקשה יעבור בנוחות 44 פיקסל.
  */
 function StarRow({
@@ -64,14 +81,14 @@ function StarRow({
   const shown = hover ?? value ?? 0;
 
   return (
-    <div role="radiogroup" aria-label={label} className="flex justify-center gap-1">
+    <div role="radiogroup" aria-label={label} dir="ltr" className="flex justify-center gap-1">
       {[1, 2, 3, 4, 5].map((n) => (
         <button
           key={n}
           type="button"
           role="radio"
           aria-checked={value === n}
-          aria-label={`${n} מתוך 5`}
+          aria-label={`${n}/5`}
           onClick={() => onChange(n)}
           onMouseEnter={() => setHover(n)}
           onMouseLeave={() => setHover(null)}
@@ -85,8 +102,37 @@ function StarRow({
   );
 }
 
+/** בורר השפה: שורת גלולות מעל הלוגו. הנוכחית מלאה בנייבי, השאר עם מסגרת. */
+function LangSwitcher({ lang, onChange }: { lang: SurveyLang; onChange: (l: SurveyLang) => void }) {
+  return (
+    <div className="mb-4 flex flex-wrap justify-center gap-1.5" role="group" aria-label="Language">
+      {SURVEY_LANGS.map((l) => {
+        const active = l.code === lang;
+        return (
+          <button
+            key={l.code}
+            type="button"
+            lang={l.code}
+            dir={l.dir}
+            aria-pressed={active}
+            onClick={() => onChange(l.code)}
+            className="rounded-full border px-3 py-1 text-[12px] font-semibold leading-tight transition-colors"
+            style={
+              active
+                ? { background: NAVY, borderColor: NAVY, color: '#ffffff' }
+                : { background: 'transparent', borderColor: '#cfd6df', color: NAVY }
+            }
+          >
+            {l.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /** נייר המכתבים: לוגו, שם החברה, וקו מפריד. חוזר בכל מצבי העמוד. */
-function Letterhead() {
+function Letterhead({ t }: { t: SurveyStrings }) {
   return (
     <div className="text-center">
       <img
@@ -99,7 +145,7 @@ function Letterhead() {
       <div className="mt-2 text-[22px] font-extrabold tracking-wide" style={{ color: NAVY }}>
         ר.שעל
       </div>
-      <div className="mt-0.5 text-[12px] tracking-wide text-slate-500">שירותי עזר לנכים</div>
+      <div className="mt-0.5 text-[12px] tracking-wide text-slate-500">{t.brand}</div>
       <div className="mx-auto mt-4 h-[2px] w-full rounded" style={{ background: BRAND }} />
     </div>
   );
@@ -111,30 +157,49 @@ function Letterhead() {
  * הכתב הוא Gveret Levin, פונט כתב-יד עברי אמיתי מ-Google Fonts. זו חתימה
  * טיפוגרפית ולא סריקה של החתימה של שלומי. אם תגיע סריקה אמיתית, מחליפים
  * את ה-<span> בתמונה ותו לא.
+ *
+ * החתימה עצמה נשארת בעברית בכל שפה, כמו חתימה על נייר. השם המודפס והתפקיד
+ * שמתחתיה מתורגמים.
  */
-function Signature() {
+function Signature({ t }: { t: SurveyStrings }) {
   return (
     <div className="mt-7 border-t pt-5" style={{ borderColor: '#e8edf3' }}>
-      <p className="text-[13.5px] leading-relaxed text-slate-600">בברכה,</p>
+      <p className="text-[13.5px] leading-relaxed text-slate-600">{t.regards}</p>
       <div
         className="mt-1 text-[34px] leading-none"
         style={{ fontFamily: "'Gveret Levin', 'Assistant', cursive", color: BRAND }}
       >
-        שלומי קורן
+        {/* bdi ולא dir: הכתב נשאר עברי ומבודד, אבל הבלוק יושב בצד ההתחלה של
+            השפה, כמו שאר החתימה, ולא בורח לקצה השני באנגלית וברוסית. */}
+        <bdi lang="he">שלומי קורן</bdi>
       </div>
       <p className="mt-2 text-[13px] font-semibold" style={{ color: NAVY }}>
-        שלומי קורן
+        {t.signerName}
       </p>
-      <p className="text-[12.5px] text-slate-500">סמנכ"ל · ר.שעל שירותי עזר לנכים</p>
+      <p className="text-[12.5px] text-slate-500">{t.signerRole}</p>
     </div>
   );
 }
 
 /** מסגרת המסמך: אותה מעטפת לכל המצבים, כדי שגם הודעת שגיאה תיראה כמו ר.שעל. */
-function Sheet({ children, signed = false }: { children: React.ReactNode; signed?: boolean }) {
+function Sheet({
+  children,
+  signed = false,
+  lang,
+  t,
+  onLangChange,
+}: {
+  children: React.ReactNode;
+  signed?: boolean;
+  lang: SurveyLang;
+  t: SurveyStrings;
+  onLangChange: (l: SurveyLang) => void;
+}) {
+  const footer = lang === 'he' ? 'ר.שעל שירותי עזר לנכים' : `${t.brand} · ר.שעל`;
   return (
     <div
-      dir="rtl"
+      dir={surveyDir(lang)}
+      lang={lang}
       className="min-h-screen px-4 py-6"
       style={{ background: '#eef2f6', fontFamily: 'Assistant, sans-serif' }}
     >
@@ -143,12 +208,15 @@ function Sheet({ children, signed = false }: { children: React.ReactNode; signed
         style={{ borderTop: `5px solid ${BRAND}` }}
       >
         <div className="p-6">
-          <Letterhead />
+          <LangSwitcher lang={lang} onChange={onLangChange} />
+          <Letterhead t={t} />
           {children}
-          {signed && <Signature />}
+          {signed && <Signature t={t} />}
         </div>
       </div>
-      <p className="mt-4 text-center text-[11px] text-slate-400">ר.שעל שירותי עזר לנכים</p>
+      <p className="mt-4 text-center text-[11px] text-slate-400">
+        <bdi>{footer}</bdi>
+      </p>
     </div>
   );
 }
@@ -173,13 +241,19 @@ export function SurveyPage() {
   const [q2, setQ2] = useState<number | null>(null);
   const [comment, setComment] = useState('');
 
-  // כותרת הטאב. ברירת המחדל היא "דשבורד הזמנות", וזה מה שהלקוח היה רואה
-  // בלשונית ובכל שיתוף של הקישור.
-  // ובנוסף noindex: הכתובת מכילה טוקן אישי, ואין שום סיבה שהיא תיכנס למנוע חיפוש.
+  // השפה: הכתובת קודמת לכל דבר. אם אין בה שפה, השרת משלים ממה שנשמר ללקוח.
+  const [urlLang] = useState<SurveyLang | null>(langFromUrl);
+  const [lang, setLang] = useState<SurveyLang>(urlLang ?? 'he');
+  const t = SURVEY_TEXT[lang];
+
+  function changeLang(next: SurveyLang) {
+    setLang(next);
+    writeLangToUrl(next);
+  }
+
+  // noindex: הכתובת מכילה טוקן אישי, ואין שום סיבה שהיא תיכנס למנוע חיפוש.
   // ופונט כתב היד לחתימה, שנטען רק כאן ולא בכל המערכת.
   useEffect(() => {
-    document.title = 'סקר שביעות רצון · ר.שעל';
-
     const meta = document.createElement('meta');
     meta.name = 'robots';
     meta.content = 'noindex, nofollow';
@@ -196,6 +270,18 @@ export function SurveyPage() {
     };
   }, []);
 
+  // כותרת הטאב ושפת המסמך עוקבות אחרי השפה שנבחרה. ברירת המחדל של הטאב
+  // היא "דשבורד הזמנות", וזה מה שהלקוח היה רואה בלשונית ובכל שיתוף של הקישור.
+  useEffect(() => {
+    document.title = t.title;
+    const root = document.documentElement;
+    const prevLang = root.lang;
+    root.lang = lang;
+    return () => {
+      root.lang = prevLang;
+    };
+  }, [lang, t.title]);
+
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -205,6 +291,8 @@ export function SurveyPage() {
         if (!alive) return;
         if (!res.ok || !json.ok) return setPhase('notfound');
         setName(json.customerName ?? '');
+        // הכתובת מנצחת. רק כשאין בה שפה לוקחים את מה שהשרת יודע על הלקוח.
+        if (!urlLang && isSurveyLang(json.lang)) setLang(json.lang);
         setPhase(json.alreadyAnswered ? 'already' : 'form');
       } catch {
         if (alive) setPhase('error');
@@ -213,7 +301,7 @@ export function SurveyPage() {
     return () => {
       alive = false;
     };
-  }, [token]);
+  }, [token, urlLang]);
 
   async function submit() {
     setPhase('sending');
@@ -221,7 +309,7 @@ export function SurveyPage() {
       const res = await fetch('/api/survey', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, q1, q2, comment }),
+        body: JSON.stringify({ token, q1, q2, comment, lang }),
       });
       const json = await res.json();
       if (!res.ok || !json.ok) return setPhase('error');
@@ -231,86 +319,82 @@ export function SurveyPage() {
     }
   }
 
+  const sheetProps = { lang, t, onLangChange: changeLang };
+
   if (phase === 'loading') {
     return (
-      <Sheet>
-        <div className="py-14 text-center text-[14px] text-slate-400">רגע אחד</div>
+      <Sheet {...sheetProps}>
+        <div className="py-14 text-center text-[14px] text-slate-400">{t.loading}</div>
       </Sheet>
     );
   }
 
   if (phase === 'notfound') {
     return (
-      <Sheet>
-        <Message
-          title="הקישור אינו בתוקף"
-          body="ייתכן שהקישור הועתק חלקית. אפשר לפתוח אותו שוב מתוך ההודעה שקיבלת בוואטסאפ."
-        />
+      <Sheet {...sheetProps}>
+        <Message title={t.invalidTitle} body={t.invalidBody} />
       </Sheet>
     );
   }
 
   if (phase === 'already') {
     return (
-      <Sheet signed>
-        <Message title="כבר קיבלנו את התשובה שלך" body="תודה רבה, זה עוזר לנו להשתפר." />
+      <Sheet {...sheetProps} signed>
+        <Message title={t.answeredTitle} body={t.answeredBody} />
       </Sheet>
     );
   }
 
   if (phase === 'done') {
     return (
-      <Sheet signed>
-        <Message
-          title="תודה על שיתוף הפעולה"
-          body="התשובה שלך התקבלה ותגיע אליי אישית. אנחנו קוראים כל מילה."
-        />
+      <Sheet {...sheetProps} signed>
+        <Message title={t.thanksTitle} body={t.thanksBody} />
       </Sheet>
     );
   }
 
   if (phase === 'error') {
     return (
-      <Sheet>
-        <Message title="משהו השתבש" body="אפשר לנסות שוב בעוד רגע. אם זה חוזר, נשמח שתעדכנו אותנו." />
+      <Sheet {...sheetProps}>
+        <Message title={t.errorTitle} body={t.errorBody} />
       </Sheet>
     );
   }
 
   const answered = q1 !== null || q2 !== null || comment.trim().length > 0;
   const sending = phase === 'sending';
+  const questions = buildQuestions(t);
 
   return (
-    <Sheet signed>
+    <Sheet {...sheetProps} signed>
       {/* פתיח אישי. הפנייה בגוף ראשון היא מה שהופך את זה ממשוב אוטומטי
           לפנייה של אדם, וזו הסיבה שהוא נכתב בשמו של סמנכ"ל החברה. */}
       <div className="mt-5 rounded-xl px-4 py-3" style={{ background: '#f4f8fb' }}>
         <p className="text-[15px] font-bold" style={{ color: NAVY }}>
-          {name ? `${name} שלום,` : 'שלום,'}
+          {t.greeting(name)}
         </p>
-        {/* 🔴 המשפט הראשון זהה מילה במילה לתבנית `survey_invite_service`
+        {/* 🔴 המשפט הראשון בעברית זהה מילה במילה לתבנית `survey_invite_service`
             שאושרה במטא. הלקוח קורא את שניהם בתוך דקה, ופער ביניהם קורא
             כמו שתי מערכות שונות. אם משנים כאן, משנים גם שם, וזו הגשה
             מחדש של 48 שעות. */}
-        <p className="mt-1.5 text-[13.5px] leading-relaxed text-slate-600">
-          קיבלת לאחרונה שירות מחברת ר.שעל בע״מ. חשוב לי לדעת איך הרגשת עם השירות
-          שקיבלת, ולכן אשמח אם תקדיש לנו פחות מדקה ותענה על שתי שאלות קצרות.
-        </p>
+        <p className="mt-1.5 text-[13.5px] leading-relaxed text-slate-600">{t.intro}</p>
       </div>
 
-      {QUESTIONS.map((question, i) => {
+      {questions.map((question, i) => {
         const value = question.key === 'q1' ? q1 : q2;
         const setValue = question.key === 'q1' ? setQ1 : setQ2;
         return (
           <div key={question.key} className="mt-6">
             <p className="text-[14.5px] font-semibold leading-snug" style={{ color: NAVY }}>
-              {i + 1}. {question.text}
+              <bdi>{i + 1}</bdi>. {question.text}
             </p>
             <div className="mt-2">
               <StarRow value={value} onChange={setValue} label={question.text} />
-              <div className="mt-1 flex justify-between px-1 text-[11px] text-slate-400">
-                <span>{question.low}</span>
-                <span>{question.high}</span>
+              {/* התוויות רוכבות על אותו כיוון של הכוכבים: "נמוך" מתחת לכוכב
+                  הראשון (שמאל) ו"גבוה" מתחת לחמישי (ימין), בכל שפה. */}
+              <div dir="ltr" className="mt-1 flex justify-between px-1 text-[11px] text-slate-400">
+                <span dir={surveyDir(lang)}>{question.low}</span>
+                <span dir={surveyDir(lang)}>{question.high}</span>
               </div>
             </div>
           </div>
@@ -319,7 +403,7 @@ export function SurveyPage() {
 
       <div className="mt-6">
         <label htmlFor="survey-comment" className="text-[14.5px] font-semibold leading-snug" style={{ color: NAVY }}>
-          משהו נוסף שתרצו לומר לנו? (לא חובה)
+          {t.commentLabel}
         </label>
         <textarea
           id="survey-comment"
@@ -327,7 +411,7 @@ export function SurveyPage() {
           onChange={(e) => setComment(e.target.value)}
           maxLength={2000}
           rows={3}
-          placeholder="כתבו כאן"
+          placeholder={t.commentPlaceholder}
           className="mt-2 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 p-3 text-[14px] text-slate-700 outline-none placeholder:text-slate-400 focus:border-slate-400"
         />
       </div>
@@ -339,12 +423,10 @@ export function SurveyPage() {
         className="mt-5 w-full rounded-xl py-3.5 text-[15px] font-bold text-white transition-opacity disabled:opacity-40"
         style={{ background: NAVY }}
       >
-        {sending ? 'שולח' : 'שליחה'}
+        {sending ? t.sending : t.send}
       </button>
 
-      {!answered && (
-        <p className="mt-2 text-center text-[11.5px] text-slate-400">סמנו לפחות שאלה אחת כדי לשלוח</p>
-      )}
+      {!answered && <p className="mt-2 text-center text-[11.5px] text-slate-400">{t.hint}</p>}
     </Sheet>
   );
 }

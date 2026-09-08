@@ -39,7 +39,7 @@ const HARD_CAP = 1000;
 const LIST_COLUMNS =
   'id, phone_local, phone_e164, contact_name, customer_number, customer_name, ' +
   'last_inbound_at, last_message_at, last_message_preview, last_message_direction, ' +
-  'unanswered_since, message_count, read_at, contact_label, suggested, ' +
+  'unanswered_since, message_count, read_at, contact_label, suggested, lang, ' +
   'last_human_preview, last_human_at, last_human_direction, human_count';
 
 async function listInbox(req: VercelRequest, res: VercelResponse) {

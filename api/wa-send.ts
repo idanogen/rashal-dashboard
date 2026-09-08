@@ -351,6 +351,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       phone_e164: e164,
       message_kind: kind,
       template_id: template ? template.heyyTemplateId : null,
+      // המשתנים נשמרים כדי שבחירת שפה (08/09) תוכל לשלוח את אותה הודעה
+      // מתורגמת. ראה `_lib/wa-lang.ts`.
+      template_params: template ? (body.values ?? {}) : null,
       // ⭐ גם לתבנית נשמר הטקסט המלא שהלקוח קרא, ולא רק מזהה. בלעדיו
       // השרשור בדיעבד מציג "תבנית מאושרת" בלי שום מושג מה נאמר בה.
       body_text:

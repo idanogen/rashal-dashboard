@@ -123,7 +123,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       phone_e164: e164,
       message_kind: body.kind,
       template_id: body.kind === 'template' ? body.templateId : null,
-      template_params: body.kind === 'template' ? body.parameters ?? [] : null,
+      // ⭐ המשתנים בשם ולא לפי מיקום, כי בחירת שפה (08/09) בונה מהם את
+      // אותה הודעה בשפה אחרת. ראה `_lib/wa-lang.ts`.
+      template_params: body.kind === 'template' ? normalizeVariables(body) : null,
       body_text: body.kind === 'text' ? body.bodyText : null,
       reminder_kind: body.reminderKind ?? null,
       status: result.status,

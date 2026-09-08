@@ -47,10 +47,13 @@ export function parseCustomerReply(text: string | null | undefined): {
   if (!text) return { status: null, requestedTime: null };
   const normalized = text.trim().toLowerCase();
 
-  const positive = [/^כן/, /^בסדר/, /^מאשר/, /^מתאים/, /^אישור/, /^אוקיי/, /^אוקי/, /^okay/, /^ok\b/, /^👍/, /^✅/, /^v$/];
+  // כיתובי הכפתורים בארבע השפות (08/09/2026) הם תשובות לכל דבר.
+  const positive = [/^כן/, /^בסדר/, /^מאשר/, /^מתאים/, /^אישור/, /^אוקיי/, /^אוקי/, /^okay/, /^ok\b/, /^👍/, /^✅/, /^v$/,
+    /^works for me/, /^yes\b/, /^مناسب لي/, /^نعم/, /^мне подходит/, /^да\b/, /^สะดวก/];
   if (positive.some((p) => p.test(normalized))) return { status: 'מתאים', requestedTime: null };
 
-  const negative = [/^לא$/, /^לא תודה/, /^בטל/, /^ביטול/, /^לא מתאים$/, /^אי אפשר$/, /^❌/];
+  const negative = [/^לא$/, /^לא תודה/, /^בטל/, /^ביטול/, /^לא מתאים$/, /^אי אפשר$/, /^❌/,
+    /^doesn'?t work/, /^no$/, /^غير مناسب/, /^لا$/, /^не подходит/, /^нет$/, /^ไม่สะดวก/];
   if (negative.some((p) => p.test(normalized))) return { status: 'לא מתאים', requestedTime: null };
 
   const changeIndicators = [

@@ -222,7 +222,10 @@ export async function afterInboundUnidentified(opts: {
     if (opts.hasVisualMedia && !conv.identity_asked_at) {
       const cfg = await identitySettings();
       if (!cfg.enabled || !cfg.ask_text.trim()) return 'ask_disabled';
-      const r = await heyySendText(opts.phoneE164, cfg.ask_text.trim());
+      // 08/09/2026: טקסט חופשי אינו נושא ארבעה כפתורים, ולכן שורת שפות
+      // בתחתית. תשובה של EN / AR / RU / TH נקראת בוובהוק כבחירת שפה.
+      const askText = `${cfg.ask_text.trim()}\nEnglish / العربية / Русский / ไทย: EN / AR / RU / TH`;
+      const r = await heyySendText(opts.phoneE164, askText);
       if (!r.ok) return `ask_failed:${r.statusDetail ?? ''}`;
       await supabaseAdmin.from('wa_conversations').update({ identity_asked_at: new Date().toISOString() }).eq('id', conv.id);
       if (r.waMessageId) {

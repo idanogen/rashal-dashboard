@@ -4,6 +4,7 @@ import { extractMessage, parseCustomerReply } from './_lib/extract.js';
 import { normalizePhone, toE164 } from './_lib/phone.js';
 import { recordToThread } from './_lib/wa-thread.js';
 import { afterInboundUnidentified } from './_lib/wa-link.js';
+import { detectLanguageReply, handleLanguageChoice } from './_lib/wa-lang.js';
 import { copyMediaForMessage } from './_lib/wa-media.js';
 import { describeAttachments } from './_lib/attachments.js';
 
@@ -375,6 +376,31 @@ async function handleInbound(payload: any, finish: Finish, res: VercelResponse) 
   // היא מדולגת בכוונה, ונאמר במפורש שהיא כבר בשרשור.
   const hasAttachments = Array.isArray(payload?.data?.content?.attachments)
     && payload.data.content.attachments.length > 0;
+
+  // ── בחירת שפה (08/09/2026) ──────────────────────────────
+  // לחיצה על כפתור שפה מגיעה כטקסט שהוא שם השפה. היא נבדקת לפני כל
+  // השאר בכוונה: היא לא תמונה, לא תשובת תיאום ולא "אדם נכנס לשיחה",
+  // ולכן אסור שתעצור תזכורת לתמונה או תסגור תיאום. ראה `_lib/wa-lang.ts`.
+  const langChoice = phoneE164 && !hasAttachments ? detectLanguageReply(extracted.rawText) : null;
+  if (phoneE164 && langChoice) {
+    let outcome: { ok: boolean; note: string };
+    try {
+      outcome = await handleLanguageChoice(phoneE164, langChoice);
+    } catch (e) {
+      outcome = { ok: false, note: `בחירת שפה ${langChoice} נפלה: ${e instanceof Error ? e.message : String(e)}` };
+    }
+    await supabaseAdmin.from('whatsapp_inbound').insert({
+      provider_message_id: extracted.providerId,
+      phone_e164: phoneE164,
+      phone_local: phoneLocal,
+      body_text: extracted.rawText,
+      raw_payload: payload,
+      status: 'processed',
+      processed_at: new Date().toISOString(),
+      notes: outcome.note,
+    });
+    return finish(outcome.ok, outcome.note, { language: langChoice });
+  }
 
   // ── מנוע "תמונה לפני טכנאי" (30/08/2026) ────────────────
   // תמונה או סרטון סוגרים את הבקשה הפתוחה של הטלפון הזה כ"תמונה

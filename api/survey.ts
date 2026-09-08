@@ -1,5 +1,12 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabaseAdmin } from './_lib/supabase-admin.js';
+// 🔴 רשימת השפות משוכפלת כאן ולא מיובאת מ-src: פונקציות Vercel מקובצות
+// מתוך api/ בלבד, וייבוא חוצה תיקיות עובר tsc אבל אינו מובטח בבנייה.
+type SurveyLang = 'he' | 'en' | 'ar' | 'ru' | 'th';
+const SURVEY_LANGS: readonly SurveyLang[] = ['he', 'en', 'ar', 'ru', 'th'];
+function isSurveyLang(x: unknown): x is SurveyLang {
+  return typeof x === 'string' && (SURVEY_LANGS as readonly string[]).includes(x);
+}
 
 /**
  * עמוד הסקר של הלקוח, צד השרת.
@@ -12,8 +19,11 @@ import { supabaseAdmin } from './_lib/supabase-admin.js';
  * 2. התשובה ל-GET מחזירה שם פרטי בלבד. לא טלפון, לא כתובת, לא מספר לקוח,
  *    ולא פרטי הזמנה. גם מי שאיכשהו יחזיק טוקן זר לא ילמד ממנו כלום.
  *
- * GET  /api/survey?token=…   → { ok, customerName, alreadyAnswered }
- * POST /api/survey           ← { token, q1, q2, comment }
+ * GET  /api/survey?token=…   → { ok, customerName, alreadyAnswered, lang }
+ * POST /api/survey           ← { token, q1, q2, comment, lang? }
+ *
+ * `lang` ב-GET היא השפה שנשמרה ללקוח (`wa_language_for`), ו-`lang` ב-POST
+ * היא השפה שבה הוא ענה בפועל, שנשמרת ב-`answered_lang`.
  */
 
 /** הטוקן נוצר במסד כ-uuid בלי מקפים. כל דבר אחר נפסל לפני שהוא נוגע במסד. */
@@ -52,6 +62,28 @@ function displayName(full: string | null | undefined): string {
   return String(full ?? '').trim().replace(/\s+/g, ' ');
 }
 
+/**
+ * השפה שנשמרה ללקוח, לפי הטלפון ומספר הלקוח. הפונקציה במסד מחזירה 'he'
+ * כשאין כלום, ואם היא נכשלת חוזרים ל-'he' בלי להפיל את הבקשה: עמוד סקר
+ * בעברית עדיף על עמוד שגיאה.
+ */
+async function languageFor(phone: string | null, customer: string | null): Promise<SurveyLang> {
+  try {
+    const { data, error } = await supabaseAdmin.rpc('wa_language_for', {
+      p_phone: phone,
+      p_customer: customer,
+    });
+    if (error) {
+      console.error('[survey] language lookup failed', error);
+      return 'he';
+    }
+    return isSurveyLang(data) ? data : 'he';
+  } catch (e) {
+    console.error('[survey] language lookup threw', e);
+    return 'he';
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // העמוד מוגש מאותו מקור, אבל כשהסקר יעבור לתת-דומיין של ר.שעל זה כבר לא
   // יהיה נכון. משאירים את הכותרת פתוחה לקריאה בלבד של נקודת הקצה הזו.
@@ -70,7 +102,8 @@ async function handleGet(req: VercelRequest, res: VercelResponse) {
 
   const { data, error } = await supabaseAdmin
     .from('customer_surveys')
-    .select('id, customer_name, answered_at, opened_at')
+    // 🔴 הטלפון ומספר הלקוח נשלפים רק כדי לברר שפה. הם לא חוזרים ללקוח.
+    .select('id, customer_name, answered_at, opened_at, phone_e164, customer_number')
     .eq('token', token)
     .maybeSingle();
 
@@ -92,10 +125,13 @@ async function handleGet(req: VercelRequest, res: VercelResponse) {
       .is('opened_at', null);
   }
 
+  const lang = await languageFor(data.phone_e164 ?? null, data.customer_number ?? null);
+
   return res.status(200).json({
     ok: true,
     customerName: displayName(data.customer_name),
     alreadyAnswered: Boolean(data.answered_at),
+    lang,
   });
 }
 
@@ -118,6 +154,9 @@ async function handlePost(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ ok: false, error: 'comment_too_long' });
   }
   const comment = rawComment || null;
+
+  // השפה שבה הלקוח ענה. אופציונלית, וערך לא מוכר פשוט לא נשמר.
+  const answeredLang: SurveyLang | null = isSurveyLang(body.lang) ? body.lang : null;
 
   // שליחה ריקה לגמרי אינה תשובה. עדיף שהעמוד יבקש לסמן משהו מאשר שנרשום
   // שורה שנענתה בלי תוכן, שתעוות אחר כך את שיעור המענה.
@@ -153,6 +192,7 @@ async function handlePost(req: VercelRequest, res: VercelResponse) {
       comment,
       answered_at: new Date().toISOString(),
       status: 'answered',
+      ...(answeredLang ? { answered_lang: answeredLang } : {}),
     })
     .eq('id', existing.id)
     .is('answered_at', null); // מרוץ בין שתי לשוניות פתוחות: הראשונה מנצחת

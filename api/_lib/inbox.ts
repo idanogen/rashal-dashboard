@@ -39,6 +39,8 @@ export interface ConversationRow {
   message_count: number | null;
   read_at: string | null;
   contact_label?: string | null;
+  /** השפה שהלקוח בחר בכפתור (08/09/2026). NULL = עברית עם כפתורי שפה. */
+  lang?: string | null;
   suggested?: unknown;
   last_human_preview?: string | null;
   last_human_at?: string | null;
@@ -56,6 +58,8 @@ export interface InboxItem {
   unidentified: boolean;
   /** מי מדבר איתנו כשזה לא הלקוח עצמו: "הבת, מיכל". */
   contactLabel: string | null;
+  /** השפה שהלקוח בחר: en · ar · ru · th. NULL = עברית. */
+  lang: string | null;
   /** מועמדים לשיוך שהמערכת הכינה (ת.ז. בתשובה, או טלפון של שני לקוחות). */
   suggested: Array<{ customer_number: string; customer_name: string | null; city?: string | null; by?: string; label?: string | null }> | null;
   /** true כשכל ההודעות בשיחה אוטומטיות: אף אדם לא כתב, לא אצלנו ולא הלקוח. */
@@ -145,6 +149,7 @@ export function toItem(row: ConversationRow, win: WindowState, now = Date.now())
     customerNumber: row.customer_number,
     unidentified: !identified,
     contactLabel: row.contact_label ?? null,
+    lang: row.lang ?? null,
     suggested: Array.isArray(row.suggested) ? (row.suggested as InboxItem['suggested']) : null,
     // ⭐ התצוגה המקדימה היא ההודעה האנושית האחרונה, לא הסקר האחרון.
     preview: ((row.human_count ?? 0) > 0 ? row.last_human_preview : null)?.trim()

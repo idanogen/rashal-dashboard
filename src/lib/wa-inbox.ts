@@ -32,6 +32,8 @@ export interface InboxItem {
   unidentified: boolean;
   /** מי מדבר איתנו כשזה לא הלקוח עצמו: "הבת, מיכל". */
   contactLabel?: string | null;
+  /** השפה שהלקוח בחר בכפתור: en · ar · ru · th. ריק = עברית. */
+  lang?: string | null;
   /** מועמדים לשיוך שהשרת הכין (ת.ז. בתשובה, או טלפון של שני לקוחות). */
   suggested?: SuggestedCustomer[] | null;
   /** כל ההודעות בשיחה אוטומטיות; יורדת מ"כל השיחות" מאחורי מתג. */
@@ -156,6 +158,7 @@ export interface ThreadResponse {
     customerNumber: string | null;
     customerName: string | null;
     contactLabel?: string | null;
+    lang?: string | null;
     suggested?: SuggestedCustomer[] | null;
     identityAskedAt?: string | null;
     messageCount: number | null;
@@ -340,4 +343,16 @@ export async function rememberContact(opts: {
     method: 'POST',
     body: JSON.stringify({ action: 'remember', ...opts }),
   });
+}
+
+/** תוויות השפה כפי שהן מוצגות למשרד. */
+export const WA_LANG_LABELS: Record<string, string> = { he: 'עברית', en: 'English', ar: 'العربية', ru: 'Русский', th: 'ไทย' };
+
+/**
+ * קביעת שפה ביד מהמשרד (08/09/2026). נשמרת על הטלפון ועל הלקוח, בדיוק
+ * כמו לחיצה של הלקוח על כפתור. ההרשאה נאכפת בפונקציה במסד.
+ */
+export async function setConversationLanguage(phone: string, lang: string): Promise<void> {
+  const { error } = await supabase.rpc('wa_set_language', { p_phone: phone, p_lang: lang, p_source: 'staff' });
+  if (error) throw new Error(error.message);
 }
