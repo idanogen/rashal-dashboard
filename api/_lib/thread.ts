@@ -276,7 +276,9 @@ export async function loadThread(by: { phone?: string | null; customer?: string 
     // 🔴 **המצורפים עוברים תרגום ולא נמסרים כמו שהם.** ראה
     // `describeAttachments`: המטען הגולמי מכיל כתובת S3 ציבורית לכל
     // קובץ ואת הנתיב הפנימי שלנו, ומכיל גם כפתורי תבנית שאינם קבצים.
-    messages: (messages ?? []).map((m) => {
+    // 🔴 לחיצת שפה (English / العربية / …) אינה הודעה ואינה מוצגת (עידן,
+    // 09/09/2026: "מבלבל"). השפה עצמה יושבת בתג ובבורר שבכותרת השרשור.
+    messages: (messages ?? []).filter((m) => (m as { auto_kind?: string | null }).auto_kind !== 'language').map((m) => {
       const autoKind = ((m as { auto_kind?: string | null }).auto_kind ?? null) as string | null;
       const st = autoKind ? autoStateFor(m as { sent_at: string; attachments?: unknown }, autoKind) : null;
       const { auto_kind: _drop, ...rest } = m as typeof m & { auto_kind?: unknown };
