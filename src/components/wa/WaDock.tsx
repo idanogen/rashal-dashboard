@@ -4,7 +4,14 @@ import { WaGlyph } from '@/components/wa/WaGlyph';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { InboxBoard, HEIGHT_DOCK } from '@/components/wa/InboxBoard';
 import { fetchInbox } from '@/lib/wa-inbox';
-import { inboxKey, readWaitingCount, WA_INBOX_POLL_MS } from '@/lib/wa-inbox-query';
+import {
+  inboxKey,
+  readWaitingCount,
+  WA_INBOX_POLL_MS,
+  WA_IDLE_AFTER_MS,
+  WA_IDLE_POLL_MS,
+} from '@/lib/wa-inbox-query';
+import { useIdle } from '@/hooks/useIdle';
 import { useCurrentProfile } from '@/hooks/useProfile';
 import { screenAllow } from '@/lib/screen-access';
 import { cn } from '@/lib/utils';
@@ -26,6 +33,9 @@ export function WaDock() {
   const { data: profile } = useCurrentProfile();
   const allowed = !!profile && !profile.disabled && screenAllow('/inbox').includes(profile.role);
   const qc = useQueryClient();
+  // ⭐ הכפתור הצף חי בכל מסך, ולכן הוא המקור הכי שקט וגם הכי מתמיד.
+  // אותו כלל בדיוק: הילוך נמוך כשאין אדם, בלי לכבות.
+  const idle = useIdle(WA_IDLE_AFTER_MS);
 
   // 🔴 **הכפתור שואל רק כשהתיבה סגורה.** כשהיא פתוחה `InboxBoard` כבר
   // מושך את אותה רשימה בדיוק, ושאילתה שנייה הייתה בקשה כפולה על אותם
@@ -34,7 +44,7 @@ export function WaDock() {
   useQuery({
     queryKey: inboxKey('waiting', ''),
     queryFn: () => fetchInbox('waiting', ''),
-    refetchInterval: WA_INBOX_POLL_MS,
+    refetchInterval: idle ? WA_IDLE_POLL_MS : WA_INBOX_POLL_MS,
     enabled: allowed && !open,
     retry: false,
   });

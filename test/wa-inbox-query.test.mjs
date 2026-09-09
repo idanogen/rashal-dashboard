@@ -8,6 +8,9 @@ import {
   readWaitingCount,
   WA_INBOX_POLL_MS,
   WA_THREAD_POLL_MS,
+  WA_IDLE_AFTER_MS,
+  WA_IDLE_POLL_MS,
+  WA_IDLE_THREAD_POLL_MS,
 } from '../src/lib/wa-inbox-query.ts';
 
 /**
@@ -96,12 +99,64 @@ test('אפס ממתינים הוא תשובה אמיתית, לא "אין נתו�
   assert.equal(readWaitingCount(c), 0);
 });
 
-test('הרשימה נשאלת כל שלוש דקות, והשרשור נשאר מהיר ממנה', () => {
-  assert.equal(WA_INBOX_POLL_MS, 180_000);
+test('השרשור נשאר מהיר מהרשימה, בשני ההילוכים', () => {
+  // 08/09/2026: הקצבים האטו כי הערוץ החי ובדיקת הטריות הפכו למסלול
+  // הראשי. מה שנשמר הוא הסדר היחסי, לא המספר עצמו.
   assert.ok(
     WA_THREAD_POLL_MS < WA_INBOX_POLL_MS,
     'השרשור הפתוח חייב להתרענן מהר מהרשימה: שם יושב עובד ומחכה לתשובה',
   );
+  assert.ok(
+    WA_IDLE_THREAD_POLL_MS < WA_IDLE_POLL_MS,
+    'גם בהילוך הנמוך השרשור נשאר מהיר מהרשימה',
+  );
+});
+
+test('🔴 חוסר פעילות מוריד הילוך ולעולם לא מכבה', () => {
+  // 🔴 הלקח של 07/09/2026: מסך שנשאר פתוח קפא עד F5, כי היה לו מסלול
+  // רענון אחד בלבד. מסך על הקיר בר.שעל הוא שימוש אמיתי, ולכן טיימר
+  // שמתאפס ל-0 או ל-false הוא רגרסיה ולא חיסכון.
+  for (const v of [WA_IDLE_POLL_MS, WA_IDLE_THREAD_POLL_MS]) {
+    assert.equal(typeof v, 'number');
+    assert.ok(Number.isFinite(v) && v > 0, 'ההילוך הנמוך חייב להישאר טיימר חי');
+  }
+  assert.ok(WA_IDLE_POLL_MS > WA_INBOX_POLL_MS, 'ההילוך הנמוך חייב להיות איטי יותר');
+  assert.ok(WA_IDLE_THREAD_POLL_MS > WA_THREAD_POLL_MS, 'ההילוך הנמוך חייב להיות איטי יותר');
+  assert.ok(
+    WA_IDLE_AFTER_MS >= 3 * 60_000,
+    'סף נטישה קצר מדי מוריד הילוך למי שרק קורא שרשור ארוך',
+  );
+});
+
+test('⭐ שני ההילוכים מחוברים למסך, ולא רק מוגדרים בקובץ', () => {
+  const board = readFileSync(new URL('../src/components/wa/InboxBoard.tsx', import.meta.url), 'utf8');
+  assert.match(board, /useIdle\(WA_IDLE_AFTER_MS\)/, 'התיבה לא מזהה נטישה');
+  assert.match(board, /idle \? WA_IDLE_POLL_MS : WA_INBOX_POLL_MS/, 'הרשימה לא מחליפה הילוך');
+  assert.match(board, /idle \? WA_IDLE_THREAD_POLL_MS : WA_THREAD_POLL_MS/, 'השרשור לא מחליף הילוך');
+
+  const dock = readFileSync(new URL('../src/components/wa/WaDock.tsx', import.meta.url), 'utf8');
+  assert.match(dock, /idle \? WA_IDLE_POLL_MS : WA_INBOX_POLL_MS/, 'הכפתור הצף לא מחליף הילוך');
+});
+
+test('🔴🔴 הוואטסאפ מחובר לערוץ החי, אחרת ההאטה מאחרת מידע', () => {
+  // זו הבדיקה שמחזיקה את כל ההיגיון של 08/09: מותר להאט את הטיימר רק כי
+  // הדחיפה תפסה את מקומו. אם ההאזנה תוסר, ההאטה תהפוך לפיגור אמיתי.
+  const sync = readFileSync(new URL('../src/hooks/useRealtimeSync.ts', import.meta.url), 'utf8');
+  const block = sync.slice(sync.indexOf('const TABLE_KEYS'), sync.indexOf('export function useRealtimeSync'));
+  for (const table of ['whatsapp_inbound', 'whatsapp_outbound', 'wa_conversations']) {
+    assert.ok(block.includes(table), `${table} לא מאזינה בערוץ החי`);
+  }
+  assert.ok(block.includes("'wa-thread'"), 'השרשור לא נפסל על הודעה חדשה');
+  assert.ok(block.includes("'wa-inbox'"), 'הרשימה לא נפסלת על הודעה חדשה');
+
+  // 🔴 שמות החותמות בשרת חייבים להיות זהים למפתחות ה-query, כי
+  // probeFreshness עושה invalidateQueries על שם החותמת.
+  const mig = readFileSync(
+    new URL('../supabase/migrations/20260908_wa_realtime_freshness.sql', import.meta.url),
+    'utf8',
+  );
+  assert.match(mig, /'wa-inbox'/, 'חסרה חותמת טריות לרשימה');
+  assert.match(mig, /'wa-thread'/, 'חסרה חותמת טריות לשרשור');
 });
 
 test('🔴 חזרה לחלון מרעננת, וזה דורש גם איפוס הטריות', () => {
@@ -117,7 +172,7 @@ test('🔴 חזרה לחלון מרעננת, וזה דורש גם איפוס ה�
   const listBlock = board.slice(board.indexOf('const inbox = useQuery'), board.indexOf('const thread = useQuery'));
   assert.match(listBlock, /refetchOnWindowFocus: true/, 'הרשימה אינה מתרעננת בחזרה לחלון');
 
-  // ⭐ והקצב עצמו לא קוצר. הוא נקבע אחרי שהחשבון נאכל ב-348 קריאות בשעה.
-  assert.equal(WA_INBOX_POLL_MS, 180_000);
-  assert.equal(WA_THREAD_POLL_MS, 30_000);
+  // ⭐ ורענון בחזרה לחלון הוא בדיוק מה שמאפשר להאט את הטיימר: הוא חסום
+  // על ידי התנהגות אנושית ולא על ידי שעון, ולכן הוא לא עולה כלום כשאין
+  // אף אחד מול המסך.
 });

@@ -72,3 +72,19 @@ insert into public.wa_template_langs (key, lang, heyy_template_id) values
   ('media_reminder', 'he', '3c987206-48b8-4778-b408-fe7d6b34a9b5'),
   ('survey_invite',  'he', 'd42b7c89-7e71-43c9-ab6e-75ac05d2ae37')
 on conflict (key, lang) do update set heyy_template_id = excluded.heyy_template_id, approved_at = now();
+
+-- 09/09/2026: לקוח עם שפה שמורה שאין לה עדיין תבנית מאושרת (שלב ב לא
+-- הושלם) קיבל את ברירת המחדל הישנה בלי כפתורים (שורה, אחרי שלחצה Русский
+-- על דוגמת הסקר). הנפילה היא לשורת 'he' (עברית עם כפתורי שפה), ורק
+-- אחריה לברירת המחדל של המנוע.
+create or replace function public.wa_pick_template(
+  p_key text, p_phone text, p_customer text default null, p_default text default null)
+returns table(lang text, template_id text)
+language sql stable security definer set search_path = public as $$
+  with l as (select public.wa_language_for(p_phone, p_customer) as lang)
+  select l.lang,
+         coalesce((select t.heyy_template_id from public.wa_template_langs t where t.key = p_key and t.lang = l.lang),
+                  (select t.heyy_template_id from public.wa_template_langs t where t.key = p_key and t.lang = 'he'),
+                  p_default)
+    from l;
+$$;

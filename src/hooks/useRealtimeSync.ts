@@ -16,12 +16,31 @@ const PROBE_EVERY_MS = 60_000;
 /** השהיות בין ניסיונות חיבור מחדש של הערוץ (שכבה 2). */
 const RECONNECT_DELAYS_MS = [3_000, 8_000, 20_000, 45_000];
 
-const TABLE_KEYS: Array<[table: string, key: string]> = [
-  ['orders', 'orders'],
-  ['routes', 'routes'],
-  ['service_calls', 'serviceCalls'],
-  ['calendar_stops', 'calendarStops'],
-  ['pickups', 'pickups'],
+/**
+ * טבלה → מפתחות ה-query שהיא מפילה. טבלה אחת יכולה להזיז כמה מסכים.
+ *
+ * ⭐⭐ **תיבת הוואטסאפ הצטרפה ב-08/09/2026.** עד אז היא הייתה המסך היחיד
+ * שנשען על טיימר בלבד מול Vercel, והיא לבדה ייצרה 14,077 בקשות ביממה כדי
+ * לתפוס בערך 60 הודעות. `whatsapp_inbound` ו-`whatsapp_outbound` כבר היו
+ * בפרסום החי ואיש לא האזין להן, ו-`wa_conversations` נוספה במיגרציה
+ * `20260908_wa_realtime_freshness`.
+ *
+ * 🔴 **ההודעות מפילות גם את הרשימה וגם את השרשור,** כי הודעה חדשה משנה
+ * את שתיהן: השרשור מקבל שורה, והרשימה מקבלת סדר ומונה חדשים.
+ *
+ * 🔴 **הרשאות: אין כאן חשיפה חדשה.** הערוץ החי מכבד RLS, ולכן סדרן ומנהל
+ * מקבלים אירוע על כל הודעה, נהג רק על מה שקשור להזמנה שלו, וזה בדיוק מה
+ * שכל אחד מהם כבר רשאי לראות במסך.
+ */
+const TABLE_KEYS: Array<[table: string, keys: string[]]> = [
+  ['orders', ['orders']],
+  ['routes', ['routes']],
+  ['service_calls', ['serviceCalls']],
+  ['calendar_stops', ['calendarStops']],
+  ['pickups', ['pickups']],
+  ['whatsapp_inbound', ['wa-thread', 'wa-inbox']],
+  ['whatsapp_outbound', ['wa-thread', 'wa-inbox']],
+  ['wa_conversations', ['wa-inbox']],
 ];
 
 /**
@@ -73,8 +92,10 @@ export function useRealtimeSync() {
       if (disposed) return;
       if (channel) { void supabase.removeChannel(channel); channel = null; }
       let ch = supabase.channel(uniqueChannelName('db-changes'));
-      for (const [table, key] of TABLE_KEYS) {
-        ch = ch.on('postgres_changes', { event: '*', schema: 'public', table }, () => scheduleInvalidate(key));
+      for (const [table, keys] of TABLE_KEYS) {
+        ch = ch.on('postgres_changes', { event: '*', schema: 'public', table }, () => {
+          for (const key of keys) scheduleInvalidate(key);
+        });
       }
       channel = ch.subscribe((status) => {
         if (disposed) return;

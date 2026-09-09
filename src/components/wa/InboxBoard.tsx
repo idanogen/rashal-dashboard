@@ -48,8 +48,12 @@ import {
   WA_INBOX_KEY,
   WA_INBOX_POLL_MS,
   WA_THREAD_POLL_MS,
+  WA_IDLE_AFTER_MS,
+  WA_IDLE_POLL_MS,
+  WA_IDLE_THREAD_POLL_MS,
   WA_LIST_FOCUS_STALE_MS,
 } from '@/lib/wa-inbox-query';
+import { useIdle } from '@/hooks/useIdle';
 
 /**
  * תיבת השיחות של ר.שעל.
@@ -578,12 +582,17 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
   const qc = useQueryClient();
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // ⭐⭐ **אין אדם מול המסך = הילוך נמוך, לא עצירה.** ראה `useIdle` ואת
+  // ההערה על הטיימרים ב-`wa-inbox-query`. הערוץ החי ובדיקת הטריות
+  // ממשיכים לרוץ כרגיל, ולכן מסך שנשאר דולק עדיין מתעדכן מיד.
+  const idle = useIdle(WA_IDLE_AFTER_MS);
+
   // 🔴 **אותו מפתח בדיוק שהכפתור הצף משתמש בו.** קודם היו שני מפתחות
   // לאותם נתונים, ולכן יצאו שתי בקשות זהות לשרת על כל סבב.
   const inbox = useQuery({
     queryKey: [...inboxKey(tab, q), includeAuto ? 'auto' : 'human'],
     queryFn: () => fetchInbox(tab, q, includeAuto),
-    refetchInterval: WA_INBOX_POLL_MS,
+    refetchInterval: idle ? WA_IDLE_POLL_MS : WA_INBOX_POLL_MS,
     // ⭐ ראה את ההערה על השרשור. הרשימה מתרעננת גם היא בחזרה לחלון,
     // אבל רק אם עברה חצי דקה, כי סדר השורות משתנה לאט.
     refetchOnWindowFocus: true,
@@ -632,7 +641,7 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
     queryKey: threadKey(selected),
     queryFn: () => fetchThread(selected as string),
     enabled: Boolean(selected),
-    refetchInterval: WA_THREAD_POLL_MS,
+    refetchInterval: idle ? WA_IDLE_THREAD_POLL_MS : WA_THREAD_POLL_MS,
     refetchOnWindowFocus: true,
     staleTime: 0,
   });
