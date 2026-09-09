@@ -47,13 +47,13 @@ export function parseCustomerReply(text: string | null | undefined): {
   if (!text) return { status: null, requestedTime: null };
   const normalized = text.trim().toLowerCase();
 
-  // כיתובי הכפתורים בארבע השפות (08/09/2026) הם תשובות לכל דבר.
+  // כיתובי הכפתורים בחמש השפות (08/09/2026, אמהרית 09/09/2026) הם תשובות לכל דבר.
   const positive = [/^כן/, /^בסדר/, /^מאשר/, /^מתאים/, /^אישור/, /^אוקיי/, /^אוקי/, /^okay/, /^ok\b/, /^👍/, /^✅/, /^v$/,
-    /^works for me/, /^yes\b/, /^مناسب لي/, /^نعم/, /^мне подходит/, /^да\b/, /^สะดวก/];
+    /^works for me/, /^yes\b/, /^مناسب لي/, /^نعم/, /^мне подходит/, /^да\b/, /^สะดวก/, /^ይመቸኛል/, /^አዎ/];
   if (positive.some((p) => p.test(normalized))) return { status: 'מתאים', requestedTime: null };
 
   const negative = [/^לא$/, /^לא תודה/, /^בטל/, /^ביטול/, /^לא מתאים$/, /^אי אפשר$/, /^❌/,
-    /^doesn'?t work/, /^no$/, /^غير مناسب/, /^لا$/, /^не подходит/, /^нет$/, /^ไม่สะดวก/];
+    /^doesn'?t work/, /^no$/, /^غير مناسب/, /^لا$/, /^не подходит/, /^нет$/, /^ไม่สะดวก/, /^አይመቸኝም/, /^አይደለም/];
   if (negative.some((p) => p.test(normalized))) return { status: 'לא מתאים', requestedTime: null };
 
   const changeIndicators = [

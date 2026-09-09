@@ -16,7 +16,7 @@ language sql immutable
 as $$
   select lower(regexp_replace(btrim(coalesce(p_body, '')), '[.!?،؟\s]+$', '')) in
     ('english', 'en', 'العربية', 'عربي', 'عربية', 'ar', 'русский', 'по-русски', 'ru',
-     'ไทย', 'ภาษาไทย', 'th', 'עברית', 'hebrew', 'he');
+     'ไทย', 'ภาษาไทย', 'th', 'አማርኛ', 'amharic', 'am', 'עברית', 'hebrew', 'he');
 $$;
 
 create or replace function public.wa_auto_kind(p_direction text, p_author text, p_triggered_by text, p_reminder_kind text, p_body text)
