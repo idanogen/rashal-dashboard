@@ -113,6 +113,9 @@ begin
     update public.media_request_settings m set enabled = p_enabled where m.id;
   elsif p_engine = 'on_way' then
     update public.on_way_settings w set enabled = p_enabled where w.id;
+  -- 09/09/2026: דוח הבוקר למנהלים (20260909_morning_report).
+  elsif p_engine = 'morning' then
+    update public.morning_report_settings r set enabled = p_enabled where r.id;
   else
     raise exception 'unknown engine: %', p_engine;
   end if;

@@ -17,6 +17,7 @@ import { AdminUsersPage } from '@/pages/AdminUsersPage';
 import { WaAutomationsPage } from '@/pages/WaAutomationsPage';
 import { TeamPage } from '@/pages/TeamPage';
 import { TeamPerformancePage } from '@/pages/TeamPerformancePage';
+import { MorningReportPage } from '@/pages/MorningReportPage';
 import { WhatsAppTemplatesPage } from '@/pages/WhatsAppTemplatesPage';
 import { DriverDashboardPage } from '@/pages/DriverDashboardPage';
 import { LoginPage } from '@/pages/LoginPage';
@@ -90,6 +91,9 @@ function App() {
                         <Route path="/overview" element={<RoleBasedRoute allow={screenAllow('/overview')}><ManagementDashboard /></RoleBasedRoute>} />
                         <Route path="/surveys" element={<RoleBasedRoute allow={screenAllow('/surveys')}><SurveysPage /></RoleBasedRoute>} />
                         <Route path="/performance" element={<RoleBasedRoute allow={screenAllow('/performance')}><TeamPerformancePage /></RoleBasedRoute>} />
+                        {/* דוח בוקר למנהלים (09/09/2026). הקישור מהוואטסאפ של שבע בבוקר נוחת על /morning/<תאריך>. */}
+                        <Route path="/morning" element={<RoleBasedRoute allow={screenAllow('/morning')}><MorningReportPage /></RoleBasedRoute>} />
+                        <Route path="/morning/:date" element={<RoleBasedRoute allow={screenAllow('/morning')}><MorningReportPage /></RoleBasedRoute>} />
                         <Route path="/collections" element={<RoleBasedRoute allow={screenAllow('/collections')}><CollectionsPage /></RoleBasedRoute>} />
                         <Route path="/dispatch" element={<RoleBasedRoute allow={screenAllow('/dispatch')}><DispatchPage /></RoleBasedRoute>} />
                         {/* הראוטים הישנים מפנים למסך הסדרן המאוחד עם הטאב המתאים */}

@@ -18,6 +18,7 @@ import { useDeliveryNotes, useConsolidatedInvoices } from '@/hooks/useDocuments'
 import { useOrdersOpenedByMonth } from '@/hooks/useOrdersOpenedByMonth';
 import { computeSurveyMetrics, formatScore } from '@/lib/surveys';
 import { WeeklyTargetStrip } from '@/components/management/WeeklyTargetStrip';
+import { MorningReportStrip } from '@/components/management/MorningReportStrip';
 
 const NAVY = '#14223a';
 
@@ -152,6 +153,9 @@ export function ManagementDashboard() {
         <div className="text-xl font-extrabold" style={{ color: NAVY }}>דשבורד הנהלה</div>
         <div className="text-[11px] text-slate-400">תמונת מצב כללית{loading ? ' · טוען…' : ''}</div>
       </div>
+
+      {/* ⭐ דוח בוקר (09/09/2026): שורה אחת על אתמול וקישור למסך המלא. */}
+      <MorningReportStrip />
 
       {/* ═══ שכבה 1: מה בוער ═══════════════════════════════════
           🔴🔴 **הועבר לראש המסך ב-27/08/2026.** שלומי, 20/08: "הדבר

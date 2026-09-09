@@ -42,6 +42,7 @@ const ADMIN_LINKS = [
   // ההנהלה שלצידו, כי שביעות רצון אינה כסף. הסינון עצמו נעשה בהמשך
   // הקובץ מול `screenAllow`, ולכן מי שאינו מורשה פשוט לא יראה אותו.
   { to: '/surveys', label: '⭐ סקרי שביעות רצון' },
+  { to: '/morning', label: '☀️ דוח בוקר' },
   { to: '/performance', label: '📊 ביצועי הצוות' },
   { to: '/collections', label: '💰 גיול חובות' },
   { to: '/inspections', label: 'בדיקות מנופים' },

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  MessageSquare, Camera, Star, CalendarClock, Hand, ShieldOff, AlertTriangle, Loader2, Truck,
+  MessageSquare, Camera, Star, CalendarClock, Hand, ShieldOff, AlertTriangle, Loader2, Truck, Sun,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -42,6 +42,23 @@ interface Overview {
   generated_at: string;
 }
 
+interface MorningSettings {
+  enabled: boolean;
+  dry_run: boolean;
+  send_hour: number;
+  template_id: string | null;
+  recipients: { name: string; phone_e164: string }[];
+  last_run_at: string | null;
+  last_sent_date: string | null;
+  last_result: { results?: { name: string; ok?: boolean }[] } | null;
+}
+
+async function fetchMorningSettings(): Promise<MorningSettings | null> {
+  const { data, error } = await supabase.from('morning_report_settings').select('*').eq('id', true).maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data as MorningSettings | null) ?? null;
+}
+
 async function fetchOverview(): Promise<Overview> {
   const { data, error } = await supabase.rpc('wa_automation_overview');
   if (error) throw new Error(error.message);
@@ -56,6 +73,8 @@ export function WaAutomationsPage() {
     queryFn: fetchOverview,
     refetchInterval: 60 * 1000,
   });
+  // דוח הבוקר (09/09/2026): הגדרות משלו, מחוץ ל-overview של מנועי הלקוחות.
+  const morning = useQuery({ queryKey: ['morning-report-settings'], queryFn: fetchMorningSettings, refetchInterval: 60 * 1000 });
 
   const toggle = useMutation({
     mutationFn: async (input: { engine: string; enabled: boolean }) => {
@@ -65,7 +84,10 @@ export function WaAutomationsPage() {
       });
       if (e) throw new Error(e.message);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ['wa-automation-overview'] }),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['wa-automation-overview'] });
+      qc.invalidateQueries({ queryKey: ['morning-report-settings'] });
+    },
   });
 
   if (isLoading) {
@@ -170,6 +192,37 @@ export function WaAutomationsPage() {
             onToggle: () => toggle.mutate({ engine: 'surveys', enabled: !data.surveys.enabled }),
           } : undefined}
         />
+
+        {/* ── דוח בוקר למנהלים ── */}
+        {morning.data && (() => {
+          const ms = morning.data;
+          const failed = (ms.last_result?.results ?? []).filter((r) => r.ok === false).length;
+          return (
+            <EngineCard
+              icon={Sun}
+              title="דוח בוקר למנהלים"
+              description={`בשעה ${ms.send_hour}:00 בימי עבודה: כמה שובצו וסופקו אתמול, עם קישור למסך. נמענים: ${ms.recipients.map((r) => r.name).join(', ') || 'אין'}.`}
+              state={engineState(ms.enabled, ms.dry_run)}
+              lastRun={sinceLabel(ms.last_run_at, now)}
+              numbers={[
+                { label: 'נמענים', value: ms.recipients.length },
+                { label: 'נשלח לאחרונה עבור', value: ms.last_sent_date ? Number(ms.last_sent_date.slice(8, 10)) : 0 },
+                { label: 'שעת שליחה', value: ms.send_hour },
+                { label: 'נכשלו בריצה האחרונה', value: failed },
+              ]}
+              attention={[
+                !ms.template_id && 'אין תבנית מאושרת בהגדרות, ההודעה לא תצא',
+                ms.recipients.length === 0 && 'אין נמענים',
+                failed > 0 && `${failed} נמענים לא קיבלו את ההודעה האחרונה`,
+              ]}
+              toggle={isAdmin ? {
+                enabled: ms.enabled,
+                busy: toggle.isPending,
+                onToggle: () => toggle.mutate({ engine: 'morning', enabled: !ms.enabled }),
+              } : undefined}
+            />
+          );
+        })()}
 
         {/* ── הנהג בדרך אליך ── */}
         <EngineCard

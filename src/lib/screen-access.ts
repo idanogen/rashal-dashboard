@@ -51,6 +51,9 @@ export const SCREEN_ACCESS: ScreenAccess[] = [
    * סיבה עצמאית לא לפתוח אותו לכל המשרד. הנהג עצמו אינו נכלל.
    */
   { path: '/performance',      label: 'ביצועי הצוות',      group: 'admin', allow: ['admin', 'management', 'team_manager'] },
+  // ⭐ דוח בוקר (09/09/2026): מה סופק אתמול, מה לא ולמה, והמגמה. אותם
+  // מדדים על אנשים בשמם כמו ביצועי הצוות, ולכן אותה הרשאה בדיוק.
+  { path: '/morning',          label: 'דוח בוקר',          group: 'admin', allow: ['admin', 'management', 'team_manager'] },
   { path: '/inspections',      label: 'בדיקות מנופים',     group: 'admin', allow: STAFF },
   { path: '/whatsapp',         label: 'וואטסאפ (ישן)',     group: 'admin', allow: STAFF },
   { path: '/admin/users',      label: 'משתמשים',          group: 'admin', allow: MANAGERS },
