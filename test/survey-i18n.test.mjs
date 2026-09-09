@@ -2,19 +2,20 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SURVEY_LANGS, SURVEY_TEXT, isSurveyLang, surveyDir } from '../src/lib/i18n/survey.ts';
 
-const CODES = ['he', 'en', 'ar', 'ru', 'th'];
+const CODES = ['he', 'en', 'ar', 'ru', 'th', 'am'];
 
-test('חמש שפות, כל אחת עם תווית וכיוון', () => {
+test('שש שפות, כל אחת עם תווית וכיוון', () => {
   assert.deepEqual(SURVEY_LANGS.map((l) => l.code), CODES);
-  assert.deepEqual(SURVEY_LANGS.map((l) => l.label), ['עברית', 'English', 'العربية', 'Русский', 'ไทย']);
+  assert.deepEqual(SURVEY_LANGS.map((l) => l.label), ['עברית', 'English', 'العربية', 'Русский', 'ไทย', 'አማርኛ']);
   assert.equal(surveyDir('he'), 'rtl');
   assert.equal(surveyDir('ar'), 'rtl');
   assert.equal(surveyDir('en'), 'ltr');
   assert.equal(surveyDir('ru'), 'ltr');
   assert.equal(surveyDir('th'), 'ltr');
+  assert.equal(surveyDir('am'), 'ltr');
 });
 
-test('isSurveyLang מקבל רק את החמש, ולא כל מחרוזת', () => {
+test('isSurveyLang מקבל רק את השש, ולא כל מחרוזת', () => {
   for (const c of CODES) assert.equal(isSurveyLang(c), true);
   assert.equal(isSurveyLang('fr'), false);
   assert.equal(isSurveyLang('HE'), false);

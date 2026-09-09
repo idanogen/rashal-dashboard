@@ -2,8 +2,8 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabaseAdmin } from './_lib/supabase-admin.js';
 // 🔴 רשימת השפות משוכפלת כאן ולא מיובאת מ-src: פונקציות Vercel מקובצות
 // מתוך api/ בלבד, וייבוא חוצה תיקיות עובר tsc אבל אינו מובטח בבנייה.
-type SurveyLang = 'he' | 'en' | 'ar' | 'ru' | 'th';
-const SURVEY_LANGS: readonly SurveyLang[] = ['he', 'en', 'ar', 'ru', 'th'];
+type SurveyLang = 'he' | 'en' | 'ar' | 'ru' | 'th' | 'am';
+const SURVEY_LANGS: readonly SurveyLang[] = ['he', 'en', 'ar', 'ru', 'th', 'am'];
 function isSurveyLang(x: unknown): x is SurveyLang {
   return typeof x === 'string' && (SURVEY_LANGS as readonly string[]).includes(x);
 }

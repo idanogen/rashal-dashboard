@@ -9,6 +9,8 @@ test('button captions and short codes are language choices, sentences are not', 
   assert.equal(detectLanguageReply(' العربية '), 'ar');
   assert.equal(detectLanguageReply('Русский'), 'ru');
   assert.equal(detectLanguageReply('ไทย'), 'th');
+  assert.equal(detectLanguageReply('አማርኛ'), 'am');
+  assert.equal(detectLanguageReply('AM'), 'am');
   assert.equal(detectLanguageReply('ru'), 'ru');
   assert.equal(detectLanguageReply('EN.'), 'en');
   assert.equal(detectLanguageReply('עברית'), 'he');

@@ -1,5 +1,5 @@
 /**
- * המחרוזות של עמוד הסקר, בחמש שפות.
+ * המחרוזות של עמוד הסקר, בשש שפות (אמהרית נוספה 09/09/2026).
  *
  * העמוד נפתח מקישור בוואטסאפ אצל מטופלים, וחלקם אינם קוראים עברית. השפה
  * נקבעת לפי הפרמטר `?lang=` בכתובת, ואם אין, לפי מה שנשמר ללקוח במסד
@@ -11,7 +11,7 @@
  * שאושרה במטא. אם משנים אותו כאן, משנים גם שם.
  */
 
-export type SurveyLang = 'he' | 'en' | 'ar' | 'ru' | 'th';
+export type SurveyLang = 'he' | 'en' | 'ar' | 'ru' | 'th' | 'am';
 
 export type SurveyDir = 'rtl' | 'ltr';
 
@@ -28,6 +28,7 @@ export const SURVEY_LANGS: SurveyLangMeta[] = [
   { code: 'ar', label: 'العربية', dir: 'rtl' },
   { code: 'ru', label: 'Русский', dir: 'ltr' },
   { code: 'th', label: 'ไทย', dir: 'ltr' },
+  { code: 'am', label: 'አማርኛ', dir: 'ltr' },
 ];
 
 export function isSurveyLang(x: unknown): x is SurveyLang {
@@ -222,5 +223,35 @@ export const SURVEY_TEXT: Record<SurveyLang, SurveyStrings> = {
     regards: 'ด้วยความเคารพ',
     signerName: 'Shlomi Koren',
     signerRole: 'รองกรรมการผู้จัดการ · R. Shaal',
+  },
+  am: {
+    title: 'የእርካታ ዳሰሳ · ር. ሻአል',
+    brand: 'ለአካል ጉዳተኞች የድጋፍ አገልግሎቶች',
+    greeting: (name) => (name ? `ሰላም ${name}፣` : 'ሰላም፣'),
+    intro:
+      'በቅርቡ ከር. ሻአል ኃ.የተ.የግ.ማ. አገልግሎት አግኝተዋል። ስለ አገልግሎቱ ምን እንደተሰማዎት ማወቅ ለእኔ አስፈላጊ ነው፣ ስለዚህ ሁለት አጭር ጥያቄዎችን ለመመለስ አንድ ደቂቃ ቢሰጡን አመሰግናለሁ።',
+    q1: 'ባገኙት አገልግሎት ምን ያህል ረክተዋል?',
+    q1Low: 'በፍጹም አልረካሁም',
+    q1High: 'በጣም ረክቻለሁ',
+    q2: 'ለጓደኛ ወይም ለሥራ ባልደረባ እኛን የመምከር ዕድልዎ ምን ያህል ነው?',
+    q2Low: 'በፍጹም',
+    q2High: 'በእርግጠኝነት',
+    commentLabel: 'ሌላ ሊነግሩን የሚፈልጉት ነገር አለ? (አማራጭ)',
+    commentPlaceholder: 'እዚህ ይጻፉ',
+    send: 'ላክ',
+    sending: 'እየተላከ ነው',
+    hint: 'ለመላክ ቢያንስ አንድ ጥያቄ ይመልሱ',
+    loading: 'አንድ አፍታ',
+    thanksTitle: 'ስለ ትብብርዎ እናመሰግናለን',
+    thanksBody: 'መልስዎ ደርሶናል እና በግሌ ይደርሰኛል። እያንዳንዱን ቃል እናነባለን።',
+    answeredTitle: 'መልስዎ ቀድሞ ደርሶናል',
+    answeredBody: 'እናመሰግናለን፣ ለመሻሻል ይረዳናል።',
+    invalidTitle: 'ይህ አገናኝ ትክክል አይደለም',
+    invalidBody: 'አገናኙ በከፊል ተቀድቶ ሊሆን ይችላል። ከደረሰዎት የዋትስአፕ መልእክት እንደገና ይክፈቱት።',
+    errorTitle: 'የሆነ ችግር ተፈጥሯል',
+    errorBody: 'እባክዎ ከአፍታ በኋላ እንደገና ይሞክሩ። ከተደገመ ያሳውቁን።',
+    regards: 'ከሰላምታ ጋር፣',
+    signerName: 'ሽሎሚ ኮሬን',
+    signerRole: 'ምክትል ዋና ሥራ አስፈጻሚ · ር. ሻአል',
   },
 };

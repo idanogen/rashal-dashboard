@@ -3,7 +3,7 @@
  * ומילוי נוסח מתורגם. בלי שום ייבוא, ולכן נבדקת ביחידה
  * (`test/wa-lang.test.mjs`). הצד שנוגע במסד וב-heyy יושב ב-`wa-lang.ts`.
  */
-export const LANGS = ['he', 'en', 'ar', 'ru', 'th'] as const;
+export const LANGS = ['he', 'en', 'ar', 'ru', 'th', 'am'] as const;
 export type Lang = (typeof LANGS)[number];
 
 /** מה שכפתור השפה מחזיר (הכיתוב שלו), וגם קיצורים למי שמקליד. */
@@ -12,6 +12,8 @@ const LANG_WORDS: Record<string, Lang> = {
   'العربية': 'ar', 'عربي': 'ar', 'عربية': 'ar', ar: 'ar',
   'русский': 'ru', 'по-русски': 'ru', ru: 'ru',
   'ไทย': 'th', 'ภาษาไทย': 'th', th: 'th',
+  // אמהרית (09/09/2026)
+  'አማርኛ': 'am', amharic: 'am', am: 'am',
   'עברית': 'he', hebrew: 'he', he: 'he',
 };
 

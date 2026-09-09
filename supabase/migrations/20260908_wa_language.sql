@@ -140,7 +140,8 @@ declare
   v_e164 text := public.wa_to_e164(p_phone);
   v_customer text;
 begin
-  if p_lang not in ('he','en','ar','ru','th') then
+  -- 09/09/2026: אמהרית נוספה (20260909_amharic).
+  if p_lang not in ('he','en','ar','ru','th','am') then
     raise exception 'unknown language %', p_lang;
   end if;
   update public.wa_conversations

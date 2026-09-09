@@ -346,7 +346,7 @@ export async function rememberContact(opts: {
 }
 
 /** תוויות השפה כפי שהן מוצגות למשרד. */
-export const WA_LANG_LABELS: Record<string, string> = { he: 'עברית', en: 'English', ar: 'العربية', ru: 'Русский', th: 'ไทย' };
+export const WA_LANG_LABELS: Record<string, string> = { he: 'עברית', en: 'English', ar: 'العربية', ru: 'Русский', th: 'ไทย', am: 'አማርኛ' };
 
 /**
  * קביעת שפה ביד מהמשרד (08/09/2026). נשמרת על הטלפון ועל הלקוח, בדיוק
