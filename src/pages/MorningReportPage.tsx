@@ -25,7 +25,7 @@ const RED = '#c2410c';
 const AMBER = '#b45309';
 
 const KIND_LABEL: Record<string, string> = { driver: 'נהג', technician: 'טכנאי', both: 'נהג וטכנאי' };
-const SOURCE_LABEL: Record<string, string> = { order: 'אספקה', service_call: 'שירות', pickup: 'איסוף', task: 'משימה', customer: 'ביקור' };
+const SOURCE_LABEL: Record<string, string> = { order: 'אספקה', service: 'שירות', service_call: 'שירות', pickup: 'איסוף', task: 'משימה', customer: 'ביקור', inspection: 'בדיקת מנוף' };
 const REASON_KIND_LABEL: Record<string, string> = { not_done: 'לא סופק', follow_up: 'המשך טיפול' };
 
 function Panel({ icon, title, hint, children }: { icon: React.ReactNode; title: string; hint?: string; children: React.ReactNode }) {
