@@ -51,8 +51,10 @@ Deno.serve(async (req: Request) => {
   let trigger = "manual";
   let forceDry: boolean | null = null;
   let dateArg: string | null = null;
+  let force = false;
   try {
     const b = await req.json();
+    force = b?.force === true;
     if (b?.trigger) trigger = String(b.trigger);
     if (typeof b?.dry === "boolean") forceDry = b.dry;
     if (typeof b?.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(b.date)) dateArg = b.date;
@@ -80,7 +82,7 @@ Deno.serve(async (req: Request) => {
 
   // פעם אחת ליום דוח. ריצה ידנית על אותו תאריך גם היא לא שולחת פעמיים,
   // אלא אם ביקשו בפירוש (`force`).
-  if (cfg.last_sent_date === report.date && !dry && !(await wantsForce(req))) {
+  if (cfg.last_sent_date === report.date && !dry && !force) {
     return json({ ok: true, skipped: `already sent for ${report.date}` });
   }
   if (!cfg.template_id) return json({ ok: false, error: "no template_id in settings" }, 500);
@@ -133,12 +135,6 @@ Deno.serve(async (req: Request) => {
   return json({ ok: true, trigger, dry, date: report.date, totals: t, rate, results });
 });
 
-async function wantsForce(req: Request): Promise<boolean> {
-  try {
-    const b = await req.clone().json();
-    return b?.force === true;
-  } catch { return false; }
-}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
