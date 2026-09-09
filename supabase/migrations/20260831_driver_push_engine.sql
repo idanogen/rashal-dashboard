@@ -5,7 +5,8 @@
 -- שנפל. הפונקציה (rashal-driver-notify) ממתינה 30 שניות ואז מרוקנת את
 -- התור, כדי ששיבוץ מרובה של הסדרן יהפוך להתראה מסכמת אחת ולא לעשר.
 --
--- מה מדווח לנהג: עצירה חדשה להיום/מחר/מחרתיים · עצירה שהוזזה/הוסרה ·
+-- מה מדווח לנהג: עצירה חדשה להיום (עד 09/09/2026 גם מחר ומחרתיים, ירד
+-- כשעידן החליט שהמסלול נחשף לנהג רק מחצות) · עצירה שהוזזה/הוסרה ·
 -- הודעה חדשה בצ'אט של עצירה פעילה שלו · תמונה שהגיעה מהלקוח.
 -- הודעות של הנהג עצמו לא מדווחות לו (זיהוי דרך driver_devices).
 
@@ -81,7 +82,9 @@ language plpgsql security definer set search_path = public
 as $fn$
 declare
   today date := (now() at time zone 'Asia/Jerusalem')::date;
-  horizon date := (now() at time zone 'Asia/Jerusalem')::date + 2;
+  -- 09/09/2026: האופק הוא היום בלבד. שיבוץ למחר לא מדווח, הנהג רואה
+  -- אותו כשהוא פותח את האפליקציה אחרי חצות (20260909_drivers_today_only).
+  horizon date := (now() at time zone 'Asia/Jerusalem')::date;
 begin
   begin
     if tg_op = 'INSERT' then
@@ -119,9 +122,12 @@ begin
             and new.status in ('planned','in_progress')
             and (new.delivery_date between today and horizon
                  or old.delivery_date between today and horizon) then
+        -- עצירה שנדחתה מהיום למחר: לא חושפים את התאריך החדש, רק שיצאה.
         insert into public.driver_notify_queue (driver_name, kind, title, body, stop_id)
         values (new.driver::text, 'schedule_change', 'שינוי בסידור שלך',
-                new.customer_name || ' עבר ל-' || to_char(new.delivery_date, 'DD/MM'),
+                case when new.delivery_date > horizon
+                     then new.customer_name || ' יצא מהסידור של היום'
+                     else new.customer_name || ' עבר ל-' || to_char(new.delivery_date, 'DD/MM') end,
                 new.id);
         perform public.driver_push_kick();
 
@@ -170,7 +176,8 @@ begin
          or (new.calendar_stop_id is not null and s.id = new.calendar_stop_id))
        and s.driver is not null
        and s.status in ('planned', 'in_progress')
-       and s.delivery_date >= today - 7
+       -- 09/09/2026: גם לא עצירה של מחר, שם הלקוח לא יוצא לפני חצות.
+       and s.delivery_date between today - 7 and today
      order by s.delivery_date desc
      limit 1;
 
