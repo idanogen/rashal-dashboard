@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useCalendarStops } from '@/hooks/useCalendarStops';
 import { useResolveStop } from '@/hooks/useResolveStop';
 import { useArriveStop } from '@/hooks/useArriveStop';
@@ -225,8 +226,22 @@ export function DriverDashboardPage() {
     return arriveStop.mutateAsync(stop.id);
   };
 
-  const today = toLocalDateStr(new Date());
-  const tomorrow = toLocalDateStr(new Date(Date.now() + 86_400_000));
+  // 🔴 המסלול נחשף לנהג רק מחצות של אותו יום (עידן, 09/09/2026). המסד
+  // מחזיר לנהג רק עצירות שתאריכן הגיע, ולכן אין כאן "מחר" ו"השבוע".
+  // בחצות העמוד מרענן את עצמו: "היום" מתחלף והשיבוצים החדשים נמשכים.
+  const queryClient = useQueryClient();
+  const [dayTick, setDayTick] = useState(0);
+  useEffect(() => {
+    const now = new Date();
+    const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 5);
+    const t = setTimeout(() => {
+      setDayTick((n) => n + 1);
+      queryClient.invalidateQueries({ queryKey: ['calendarStops'] });
+    }, midnight.getTime() - now.getTime());
+    return () => clearTimeout(t);
+  }, [dayTick, queryClient]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const today = useMemo(() => toLocalDateStr(new Date()), [dayTick]);
 
   // RLS already filters to this driver's stops only. Group by date.
   const stopsByDate = useMemo(() => {
@@ -287,19 +302,6 @@ export function DriverDashboardPage() {
       .map(([date, stops]) => ({ date, stops }))
       .sort((a, b) => b.date.localeCompare(a.date));
   }, [leftOpen]);
-  const tomorrowStops = myStopsByDate.get(tomorrow) ?? [];
-  const weekStops = useMemo(() => {
-    const start = new Date();
-    const end = new Date(Date.now() + 7 * 86_400_000);
-    const result: { date: string; stops: DbCalendarStop[] }[] = [];
-    for (const [date, stops] of myStopsByDate.entries()) {
-      const d = new Date(date + 'T00:00:00');
-      if (d >= start && d <= end && date !== today && date !== tomorrow) {
-        result.push({ date, stops });
-      }
-    }
-    return result.sort((a, b) => a.date.localeCompare(b.date));
-  }, [myStopsByDate, today, tomorrow]);
 
   // היסטוריה: ברירת המחדל 7 ימים אחורה של העבודה שלו, אבל חיפוש רץ על
   // **כל ההיסטוריה של החברה** (החלטת עידן 06/09/2026: "כולם רואים את
@@ -419,22 +421,6 @@ export function DriverDashboardPage() {
               </Badge>
             </TabsTrigger>
           )}
-          <TabsTrigger value="tomorrow" className="flex-1">
-            מחר
-            {tomorrowStops.length > 0 && (
-              <Badge variant="outline" className="ms-1.5 h-5 px-1.5 text-[10px]">
-                {tomorrowStops.length}
-              </Badge>
-            )}
-          </TabsTrigger>
-          <TabsTrigger value="week" className="flex-1">
-            השבוע
-            {weekStops.length > 0 && (
-              <Badge variant="outline" className="ms-1.5 h-5 px-1.5 text-[10px]">
-                {weekStops.reduce((sum, d) => sum + d.stops.length, 0)}
-              </Badge>
-            )}
-          </TabsTrigger>
           <TabsTrigger value="history" className="flex-1">
             היסטוריה
             {historyTotal > 0 && (
@@ -544,57 +530,6 @@ export function DriverDashboardPage() {
                 </div>
               ))}
             </>
-          )}
-        </TabsContent>
-
-        <TabsContent value="tomorrow" className="space-y-3">
-          {tomorrowStops.length === 0 ? (
-            <EmptyState message="אין עצירות מתוכננות למחר" />
-          ) : (
-            tomorrowStops.map((stop, idx) => (
-              <DriverStopCard
-                key={stop.id}
-                stop={stop}
-                index={idx + 1}
-                onCoordinate={() => handleCoordinate(stop)}
-                onArrive={() => handleArrive(stop)}
-                onResolve={(status, notes, kind) => handleResolve(stop, status, notes, kind)}
-                crane={craneOf(stop)}
-                onCraneForm={() => setCraneStop(stop)}
-                resolving={isResolvingStop(stop.id)}
-              />
-            ))
-          )}
-        </TabsContent>
-
-        <TabsContent value="week" className="space-y-4">
-          {weekStops.length === 0 ? (
-            <EmptyState message="אין עצירות נוספות בשבוע הקרוב" />
-          ) : (
-            weekStops.map((day) => (
-              <div key={day.date} className="space-y-2">
-                <div className="flex items-center gap-2 px-1">
-                  <CalendarClock className="h-4 w-4 text-muted-foreground" />
-                  <h3 className="text-sm font-semibold">{dayLabel(day.date)}</h3>
-                  <Badge variant="outline" className="text-[10px]">
-                    {day.stops.length} עצירות
-                  </Badge>
-                </div>
-                {day.stops.map((stop, idx) => (
-                  <DriverStopCard
-                    key={stop.id}
-                    stop={stop}
-                    index={idx + 1}
-                    onCoordinate={() => handleCoordinate(stop)}
-                    onArrive={() => handleArrive(stop)}
-                    onResolve={(status, notes, kind) => handleResolve(stop, status, notes, kind)}
-                crane={craneOf(stop)}
-                onCraneForm={() => setCraneStop(stop)}
-                    resolving={isResolvingStop(stop.id)}
-                  />
-                ))}
-              </div>
-            ))
           )}
         </TabsContent>
 
