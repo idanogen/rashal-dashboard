@@ -19,6 +19,7 @@ import { useOrdersOpenedByMonth } from '@/hooks/useOrdersOpenedByMonth';
 import { computeSurveyMetrics, formatScore } from '@/lib/surveys';
 import { WeeklyTargetStrip } from '@/components/management/WeeklyTargetStrip';
 import { MorningReportStrip } from '@/components/management/MorningReportStrip';
+import { useIsManagement } from '@/hooks/useProfile';
 
 const NAVY = '#14223a';
 
@@ -110,6 +111,8 @@ function ExceptionCard({ icon, n, label, tint, fg }: { icon: React.ReactNode; n:
 }
 
 export function ManagementDashboard() {
+  // 🔴 כסף רק להנהלה. למנהל צוות הכרטיס לא מוצג (המסד ממילא מחזיר לו רשימה ריקה).
+  const isManagement = useIsManagement();
   const { data: orders = [], isLoading: l1 } = useOrders();
   const { data: serviceCalls = [], isLoading: l2 } = useServiceCalls();
   const { data: pickups = [], isLoading: l3 } = usePickups();
@@ -276,7 +279,7 @@ export function ManagementDashboard() {
           }
         />
 
-        <KpiCard title="חשבוניות שטרם שודרו" accent={m.kpi.docs.invoicesNotSent > 0 ? AMBER : GREEN}
+        {isManagement && <KpiCard title="חשבוניות שטרם שודרו" accent={m.kpi.docs.invoicesNotSent > 0 ? AMBER : GREEN}
           icon={<Receipt className="h-5 w-5" />}
           top={
             <div className="grid grid-cols-2 gap-2">
@@ -289,7 +292,7 @@ export function ManagementDashboard() {
               חשבוניות מרכזות · {m.kpi.docs.invoicesTotal} סה״כ
             </div>
           }
-        />
+        />}
 
         <div className="xl:col-span-2">
           <Panel icon={<FileText className="h-4 w-4" />} title="תעודות משלוח לפי חודש" hint="6 חודשים · נפתחו מול נסגרו">

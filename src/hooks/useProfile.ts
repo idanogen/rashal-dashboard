@@ -23,6 +23,18 @@ export function useCurrentProfile() {
   });
 }
 
+/**
+ * מי רואה כסף: מנהל מערכת והנהלה (שלומי ורונן). עידן, 09/09/2026: "לא
+ * להציג לאף אחד ערך מספרי שקשור לכסף חוץ משלומי ורונן, גם לא בטעות".
+ * 🔴 שער ויזואלי בלבד. האכיפה במסד: RLS על החשבוניות והקבלות, הרשאת
+ * עמודה על סכומי תעודות ואיסופים, ו-`is_management()` בתוך `customer_card`.
+ */
+export function useIsManagement(): boolean {
+  const { data: profile } = useCurrentProfile();
+  if (!profile || profile.disabled) return false;
+  return profile.role === 'admin' || profile.role === 'management';
+}
+
 export function useIsAdmin(): boolean {
   const { data: profile } = useCurrentProfile();
   return profile?.role === 'admin' && !profile.disabled;

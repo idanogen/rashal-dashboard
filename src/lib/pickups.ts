@@ -22,11 +22,17 @@ type PickupRow = {
   agent: string | null;
   opened_by: string | null;
   total_qty: number | null;
-  total_price: number | null;
   lines: PickupLine[] | null;
   duplicate_of: string | null;
   created_at: string;
 };
+
+/**
+ * 🔴 עמודות מפורשות ולא `*`: `pickups.total_price` נעול במסד (09/09/2026)
+ * למי שאינו רואה כסף, ו-`*` מול הרשאת עמודה נכשל לכולם.
+ */
+const PICKUP_COLUMNS =
+  'id, priority_pickup_id, priority_doc, customer_number, customer_name, phone, address, city, priority_status, pickup_date, source_order, delivery_note, reference, to_warehouse, agent, opened_by, total_qty, lines, priority_udate, pickup_status, duplicate_of, created_at';
 
 function rowToPickup(row: PickupRow): Pickup {
   return {
@@ -48,7 +54,6 @@ function rowToPickup(row: PickupRow): Pickup {
     agent: row.agent ?? undefined,
     openedBy: row.opened_by ?? undefined,
     totalQty: row.total_qty ?? undefined,
-    totalPrice: row.total_price ?? undefined,
     lines: Array.isArray(row.lines) ? row.lines : undefined,
     duplicateOf: row.duplicate_of ?? undefined,
     created: row.created_at,
@@ -76,7 +81,7 @@ export async function fetchAllPickups(): Promise<Pickup[]> {
     countPage();
     const { data, error } = await supabase
       .from('pickups')
-      .select('*')
+      .select(PICKUP_COLUMNS)
       // כמו ב-orders וב-service_calls: ארכיון לא מוצג. בלי זה טיוטות ישנות
       // שסומנו בארכיון ממשיכות להיספר, והמסך מראה יותר ממה שבאמת ממתין.
       .is('archived_at', null)
@@ -106,7 +111,7 @@ export async function updatePickup(
     .from('pickups')
     .update(fieldsToRow(fields))
     .eq('id', id)
-    .select()
+    .select(PICKUP_COLUMNS)
     .single();
 
   if (error) throw new Error(`Supabase updatePickup: ${error.message}`);

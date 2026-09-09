@@ -14,9 +14,16 @@ type DeliveryNoteRow = {
   agent: string | null;
   opened_by: string | null;
   total_qty: number | null;
-  total_price: number | null;
   priority_udate: string | null;
 };
+
+/**
+ * 🔴 עמודות מפורשות ולא `*`: `delivery_notes.total_price` נעול במסד
+ * (09/09/2026, הרשאת עמודה) למי שאינו רואה כסף, ו-`*` מול הרשאת עמודה
+ * נכשל לכולם. הסכום עצמו מגיע למי שמורשה דרך `delivery_note_totals()`.
+ */
+const DELIVERY_NOTE_COLUMNS =
+  'id, priority_doc_id, customer_number, customer_name, doc_date, status, invoiced, source_order, warehouse, agent, opened_by, total_qty, priority_udate';
 
 type InvoiceRow = {
   id: string;
@@ -38,14 +45,14 @@ type InvoiceRow = {
  * PostgREST חותך ב-1,000 שורות בשקט. מדפדפים תמיד.
  * (זה בדיוק מה ש-`fetchAllStops` לא עשה, וזו הייתה פצצת זמן.)
  */
-async function fetchPaged<Row>(table: string, orderCol: string): Promise<Row[]> {
+async function fetchPaged<Row>(table: string, orderCol: string, columns = '*'): Promise<Row[]> {
   const PAGE = 1000;
   const all: Row[] = [];
   let from = 0;
   for (;;) {
     const { data, error } = await supabase
       .from(table)
-      .select('*')
+      .select(columns)
       .is('archived_at', null)
       .order(orderCol, { ascending: false, nullsFirst: false })
       .range(from, from + PAGE - 1);
@@ -59,7 +66,7 @@ async function fetchPaged<Row>(table: string, orderCol: string): Promise<Row[]> 
 }
 
 export async function fetchAllDeliveryNotes(): Promise<DeliveryNote[]> {
-  const rows = await fetchPaged<DeliveryNoteRow>('delivery_notes', 'doc_date');
+  const rows = await fetchPaged<DeliveryNoteRow>('delivery_notes', 'doc_date', DELIVERY_NOTE_COLUMNS);
   return rows.map((r) => ({
     id: r.id,
     priorityDocId: r.priority_doc_id,
@@ -73,7 +80,6 @@ export async function fetchAllDeliveryNotes(): Promise<DeliveryNote[]> {
     agent: r.agent ?? undefined,
     openedBy: r.opened_by ?? undefined,
     totalQty: r.total_qty ?? undefined,
-    totalPrice: r.total_price ?? undefined,
     priorityUdate: r.priority_udate ?? undefined,
   }));
 }

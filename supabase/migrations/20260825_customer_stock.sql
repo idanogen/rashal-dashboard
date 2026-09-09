@@ -685,7 +685,10 @@ begin
       'notes', (
         select coalesce(jsonb_agg(jsonb_build_object(
                  'ref', n.priority_doc::text, 'date', n.doc_date, 'status', n.status,
-                 'total', n.total_price
+                 -- 09/09/2026: סכומים רק למי שרואה כסף (עידן: "לא להציג לאף אחד ערך
+                 -- מספרי שקשור לכסף חוץ משלומי ורונן, גם לא בטעות"). הפונקציה
+                 -- security definer, ולכן השער כאן ולא ב-RLS.
+                 'total', case when public.is_management() then n.total_price end
                ) order by n.doc_date desc), '[]'::jsonb)
           from notes n where coalesce(n.invoiced, 'N') <> 'Y'
       )
@@ -764,13 +767,13 @@ begin
       'notes', (
         select coalesce(jsonb_agg(jsonb_build_object(
                  'ref', n.priority_doc::text, 'date', n.doc_date, 'status', n.status,
-                 'invoiced', n.invoiced = 'Y', 'total', n.total_price
+                 'invoiced', n.invoiced = 'Y', 'total', case when public.is_management() then n.total_price end
                ) order by n.doc_date desc), '[]'::jsonb)
           from (select * from notes order by doc_date desc limit 20) n
       ),
       'invoices', (
         select coalesce(jsonb_agg(jsonb_build_object(
-                 'ref', i.doc_no, 'date', i.invoice_date, 'total', i.total_price,
+                 'ref', i.doc_no, 'date', i.invoice_date, 'total', case when public.is_management() then i.total_price end,
                  'status', i.status, 'type', i.iv_type
                ) order by i.invoice_date desc), '[]'::jsonb)
           from (select * from invs order by invoice_date desc limit 20) i

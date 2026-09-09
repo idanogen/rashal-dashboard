@@ -13,11 +13,16 @@ import { SCREEN_ACCESS, screenAllow } from '../src/lib/screen-access.ts';
  * עידן, 26/08: "כל דבר שמדבר על כסף חשוף רק להרשאת הנהלה."
  * ⭐ הבדיקה שומרת על מה שחשוב באמת: **מנהל צוות וסדרן אינם שם**.
  */
-test('דשבורד ההנהלה פתוח למי שרואה כסף בלבד', () => {
-  assert.deepEqual(screenAllow('/overview'), ['admin', 'management']);
-  for (const r of ['team_manager', 'dispatcher', 'viewer', 'driver']) {
-    assert.ok(!screenAllow('/overview').includes(r), `${r} אינו אמור לראות כסף`);
+test('דשבורד ההנהלה: הנהלה ומנהלי צוות, לא סדרן ולא נהג', () => {
+  // 09/09/2026: עידן פתח את הדשבורד לעמי ולאבירם (מנהלי צוות). הכסף
+  // שהיה בו נחסם במסד (הרשאת עמודה + is_management בכרטיס הלקוח) ומוסתר
+  // במסך, ולכן המסך עצמו כבר אינו "מסך כסף".
+  assert.deepEqual(screenAllow('/overview'), ['admin', 'management', 'team_manager']);
+  for (const r of ['dispatcher', 'viewer', 'driver']) {
+    assert.ok(!screenAllow('/overview').includes(r), `${r} אינו אמור לראות את הדשבורד`);
   }
+  // 🔴 מה שנשאר כסף באמת נשאר להנהלה בלבד.
+  assert.deepEqual(screenAllow('/collections'), ['admin', 'management']);
 });
 
 /**
