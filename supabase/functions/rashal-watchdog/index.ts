@@ -260,21 +260,37 @@ async function checkScreenLoads(now: Date, prev: Record<string, unknown> | undef
   const messages = [...tally.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
 
   const screens = [...new Set(failed.map((r) => r.screen))];
-  const builds = [...new Set(failed.map((r) => r.build_id ?? "לא נרשם"))];
   const live = await liveBuildId();
-  const staleTabs = live ? builds.filter((b) => b !== live && b !== "לא נרשם") : [];
 
-  const versionLine = live
-    ? (staleTabs.length
-        ? `<b>גרסה:</b> הלשונית הריצה <bdi>${staleTabs.join(", ")}</bdi> בזמן שבאוויר <bdi>${live}</bdi>. ` +
-          `כלומר סביר שרענון הדף פותר את זה.<br>`
-        : `<b>גרסה:</b> הלשונית הריצה את הגרסה שבאוויר (<bdi>${live}</bdi>), כלומר זה לא לשונית ישנה.<br>`)
-    : "";
+  /**
+   * 🔴🔴 **שלושה מצבים ולא שניים.** דיווח בלי `build_id` (כל מה שנרשם לפני
+   * 10/09/2026, וכל לשונית שעדיין מריצה קוד ישן מלפני העמודה) אינו "הגרסה
+   * תואמת". שדה חסר אינו היעדר. גרסה 1 של הבדיקה הזאת הייתה מדווחת על
+   * דיווח בלי גרסה כאילו "זה לא לשונית ישנה", וזה בדיוק ההפך מהאמת במקרה
+   * שהוליד אותה. [[missing_attribute_is_not_absence]]
+   */
+  const known = [...new Set(failed.map((r) => r.build_id).filter((b): b is string => !!b))];
+  const missing = failed.some((r) => !r.build_id);
+  const staleTabs = live ? known.filter((b) => b !== live) : [];
+
+  let versionLine = "";
+  if (!live) {
+    versionLine = `<b>גרסה:</b> לא הצלחתי לשאול מה הגרסה שבאוויר, אז אין השוואה.<br>`;
+  } else if (staleTabs.length) {
+    versionLine = `<b>גרסה:</b> הלשונית הריצה <bdi>${staleTabs.join(", ")}</bdi> בזמן שבאוויר ` +
+      `<bdi>${live}</bdi>. כלומר סביר שרענון הדף פותר את זה.<br>`;
+  } else if (missing) {
+    versionLine = `<b>גרסה:</b> הדיווח הגיע בלי מזהה גרסה, ולכן אי אפשר לדעת אם זו לשונית ישנה. ` +
+      `לשונית שעדיין מריצה קוד מלפני <bdi>10/09/2026</bdi> לא שולחת מזהה, וזה עצמו סימן.<br>`;
+  } else {
+    versionLine = `<b>גרסה:</b> הלשונית הריצה את הגרסה שבאוויר (<bdi>${live}</bdi>), ` +
+      `כלומר זו אינה לשונית ישנה והתקלה במקום אחר.<br>`;
+  }
 
   await sendEmail(
     `🔴 מסך נכשל אצל משתמש בר.שעל: ${screens.join(", ")}`,
     wrap(
-      `<b style="font-size:16px">${failed.length} טעינות מסך נכשלו בשעה האחרונה</b><br><br>` +
+      `<b style="font-size:16px">${failed.length === 1 ? "טעינת מסך אחת נכשלה" : `${failed.length} טעינות מסך נכשלו`} בשעה האחרונה</b><br><br>` +
       `<b>אצל:</b> ${who.join(", ")}<br>` +
       `<b>מסך:</b> ${screens.join(", ")}<br>` +
       `<b>האחרונה:</b> ${new Date(failed[0].created_at).toLocaleString("he-IL", { timeZone: "Asia/Jerusalem" })}<br>` +
