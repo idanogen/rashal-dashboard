@@ -1,5 +1,6 @@
 import { analyzeLoad, shouldPersist, type FetchMark, type LoadReport } from './perf';
 import { supabase } from './supabase';
+import { announceFetchFailure, BUILD_ID } from './app-version';
 
 /**
  * האיסוף עצמו: מי מדד, מתי, וכמה.
@@ -61,6 +62,12 @@ export async function timedFetch<T>(
       pages,
       failed: err instanceof Error ? err.message : String(err),
     });
+    /**
+     * ⭐ **השאלה הראשונה אחרי שליפה שנכשלה היא "האם אני בכלל הגרסה
+     * שבאוויר".** ב-09/09/2026 כל שלוש הנסיונות של `pickups` נכשלו בדיוק
+     * מהסיבה הזאת. [[open_tab_runs_stale_code]]
+     */
+    announceFetchFailure();
     throw err;
   }
 }
@@ -101,6 +108,9 @@ export async function reportScreenLoad(screen: string): Promise<LoadReport | nul
   try {
     await supabase.from('screen_load_log').insert({
       screen,
+      // ⭐ בלי זה ההתראה יודעת שהמסך נכשל ולא יודעת באיזו גרסה, וזאת בדיוק
+      // השאלה שלקחה חצי בוקר ב-10/09/2026.
+      build_id: BUILD_ID,
       total_ms: report.totalMs,
       critical_fetch: report.critical?.name ?? null,
       critical_ms: report.critical ? report.critical.endedAt - report.critical.startedAt : null,

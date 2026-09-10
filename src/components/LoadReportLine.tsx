@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle, ChevronDown, Timer } from 'lucide-react';
 import { reportScreenLoad } from '@/lib/perf-collect';
+import { useIsManagement } from '@/hooks/useProfile';
 import type { LoadReport } from '@/lib/perf';
 
 /**
@@ -20,6 +21,7 @@ import type { LoadReport } from '@/lib/perf';
 export function LoadReportLine({ screen, ready }: { screen: string; ready: boolean }) {
   const [report, setReport] = useState<LoadReport | null>(null);
   const [open, setOpen] = useState(false);
+  const isManagement = useIsManagement();
 
   /**
    * 🔴🔴 **לא לתלות את הדיווח ברגע יחיד של "הכל נגמר".**
@@ -60,7 +62,14 @@ export function LoadReportLine({ screen, ready }: { screen: string; ready: boole
   }, [ready, screen]);
 
   if (!report) return null;
-  return <LoadReportPanel report={report} open={open} onToggle={() => setOpen((o) => !o)} />;
+  return (
+    <LoadReportPanel
+      report={report}
+      open={open}
+      onToggle={() => setOpen((o) => !o)}
+      technical={isManagement}
+    />
+  );
 }
 
 /**
@@ -73,10 +82,19 @@ export function LoadReportPanel({
   report,
   open,
   onToggle,
+  technical = false,
 }: {
   report: LoadReport;
   open: boolean;
   onToggle: () => void;
+  /**
+   * 🔴 **מי מקבל את נוסח השגיאה הגולמי.** ההנהלה ואנחנו, לא הסדרנית.
+   * עידן, <bdi>10/09/2026</bdi>: היא ראתה
+   * `permission denied for table pickups` באנגלית ובשפה של מסד נתונים,
+   * וזה לא אמר לה כלום מלבד שמשהו נשבר. לסדרנית נשארת פעולה אחת שהיא
+   * כן יכולה לעשות, לרענן.
+   */
+  technical?: boolean;
 }) {
   const failed = report.failures.length > 0;
   const slow = report.totalMs >= 4000;
@@ -156,13 +174,28 @@ export function LoadReportPanel({
           </p>
 
           {failed && (
-            <ul className="mt-2 space-y-0.5 text-destructive">
-              {report.failures.map((f) => (
-                <li key={f.name}>
-                  <b>{f.name}</b>: {f.failed}
-                </li>
-              ))}
-            </ul>
+            <div className="mt-2 rounded-md bg-destructive/5 p-2 text-destructive">
+              <p className="font-semibold">
+                חלק מהנתונים לא נטענו, ולכן המסך מציג פחות ממה שיש במערכת.
+                רענון הדף פותר את זה ברוב המקרים.
+              </p>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="mt-1.5 rounded-md bg-destructive px-2.5 py-1 text-[11px] font-semibold text-white"
+              >
+                רענן את הדף
+              </button>
+              {technical && (
+                <ul className="mt-2 space-y-0.5 border-t border-destructive/20 pt-2 text-[10px]">
+                  {report.failures.map((f) => (
+                    <li key={f.name} dir="ltr" className="text-start">
+                      <b>{f.name}</b>: {f.failed}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
         </div>
       )}

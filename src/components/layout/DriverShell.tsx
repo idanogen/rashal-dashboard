@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useRealtimeSync } from '@/hooks/useRealtimeSync';
+import { NewVersionBar } from '@/components/NewVersionBar';
 
 interface DriverShellProps {
   children: ReactNode;
@@ -33,6 +34,7 @@ export function DriverShell({ children }: DriverShellProps) {
 
   return (
     <div className="min-h-screen bg-background">
+      <NewVersionBar />
       <header className="sticky top-0 z-50 border-b bg-card/90 backdrop-blur-sm">
         <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2.5">
