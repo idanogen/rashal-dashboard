@@ -6,6 +6,7 @@ import { surveyWhen } from '@/lib/survey-when';
 import { waLocalPhone } from '@/lib/wa-chat-link';
 import { useSetSurveyHandled } from '@/hooks/useSurveys';
 import { SurveyDetailSheet } from '@/components/surveys/SurveyDetailSheet';
+import { SurveyHandledNote } from '@/components/surveys/SurveyHandledNote';
 
 /**
  * "לקוחות בדירוג נמוך" כרשימת עבודה (בקשת עידן, <bdi>02/09/2026</bdi>).
@@ -26,6 +27,10 @@ import { SurveyDetailSheet } from '@/components/surveys/SurveyDetailSheet';
  * **חיווי מצב**: שתי השורות הפתוחות נראו מטופלות, והמטופלת האמיתית, שעליה
  * כתוב "בטל", נראתה פתוחה. פעולה וסטטוס לא נראים אותו דבר.
  *
+ * ⭐ **ומ-<bdi>10/09/2026</bdi> יש גם מלל חופשי: מה הייתה התקלה ואיך היא
+ * טופלה.** "סמן כטופל" פותח את התיבה במקום לסמן מיד, כי הרגע היחיד שבו
+ * זוכרים מה קרה בשיחה הוא הרגע שאחריה. ראה `SurveyHandledNote`.
+ *
  * 🔴 **מי שטופל לא נמחק, אלא יורד למטה ומעומעם**, ורשום עליו מי סימן
  * ומתי. מחיקה הייתה מוחקת גם את התשובה לשאלה "מי דיבר איתו".
  * 🔴 **ולקוח בלי נייד תקין מקבל תווית "אין נייד"** כבר בשורה, כדי
@@ -34,6 +39,8 @@ import { SurveyDetailSheet } from '@/components/surveys/SurveyDetailSheet';
 export function LowRatedList({ rows }: { rows: Survey[] }) {
   const handle = useSetSurveyHandled();
   const [openId, setOpenId] = useState<string | null>(null);
+  /** איזו שורה פתוחה כרגע לכתיבת התיאור. אחת בכל רגע. */
+  const [notingId, setNotingId] = useState<string | null>(null);
   // 🔴 השורה נשלפת מהרשימה הטרייה ולא נשמרת ב-state, אחרת סימון "טופל"
   // מתוך המגירה לא היה מתעדכן במגירה עצמה.
   const openRow = rows.find((r) => r.id === openId) ?? null;
@@ -86,12 +93,22 @@ export function LowRatedList({ rows }: { rows: Survey[] }) {
                   ✓ טופל{s.handledBy ? ` · ${s.handledBy}` : ''} · <bdi>{surveyWhen(s.handledAt)}</bdi>
                 </span>
               )}
+
+              <SurveyHandledNote
+                survey={s}
+                editing={notingId === s.id}
+                onEditingChange={(v) => setNotingId(v ? s.id : null)}
+              />
             </div>
 
+            {/* 🔴 סימון פותח את תיבת התיאור ולא מסמן מיד. ביטול סימון
+                נשאר פעולה מיידית, ואינו מוחק מלל שכבר נכתב. */}
             <button
               type="button"
               disabled={busy}
-              onClick={() => handle.mutate({ id: s.id, handled: !done })}
+              onClick={() =>
+                done ? handle.mutate({ id: s.id, handled: false }) : setNotingId(s.id)
+              }
               className={
                 done
                   ? 'inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50'

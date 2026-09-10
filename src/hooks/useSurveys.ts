@@ -34,11 +34,19 @@ export function useAllAnsweredSurveys(enabled: boolean) {
 export function useSetSurveyHandled() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, handled }: { id: string; handled: boolean }) =>
-      setSurveyHandled(id, handled),
+    mutationFn: ({ id, handled, note }: { id: string; handled: boolean; note?: string | null }) =>
+      setSurveyHandled(id, handled, note),
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ['surveys'] });
-      toast.success(vars.handled ? 'סומן כטופל' : 'הסימון בוטל');
+      // ⭐ שלוש פעולות שונות, שלושה משפטים. "נשמר" על ביטול סימון היה
+      // משאיר את המשתמש בלי לדעת מה בדיוק קרה.
+      toast.success(
+        !vars.handled
+          ? 'הסימון בוטל'
+          : vars.note !== undefined
+            ? 'נשמר'
+            : 'סומן כטופל'
+      );
     },
     onError: (err: Error) => toast.error(`לא נשמר: ${err.message}`),
   });

@@ -31,6 +31,11 @@ export interface Survey {
   handledAt: string | null;
   /** מי סימן. נגזר בשרת מהפרופיל, לא נשלח מהדפדפן */
   handledBy: string | null;
+  /**
+   * מלל חופשי: מה הייתה התקלה ואיך היא טופלה (בקשת עידן, 10/09/2026).
+   * ⭐ נערך בנפרד מהסימון, ואינו מזיז את `handledAt`.
+   */
+  handledNote: string | null;
 }
 
 interface SurveyRow {
@@ -52,6 +57,7 @@ interface SurveyRow {
   status: Survey['status'];
   handled_at: string | null;
   handled_by: string | null;
+  handled_note: string | null;
 }
 
 function toSurvey(r: SurveyRow): Survey {
@@ -74,13 +80,14 @@ function toSurvey(r: SurveyRow): Survey {
     status: r.status,
     handledAt: r.handled_at,
     handledBy: r.handled_by,
+    handledNote: r.handled_note,
   };
 }
 
 const COLUMNS =
   'id, stop_id, order_id, customer_number, customer_name, phone_e164, driver, health_fund,' +
   ' delivered_at, sent_at, opened_at, answered_at, q1_satisfaction, q2_recommend, comment, status,' +
-  ' handled_at, handled_by';
+  ' handled_at, handled_by, handled_note';
 
 /**
  * כל הסקרים מ-N הימים האחרונים.
@@ -216,14 +223,27 @@ export function formatScore(v: number | null): string {
 export async function setSurveyHandled(
   surveyId: string,
   handled: boolean,
-): Promise<{ handledAt: string | null; handledBy: string | null }> {
+  note?: string | null,
+): Promise<{ handledAt: string | null; handledBy: string | null; handledNote: string | null }> {
   const { data, error } = await supabase.rpc('set_survey_handled', {
     p_survey_id: surveyId,
     p_handled: handled,
+    // 🔴 `undefined` נשלח כ-null, ו-null בשרת פירושו "אל תיגע במלל".
+    // ככה כפתור "בטל" לא מוחק את מה שמישהו כתב. מחיקה מפורשת היא
+    // שמירה של מלל ריק, שהשרת הופך ל-null.
+    p_note: note === undefined ? null : note,
   });
   if (error) throw error;
-  const row = (data ?? {}) as { handled_at?: string | null; handled_by?: string | null };
-  return { handledAt: row.handled_at ?? null, handledBy: row.handled_by ?? null };
+  const row = (data ?? {}) as {
+    handled_at?: string | null;
+    handled_by?: string | null;
+    handled_note?: string | null;
+  };
+  return {
+    handledAt: row.handled_at ?? null,
+    handledBy: row.handled_by ?? null,
+    handledNote: row.handled_note ?? null,
+  };
 }
 
 /**

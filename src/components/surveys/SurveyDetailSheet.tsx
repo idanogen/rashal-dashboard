@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { MessageCircle } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -6,6 +7,7 @@ import type { Survey } from '@/lib/surveys';
 import { surveyWhen } from '@/lib/survey-when';
 import { waInboxPath } from '@/lib/wa-chat-link';
 import { useSetSurveyHandled } from '@/hooks/useSurveys';
+import { SurveyHandledNote } from '@/components/surveys/SurveyHandledNote';
 
 const NAVY = '#14223a';
 
@@ -34,6 +36,7 @@ export function SurveyDetailSheet({
   onOpenChange: (v: boolean) => void;
 }) {
   const handle = useSetSurveyHandled();
+  const [editing, setEditing] = useState(false);
   if (!survey) return null;
 
   const done = survey.handledAt !== null;
@@ -84,9 +87,17 @@ export function SurveyDetailSheet({
             <Line label="נענה" iso={survey.answeredAt} />
           </div>
 
-          {done && (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800">
-              ✓ טופל{survey.handledBy ? ` · ${survey.handledBy}` : ''} · <bdi>{surveyWhen(survey.handledAt)}</bdi>
+          {/* ⭐ הטיפול: מי, מתי, ומה בעצם קרה. המלל החופשי הוא החלק שאפשר
+              ללמוד ממנו אחרי חודש, ולכן הוא כאן ולא רק ברשימה. */}
+          {(done || editing) && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs">
+              {done && (
+                <div className="font-semibold text-emerald-800">
+                  ✓ טופל{survey.handledBy ? ` · ${survey.handledBy}` : ''} ·{' '}
+                  <bdi>{surveyWhen(survey.handledAt)}</bdi>
+                </div>
+              )}
+              <SurveyHandledNote survey={survey} editing={editing} onEditingChange={setEditing} />
             </div>
           )}
 
@@ -94,7 +105,9 @@ export function SurveyDetailSheet({
             <button
               type="button"
               disabled={handle.isPending}
-              onClick={() => handle.mutate({ id: survey.id, handled: !done })}
+              onClick={() =>
+                done ? handle.mutate({ id: survey.id, handled: false }) : setEditing(true)
+              }
               className={
                 done
                   ? 'rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-50 disabled:opacity-50'
