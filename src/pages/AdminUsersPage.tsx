@@ -15,6 +15,9 @@ import {
   Eye,
   EyeOff,
   RefreshCcw,
+  Send,
+  Phone,
+  PhoneOff,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAllProfiles, useAdminMutation, useCurrentProfile } from '@/hooks/useProfile';
@@ -78,6 +81,7 @@ export function AdminUsersPage() {
   const [resultDialog, setResultDialog] = useState<{ username: string; password: string; title?: string } | null>(null);
   const [renameTarget, setRenameTarget] = useState<Profile | null>(null);
   const [passwordTarget, setPasswordTarget] = useState<Profile | null>(null);
+  const [phoneTarget, setPhoneTarget] = useState<Profile | null>(null);
 
   const filtered = useMemo(() => {
     const items = profiles ?? [];
@@ -119,6 +123,25 @@ export function AdminUsersPage() {
       disabled: !currentlyDisabled,
     });
     if (res.ok) toast.success(currentlyDisabled ? 'משתמש הופעל' : 'משתמש הושבת');
+  }
+
+  /**
+   * ⭐ **שליחת קישור איפוס: המנהל הוא שומר הסף, והוא לא רואה שום סיסמה.**
+   * הוא מזהה את מי שפנה אליו, לוחץ, והאדם בוחר סיסמה בעצמו מהטלפון.
+   * 🔴 אישור השליחה מציג מספר ממוסך ולא מלא: זה מספיק כדי לוודא שההודעה
+   *    הלכה לאדם הנכון, בלי להפוך את המסך לספר טלפונים של העובדים.
+   */
+  async function handleSendReset(profile: Profile) {
+    if (!profile.phoneE164) {
+      toast.error('אין טלפון על הכרטיס. הוסף מספר ואז שלח.');
+      setPhoneTarget(profile);
+      return;
+    }
+    if (!confirm(`לשלוח ל${displayHandle(profile)} קישור לבחירת סיסמה חדשה בוואטסאפ?`)) return;
+    const res = await adminMutation.mutateAsync({ action: 'send_reset_link', userId: profile.id });
+    if (res.ok) {
+      toast.success(`נשלח ל-${res.sentTo}. הקישור תקף ${res.expiresInMinutes} דקות.`);
+    }
   }
 
   async function handleDelete(profile: Profile) {
@@ -182,6 +205,7 @@ export function AdminUsersPage() {
                     <TableHead className="text-xs font-semibold">משתמש</TableHead>
                     <TableHead className="text-xs font-semibold">תפקיד</TableHead>
                     <TableHead className="text-xs font-semibold">נהג / טכנאי מקושר</TableHead>
+                    <TableHead className="text-xs font-semibold">טלפון לאיפוס</TableHead>
                     <TableHead className="text-xs font-semibold">סטטוס</TableHead>
                     <TableHead className="text-xs font-semibold">נוצר</TableHead>
                     <TableHead className="text-xs font-semibold text-center">פעולות</TableHead>
@@ -200,6 +224,8 @@ export function AdminUsersPage() {
                       onToggleDisabled={() => handleToggleDisabled(p.id, p.disabled)}
                       onRename={() => setRenameTarget(p)}
                       onSetPassword={() => setPasswordTarget(p)}
+                      onSendReset={() => handleSendReset(p)}
+                      onEditPhone={() => setPhoneTarget(p)}
                       onDelete={() => handleDelete(p)}
                     />
                   ))}
@@ -228,6 +254,7 @@ export function AdminUsersPage() {
           setResultDialog({ username, password, title: 'סיסמה עודכנה' })
         }
       />
+      <PhoneDialog target={phoneTarget} onClose={() => setPhoneTarget(null)} />
       <CredentialsDialog result={resultDialog} onClose={() => setResultDialog(null)} />
     </div>
   );
@@ -243,6 +270,8 @@ interface UserRowProps {
   onToggleDisabled: () => void;
   onRename: () => void;
   onSetPassword: () => void;
+  onSendReset: () => void;
+  onEditPhone: () => void;
   onDelete: () => void;
 }
 
@@ -256,6 +285,8 @@ function UserRow({
   onToggleDisabled,
   onRename,
   onSetPassword,
+  onSendReset,
+  onEditPhone,
   onDelete,
 }: UserRowProps) {
   const { isTechnicianOnly } = useAssignees();
@@ -356,6 +387,29 @@ function UserRow({
         )}
       </TableCell>
       <TableCell>
+        {/* 🔴 המספר מוצג במלואו בכוונה: מנהל שעומד לשלוח קישור שמחליף
+            סיסמה חייב לראות לאן זה הולך לפני שהוא לוחץ, לא אחרי. */}
+        <button
+          type="button"
+          onClick={onEditPhone}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[11px] hover:bg-slate-100"
+          title="ערוך טלפון"
+        >
+          {profile.phoneE164 ? (
+            <>
+              <Phone className="h-3 w-3 text-emerald-600" />
+              <span className="font-mono" dir="ltr">{profile.phoneE164}</span>
+            </>
+          ) : (
+            <>
+              <PhoneOff className="h-3 w-3 text-slate-400" />
+              <span className="text-muted-foreground">אין מספר</span>
+            </>
+          )}
+        </button>
+      </TableCell>
+      <TableCell>
         {profile.disabled ? (
           <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-[11px]">
             <ShieldOff className="h-2.5 w-2.5 me-1" /> מושבת
@@ -371,12 +425,29 @@ function UserRow({
       </TableCell>
       <TableCell>
         <div className="flex items-center justify-center gap-1">
+          {/* ⭐ שני מסלולים זה לצד זה, בכוונה. המטוס שולח לאדם קישור
+              והוא בוחר לבד; המפתח מגריל סיסמה ומציג אותה למנהל. */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onSendReset}
+            disabled={busy || profile.disabled || !profile.phoneE164}
+            title={
+              profile.disabled
+                ? 'חשבון מושבת'
+                : profile.phoneE164
+                  ? 'שלח לאדם קישור לבחירת סיסמה'
+                  : 'אין טלפון על הכרטיס'
+            }
+          >
+            <Send className="h-3.5 w-3.5 text-sky-600" />
+          </Button>
           <Button
             variant="ghost"
             size="sm"
             onClick={onSetPassword}
             disabled={busy || profile.disabled}
-            title="שנה סיסמה"
+            title="שנה סיסמה והצג אותה"
           >
             <KeyRound className="h-3.5 w-3.5 text-amber-600" />
           </Button>
@@ -649,6 +720,103 @@ function CreateUserDialog({ open, onOpenChange, onCreated }: CreateUserDialogPro
       </DialogContent>
     </Dialog>
   );
+}
+
+interface PhoneDialogProps {
+  target: Profile | null;
+  onClose: () => void;
+}
+
+/**
+ * ⭐ **המספר שאליו יוצא קישור האיפוס, ושום דבר מעבר לזה.**
+ * הוא לא מופיע בשום מסך אחר ולא משמש לשליחות ללקוחות. הכוונה שהוא
+ * יישאר משעמם: שדה אחד, על כרטיס אחד, עם יעד אחד.
+ *
+ * 🔴 **הנרמול ל-E.164 נעשה בשרת ולא כאן.** המסך רק מראה למנהל מה ייצא,
+ * כדי שלא יגלה אחרי הלחיצה שהמספר נשמר אחרת ממה שחשב.
+ */
+function PhoneDialog({ target, onClose }: PhoneDialogProps) {
+  const adminMutation = useAdminMutation();
+  const [value, setValue] = useState('');
+  const open = !!target;
+
+  useEffect(() => {
+    if (target) setValue(target.phoneE164 ?? '');
+  }, [target]);
+
+  const preview = previewE164(value);
+  const valid = !value.trim() || !!preview;
+
+  async function save() {
+    if (!target) return;
+    const res = await adminMutation.mutateAsync({
+      action: 'set_phone',
+      userId: target.id,
+      phoneE164: value.trim() ? value.trim() : null,
+    });
+    if (res.ok) {
+      toast.success(res.phoneE164 ? `הטלפון נשמר: ${res.phoneE164}` : 'הטלפון הוסר');
+      onClose();
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-sm" dir="rtl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Phone className="h-4 w-4 text-emerald-600" />
+            טלפון לאיפוס סיסמה
+          </DialogTitle>
+          <DialogDescription>
+            לכאן יישלח קישור בחירת הסיסמה של {target ? displayHandle(target) : ''}. זה השימוש
+            היחיד של המספר הזה.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-2">
+          <Label htmlFor="phone-input" className="text-xs">מספר נייד</Label>
+          <Input
+            id="phone-input"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="0501234567"
+            dir="ltr"
+            className="font-mono"
+          />
+          {value.trim() && (
+            valid ? (
+              <p className="text-xs text-emerald-700">
+                ייווצר כ<span className="font-mono" dir="ltr"> {preview}</span>
+              </p>
+            ) : (
+              <p className="text-xs text-red-600">מספר לא תקין. לדוגמה: 0501234567</p>
+            )
+          )}
+          {!value.trim() && target?.phoneE164 && (
+            <p className="text-xs text-orange-600">
+              שמירה ריקה תסיר את המספר, וכפתור השליחה יהפוך אפור.
+            </p>
+          )}
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onClose}>ביטול</Button>
+          <Button onClick={save} disabled={!valid || adminMutation.isPending}>
+            {adminMutation.isPending ? 'שומר...' : 'שמור'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** תצוגה מקדימה של הנרמול. חייבת להסכים עם `set_phone` ב-api/admin-users.ts. */
+function previewE164(raw: string): string | null {
+  const digits = raw.trim().replace(/[^0-9+]/g, '');
+  if (/^0[2-9][0-9]{7,8}$/.test(digits)) return `+972${digits.slice(1)}`;
+  if (/^\+[1-9][0-9]{7,14}$/.test(digits)) return digits;
+  return null;
 }
 
 interface RenameDialogProps {

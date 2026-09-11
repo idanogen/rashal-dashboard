@@ -54,6 +54,9 @@ export interface Profile {
   disabled: boolean;
   /** כשהתפקיד הוא 'driver', מקשר את המשתמש לשורה בטבלת `assignees` (נהג או טכנאי). */
   linkedDriver?: AssigneeName;
+  /** 🔴 היעד היחיד של קישור איפוס הסיסמה. נשמר רק דרך `api/admin-users.ts`,
+   *  וטריגר במסד חוסם שינוי שלו מהדפדפן. */
+  phoneE164?: string;
   createdAt: string;
   updatedAt?: string;
 }

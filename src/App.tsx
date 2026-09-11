@@ -22,6 +22,7 @@ import { WhatsAppTemplatesPage } from '@/pages/WhatsAppTemplatesPage';
 import { DriverDashboardPage } from '@/pages/DriverDashboardPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { SurveyPage } from '@/pages/SurveyPage';
+import { ResetPasswordPage } from '@/pages/ResetPasswordPage';
 import { AuthProvider } from '@/lib/auth-context';
 import { screenAllow } from '@/lib/screen-access';
 import { PermissionsPage } from '@/pages/PermissionsPage';
@@ -60,6 +61,11 @@ function App() {
                 מקישור בוואטסאפ, והטוקן שבכתובת הוא כל הזיהוי. חייב לשבת מעל
                 ה-catch-all, אחרת ProtectedRoute יזרוק אותו למסך התחברות. */}
             <Route path="/s/:token" element={<SurveyPage />} />
+
+            {/* בחירת סיסמה חדשה מקישור שנשלח בוואטסאפ. מאותו טעם כמו הסקר
+                הוא נפתח בלי משתמש מחובר, וחייב לשבת מעל ה-catch-all: מי
+                שנעול בחוץ לא יכול לעבור דרך מסך ההתחברות. */}
+            <Route path="/reset/:token" element={<ResetPasswordPage />} />
 
             {/* Driver view — minimal layout, mobile-first */}
             <Route

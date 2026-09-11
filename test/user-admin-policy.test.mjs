@@ -33,7 +33,7 @@ test('🔴 מנהל צוות לא מוחק משתמש', () => {
 });
 
 test('🔴 מנהל צוות לא נוגע במנהל מערכת, בשום פעולה', () => {
-  for (const action of ['set_password', 'set_role', 'set_disabled', 'set_username', 'set_linked_driver']) {
+  for (const action of ['set_password', 'set_role', 'set_disabled', 'set_username', 'set_linked_driver', 'send_reset_link', 'set_phone']) {
     const r = asManager({ action, targetId: 'admin-9', targetRole: 'admin' });
     assert.equal(r.ok, false, action);
     assert.equal(r.status, 403);
@@ -56,4 +56,49 @@ test('מנהל צוות כן פותח משתמשים ומשייך תפקידים
 
 test('מנהל צוות שהוא במקרה גם היעד לא ננעל מחוץ לחשבון שלו', () => {
   assert.equal(asManager({ action: 'set_password', targetId: MANAGER, targetRole: 'team_manager' }).ok, true);
+});
+
+/**
+ * 🔴🔴 **שני המסלולים החדשים הם דלת הסלמה בדיוק כמו `set_password`.**
+ * מי ששולח קישור איפוס למנהל מערכת מקבל את החשבון שלו, ומי שקובע לו את
+ * הטלפון קובע לאן הקישור הזה יגיע. שניהם חייבים ליפול תחת אותו איסור,
+ * ולכן הם נבדקים במפורש ולא נשענים על כך ש"הפונקציה מטפלת בהכל".
+ */
+test('🔴🔴 מנהל צוות לא שולח קישור איפוס למנהל מערכת ולא קובע לו טלפון', () => {
+  for (const action of ['send_reset_link', 'set_phone']) {
+    const r = checkUserAdminPolicy({
+      callerRole: 'team_manager',
+      callerId: MANAGER,
+      action,
+      targetId: ADMIN,
+      targetRole: 'admin',
+    });
+    assert.equal(r.ok, false, action);
+    assert.equal(r.status, 403, action);
+  }
+});
+
+test('מנהל צוות כן שולח קישור איפוס לסדרן ולנהג', () => {
+  for (const targetRole of ['dispatcher', 'driver', 'viewer', 'team_manager']) {
+    const r = checkUserAdminPolicy({
+      callerRole: 'team_manager',
+      callerId: MANAGER,
+      action: 'send_reset_link',
+      targetId: 'u-9',
+      targetRole,
+    });
+    assert.equal(r.ok, true, targetRole);
+  }
+});
+
+test('⭐ מנהל צוות שולח לעצמו איפוס גם אם הוא במקרה מנהל מערכת', () => {
+  // אחרת אדם ננעל מחוץ לחשבון של עצמו, וזה בדיוק המצב שהכפתור נועד לפתור.
+  const r = checkUserAdminPolicy({
+    callerRole: 'team_manager',
+    callerId: MANAGER,
+    action: 'send_reset_link',
+    targetId: MANAGER,
+    targetRole: 'admin',
+  });
+  assert.equal(r.ok, true);
 });

@@ -10,6 +10,7 @@ type ProfileRow = {
   role: string;
   disabled: boolean;
   linked_driver: AssigneeName | null;
+  phone_e164: string | null;
   created_at: string;
   updated_at: string | null;
 };
@@ -23,6 +24,7 @@ function rowToProfile(row: ProfileRow): Profile {
     role: (row.role as UserRole) ?? 'viewer',
     disabled: row.disabled,
     linkedDriver: row.linked_driver ?? undefined,
+    phoneE164: row.phone_e164 ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at ?? undefined,
   };
@@ -77,6 +79,8 @@ export type AdminAction =
   | { action: 'delete'; userId: string }
   | { action: 'set_role'; userId: string; role: UserRole }
   | { action: 'set_username'; userId: string; username: string }
+  | { action: 'set_phone'; userId: string; phoneE164: string | null }
+  | { action: 'send_reset_link'; userId: string }
   | { action: 'set_linked_driver'; userId: string; linkedDriver: AssigneeName | null }
   | { action: 'set_disabled'; userId: string; disabled: boolean }
   | { action: 'set_password'; userId: string; password?: string };
@@ -88,6 +92,12 @@ export interface AdminResponse {
   username?: string;
   /** Returned by `create` and `set_password` — caller shows this once. */
   password?: string;
+  /** `send_reset_link`: המספר שאליו יצאה ההודעה, ממוסך. */
+  sentTo?: string;
+  /** `send_reset_link`: תוקף הקישור בדקות. */
+  expiresInMinutes?: number;
+  /** `set_phone`: המספר כפי שנשמר, אחרי נרמול ל-E.164. */
+  phoneE164?: string | null;
 }
 
 export async function callAdminApi(payload: AdminAction): Promise<AdminResponse> {
