@@ -82,6 +82,8 @@ export interface DispatchItemVM {
   renderDetail?: (open: boolean, onClose: () => void) => ReactNode;
   /** דיאלוג פרטים שמנוהל בדף (ה-state יושב אצל ההורה). */
   onShowDetails?: () => void;
+  /** פס צד לכרטיס הזה במקום של הפאנל (רמזור קריאות השירות, 15/09/2026). */
+  accentBorder?: string;
   /** תווית כפתור הפרטים, ברירת מחדל "פרטים". */
   detailLabel?: string;
 }
@@ -599,7 +601,7 @@ export function UnscheduledPanel({
     <div key={vm.id} className={opts?.highlight ? 'rounded-lg ring-2 ring-emerald-500 ring-offset-2 ring-offset-background' : undefined}>
     <DispatchCard
       vm={vm}
-      accentBorder={accentBorder}
+      accentBorder={vm.accentBorder ?? accentBorder}
       isReturned={opts?.returned}
       returnedInfo={returnedInfo?.get(vm.id)}
       lastTouch={lastTouchMap ? (lastTouchMap.get(vm.id) ?? null) : undefined}

@@ -35,7 +35,7 @@ interface Settings {
 interface Report {
   date: string;
   dow: number;
-  totals: { planned: number; delivered: number; not_delivered: number; open: number; drivers: number };
+  totals: { planned: number; delivered: number; not_delivered: number; follow_up?: number; open: number; drivers: number };
 }
 
 function israelNow(): { hour: number; date: string } {
@@ -92,11 +92,20 @@ Deno.serve(async (req: Request) => {
   const reported = t.delivered + t.not_delivered;
   const rate = reported > 0 ? `${Math.round((t.delivered / reported) * 100)}%` : "אין דיווח";
   const [y, m, d] = report.date.split("-");
+  // 🔴 15/09/2026 (עידן): "המשך טיפול" נספר בנפרד ולא כ"לא סופק", הטכנאי היה
+  // אצל הלקוח. התבנית המאושרת אומרת "לא סופקו עם סיבה מהשטח {{not_delivered}}
+  // עצירות", ולכן בלי תבנית חדשה המונה נכנס לאותו משתנה כהמשך של המשפט:
+  // "7 עצירות, להמשך טיפול אחרי ביקור 1" + " עצירות" שבתבנית. בלי המשך טיפול
+  // הערך הוא המספר בלבד, וההודעה זהה למה שיצא עד היום.
+  const followUp = t.follow_up ?? 0;
+  const notDeliveredValue = followUp > 0
+    ? `${t.not_delivered} עצירות, להמשך טיפול אחרי ביקור ${followUp}`
+    : String(t.not_delivered);
   const variables = [
     { name: "report_day", value: `יום ${DAY_NAMES[report.dow] ?? ""} ${d}/${m}` },
     { name: "planned", value: String(t.planned) },
     { name: "delivered", value: String(t.delivered) },
-    { name: "not_delivered", value: String(t.not_delivered) },
+    { name: "not_delivered", value: notDeliveredValue },
     { name: "open_count", value: String(t.open) },
     { name: "rate", value: rate },
     // סיומת כפתור ה-URL: /morning/<תאריך>

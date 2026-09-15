@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabaseAdmin } from './_lib/supabase-admin.js';
 import { priorityLocalToUtc } from './_lib/priority-time.js';
+import { faultTextFromExpand } from './_lib/priority-text.js';
 import { requireUser } from './_lib/require-user.js';
 
 // Priority OData Pull — sync endpoint (see docs/SYNC-PULL-PLAN.md)
@@ -710,6 +711,8 @@ async function upsertServiceCalls(rows: Row[], backfill = false) {
       // מה בתקלה (עמי #2)
       fault_desc: s(r.MALFDES),
       symptom_desc: s(r.SYMDES),
+      // ⭐ "תאור התקלה" לכרטיס הקריאה של הנהג (15/09/2026). null כשלא התבקש.
+      fault_text: faultTextFromExpand(r.DOCTEXT_Q_2_SUBFORM) ?? null,
       call_type: s(r.CALLTYPECODE),
       service_type: s(r.SERVTDES),
       priority_status: s(r.CALLSTATUSCODE),
@@ -750,6 +753,9 @@ async function upsertServiceCalls(rows: Row[], backfill = false) {
       const inst = s(r.RSHL_INSTDATE); if (inst) u.install_date = inst;
       const fd = s(r.MALFDES); if (fd) u.fault_desc = fd;
       const sy = s(r.SYMDES); if (sy) u.symptom_desc = sy;
+      // 🔴 undefined = השאילתה לא ביקשה את תת-הטופס (משיכת היסטוריה): לא נוגעים.
+      // null = התבקש וריק: מנקים, כדי שתאור שנמחק בפריוריטי לא יישאר אצלנו.
+      const ft = faultTextFromExpand(r.DOCTEXT_Q_2_SUBFORM); if (ft !== undefined) u.fault_text = ft;
       const ct = s(r.CALLTYPECODE); if (ct) u.call_type = ct;
       const cb = s(r.TECHNICIANLOGIN); if (cb) u.closed_by = cb;
       const co = closedOn(r); if (co) u.closed_on = co;

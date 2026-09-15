@@ -53,11 +53,16 @@ Deno.serve(async (req: Request) => {
   // `max` מגביל כמה כתיבות ייצאו בריצה הזו. נועד לניקוז מבוקר של תור שהצטבר:
   // ריצה ראשונה קטנה, אימות מול פריוריטי, ורק אז שחרור מלא.
   let max = Infinity;
+  // `docno`: בדיקה ממוקדת של קריאת שירות אחת (מלל → תאור התיקון, תמונות → נספחים),
+  // בלי כרטיס הלקוח ובלי רצפת הזמן. נוסף 15/09/2026.
+  let docno = "";
   try {
     const b = await req.json();
     if (b?.trigger) trigger = String(b.trigger);
     if (b?.max != null && Number.isFinite(Number(b.max))) max = Math.max(0, Number(b.max));
+    if (b?.docno && /^[A-Za-z0-9_-]{1,30}$/.test(String(b.docno))) docno = String(b.docno);
   } catch { /* default */ }
+  const outboxUrl = docno ? `${OUTBOX}?test_docno=${encodeURIComponent(docno)}` : OUTBOX;
 
   const t0 = Date.now();
   const { data: runRow, error: runErr } = await sb
@@ -70,7 +75,7 @@ Deno.serve(async (req: Request) => {
   const errors: string[] = [];
 
   // 1) משיכת ה-outbox (ה-GET גם תופס claim בצד השרת)
-  const ob = await fetchRetry(runId, "outbox", OUTBOX, { headers: { "x-sync-secret": syncSecret() } }, "/api/priority-push GET");
+  const ob = await fetchRetry(runId, "outbox", outboxUrl, { headers: { "x-sync-secret": syncSecret() } }, "/api/priority-push GET");
   retries += ob.attempts - 1;
   if (!ob.res) {
     await sb.from("sync_runs").update({ status: "error", finished_at: new Date().toISOString(), duration_ms: Date.now() - t0, retries, error_summary: `outbox: ${ob.body.slice(0, 300)}` }).eq("id", runId);

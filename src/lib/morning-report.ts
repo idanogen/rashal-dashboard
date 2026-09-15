@@ -10,6 +10,9 @@ import { supabase } from './supabase';
  * 🔴 "סופק" = עצירה שנסגרה "בוצע" בלבד. עצירה שנשארה פתוחה אינה כישלון,
  * היא לא דווחה, ולכן היא עמודה משלה ומחוץ לאחוז האספקה (הכלל שנקבע
  * במסך ביצועי הצוות ב-02/09).
+ *
+ * 🔴 15/09/2026 (עידן): "המשך טיפול" אינו "לא סופק", כי הטכנאי היה אצל
+ * הלקוח. `follow_up` הוא מונה ורשימה משלו, ו-`not_delivered` כבר לא כולל אותו.
  */
 export interface MorningDriver {
   name: string;
@@ -17,6 +20,7 @@ export interface MorningDriver {
   planned: number;
   delivered: number;
   not_delivered: number;
+  follow_up: number;
   open: number;
 }
 
@@ -46,6 +50,7 @@ export interface MorningTrendDay {
   planned: number;
   delivered: number;
   not_delivered: number;
+  follow_up: number;
   open: number;
 }
 
@@ -55,15 +60,17 @@ export interface MorningMonth {
   planned: number;
   delivered: number;
   not_delivered: number;
+  follow_up: number;
   open: number;
 }
 
 export interface MorningReport {
   date: string;
   dow: number;
-  totals: { planned: number; delivered: number; not_delivered: number; open: number; drivers: number };
+  totals: { planned: number; delivered: number; not_delivered: number; follow_up: number; open: number; drivers: number };
   byDriver: MorningDriver[];
   notDelivered: MorningNotDelivered[];
+  followUp: MorningNotDelivered[];
   open: MorningOpen[];
   trend: MorningTrendDay[];
   months: MorningMonth[];
@@ -73,27 +80,39 @@ export async function fetchMorningReport(date: string | null): Promise<MorningRe
   const { data, error } = await supabase.rpc('morning_report', { p_date: date });
   if (error) throw error;
   const d = (data ?? {}) as Record<string, unknown>;
+  const totals = (d.totals ?? {}) as Partial<MorningReport['totals']>;
   return {
     date: String(d.date ?? ''),
     dow: Number(d.dow ?? 0),
-    totals: (d.totals ?? { planned: 0, delivered: 0, not_delivered: 0, open: 0, drivers: 0 }) as MorningReport['totals'],
-    byDriver: (d.by_driver ?? []) as MorningDriver[],
+    totals: {
+      planned: totals.planned ?? 0,
+      delivered: totals.delivered ?? 0,
+      not_delivered: totals.not_delivered ?? 0,
+      follow_up: totals.follow_up ?? 0,
+      open: totals.open ?? 0,
+      drivers: totals.drivers ?? 0,
+    },
+    byDriver: ((d.by_driver ?? []) as MorningDriver[]).map((x) => ({ ...x, follow_up: x.follow_up ?? 0 })),
     notDelivered: (d.not_delivered ?? []) as MorningNotDelivered[],
+    followUp: (d.follow_up ?? []) as MorningNotDelivered[],
     open: (d.open ?? []) as MorningOpen[],
-    trend: (d.trend ?? []) as MorningTrendDay[],
-    months: (d.months ?? []) as MorningMonth[],
+    trend: ((d.trend ?? []) as MorningTrendDay[]).map((x) => ({ ...x, follow_up: x.follow_up ?? 0 })),
+    months: ((d.months ?? []) as MorningMonth[]).map((x) => ({ ...x, follow_up: x.follow_up ?? 0 })),
   };
 }
 
-/** אחוז אספקה: סופקו מתוך מה שדווח (סופק + לא סופק). פתוחות בחוץ. */
+/**
+ * אחוז אספקה: סופקו מתוך מה שנסגר (סופק + לא סופק). פתוחות בחוץ, וגם
+ * המשך טיפול בחוץ: הוא לא כישלון ולא אספקה, ולכן מוצג לצד האחוז.
+ */
 export function deliveryRate(delivered: number, notDelivered: number): number | null {
   const reported = delivered + notDelivered;
   return reported > 0 ? Math.round((delivered / reported) * 100) : null;
 }
 
-/** שובצו לו אבל לא דיווח על אף אחת: לא מדרגים, מסמנים. */
-export function driverReported(d: { planned: number; delivered: number; not_delivered: number }): boolean {
-  return d.planned === 0 || d.delivered + d.not_delivered > 0;
+/** שובצו לו אבל לא דיווח על אף אחת: לא מדרגים, מסמנים. המשך טיפול הוא דיווח. */
+export function driverReported(d: { planned: number; delivered: number; not_delivered: number; follow_up?: number }): boolean {
+  return d.planned === 0 || d.delivered + d.not_delivered + (d.follow_up ?? 0) > 0;
 }
 
 const DAY_NAMES = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];

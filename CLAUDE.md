@@ -82,7 +82,14 @@ supabase/       functions/ · migrations/ (83)
 - חשבוניות: משיכה על `IVDATE` לא רואה פירעון, לכן משיכה שנייה על `IVRECONDATE`. גיול החובות שלנו קירוב ולא הספר, וזה כתוב בראש המסך.
 - כתובת חסרה בהזמנה אינה ניתנת להשלמה מהלקוח. אנשי קשר (`CUSTPERSONNEL_SUBFORM`) לא מסונכרנים.
 - שמות שדות לא מנחשים: `$select` עם שדה לא קיים מחזיר 400. גילוי דרך `{"job":"probe-fields"}` ב-`rashal-sync`.
+- כתיבה לפריוריטי חותמת `STATUSDATE` ב-UTC, שלוש שעות מאחורי סימן-המים שבשעון ישראל: הדלתא לא תחזיר את מה שכתבנו. הכותב מעדכן את העותק שלנו בעצמו (`rashal-call-status`, 15/09).
+- 🔴 מ-15/09 מה שהטכנאי רושם על קריאת שירות נכתב גם לקריאה בפריוריטי, ליד כרטיס הלקוח: הערות צ'אט של `driver` וסיבת "לא בוצע"/"להמשך טיפול" → `DOCTEXT_Q_SUBFORM` (APPEND), תמונות → `EXTFILES_SUBFORM`. בחירה: `priority_call_push_candidates` (רצפת זמן בקוד הפונקציה = המתג, מ-15/09 00:00 שעון ישראל), יומן `priority_call_push_log`, קידומת `call:` ב-ack של `api/priority-push`. בדיקה של קריאה אחת: `rashal-push` עם `{"docno":"SC…"}`. עריכת `resolution_note` אחרי שנכתב = שורה נוספת (המפתח כולל md5 של הטקסט).
+- 🔴 מסך לבן (15/09): `index.html` מכיל סקריפט רגיל שמציג הסבר כש-`#root` ריק (דפדפן ישן, שגיאת טעינה, 20 שניות), ו-`AppErrorBoundary` עוטף את `App`. המערכת דורשת Chrome 93+ (`??=`, `Object.hasOwn`). לא להסיר, ולא להפוך את הסקריפט ל-module (הוא חייב לרוץ גם כשה-module נופל בפענוח).
+- ⭐ כרטיס הקריאה (תאור, מדיה, הודעות, הערת משרד) נבנה רק ב-`call_info_payload(call)`. `stop_call_info` (נהג, לפי עצירה) ו-`service_call_info` (משרד, לפי קריאה) רק בודקות הרשאה ועוטפות. שדה חדש לכרטיס = שינוי במקום אחד. בווב: `StopCallInfoSheet` עם `stop` או `call`.
+- ⭐ רמזור קריאות שירות (15/09): הצבע מ-`service_call_lights()` בלבד, לא לחשב שוב בלקוח. סדר: צהוב (`call_type`=פרונטלית) · כתום (ביקור אחרון `follow_up`) · ירוק (מדיה מהלקוח או `service_call_manual_green`) · אדום. אדום/צהוב לא משובצים (`filterSchedulableCalls`, `isSchedulable`). ירוק ידני רק דרך `mark_service_call_green`. `pull-core` כולל `calls_udate` (UDATE, 3 שעות, שעון ישראל), כי שינוי סוג קריאה לא מזיז STATUSDATE.
+- 🔴 שינוי `status`/`resolution_kind` בעצירת שירות נכתב לפריוריטי (טריגר `trg_enqueue_call_status` → קרון `rashal-call-status-from-stops`): בוצע → בוצעה, המשך טיפול → להמשך טיפול. סקריפט המוני על `calendar_stops` הוא כתיבה המונית לפריוריטי: לכבות את הקרון או לבדוק קודם.
 - כפילויות מפריוריטי: טריגר מסמן `duplicate_of`, `useDeduped*` מסתיר, באדג' `×N`. גיל אינו מסנן טוב יותר מסטטוס, רק פחות גרוע.
+- "תאור התקלה" = `service_calls.fault_text`, מ-`$expand=DOCTEXT_Q_2_SUBFORM` ב-`service_calls`/`calls_recent` בלבד (לא בהיסטוריה). מכווץ ב-`shrinkFaultText` לפני ה-inbox (תקרת 4.5MB), מנוקה ב-`api/_lib/priority-text.ts`. `undefined` = לא התבקש ולא נוגעים; ריק = null. `fault_desc` הוא MALFDES, משהו אחר. השלמה לפי מספרים: job `refresh-calls`.
 ### מסד ו-PostgREST
 - תקרת 1,000 השורות של PostgREST חלה גם על RPC. לעמד עם `.range` או לצבור ב-SQL (`security invoker` מוריש RLS).
 - חלון הנתונים: רשומה ישנה נשארת רק אם נגעו בה בחלון וגם אינה סגורה (`ORDER_CLOSED`/`CALL_CLOSED`/`PICKUP_CLOSED`). ערכים בעברית ב-`not.in` דורשים מרכאות כפולות; `or=(a,and(b,c))` עובד.
@@ -112,6 +119,7 @@ supabase/       functions/ · migrations/ (83)
 - 🔴 API v2 של heyy נסגר 01/11/2026. מנוע הסקרים והתזכורת עדיין על `api/v2.0`: להגר ל-v3 עד סוף ספטמבר (`docs/heyy-limits.md`).
 - 100 בקשות לדקה, דלי משותף ל-v2/v3, גם בקשה שנכשלת נספרת. 429 → `retryable` וחזרה ל-pending. 5xx על שליחה לעולם לא נשלח שוב.
 - כל שולח עובר את רשימת המושתקים (`api/_lib/suppression.ts`, הבדיקה סורקת את כל הקוראים). שליחה מהדשבורד רק דרך `api/wa-send`.
+- 🔴 מ-15/09: `wa_messages`/`wa_conversations` קריאים למשרד בלבד (`is_office_staff`). נהג רואה מה שהלקוח שלח רק דרך `stop_call_info`/`stops_call_info_counts`, וחותם קבצים מ-`wa-media` רק של לקוח עם עצירה שלו ב-30 הימים האחרונים (`wa_media_object_visible`). התצוגה `wa_messages_classified` היא `security_invoker`: תצוגה חדשה על הטבלאות האלה חייבת אותו דבר, אחרת היא עוקפת את ה-RLS.
 - heyy משבית וובהוק שנכשל ברצף בלי סימן: `rashal-watchdog/heyy-health.ts` בודק. מחזיר `success:true` גם כשחלון 24 השעות סגור.
 - מזהי תבנית `DEMO-*` הם דמו ומעולם לא שלחו. מאושרת: `rashal_visit_coordination` (4 משתנים, כפתורים "מתאים לי"/"לא מתאים"). `WA_REMINDERS_ENABLED` כבוי כברירת מחדל.
 - כפתורי תבנית מגיעים ב-`attachments`: `describeAttachments` בשרת מכריע, המטען הגולמי לא נוסע לדפדפן. "נקרא" (`read_at`) נרשם רק מלחיצת אדם.

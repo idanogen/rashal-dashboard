@@ -401,5 +401,81 @@ Deno.serve(async () => {
     console.error("[watchdog] screen-load check crashed", e);
   }
 
+  // 🔴 שאלה רביעית: כתיבת סטטוס קריאה לפריוריטי מסימון הטכנאי (15/09/2026).
+  // כשל שם שקט לגמרי: הטכנאי רואה "בוצע" אצלו, ופריוריטי נשארת "שובצה".
+  try {
+    report[CALL_STATUS_JOB] = await checkCallStatusWrites(now, alerts.get(CALL_STATUS_JOB));
+  } catch (e) {
+    report[CALL_STATUS_JOB] = `check crashed: ${e instanceof Error ? e.message : String(e)}`;
+    console.error("[watchdog] call-status check crashed", e);
+  }
+
   return new Response(JSON.stringify({ checked_at: now.toISOString(), report }), { headers: { "Content-Type": "application/json" } });
 });
+
+// ── כתיבת סטטוס קריאה לפריוריטי ─────────────────────────────────────────
+// שני מצבים מדווחים: כתיבה שנכשלה (מאז ההתראה האחרונה, עד 24 שעות אחורה), ושורה
+// שממתינה יותר מחצי שעה, כלומר הקרון או הפונקציה לא רצים. דילוג (skipped) אינו
+// כשל: הוא אומר שהמשרד קידם את הקריאה או שהטכנאי שינה סימון, והסיבה ביומן.
+const CALL_STATUS_JOB = "call-status-writes";
+
+interface CallStatusRow {
+  priority_call_id: string; technician: string | null; target_status: string;
+  status_before: string | null; http_status: number | null; error: string | null;
+  attempted_at: string | null; created_at: string;
+}
+
+async function checkCallStatusWrites(now: Date, prev: Record<string, unknown> | undefined): Promise<string> {
+  const dayAgo = new Date(now.getTime() - 24 * 3600000);
+  const lastAlert = prev?.last_alerted_at ? new Date(prev.last_alerted_at as string) : null;
+  const failedSince = (lastAlert && lastAlert > dayAgo ? lastAlert : dayAgo).toISOString();
+
+  const { data: failed, error: e1 } = await sb.from("priority_call_status_writes")
+    .select("priority_call_id,technician,target_status,status_before,http_status,error,attempted_at,created_at")
+    .eq("source", "stop").eq("state", "failed").gt("attempted_at", failedSince)
+    .order("attempted_at", { ascending: false }).limit(20);
+  if (e1) return `query failed: ${e1.message}`;
+
+  const { data: stuck, error: e2 } = await sb.from("priority_call_status_writes")
+    .select("priority_call_id,technician,target_status,status_before,http_status,error,attempted_at,created_at")
+    .eq("source", "stop").eq("state", "pending").lt("created_at", new Date(now.getTime() - 30 * 60000).toISOString())
+    .order("created_at", { ascending: true }).limit(20);
+  if (e2) return `query failed: ${e2.message}`;
+
+  const f = (failed ?? []) as CallStatusRow[];
+  const s = (stuck ?? []) as CallStatusRow[];
+  const prevState = (prev?.state as string) ?? "ok";
+
+  if (!f.length && !s.length) {
+    if (prevState !== "ok") {
+      await sb.from("sync_alerts").upsert({ job: CALL_STATUS_JOB, state: "ok", detail: null, updated_at: now.toISOString() });
+      return "ok (state cleared, no email)";
+    }
+    return "ok";
+  }
+  const hoursSinceAlert = lastAlert ? (now.getTime() - lastAlert.getTime()) / 3600000 : Infinity;
+  if (!f.length && prevState === "alerting" && hoursSinceAlert < REALERT_HOURS) return `stuck ${s.length} (throttled)`;
+
+  const line = (r: CallStatusRow) =>
+    `<bdi>${r.priority_call_id}</bdi> · ${r.technician ?? "טכנאי לא ידוע"} · יעד "${r.target_status}"` +
+    (r.status_before ? ` · היה "${r.status_before}"` : "") +
+    (r.http_status ? ` · HTTP <bdi>${r.http_status}</bdi>` : "") +
+    (r.error ? `<br><span dir="ltr" style="display:inline-block;direction:ltr;text-align:left;color:#555">${r.error.slice(0, 200)}</span>` : "");
+
+  await sendEmail(
+    `🔴 כתיבת סטטוס קריאה לפריוריטי לא עברה בר.שעל`,
+    wrap(
+      (f.length ? `<b style="font-size:16px">${f.length === 1 ? "כתיבה אחת נכשלה" : `${f.length} כתיבות נכשלו`}</b><br>` +
+        `הטכנאי סימן אצלנו, ובפריוריטי הקריאה לא עודכנה.<br><br>` + f.map(line).join("<br><br>") + `<br><br>` : "") +
+      (s.length ? `<b style="font-size:16px">${s.length} ממתינות יותר מחצי שעה</b><br>` +
+        `כנראה הקרון או הפונקציה לא רצים.<br><br>` + s.map(line).join("<br>") + `<br><br>` : "") +
+      `היומן המלא בטבלה <bdi>priority_call_status_writes</bdi>. אין ניסיון חוזר אוטומטי לכתיבה שנכשלה.`,
+      "#c0392b",
+    ),
+  );
+  await sb.from("sync_alerts").upsert({
+    job: CALL_STATUS_JOB, state: "alerting", last_alerted_at: now.toISOString(),
+    detail: `failed ${f.length}, stuck ${s.length}`, updated_at: now.toISOString(),
+  });
+  return `ALERT sent (${f.length} failed, ${s.length} stuck)`;
+}

@@ -45,6 +45,9 @@ import { buildVisitHistory } from '@/lib/visit-history';
 import type { CalendarStop as DbCalendarStop, StopResolutionKind } from '@/types/calendar-stop';
 import type { CalendarStop as UiCalendarStop } from '@/types/delivery';
 import { OrderChatSheet } from '@/components/OrderChatSheet';
+import { StopCallInfoSheet } from '@/components/driver/StopCallInfoSheet';
+import { useStopsCallInfoCounts } from '@/hooks/useStopCallInfo';
+import { hasCallInfo, infoChipLabel, type StopInfoCounts } from '@/lib/call-info';
 import { NotCompletedReasonDialog } from '@/components/NotCompletedReasonDialog';
 import { CraneChecklistDialog } from '@/components/crane/CraneChecklistDialog';
 import { CraneTrainingDialog } from '@/components/crane/CraneTrainingDialog';
@@ -343,6 +346,17 @@ export function DriverDashboardPage() {
 
   // UI-shaped stops for the map; next unresolved stop for the "navigate" button.
   const todayUiStops = useMemo(() => todayStops.map(toUiStop), [todayStops]);
+
+  // ⭐ "יש מה לראות" בעצירות השירות שבמסך (כרטיס הקריאה, 15/09/2026).
+  // המסד מחזיר רק עצירות של הנהג המחובר, ולכן ביקור של עמית בהיסטוריה פשוט בלי שורה.
+  const serviceStopIds = useMemo(
+    () =>
+      [...todayStops, ...leftOpen, ...historyStops.flatMap((d) => d.stops)]
+        .filter((s) => s.sourceType === 'service' && s.serviceCallId)
+        .map((s) => s.id),
+    [todayStops, leftOpen, historyStops]
+  );
+  const { data: infoCounts = {} } = useStopsCallInfoCounts(serviceStopIds);
   const nextStop = todayStops.find((s) => !isResolved(s.status));
   const nextWazeUrl = nextStop
     ? buildWazeUrl({
@@ -492,6 +506,7 @@ export function DriverDashboardPage() {
                 crane={craneOf(stop)}
                 onCraneForm={() => setCraneStop(stop)}
                 resolving={isResolvingStop(stop.id)}
+                infoCounts={infoCounts[stop.id]}
               />
             ))
           )}
@@ -609,6 +624,7 @@ export function DriverDashboardPage() {
                 crane={craneOf(stop)}
                 onCraneForm={() => setCraneStop(stop)}
                       resolving={isResolvingStop(stop.id)}
+                      infoCounts={infoCounts[stop.id]}
                     />
                     </div>
                   ))}
@@ -833,6 +849,8 @@ interface DriverStopCardProps {
   crane?: CraneContext | null;
   onCraneForm?: () => void;
   resolving: boolean;
+  /** "יש מה לראות" בעצירת שירות: תאור תקלה, תמונות, הודעות מהלקוח. */
+  infoCounts?: StopInfoCounts | null;
 }
 
 /** משך חלון ה"חשיבה" בין הגעה לסופק (מונע לחיצות רצופות). */
@@ -844,7 +862,21 @@ const ARRIVAL_THINK_MS = 10_000;
  * בכפתורים של מי שעובד בשטח נמסר בלי שראו אותו בעיניים.
  * [[screenshot_behind_a_login]]
  */
-export function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve, resolving, crane, onCraneForm }: DriverStopCardProps) {
+export function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve, resolving, crane, onCraneForm, infoCounts }: DriverStopCardProps) {
+  // ⭐ כרטיס הקריאה (15/09/2026): לחיצה בכל מקום בכרטיס של עצירת שירות, חוץ
+  // מהכפתורים והקישורים שממשיכים לעשות את מה שעשו.
+  const isServiceCall = stop.sourceType === 'service' && !!stop.serviceCallId;
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [chatFromInfo, setChatFromInfo] = useState(false);
+  const handleCardClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isServiceCall) return;
+    const target = e.target as HTMLElement;
+    // 🔴 אירוע מתוך פורטל (הצ'אט, דיאלוג) מבעבע בעץ של React עד הכרטיס,
+    // אבל הוא לא נמצא בתוך הכרטיס ב-DOM. בלי הבדיקה, סגירת הצ'אט פותחת את הגיליון.
+    if (!e.currentTarget.contains(target)) return;
+    if (target.closest('a,button,input,textarea,select,label')) return;
+    setInfoOpen(true);
+  };
   const log = useActivityLogger();
   const logStop = (action: string) =>
     log(action, {
@@ -910,7 +942,7 @@ export function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve,
 
   return (
     <>
-    <Card className={`${bgClass} transition-all`}>
+    <Card className={`${bgClass} transition-all ${isServiceCall ? 'cursor-pointer' : ''}`} onClick={handleCardClick}>
       <CardContent className="p-4 space-y-3">
         {/* Top row: stop number + source + name */}
         <div className="flex items-start gap-3">
@@ -927,7 +959,8 @@ export function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve,
               </h2>
               {stop.status === 'completed' && (
                 <Badge variant="outline" className="bg-emerald-100 text-emerald-700 border-emerald-300 text-[10px]">
-                  ✓ בוצע
+                  {/* קריאת שירות: השם של פריוריטי (עידן, 15/09/2026). */}
+                  {stop.sourceType === 'service' ? '✓ בוצעה' : '✓ בוצע'}
                 </Badge>
               )}
               {stop.status === 'not_completed' && (
@@ -982,6 +1015,18 @@ export function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve,
             <Phone className="h-4 w-4 flex-shrink-0" />
             <span>{stop.phone}</span>
           </a>
+        )}
+
+        {/* שורה שאומרת שיש מה לראות. הכרטיס כולו נפתח גם בלעדיה. */}
+        {isServiceCall && hasCallInfo(infoCounts) && (
+          <button
+            type="button"
+            onClick={() => setInfoOpen(true)}
+            className="flex w-full items-center gap-1.5 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-2.5 py-1.5 text-start text-xs font-semibold text-slate-800"
+          >
+            <span className="min-w-0 flex-1 truncate">{infoChipLabel(infoCounts)}</span>
+            <span className="text-primary">פרטים ‹</span>
+          </button>
         )}
 
         {/* תיאור המשימה, כפי שנרשם בהקמה */}
@@ -1044,7 +1089,9 @@ export function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve,
                 className="h-14 w-full gap-2 bg-emerald-600 text-base font-bold text-white hover:bg-emerald-700"
               >
                 <Check className="h-5 w-5" />
-                סיימתי כאן, סמן כסופק
+                {/* 🔴 בקריאת שירות הטכנאי לא "סיפק" כלום. והשם הוא של פריוריטי,
+                    שאליה הסימון נכתב (עידן, 15/09/2026). */}
+                {stop.sourceType === 'service' ? 'סיימתי כאן, סמן כבוצעה' : 'סיימתי כאן, סמן כסופק'}
               </Button>
               {/* ⭐ **"המשך טיפול" מופיע רק אחרי הגעה, וזו הנקודה.**
                   מי שלא הגיע ללקוח לא יכול להיות "בוצע חלקית"; אצלו זה
@@ -1132,6 +1179,25 @@ export function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve,
         )}
       </CardContent>
     </Card>
+
+    {isServiceCall && (
+      <>
+        <StopCallInfoSheet
+          stop={stop}
+          open={infoOpen}
+          onOpenChange={setInfoOpen}
+          onOpenChat={() => {
+            setInfoOpen(false);
+            setChatFromInfo(true);
+          }}
+        />
+        <OrderChatSheet
+          order={{ id: stop.serviceCallId!, customerName: stop.customerName, city: stop.city, kind: 'service' }}
+          open={chatFromInfo}
+          onOpenChange={setChatFromInfo}
+        />
+      </>
+    )}
 
     {/* משלוח בלבד — בחירת תוצאת אספקה לפני "סופק" */}
     <DeliveryOutcomeDialog

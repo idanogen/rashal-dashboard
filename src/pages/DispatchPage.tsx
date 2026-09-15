@@ -28,6 +28,8 @@ import { beginScreenLoad } from '@/lib/perf-collect';
 import { matchesSearch } from '@/lib/search-match';
 import { useGeocodeBackfill } from '@/hooks/useGeocodeBackfill';
 import { useMediaRequests } from '@/hooks/useMediaRequests';
+import { useServiceCallLights } from '@/hooks/useServiceCallLights';
+import { blockReason, isSchedulable } from '@/lib/service-call-light';
 import { useScheduleStop } from '@/hooks/useScheduleStop';
 import { useDeleteStop } from '@/hooks/useDeleteStop';
 import { useResolveStop } from '@/hooks/useResolveStop';
@@ -436,6 +438,23 @@ export function DispatchPage() {
     [pendingCustomers, customersOnlyBare]
   );
   const { data: mediaStates } = useMediaRequests();
+  // ⭐ רמזור קריאות השירות (15/09/2026): אדום וצהוב לא משובצים, לא בגרירה
+  // ולא בבחירה מרובה. כשהרמזור לא נטען לא חוסמים (isSchedulable).
+  const { data: callLights } = useServiceCallLights();
+  const filterSchedulableCalls = useCallback(
+    (items: ServiceCall[]): ServiceCall[] => {
+      const blocked = items.filter((c) => !isSchedulable(callLights?.get(c.id)?.light));
+      if (blocked.length === 0) return items;
+      const reason = blockReason(callLights?.get(blocked[0].id)?.light);
+      toast.error(
+        blocked.length === items.length
+          ? (reason ?? 'אי אפשר לשבץ את הקריאה הזאת')
+          : `${blocked.length} מתוך ${items.length} הקריאות אדומות או פרונטליות ולא שובצו. ${reason ?? ''}`.trim()
+      );
+      return items.filter((c) => isSchedulable(callLights?.get(c.id)?.light));
+    },
+    [callLights]
+  );
   const itemsByTab = useMemo(
     () => ({
       deliveries: buildOrderItems(unscheduledOrders, orderZoneMap, ordersGroupSize),
@@ -827,10 +846,12 @@ export function DispatchPage() {
         setPendingSchedule({ kind: 'delivery', items, date });
       } else if (activeType === 'serviceCall') {
         const call = active.data.current?.call as ServiceCall;
-        const items =
+        const items = filterSchedulableCalls(
           selectedCallIds.has(call.id) && selectedCallIds.size > 1
             ? pendingCalls.filter((c) => selectedCallIds.has(c.id))
-            : [call];
+            : [call]
+        );
+        if (items.length === 0) return;
         setPendingSchedule({ kind: 'service', items, date });
       } else if (activeType === 'pickup') {
         const pickup = active.data.current?.pickup as Pickup;
@@ -859,7 +880,7 @@ export function DispatchPage() {
       if (kind === 'delivery') {
         items = unscheduledOrders.filter((o) => selectedOrderIds.has(o.id));
       } else if (kind === 'service') {
-        items = pendingCalls.filter((c) => selectedCallIds.has(c.id));
+        items = filterSchedulableCalls(pendingCalls.filter((c) => selectedCallIds.has(c.id)));
       } else if (kind === 'pickup') {
         items = pendingPickups.filter((p) => selectedPickupIds.has(p.id));
       } else {
@@ -872,7 +893,7 @@ export function DispatchPage() {
       setPendingSchedule({ kind, items, date });
       setDriverPickerOpen(true);
     },
-    [tab, selectionKind, unscheduledOrders, pendingCalls, pendingPickups, pendingCustomers, selectedOrderIds, selectedCallIds, selectedPickupIds, selectedCustomerIds]
+    [tab, selectionKind, unscheduledOrders, pendingCalls, pendingPickups, pendingCustomers, selectedOrderIds, selectedCallIds, selectedPickupIds, selectedCustomerIds, filterSchedulableCalls]
   );
 
   // ─── ביצוע השיבוץ בפועל (אחרי בדיקת כפילויות) ───

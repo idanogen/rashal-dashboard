@@ -10,6 +10,21 @@ import type { ServiceCall } from '@/types/service-call';
 import { getZoneForCity } from '@/types/zone';
 import { mediaBadge, MEDIA_BADGE_CLASS } from '@/lib/media-request-badge';
 import type { MediaRequestState } from '@/hooks/useMediaRequests';
+import {
+  manualReasonLabel,
+  mediaLabel,
+  touchLabel,
+  type ServiceCallLight,
+  type ServiceLight,
+} from '@/lib/service-call-light';
+
+/** פס הצד של הכרטיס לפי הרמזור (15/09/2026). */
+const LIGHT_BORDER: Record<ServiceLight, string> = {
+  red: 'border-s-red-600',
+  green: 'border-s-green-600',
+  orange: 'border-s-orange-500',
+  yellow: 'border-s-yellow-400',
+};
 
 /**
  * המרת ארבעת סוגי העבודה ל-DispatchItemVM. הבנאים האלה נקראים גם מהרכיבים
@@ -92,15 +107,26 @@ export function buildServiceCallItems(
   calls: ServiceCall[],
   zoneMap: Map<string, string>,
   groupSize?: Map<string, number>,
-  mediaStates?: Map<string, MediaRequestState>
+  mediaStates?: Map<string, MediaRequestState>,
+  /** רמזור קריאות השירות (15/09/2026). בלעדיו הכרטיס נראה כמו קודם. */
+  lights?: Map<string, ServiceCallLight>,
+  /** "סמן ירוק" בכרטיס אדום. */
+  onMarkGreen?: (call: ServiceCall) => void,
+  /** פתיחת מה שהלקוח שלח (עידן, 15/09/2026: "אין לי במסך פה גישה לתמונות ולסרטונים"). */
+  onOpenMedia?: (call: ServiceCall) => void
 ): DispatchItemVM[] {
   return calls.map((call) => {
     const mediaState = mediaStates?.get(call.id);
     const badge = mediaState ? mediaBadge(mediaState.state) : null;
+    const light = lights?.get(call.id);
+    const touch = light ? touchLabel(light.touch) : null;
+    const media = light ? mediaLabel(light) : null;
+    const returnedNotDone = light?.touch?.status === 'not_completed' && light.touch.kind !== 'follow_up';
     return {
     id: call.id,
     dragId: `servicecall-${call.id}`,
     dragData: { type: 'serviceCall', call },
+    accentBorder: light ? LIGHT_BORDER[light.light] : undefined,
     zoneId: zoneMap.get(call.id) || 'unassigned',
     customerName: call.customerName,
     customerNumber: call.customerNumber,
@@ -129,8 +155,72 @@ export function buildServiceCallItems(
     ),
     meta: (
       <>
-        {/* חיווי "תמונה לפני טכנאי": ירוק = יש תמונה, אפשר לתאם. */}
-        {badge && (
+        {/* ⭐ "נהג כבר נגע" (עידן, 15/09/2026): מי ומתי, בכל צבע. */}
+        {touch && (
+          <p className="mt-1 flex flex-wrap gap-1">
+            <span className="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-800">
+              👷 {touch}
+            </span>
+            {light?.light === 'orange' && (
+              <span className="inline-flex items-center rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-bold text-orange-700">↩ להמשך טיפול</span>
+            )}
+            {returnedNotDone && (
+              <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-bold text-slate-600">↩ חזר מהקו: לא בוצע</span>
+            )}
+          </p>
+        )}
+        {light?.touch?.note && (light.light === 'orange' || returnedNotDone) && (
+          <p className="mt-1 rounded-md bg-orange-50 px-2 py-1 text-[11px] text-orange-950">"{light.touch.note}"</p>
+        )}
+        {light?.light === 'yellow' && (
+          <p className="mt-1">
+            <span className="inline-flex items-center rounded-full bg-yellow-50 px-2 py-0.5 text-[11px] font-bold text-yellow-800">🏪 פרונטלית, מגיע לבד</span>
+          </p>
+        )}
+        {light && (media || (light.light === 'green' && light.manual)) && (
+          <p className="mt-1 flex flex-wrap gap-1">
+            {media && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenMedia?.(call);
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                title="לצפייה במה שהלקוח שלח"
+                className="inline-flex items-center rounded-full bg-green-50 px-2 py-0.5 text-[11px] font-bold text-green-800 underline-offset-2 hover:bg-green-100 hover:underline"
+              >
+                {media} ‹
+              </button>
+            )}
+            {!media && light.manual && (
+              <span
+                className="inline-flex items-center rounded-md border border-dashed border-green-300 bg-green-50 px-2 py-0.5 text-[11px] text-green-800"
+                title={light.manual.note ? `${manualReasonLabel(light.manual.reason)} · ${light.manual.note}` : manualReasonLabel(light.manual.reason)}
+              >
+                ✍ ירוק ידני · {light.manual.by} · <bdi>{new Date(light.manual.at).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' })}</bdi>
+              </span>
+            )}
+          </p>
+        )}
+        {light?.light === 'red' && onMarkGreen && (
+          <p className="mt-1">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onMarkGreen(call);
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              className="inline-flex items-center rounded-md border border-green-300 bg-green-50 px-2 py-0.5 text-[11px] font-bold text-green-800 hover:bg-green-100"
+            >
+              ✓ סמן ירוק
+            </button>
+          </p>
+        )}
+        {/* חיווי "תמונה לפני טכנאי": ירוק = יש תמונה, אפשר לתאם. בירוק מהרמזור
+            כבר מוצג מה הגיע, ולכן התג הזה נשאר לאדום (מה קורה עם הבקשה). */}
+        {badge && light?.light !== 'green' && (
           <p className="mt-0.5">
             <span
               className={`inline-block rounded-full px-2 py-1 text-xs font-semibold ${MEDIA_BADGE_CLASS[badge.tone]}`}

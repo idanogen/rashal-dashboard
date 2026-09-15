@@ -44,6 +44,7 @@ import { useDroppable } from '@dnd-kit/core';
 import { ScheduleCoordinationDialog } from '@/components/whatsapp/ScheduleCoordinationDialog';
 import { CoordinationStatusBadge } from '@/components/whatsapp/CoordinationStatusBadge';
 import { OrderChatButton } from '@/components/OrderChatButton';
+import { StopCallInfoSheet } from '@/components/driver/StopCallInfoSheet';
 
 // פורמט תאריך מקומי (לא UTC) למניעת באגי timezone
 const toLocalDateStr = (d: Date) =>
@@ -89,9 +90,11 @@ interface StopCardProps {
   onResolve?: (stopId: string, status: 'completed' | 'not_completed') => void;
   onCoordinate?: (stop: CalendarStop) => void;
   onMoveStop?: (stopId: string) => void;
+  /** כרטיס שירות: פתיחת כרטיס הקריאה (פריוריטי + מה שהלקוח שלח). */
+  onOpenInfo?: (stop: CalendarStop) => void;
 }
 
-function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate, onMoveStop }: StopCardProps) {
+function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate, onMoveStop, onOpenInfo }: StopCardProps) {
   const cardRef = useRef<HTMLDivElement | null>(null);
   const prevCoordRef = useRef<typeof stop.coordinationStatus>(stop.coordinationStatus);
 
@@ -176,9 +179,14 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate, onMoveSto
     cardRef.current = node;
   };
 
+  // ⭐ עידן, 15/09/2026: לחיצה על כרטיס שירות ביומן פותחת את כל מה שיש על הקריאה,
+  // כמו אצל הנהג. גרירה מתחילה רק אחרי 6 פיקסלים, ולכן לחיצה לא מתנגשת בה.
+  const openInfo = stop.sourceType === 'service' && onOpenInfo ? () => onOpenInfo(stop) : undefined;
+
   return (
     <div
       ref={setRefs}
+      onClick={openInfo}
       style={sortableStyle}
       className={`
         group relative rounded-lg border-s-[5px] ${src.border} border ${statusBg}
@@ -222,14 +230,16 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate, onMoveSto
             const chatKind = isService ? 'service' : isDelivery ? 'order' : 'stop';
             const chatId = isService || isDelivery ? stop.sourceId! : stop.stopId;
             return (
-              <OrderChatButton
-                order={{
-                  id: chatId,
-                  kind: chatKind,
-                  customerName: stop.customerName,
-                  city: stop.city,
-                }}
-              />
+              <span onClick={(e) => e.stopPropagation()}>
+                <OrderChatButton
+                  order={{
+                    id: chatId,
+                    kind: chatKind,
+                    customerName: stop.customerName,
+                    city: stop.city,
+                  }}
+                />
+              </span>
             );
           })()}
           {onRemove && (
@@ -278,10 +288,26 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate, onMoveSto
       {stop.phone && (
         <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
           <Phone className="h-3 w-3 flex-shrink-0" />
-          <a href={`tel:${stop.phone}`} className="hover:text-primary font-medium" dir="ltr">
+          <a href={`tel:${stop.phone}`} onClick={(e) => e.stopPropagation()} className="hover:text-primary font-medium" dir="ltr">
             {stop.phone}
           </a>
         </p>
+      )}
+
+      {openInfo && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            openInfo();
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="mt-1.5 inline-flex items-center gap-1 rounded-md bg-orange-50 px-2 py-0.5 text-[11px] font-semibold text-orange-700 hover:bg-orange-100"
+          title="תאור התקלה מפריוריטי, תמונות וסרטונים מהלקוח והערת המשרד"
+        >
+          <ClipboardList className="h-3 w-3" />
+          פרטי הקריאה
+        </button>
       )}
 
       {/* Scheduling stamp — who scheduled / rescheduled */}
@@ -459,6 +485,7 @@ export function DeliveryCalendar({
       return next;
     });
   const [coordinationStop, setCoordinationStop] = useState<CalendarStop | null>(null);
+  const [infoStop, setInfoStop] = useState<CalendarStop | null>(null);
   // קבוצות נהג מקופלות ביומן (key = delivery.id = "date__driver").
   // ⭐ עידן, 06/09/2026: "כווץ הכל / פתח הכל" גם ביומן, שמשפיע על כל הנהגים.
   // ברירת המחדל (הכל מכווץ או הכל פתוח) נזכרת לכל משתמש; לחיצה על נהג
@@ -851,6 +878,7 @@ export function DeliveryCalendar({
                                 onResolve={onResolveStop}
                                 onCoordinate={setCoordinationStop}
                                 onMoveStop={onMoveStop}
+                                onOpenInfo={setInfoStop}
                               />
                             ))}
                           </SortableContext>
@@ -906,6 +934,15 @@ export function DeliveryCalendar({
         open={!!coordinationStop}
         onOpenChange={(open) => {
           if (!open) setCoordinationStop(null);
+        }}
+      />
+
+      {/* כרטיס הקריאה — נפתח בלחיצה על כרטיס שירות */}
+      <StopCallInfoSheet
+        calendarStop={infoStop ?? undefined}
+        open={!!infoStop}
+        onOpenChange={(open) => {
+          if (!open) setInfoStop(null);
         }}
       />
     </div>

@@ -96,7 +96,7 @@ export function NotCompletedReasonDialog({
             >
               {followUp ? <RotateCcw className="h-4 w-4" /> : <X className="h-4 w-4" />}
             </span>
-            {followUp ? 'נדרש המשך טיפול' : 'סימון כ"לא בוצע"'}
+            {followUp ? 'להמשך טיפול' : 'סימון כ"לא בוצע"'}
           </DialogTitle>
           <DialogDescription>
             {customerName ? `${customerName}. ` : ''}

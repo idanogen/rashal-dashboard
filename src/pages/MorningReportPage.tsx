@@ -10,6 +10,8 @@
  * בשבע בבוקר בימי עבודה עם קישור לכאן (`/morning/<תאריך>`) · "סופק" =
  * רק "בוצע". 🔴 פתוחות מחוץ לאחוז: עצירה שלא נסגרה היא בעיית דיווח,
  * לא כישלון אספקה, ומי שלא דיווח על כלום מסומן "לא דיווח" ולא 0%.
+ * 🔴 15/09: "המשך טיפול" נספר בנפרד ולא כ"לא סופק", כי הטכנאי היה אצל
+ * הלקוח. גם הוא מחוץ לאחוז, ומוצג בצבע משלו.
  */
 import { useMemo } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -23,10 +25,10 @@ const NAVY = '#14223a';
 const GREEN = '#15803d';
 const RED = '#c2410c';
 const AMBER = '#b45309';
+const TEAL = '#0e7490';
 
 const KIND_LABEL: Record<string, string> = { driver: 'נהג', technician: 'טכנאי', both: 'נהג וטכנאי' };
 const SOURCE_LABEL: Record<string, string> = { delivery: 'אספקה', order: 'אספקה', service: 'שירות', service_call: 'שירות', pickup: 'איסוף', task: 'משימה', customer: 'ביקור', inspection: 'בדיקת מנוף' };
-const REASON_KIND_LABEL: Record<string, string> = { not_done: 'לא סופק', follow_up: 'המשך טיפול' };
 
 function Panel({ icon, title, hint, children }: { icon: React.ReactNode; title: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -135,15 +137,16 @@ export function MorningReportPage() {
       )}
 
       {/* ═══ המספרים של היום ═══ */}
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         <Kpi n={t?.planned ?? '…'} t="שובצו" sub={t ? `${t.drivers} נהגים וטכנאים` : undefined} accent={NAVY} />
         <Kpi n={t?.delivered ?? '…'} t="סופקו" sub='נסגרו "בוצע"' color={GREEN} accent={GREEN} />
+        <Kpi n={t?.follow_up ?? '…'} t="המשך טיפול" sub="היו אצל הלקוח, צריך עוד ביקור" color={t && t.follow_up > 0 ? TEAL : NAVY} accent={TEAL} />
         <Kpi n={t?.not_delivered ?? '…'} t="לא סופקו" sub="עם סיבה מהשטח" color={t && t.not_delivered > 0 ? RED : NAVY} accent={RED} />
         <Kpi n={t?.open ?? '…'} t="נשארו פתוחות" sub="לא דווחו במערכת" color={t && t.open > 0 ? AMBER : NAVY} accent={AMBER} />
         <Kpi
           n={rate == null ? (t ? 'אין דיווח' : '…') : `${rate}%`}
           t="אחוז אספקה"
-          sub={t ? `מתוך מה שדווח (${t.delivered + t.not_delivered})` : undefined}
+          sub={t ? `סופקו מתוך סופקו ולא סופקו (${t.delivered + t.not_delivered})` : undefined}
           color={rate == null ? '#8a96a8' : rate >= 90 ? '#1d4ed8' : rate >= 70 ? AMBER : RED}
           accent="#1d4ed8"
         />
@@ -152,7 +155,7 @@ export function MorningReportPage() {
       <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-5">
         {/* ═══ לפי נהג ═══ */}
         <div className="lg:col-span-3">
-          <Panel icon={<ClipboardList className="h-4 w-4" />} title="לפי נהג וטכנאי" hint="פתוחות מחוץ לאחוז">
+          <Panel icon={<ClipboardList className="h-4 w-4" />} title="לפי נהג וטכנאי" hint="פתוחות והמשך טיפול מחוץ לאחוז">
             {data && data.byDriver.length === 0 ? (
               <div className="py-6 text-center text-sm text-slate-400">לא היו עצירות ביום הזה.</div>
             ) : (
@@ -163,6 +166,7 @@ export function MorningReportPage() {
                       <th className="py-1.5 text-start font-semibold">שם</th>
                       <th className="py-1.5 text-center font-semibold">שובצו</th>
                       <th className="py-1.5 text-center font-semibold">סופקו</th>
+                      <th className="py-1.5 text-center font-semibold">המשך טיפול</th>
                       <th className="py-1.5 text-center font-semibold">לא סופקו</th>
                       <th className="py-1.5 text-center font-semibold">פתוחות</th>
                       <th className="py-1.5 text-start font-semibold">אחוז אספקה</th>
@@ -179,6 +183,7 @@ export function MorningReportPage() {
                           </td>
                           <td className="py-2 text-center"><bdi>{d.planned}</bdi></td>
                           <td className="py-2 text-center font-semibold" style={{ color: d.delivered > 0 ? GREEN : undefined }}><bdi>{d.delivered}</bdi></td>
+                          <td className="py-2 text-center" style={{ color: d.follow_up > 0 ? TEAL : undefined }}><bdi>{d.follow_up}</bdi></td>
                           <td className="py-2 text-center" style={{ color: d.not_delivered > 0 ? RED : undefined }}><bdi>{d.not_delivered}</bdi></td>
                           <td className="py-2 text-center">
                             {d.open > 0
@@ -196,13 +201,30 @@ export function MorningReportPage() {
           </Panel>
         </div>
 
-        {/* ═══ לא סופק ואיפה זה עומד ═══ */}
+        {/* ═══ מה לא נסגר ואיפה זה עומד ═══ */}
         <div className="lg:col-span-2">
-          <Panel icon={<XCircle className="h-4 w-4" />} title="לא סופק ואיפה זה עומד" hint="מה שהמנהל צריך לטפל בו">
-            {data && data.notDelivered.length === 0 && data.open.length === 0 ? (
+          <Panel icon={<XCircle className="h-4 w-4" />} title="מה לא נסגר ואיפה זה עומד" hint="מה שהמנהל צריך לטפל בו">
+            {data && data.notDelivered.length === 0 && data.followUp.length === 0 && data.open.length === 0 ? (
               <div className="py-6 text-center text-sm text-slate-400">הכל סופק ודווח. בוקר טוב.</div>
             ) : (
               <div className="space-y-2">
+                {(data?.followUp ?? []).map((s) => (
+                  <div key={s.id} className="rounded-xl border px-3 py-2" style={{ borderColor: '#cbe7ee', background: '#f2fafc' }}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-[12.5px] font-bold" style={{ color: NAVY }}>
+                        {s.customer ?? 'לקוח'}{s.city ? ` · ${s.city}` : ''}
+                      </div>
+                      <span className="rounded-full px-2 py-0.5 text-[10px] font-bold text-white" style={{ background: TEAL }}>
+                        המשך טיפול
+                      </span>
+                    </div>
+                    <div className="mt-0.5 text-[11.5px] text-slate-600">
+                      {s.driver ?? ''}{s.source ? ` · ${SOURCE_LABEL[s.source] ?? s.source}` : ''}
+                      {s.reason ? ` · ${s.reason}` : ''}
+                    </div>
+                    {s.note && s.note !== s.reason && <div className="mt-0.5 text-[11px] text-slate-500">{s.note}</div>}
+                  </div>
+                ))}
                 {(data?.notDelivered ?? []).map((s) => (
                   <div key={s.id} className="rounded-xl border px-3 py-2" style={{ borderColor: '#fde2d3', background: '#fff8f4' }}>
                     <div className="flex items-center justify-between gap-2">
@@ -210,14 +232,14 @@ export function MorningReportPage() {
                         {s.customer ?? 'לקוח'}{s.city ? ` · ${s.city}` : ''}
                       </div>
                       <span className="rounded-full px-2 py-0.5 text-[10px] font-bold text-white" style={{ background: RED }}>
-                        {REASON_KIND_LABEL[s.kind ?? ''] ?? 'לא סופק'}
+                        לא סופק
                       </span>
                     </div>
                     <div className="mt-0.5 text-[11.5px] text-slate-600">
                       {s.driver ?? ''}{s.source ? ` · ${SOURCE_LABEL[s.source] ?? s.source}` : ''}
                       {s.reason ? ` · ${s.reason}` : ''}
                     </div>
-                    {s.note && <div className="mt-0.5 text-[11px] text-slate-500">{s.note}</div>}
+                    {s.note && s.note !== s.reason && <div className="mt-0.5 text-[11px] text-slate-500">{s.note}</div>}
                   </div>
                 ))}
                 {(data?.open ?? []).map((s) => (
@@ -244,7 +266,7 @@ export function MorningReportPage() {
       <div className="mb-4 grid grid-cols-1 gap-4 lg:grid-cols-5">
         {/* ═══ מגמה ═══ */}
         <div className="lg:col-span-3">
-          <Panel icon={<TrendingUp className="h-4 w-4" />} title="המגמה: ימי העבודה האחרונים" hint="גובה העמודה = כמה שובצו, ירוק = סופקו">
+          <Panel icon={<TrendingUp className="h-4 w-4" />} title="המגמה: ימי העבודה האחרונים" hint="גובה העמודה = כמה שובצו, ירוק = סופקו, טורקיז = המשך טיפול">
             {trend.length === 0 ? (
               <div className="py-6 text-center text-sm text-slate-400">אין נתונים.</div>
             ) : (
@@ -252,6 +274,7 @@ export function MorningReportPage() {
                 {trend.map((d) => {
                   const h = Math.round((d.planned / trendMax) * 110);
                   const dh = Math.round((d.delivered / trendMax) * 110);
+                  const fh = Math.round((d.follow_up / trendMax) * 110);
                   const nh = Math.round((d.not_delivered / trendMax) * 110);
                   const isCurrent = d.date === date;
                   const lbl = morningShortDay(d.date);
@@ -260,13 +283,14 @@ export function MorningReportPage() {
                       key={d.date}
                       to={`/morning/${d.date}`}
                       className="flex flex-1 flex-col items-center justify-end gap-1"
-                      title={`${morningDayLabel(d.date)}: ${d.delivered} מתוך ${d.planned}`}
+                      title={`${morningDayLabel(d.date)}: ${d.delivered} מתוך ${d.planned}${d.follow_up ? `, ${d.follow_up} המשך טיפול` : ''}`}
                     >
                       <div
                         className="flex w-full flex-col justify-end overflow-hidden rounded-t-md"
                         style={{ height: h, background: '#e5e9f0', outline: isCurrent ? `2px solid ${NAVY}` : undefined, outlineOffset: 1 }}
                       >
                         <div style={{ height: nh, background: RED }} />
+                        <div style={{ height: fh, background: TEAL }} />
                         <div style={{ height: dh, background: GREEN }} />
                       </div>
                       <div className="text-[10px] font-semibold text-slate-500">{lbl.dow}</div>
@@ -290,6 +314,7 @@ export function MorningReportPage() {
                   <th className="py-1.5 text-center font-semibold">ימים</th>
                   <th className="py-1.5 text-center font-semibold">שובצו</th>
                   <th className="py-1.5 text-center font-semibold">סופקו</th>
+                  <th className="py-1.5 text-center font-semibold">המשך</th>
                   <th className="py-1.5 text-center font-semibold">פתוחות</th>
                   <th className="py-1.5 text-start font-semibold">אחוז</th>
                 </tr>
@@ -301,6 +326,7 @@ export function MorningReportPage() {
                     <td className="py-2 text-center"><bdi>{m.workdays}</bdi></td>
                     <td className="py-2 text-center"><bdi>{m.planned}</bdi></td>
                     <td className="py-2 text-center font-semibold" style={{ color: GREEN }}><bdi>{m.delivered}</bdi></td>
+                    <td className="py-2 text-center" style={{ color: m.follow_up > 0 ? TEAL : undefined }}><bdi>{m.follow_up}</bdi></td>
                     <td className="py-2 text-center" style={{ color: m.open > 0 ? AMBER : undefined }}><bdi>{m.open}</bdi></td>
                     <td className="py-2"><RateBar delivered={m.delivered} notDelivered={m.not_delivered} reported /></td>
                   </tr>

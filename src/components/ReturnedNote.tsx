@@ -27,7 +27,7 @@ export function ReturnedNote({ info }: { info?: ReturnedInfo }) {
       <Icon className="mt-px h-3 w-3 flex-shrink-0" />
       <span className="min-w-0 whitespace-pre-wrap break-words">
         <span className="font-semibold">
-          {followUp ? 'נדרש המשך טיפול' : returnedMeta(info)}
+          {followUp ? 'להמשך טיפול' : returnedMeta(info)}
         </span>
         {followUp && <span className="opacity-70"> · {returnedMeta(info)}</span>}
         {info.note ? ` · ${info.note}` : <span className="opacity-70"> · לא נרשמה סיבה</span>}

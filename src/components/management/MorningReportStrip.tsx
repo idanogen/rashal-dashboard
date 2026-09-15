@@ -26,6 +26,7 @@ export function MorningReportStrip() {
       {t ? (
         <span className="text-[12.5px] text-slate-600">
           {morningDayLabel(data!.date)}: סופקו <b style={{ color: '#15803d' }}><bdi>{t.delivered}</bdi></b> מתוך <bdi>{t.planned}</bdi> ששובצו
+          {t.follow_up > 0 && <> · <b style={{ color: '#0e7490' }}><bdi>{t.follow_up}</bdi></b> להמשך טיפול</>}
           {t.not_delivered > 0 && <> · <b style={{ color: '#c2410c' }}><bdi>{t.not_delivered}</bdi></b> לא סופקו</>}
           {t.open > 0 && <> · <b style={{ color: '#b45309' }}><bdi>{t.open}</bdi></b> נשארו פתוחות</>}
           {rate != null && <> · אחוז אספקה <b><bdi>{rate}%</bdi></b></>}

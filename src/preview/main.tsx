@@ -16,6 +16,7 @@ import { RailScene } from './RailScene';
 import { HeaderScene } from './HeaderScene';
 import { HistoryScene } from './HistoryScene';
 import { CardScene } from './CardScene';
+import { TrafficScene } from './TrafficScene';
 import '@/index.css';
 import { CustomerCardBody } from '@/components/customer/CustomerCard';
 import { LastVisitBadge } from '@/components/customer/LastVisitBadge';
@@ -44,7 +45,7 @@ import { DispatchCard, UnscheduledPanel } from '@/components/dispatch/Unschedule
 import { Package } from 'lucide-react';
 import { TaskDialog } from '@/components/deliveries/TaskDialog';
 import { buildServiceCallItems } from '@/components/dispatch/items';
-import { DndContext } from '@dnd-kit/core';
+import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import type { ServiceCall } from '@/types/service-call';
 import { DeliveryCalendar } from '@/components/deliveries/DeliveryCalendar';
 import { WaAutomationsPage } from '@/pages/WaAutomationsPage';
@@ -606,6 +607,8 @@ const VIEWS: Record<string, React.ReactElement> = {
   header: <HeaderScene />,
   history: <HistoryScene />,
   card: <CardScene />,
+  /** רמזור קריאות השירות (15/09/2026). */
+  lights: <TrafficScene />,
   /** מסך פתיחה לסדרן (עידן, 02/09/2026). כל המספרים אמיתיים, נמדדו במסד. */
   'dispatcher-home': (
     <div className="min-h-screen bg-slate-50 py-4">
@@ -934,6 +937,182 @@ const VIEWS: Record<string, React.ReactElement> = {
     </div>
   ),
 };
+
+/**
+ * דוח הבוקר עם "המשך טיפול" כמונה נפרד (עידן, 15/09/2026). הנתונים הם
+ * התשובה האמיתית של `morning_report('2026-09-14')` אחרי השינוי: 19 סופקו,
+ * 1 המשך טיפול (אולג), 7 לא סופקו, 1 פתוחה.
+ */
+import { MorningReportPage } from '@/pages/MorningReportPage';
+import type { MorningReport } from '@/lib/morning-report';
+if (view === 'morning') {
+  const nd = (id: string, customer: string, city: string, driver: string, source: string, note: string, kind = 'not_done') =>
+    ({ id, customer, city, driver, source, kind, reason: note, note });
+  const report: MorningReport = {
+    date: '2026-09-14',
+    dow: 1,
+    totals: { planned: 28, delivered: 19, not_delivered: 7, follow_up: 1, open: 1, drivers: 5 },
+    byDriver: [
+      { name: 'דוד חסידים', kind: 'both', planned: 7, delivered: 7, not_delivered: 0, follow_up: 0, open: 0 },
+      { name: 'רודי', kind: 'driver', planned: 7, delivered: 4, not_delivered: 3, follow_up: 0, open: 0 },
+      { name: 'אבי', kind: 'technician', planned: 5, delivered: 3, not_delivered: 2, follow_up: 0, open: 0 },
+      { name: 'אולג', kind: 'technician', planned: 5, delivered: 3, not_delivered: 1, follow_up: 1, open: 0 },
+      { name: 'ישראל', kind: 'technician', planned: 4, delivered: 2, not_delivered: 1, follow_up: 0, open: 1 },
+    ],
+    followUp: [nd('f1', 'כהן יונתן יוסף', 'רמלה', 'אולג', 'service', 'חסר חלק, צריך להזמין', 'follow_up')],
+    notDelivered: [
+      nd('n1', 'בטאש מעיין', 'רעננה', 'אבי', 'service', 'ייתאמו למעבדה'),
+      nd('n2', 'דיין אורטל', 'נתניה', 'אבי', 'service', 'תתאם מחדש לא בבית'),
+      nd('n3', 'בורשטיין אביטל', 'מודיעין עילית', 'אולג', 'service', 'הלקוח לא היה בבית'),
+      nd('n4', 'מרים טקלה', 'נתניה', 'ישראל', 'service', 'אין אף אחד'),
+      nd('n5', 'פודכלבניק טובה', 'כפר סבא', 'רודי', 'task', 'הלקוח לא היה בבית'),
+      nd('n6', 'איזדי אריאלה', 'אור יהודה', 'רודי', 'pickup', 'הלקוח לא היה בבית'),
+      nd('n7', 'געסיס חסנה', 'לוד', 'רודי', 'delivery', 'הלקוח לא היה בבית'),
+    ],
+    open: [{ id: 'o1', customer: 'גולדמן אברהם', city: 'תל אביב', driver: 'ישראל', source: 'service', status: 'planned', arrived: false }],
+    trend: [
+      { date: '2026-08-30', planned: 43, delivered: 33, not_delivered: 5, follow_up: 1, open: 4 },
+      { date: '2026-08-31', planned: 46, delivered: 25, not_delivered: 2, follow_up: 0, open: 19 },
+      { date: '2026-09-01', planned: 36, delivered: 27, not_delivered: 2, follow_up: 1, open: 6 },
+      { date: '2026-09-02', planned: 38, delivered: 29, not_delivered: 2, follow_up: 0, open: 7 },
+      { date: '2026-09-03', planned: 52, delivered: 35, not_delivered: 1, follow_up: 1, open: 15 },
+      { date: '2026-09-06', planned: 41, delivered: 30, not_delivered: 3, follow_up: 0, open: 8 },
+      { date: '2026-09-07', planned: 53, delivered: 43, not_delivered: 2, follow_up: 0, open: 8 },
+      { date: '2026-09-08', planned: 34, delivered: 27, not_delivered: 2, follow_up: 0, open: 5 },
+      { date: '2026-09-09', planned: 44, delivered: 33, not_delivered: 6, follow_up: 0, open: 5 },
+      { date: '2026-09-10', planned: 35, delivered: 20, not_delivered: 8, follow_up: 1, open: 6 },
+      { date: '2026-09-14', planned: 28, delivered: 19, not_delivered: 7, follow_up: 1, open: 1 },
+    ],
+    months: [
+      { month: '2026-09-01', workdays: 9, planned: 361, delivered: 263, not_delivered: 33, follow_up: 4, open: 61 },
+      { month: '2026-08-01', workdays: 22, planned: 439, delivered: 321, not_delivered: 51, follow_up: 1, open: 66 },
+      { month: '2026-07-01', workdays: 22, planned: 376, delivered: 214, not_delivered: 55, follow_up: 0, open: 107 },
+    ],
+  };
+  previewQc.setQueryData(['morningReport', 'default'], report);
+  VIEWS.morning = <MorningReportPage />;
+}
+
+/**
+ * ⭐ כרטיס הקריאה לנהג (15/09/2026). הנתונים הם מה שהחזירה `stop_call_info`
+ * על SC2603230 בהרשאות של הנהג אבי; התמונה היא העותק הציבורי שכבר בצ'אט
+ * הקריאה, כי הדלי הפרטי דורש התחברות.
+ * `?view=callinfo` · `?view=callinfo-empty`
+ */
+import { StopCallInfoSheet } from '@/components/driver/StopCallInfoSheet';
+import type { SignedCallInfo } from '@/hooks/useStopCallInfo';
+if (view === 'callinfo' || view === 'callinfo-empty') {
+  const empty = view === 'callinfo-empty';
+  const IMG = 'https://kukstfxtznymfkirdmty.supabase.co/storage/v1/object/public/timeline-files/wa-media/c70aaf46-6a43-4d15-a769-4c40ed1f81a3/1789371235879-0.jpeg';
+  const stop = driverStop({
+    id: 'ci1', sourceType: 'service', serviceCallId: 'sc1',
+    customerName: empty ? 'גולדמן אברהם' : "קוסקס הוברט ז'וזף יוסף",
+    address: 'מכנס גד 31/15', city: 'נתניה', phone: '054-5498033',
+    timeWindowStart: '15:00', timeWindowEnd: '17:00', coordinationStatus: 'customer_confirmed',
+  });
+  const img = (n: number, at: string) => ({ messageId: `m${n}`, index: 0, at, type: 'image' as const, path: `p${n}` });
+  const info: SignedCallInfo = empty
+    ? {
+        stopId: 'ci1', call: { id: 'sc1', docno: 'SC2603301' }, media: [], texts: [], officeNote: null,
+        mediaRequest: { state: 'sent', sentAt: '2026-09-15T06:12:00Z' }, urls: {},
+      }
+    : {
+        stopId: 'ci1',
+        call: {
+          id: 'sc1', docno: 'SC2603230', faultText: 'ברקס בגב הכסא לא נועל',
+          deviceDesc: 'גב הטייה 40 ר.פ.מ.גרדיאן תוצרת SUNRISE MEDICAL', deviceSerial: 'A180606718',
+        },
+        media: [
+          img(1, '2026-09-14T07:33:49Z'), img(2, '2026-09-14T07:33:49Z'), img(3, '2026-09-14T07:33:49Z'),
+          img(4, '2026-09-14T07:33:50Z'), img(5, '2026-09-14T07:46:08Z'),
+          { messageId: 'v1', index: 0, at: '2026-09-14T07:47:00Z', type: 'video', path: 'v1' },
+        ],
+        texts: [
+          { messageId: 't1', at: '2026-09-14T07:39:09Z', body: 'הנה הכיסא' },
+          { messageId: 't2', at: '2026-09-14T07:39:16Z', body: 'הפרקסים לא עובדים' },
+          { messageId: 't3', at: '2026-09-14T07:39:24Z', body: 'נראה לי צד שמאל' },
+        ],
+        officeNote: { userName: 'עמי גז', content: 'ברקס בגב הכסא לא נועל', at: '2026-09-14T14:41:33Z' },
+        mediaRequest: { state: 'media_received', sentAt: '2026-09-14T07:30:13Z', receivedAt: '2026-09-14T07:33:55Z' },
+        urls: { p1: IMG, p2: IMG, p3: IMG, p4: IMG, p5: IMG, v1: IMG },
+      };
+  previewQc.setQueryData(['stopCallInfo', 'ci1'], info);
+  VIEWS[view] = (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-3">
+      <div className="mx-auto" style={{ width: 384 }}>
+        <DriverStopCard
+          stop={stop}
+          index={6}
+          onCoordinate={() => {}}
+          onArrive={() => {}}
+          onResolve={() => {}}
+          resolving={false}
+          infoCounts={empty ? null : { stopId: 'ci1', hasFault: true, images: 5, videos: 1, texts: 3 }}
+        />
+      </div>
+      <StopCallInfoSheet stop={stop} open onOpenChange={() => {}} onOpenChat={() => {}} />
+    </div>
+  );
+}
+
+/**
+ * כרטיס שירות ביומן של המשרד נפתח לכרטיס הקריאה (עידן, 15/09/2026: "גם במסך של כולם").
+ * `?view=calendar-callinfo` — לוחצים על הכרטיס או על "פרטי הקריאה".
+ */
+/** אותה סף גרירה כמו במסכים האמיתיים (6 פיקסלים), כדי שלחיצה על הכרטיס תיבדק כמו שהיא. */
+function RealDnd({ children }: { children: React.ReactNode }) {
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  return <DndContext sensors={sensors}>{children}</DndContext>;
+}
+if (view === 'calendar-callinfo') {
+  const IMG = 'https://kukstfxtznymfkirdmty.supabase.co/storage/v1/object/public/timeline-files/wa-media/c70aaf46-6a43-4d15-a769-4c40ed1f81a3/1789371235879-0.jpeg';
+  const today = localDateStr(new Date());
+  previewQc.setQueryData(['stopCallInfo', 'cal1'], {
+    stopId: 'cal1',
+    call: {
+      id: 'sc1', docno: 'SC2603230', faultText: 'ברקס בגב הכסא לא נועל',
+      deviceDesc: 'גב הטייה 40 ר.פ.מ.גרדיאן תוצרת SUNRISE MEDICAL', deviceSerial: 'A180606718',
+    },
+    media: [
+      { messageId: 'm1', index: 0, at: '2026-09-14T07:33:49Z', type: 'image', path: 'p1' },
+      { messageId: 'm2', index: 0, at: '2026-09-14T07:33:50Z', type: 'image', path: 'p2' },
+      { messageId: 'v1', index: 0, at: '2026-09-14T07:47:00Z', type: 'video', path: 'v1' },
+    ],
+    texts: [{ messageId: 't1', at: '2026-09-14T07:39:16Z', body: 'הפרקסים לא עובדים' }],
+    officeNote: { userName: 'עמי גז', content: 'ברקס בגב הכסא לא נועל', at: '2026-09-14T14:41:33Z' },
+    mediaRequest: { state: 'media_received', sentAt: '2026-09-14T07:30:13Z', receivedAt: '2026-09-14T07:33:55Z' },
+    urls: { p1: IMG, p2: IMG, v1: IMG },
+  } satisfies SignedCallInfo);
+  VIEWS[view] = (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
+      <div className="mx-auto max-w-sm">
+        <RealDnd>
+          <DeliveryCalendar
+            deliveries={[
+              {
+                id: 'g1', date: today, driver: 'אבי',
+                stops: [
+                  {
+                    stopId: 'cal1', sourceId: 'sc1', sourceType: 'service', status: 'planned',
+                    deliveryDate: today, driver: 'אבי', customerName: "קוסקס הוברט ז'וזף יוסף",
+                    address: 'מכנס גד 31/15', city: 'נתניה', phone: '0545498033',
+                    timeWindowStart: '15:00', timeWindowEnd: '17:00', scheduledBy: 'עמי גז',
+                  },
+                  {
+                    stopId: 'cal2', sourceId: 'o1', sourceType: 'delivery', status: 'planned',
+                    deliveryDate: today, driver: 'אבי', customerName: 'בתיה שפירו',
+                    address: 'אלתרמן 8', city: 'רחובות', phone: '0523248420',
+                  },
+                ],
+              },
+            ]}
+            onResolveStop={() => {}}
+          />
+        </RealDnd>
+      </div>
+    </div>
+  );
+}
 
 if (view && VIEWS[view]) {
   createRoot(document.getElementById('root')!).render(

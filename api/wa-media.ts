@@ -18,6 +18,9 @@ import { BUCKET, type HeyyAttachment } from './_lib/wa-media.js';
  */
 const SIGNED_SECONDS = 300;
 
+/** אותה רשימה כמו `is_office_staff()` במסד. */
+const OFFICE_ROLES = new Set(['admin', 'team_manager', 'dispatcher', 'viewer', 'management']);
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Cache-Control', 'no-store');
 
@@ -27,6 +30,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const user = await requireUser(req);
   if (!user) return res.status(401).json({ ok: false, error: 'unauthorized' });
+
+  // 🔴 15/09/2026: רק המשרד. עד היום כל מחובר (כולל נהג) קיבל חתימה לכל קובץ
+  // לפי מזהה הודעה. נהג רואה קבצים רק בכרטיס הקריאה, בחתימה ישירה מהדלי
+  // שעוברת את מדיניות האחסון (`wa_media_object_visible`), ולא דרך כאן.
+  const { data: profile } = await supabaseAdmin
+    .from('profiles')
+    .select('role, disabled')
+    .eq('id', user.id)
+    .maybeSingle();
+  if (!profile || profile.disabled || !OFFICE_ROLES.has(String(profile.role))) {
+    return res.status(403).json({ ok: false, error: 'forbidden' });
+  }
 
   const messageId = typeof req.query.message === 'string' ? req.query.message.trim() : '';
   const index = Number(req.query.i ?? 0);

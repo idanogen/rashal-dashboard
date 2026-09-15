@@ -7,6 +7,12 @@
 -- "ביצועי הצוות" חל גם כאן: עצירה שנשארה פתוחה אינה כישלון, היא לא
 -- דווחה, ולכן היא עמודה משלה ומחוץ לאחוז האספקה.
 --
+-- 🔴 15/09/2026 (עידן): "טכנאי שמעביר להמשך טיפול לא צריך להיספר כקריאה
+-- שלא בוצעה, הטכנאי בפועל כן היה אצל הלקוח". `not_delivered` סופר רק
+-- `resolution_kind` שאינו `follow_up`, ו-`follow_up` הוא מונה ורשימה משלו.
+-- אחוז האספקה נשאר סופק מתוך (סופק + לא סופק): המשך טיפול אינו כישלון
+-- ואינו אספקה, ולכן הוא לצד האחוז ולא בתוכו.
+--
 -- 🔴 `security invoker`: ה-RLS של העצירות חל מעצמו (משרד רואה הכל,
 -- נהג היה רואה רק את שלו, אבל המסך ממילא סגור לו ב-screen-access).
 
@@ -41,7 +47,8 @@ by_driver as (
          max(a.kind) as kind,
          count(*) as planned,
          count(*) filter (where s.status = 'completed') as delivered,
-         count(*) filter (where s.status = 'not_completed') as not_delivered,
+         count(*) filter (where s.status = 'not_completed' and s.resolution_kind is distinct from 'follow_up') as not_delivered,
+         count(*) filter (where s.status = 'not_completed' and s.resolution_kind = 'follow_up') as follow_up,
          count(*) filter (where s.status in ('planned', 'in_progress')) as open_count
     from day_stops s
     left join public.assignees a on a.name = s.driver
@@ -51,7 +58,13 @@ not_done as (
   select s.id, s.customer_name, s.city, s.driver, s.source_type,
          s.resolution_kind, s.resolution_reason, s.resolution_note, s.sequence
     from day_stops s
-   where s.status = 'not_completed'
+   where s.status = 'not_completed' and s.resolution_kind is distinct from 'follow_up'
+),
+follow_list as (
+  select s.id, s.customer_name, s.city, s.driver, s.source_type,
+         s.resolution_kind, s.resolution_reason, s.resolution_note, s.sequence
+    from day_stops s
+   where s.status = 'not_completed' and s.resolution_kind = 'follow_up'
 ),
 open_list as (
   select s.id, s.customer_name, s.city, s.driver, s.source_type, s.status,
@@ -70,7 +83,8 @@ trend as (
   select t.day,
          count(cs.id) filter (where cs.status <> 'cancelled') as planned,
          count(cs.id) filter (where cs.status = 'completed') as delivered,
-         count(cs.id) filter (where cs.status = 'not_completed') as not_delivered,
+         count(cs.id) filter (where cs.status = 'not_completed' and cs.resolution_kind is distinct from 'follow_up') as not_delivered,
+         count(cs.id) filter (where cs.status = 'not_completed' and cs.resolution_kind = 'follow_up') as follow_up,
          count(cs.id) filter (where cs.status in ('planned', 'in_progress')) as open_count
     from trend_days t
     left join public.calendar_stops cs on cs.delivery_date = t.day
@@ -81,7 +95,8 @@ months as (
          count(distinct cs.delivery_date) as workdays,
          count(*) filter (where cs.status <> 'cancelled') as planned,
          count(*) filter (where cs.status = 'completed') as delivered,
-         count(*) filter (where cs.status = 'not_completed') as not_delivered,
+         count(*) filter (where cs.status = 'not_completed' and cs.resolution_kind is distinct from 'follow_up') as not_delivered,
+         count(*) filter (where cs.status = 'not_completed' and cs.resolution_kind = 'follow_up') as follow_up,
          count(*) filter (where cs.status in ('planned', 'in_progress')) as open_count
     from public.calendar_stops cs, d
    where cs.delivery_date >= (date_trunc('month', d.day) - interval '2 months')::date
@@ -95,28 +110,33 @@ select jsonb_build_object(
       'planned', coalesce(sum(planned), 0),
       'delivered', coalesce(sum(delivered), 0),
       'not_delivered', coalesce(sum(not_delivered), 0),
+      'follow_up', coalesce(sum(follow_up), 0),
       'open', coalesce(sum(open_count), 0),
       'drivers', count(*) filter (where name <> 'לא משובץ'))
     from by_driver),
   'by_driver', (select coalesce(jsonb_agg(jsonb_build_object(
       'name', name, 'kind', kind, 'planned', planned, 'delivered', delivered,
-      'not_delivered', not_delivered, 'open', open_count)
+      'not_delivered', not_delivered, 'follow_up', follow_up, 'open', open_count)
       order by planned desc, name), '[]'::jsonb) from by_driver),
   'not_delivered', (select coalesce(jsonb_agg(jsonb_build_object(
       'id', id, 'customer', customer_name, 'city', city, 'driver', driver, 'source', source_type,
       'kind', resolution_kind, 'reason', resolution_reason, 'note', resolution_note)
       order by driver, sequence), '[]'::jsonb) from not_done),
+  'follow_up', (select coalesce(jsonb_agg(jsonb_build_object(
+      'id', id, 'customer', customer_name, 'city', city, 'driver', driver, 'source', source_type,
+      'kind', resolution_kind, 'reason', resolution_reason, 'note', resolution_note)
+      order by driver, sequence), '[]'::jsonb) from follow_list),
   'open', (select coalesce(jsonb_agg(jsonb_build_object(
       'id', id, 'customer', customer_name, 'city', city, 'driver', driver, 'source', source_type,
       'status', status, 'arrived', arrived)
       order by driver, sequence), '[]'::jsonb) from open_list),
   'trend', (select coalesce(jsonb_agg(jsonb_build_object(
       'date', day, 'planned', planned, 'delivered', delivered,
-      'not_delivered', not_delivered, 'open', open_count)
+      'not_delivered', not_delivered, 'follow_up', follow_up, 'open', open_count)
       order by day), '[]'::jsonb) from trend),
   'months', (select coalesce(jsonb_agg(jsonb_build_object(
       'month', month, 'workdays', workdays, 'planned', planned, 'delivered', delivered,
-      'not_delivered', not_delivered, 'open', open_count)
+      'not_delivered', not_delivered, 'follow_up', follow_up, 'open', open_count)
       order by month desc), '[]'::jsonb) from months)
 );
 $$;

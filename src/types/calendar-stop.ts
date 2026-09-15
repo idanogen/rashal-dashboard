@@ -29,7 +29,8 @@ export type StopResolutionKind = 'not_done' | 'follow_up';
 
 export const RESOLUTION_KIND_LABELS: Record<StopResolutionKind, string> = {
   not_done: 'לא בוצע',
-  follow_up: 'נדרש המשך טיפול',
+  // השם של הסטטוס בפריוריטי, שאליו הסימון נכתב (עידן, 15/09/2026).
+  follow_up: 'להמשך טיפול',
 };
 
 export type CoordinationStatus =

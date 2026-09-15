@@ -73,6 +73,9 @@ const Q = {
   // nothing ever closed on our side and 96% of calls sat in "קריאה חדשה".
   service_calls: (since: string) =>
     `/DOCUMENTS_Q?$select=DOCNO,CUSTNAME,CDES,STARTDATE,STATUSDATE,PHONENUM,SUSERLOGIN,Y_149_0_ESHB,Y_2578_0_ESHB,Y_2632_5_ESH,MALFDES,SYMDES,CALLTYPECODE,CALLSTATUSCODE,SERVTDES,SERNUM,PARTNAME,PARTDES,WARDATEFINAL,RSHL_INSTDATE,TECHNICIANLOGIN,EDATE` +
+    // ⭐ "תאור התקלה" (15/09/2026, כרטיס הקריאה לנהג). אומת ב-probe-filters:
+    // אובייקט `{TEXT}` לכל שורה, גם כשהתאור ריק. מכווץ ב-shrinkFaultText לפני ה-inbox.
+    `&$expand=${encodeURIComponent("DOCTEXT_Q_2_SUBFORM($select=TEXT)")}` +
     `&$filter=${encodeURIComponent(`STATUSDATE ge ${since}`)}&$orderby=STATUSDATE%20asc&$top=1500`,
   pickups_lines: (since: string) =>
     `/DOCUMENTS_N?$select=DOCNO,DOC,CUSTNAME,CDES,CURDATE,STATDES,ORDNAME,ODOCNO,REFERENCE,TOWARHSDES,AGENTNAME,OWNERLOGIN,TOTQUANT,TOTPRICE,UDATE` +
@@ -131,10 +134,48 @@ const Q = {
     `/ORDERS?$select=ORDNAME,CUSTNAME,CDES,CURDATE,STATUSDATE,ORDSTATUSDES,AGENTNAME,TYPEDES,DOERNAME,Y_151_0_ESHB` +
     `&$expand=${encodeURIComponent("ORDERITEMS_SUBFORM($select=PARTNAME,PDES,TQUANT,SERIALNAME)")}` +
     `&$filter=${encodeURIComponent(`CURDATE ge ${since}`)}&$orderby=ORDNAME%20asc&$top=2000`,
+  // ⭐ 15/09/2026: דלתא לפי "ת. חתימה" (UDATE), שזז בכל עריכה ולא רק בשינוי
+  // סטטוס. בלעדיו שינוי "סוג קריאה" (טלפונית ⟵ פרונטלית) הגיע רק בקריאה
+  // היומית, והרמזור היה משבץ לקוח שמגיע לבד. חלון מתגלגל, לא סימן מים.
+  // נבדק: 8 שעות = 173 קריאות לפי UDATE מול 157 לפי STATUSDATE.
+  calls_udate: (since: string) =>
+    `/DOCUMENTS_Q?$select=DOCNO,CUSTNAME,CDES,STARTDATE,STATUSDATE,PHONENUM,SUSERLOGIN,Y_149_0_ESHB,Y_2578_0_ESHB,Y_2632_5_ESH,MALFDES,SYMDES,CALLTYPECODE,CALLSTATUSCODE,SERVTDES,SERNUM,PARTNAME,PARTDES,WARDATEFINAL,RSHL_INSTDATE,TECHNICIANLOGIN,EDATE` +
+    `&$expand=${encodeURIComponent("DOCTEXT_Q_2_SUBFORM($select=TEXT)")}` +
+    `&$filter=${encodeURIComponent(`UDATE ge ${since}`)}&$orderby=DOCNO%20asc&$top=1000`,
   calls_recent: (since: string) =>
     `/DOCUMENTS_Q?$select=DOCNO,CUSTNAME,CDES,STARTDATE,STATUSDATE,PHONENUM,SUSERLOGIN,Y_149_0_ESHB,Y_2578_0_ESHB,Y_2632_5_ESH,MALFDES,SYMDES,CALLTYPECODE,CALLSTATUSCODE,SERVTDES,SERNUM,PARTNAME,PARTDES,WARDATEFINAL,RSHL_INSTDATE,TECHNICIANLOGIN,EDATE` +
+    `&$expand=${encodeURIComponent("DOCTEXT_Q_2_SUBFORM($select=TEXT)")}` +
     `&$filter=${encodeURIComponent(`STARTDATE ge ${since}`)}&$orderby=DOCNO%20asc&$top=2000`,
 };
+
+/**
+ * 🔴 "תאור התקלה" מגיע כ-HTML של העורך של פריוריטי, ובתאור שהודבק מוורד
+ * זה טבלה שלמה עם סגנונות (נמדד 15/09/2026: קילובייטים לשורה). 1,500 קריאות
+ * כאלה עוברות את תקרת 4.5MB של גוף בקשה ב-Vercel, וה-inbox נופל כולו.
+ * כאן רק מכווצים: בלי style ובלי מאפייני תגיות, ומשאירים את התגיות ששוברות
+ * שורה. הניקוי המלא לשורות טקסט נעשה ב-inbox (api/_lib/priority-text.ts).
+ */
+function shrinkFaultText(body: string): string {
+  try {
+    const j = JSON.parse(body);
+    const rows = Array.isArray(j?.value) ? j.value : [];
+    for (const r of rows) {
+      const sub = r?.DOCTEXT_Q_2_SUBFORM;
+      const items = Array.isArray(sub) ? sub : sub ? [sub] : [];
+      for (const it of items) {
+        if (typeof it?.TEXT !== "string") continue;
+        it.TEXT = it.TEXT
+          .replace(/<style[\s\S]*?<\/style>/gi, "")
+          .replace(/<(?!\/?(p|div|li|tr|br)\b)[^>]*>/gi, "")
+          .replace(/<(\/?)(p|div|li|tr|br)\b[^>]*>/gi, "<$1$2>")
+          .slice(0, 8000);
+      }
+    }
+    return JSON.stringify(j);
+  } catch {
+    return body;
+  }
+}
 
 // ─── משיכת היסטוריה (backfill) ──────────────────────────────────────────────
 // המשיכות הרגילות רודפות אחרי ווטרמרק ולכן לעולם לא מגיעות אחורה. הריצה הזו
@@ -392,6 +433,20 @@ function rollingDays(n: number): string {
   return new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 19) + "Z";
 }
 
+/**
+ * לפני N שעות, **בשעון ישראל עם סיומת Z**, כי כך פריוריטי שומרת את
+ * UDATE/STATUSDATE (לקח ר.שעל: שעון ישראל מסומן Z). `toISOString` היה
+ * מחזיר UTC, כלומר חלון שקטן בשלוש שעות בלי שום שגיאה.
+ */
+function israelHoursAgo(h: number): string {
+  const p: Record<string, string> = {};
+  for (const x of new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+  }).formatToParts(new Date(Date.now() - h * 3_600_000))) p[x.type] = x.value;
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:${p.second}Z`;
+}
+
 function rolling3Days(): string {
   const d = new Date(Date.now() - 3 * 24 * 3600 * 1000);
   return `${d.toISOString().slice(0, 10)}T00:00:00Z`;
@@ -442,6 +497,10 @@ const JOBS: Record<string, Step[]> = {
     { entity: "customers", kind: "customers", buildUrl: (w) => w.customers_since ? Q.customers(w.customers_since) : null },
     { entity: "orders", kind: "orders", buildUrl: (w) => w.orders_since ? Q.orders(w.orders_since) : null },
     { entity: "service_calls", kind: "service_calls", buildUrl: (w) => w.calls_since ? Q.service_calls(w.calls_since) : null },
+    // עריכות בלי שינוי סטטוס (סוג קריאה, כתובת, תאור). שלוש שעות מתגלגלות:
+    // הריצה כל 5 דקות, והחפיפה מכסה ריצה שנכשלה. ה-inbox משווה ערכים, כך
+    // שקריאה שלא השתנתה לא נכתבת שוב.
+    { entity: "calls_udate", kind: "service_calls", buildUrl: () => Q.calls_udate(israelHoursAgo(3)) },
   ],
   "pull-pickups": [
     { entity: "pickups_lines", kind: "pickups", buildUrl: (w) => w.pickups_since ? Q.pickups_lines(w.pickups_since) : null },
@@ -1388,7 +1447,8 @@ Deno.serve(async (req: Request) => {
     // 🔴 רשימה סגורה ולא נתיב מהקורא: הפונקציה עונה בלי טוקן, וישות
     // חופשית הייתה הופכת אותה לפרוקסי לכל מסך בפריוריטי.
     // GENINVOICES נוסף 03/09/2026 אחרי שעידן פתח את המסך ל-API (ספר כספי: כאן הקבלות).
-    const ALLOWED = ["CUSTOMERS", "ORDERS", "DOCUMENTS_D", "DOCUMENTS_N", "AINVOICES", "CINVOICES", "GENINVOICES", "SERVCALL"];
+    // DOCUMENTS_Q נוסף 15/09/2026 לבדיקת "תאור התקלה" ב-$expand על רשימה.
+    const ALLOWED = ["CUSTOMERS", "ORDERS", "DOCUMENTS_D", "DOCUMENTS_N", "DOCUMENTS_Q", "AINVOICES", "CINVOICES", "GENINVOICES", "SERVCALL"];
     const ent = ALLOWED.includes(String(body?.entity ?? "")) ? String(body.entity) : "CUSTOMERS";
     const sel = String(body?.select ?? (ent === "CUSTOMERS" ? "CUSTNAME,PHONE" : "IVNUM,CUSTNAME,IVDATE,IVRECONDATE,TOTPRICE"));
     return new Response(JSON.stringify(await probeFilters(filters, mode, expand, ent, sel), null, 2),
@@ -1435,6 +1495,37 @@ Deno.serve(async (req: Request) => {
     const since = String(body?.since ?? new Date(Date.now() - 86_400_000).toISOString().slice(0, 19) + "Z");
     const expect = body?.expect ? String(body.expect) : null;
     return new Response(JSON.stringify(await probeDateField(entity, key, fields, since, expect), null, 2),
+      { headers: { "Content-Type": "application/json" } });
+  }
+  if (job === "refresh-calls") {
+    // ⭐ 15/09/2026: קריאה מחדש של קריאות לפי מספר, עם "תאור התקלה". נועד
+    // להשלמה של קריאות שנפתחו לפני יותר מ-14 יום ועדיין בסידור, שהקריאה
+    // היומית (refresh-recent) לא מגיעה אליהן. אותה שאילתה, אותו inbox.
+    const docnos = (Array.isArray(body?.docnos) ? (body.docnos as unknown[]) : [])
+      .map(String)
+      .filter((d) => /^[A-Za-z0-9_-]{1,30}$/.test(d))
+      .slice(0, 400);
+    const auth = { headers: { Authorization: basicAuth(), "User-Agent": UA, Accept: "application/json" } };
+    const out: Record<string, unknown>[] = [];
+    for (let i = 0; i < docnos.length; i += 25) {
+      const filter = docnos.slice(i, i + 25).map((d) => `DOCNO eq '${d}'`).join(" or ");
+      const path = Q.calls_recent("2000-01-01T00:00:00Z")
+        .replace(/&\$filter=[^&]*/, `&$filter=${encodeURIComponent(filter)}`);
+      try {
+        const pr = await fetch(PRIORITY + path, auth);
+        const text = await pr.text();
+        if (!pr.ok) { out.push({ at: i, error: `HTTP ${pr.status}`, detail: text.slice(0, 200) }); continue; }
+        const post = await fetch(`${INBOX}?kind=service_calls`, {
+          method: "POST",
+          headers: { "x-sync-secret": syncSecret(), "Content-Type": "application/json" },
+          body: shrinkFaultText(text),
+        });
+        out.push({ at: i, rows: (JSON.parse(text)?.value ?? []).length, inbox: post.status, body: (await post.text()).slice(0, 160) });
+      } catch (e) {
+        out.push({ at: i, threw: String(e).slice(0, 200) });
+      }
+    }
+    return new Response(JSON.stringify({ requested: docnos.length, chunks: out }, null, 2),
       { headers: { "Content-Type": "application/json" } });
   }
   if (job === "reconcile-daily") {
@@ -1542,7 +1633,7 @@ Deno.serve(async (req: Request) => {
       if (body != null) results[step.entity + ":via"] = "split-fallback";
     }
     if (body == null) { errors.push(`${step.entity}: ${pr.body.slice(0, 200)}`); results[step.entity] = "fetch failed"; continue; }
-    pr.body = body;
+    pr.body = body.includes("DOCTEXT_Q_2_SUBFORM") ? shrinkFaultText(body) : body;
 
     let rows = 0;
     try { rows = (JSON.parse(pr.body)?.value ?? []).length; } catch { /* count best-effort */ }

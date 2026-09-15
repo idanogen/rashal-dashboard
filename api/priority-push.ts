@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabaseAdmin } from './_lib/supabase-admin.js';
+import { callSubformUrl, israelStamp, photoDes, repairLine } from './_lib/call-repair-text.js';
 
 // Priority PUSH — field-chat + photos → customer card (see docs/CHAT-TO-PRIORITY-PLAN.md)
 //
@@ -47,9 +48,8 @@ const s = (v: unknown): string | null => {
 
 function formatLine(ev: Row, ctx: string): string {
   const who = s(ev.user_name) ?? 'משתמש';
-  const when = new Date(ev.created_at as string).toLocaleString('he-IL', {
-    day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit',
-  });
+  // 🔴 15/09/2026: בלי timeZone השעה יצאה UTC, שלוש שעות אחורה בכרטיס הלקוח.
+  const when = israelStamp(ev.created_at as string);
   const text = s(ev.content) ?? '';
   return `[${who} · ${when} · ${ctx}] ${text}`;
 }
@@ -82,14 +82,17 @@ async function handleGet(req: VercelRequest, res: VercelResponse) {
   // חיכתה 30 שעות והיא שאלה "?????" בוואטסאפ.
   // ⭐ הבחירה עוברת למסד (`priority_push_candidates`): הסינון על "יש לקוח"
   // ו"יש תמונה" נעשה בשאילתה, ולכן אירוע שאי אפשר לדחוף לא תופס מקום.
-  const { data: events, error } = await supabaseAdmin
-    .rpc('priority_push_candidates', { p_limit: SCAN_LIMIT, p_custname: testCust });
+  // בדיקה ממוקדת של קריאה אחת (test_docno): רק כתיבות הקריאה, בלי כרטיס לקוח.
+  const testDocno = s(req.query.test_docno);
+  const { data: events, error } = testDocno
+    ? { data: [] as Row[], error: null }
+    : await supabaseAdmin.rpc('priority_push_candidates', { p_limit: SCAN_LIMIT, p_custname: testCust });
   if (error) throw new Error(`outbox read: ${error.message}`);
   const rows = (events ?? []) as Row[];
   // כמה עוד ממתינים מעבר למכסה: ריצה שמחזירה אפס כתיבות בזמן שיש ממתינים
   // היא תקלה, לא שקט, וזה מה שהפונקציה הדוחפת והוואצ'דוג בודקים.
   const pending = rows.length;
-  if (!rows.length) return res.status(200).json({ writes: [], skipped: 0, pending });
+  // 🔴 בלי יציאה מוקדמת כשאין אירועים לכרטיס הלקוח: כתיבות הקריאה (למטה) נבחרות בנפרד.
 
   const writes: Row[] = [];
   let payload = 0;
@@ -139,7 +142,7 @@ async function handleGet(req: VercelRequest, res: VercelResponse) {
   // 🔴 `PHONE` בתת-הטופס הוא מזהה שורה פנימי, לא טלפון. לא נוגעים בו.
   // ה-ack חוזר עם מזהה בקידומת `contact:` ומסומן על customer_contacts.
   const contactIds: string[] = [];
-  if (!testCust) {
+  if (!testCust && !testDocno) {
     const { data: contacts, error: cErr } = await supabaseAdmin.rpc('priority_contact_candidates', { p_limit: 20 });
     if (cErr) console.error('[priority-push] contact candidates', cErr.message);
     for (const c of (contacts as Array<Record<string, unknown>> | null) ?? []) {
@@ -165,8 +168,62 @@ async function handleGet(req: VercelRequest, res: VercelResponse) {
     }
   }
 
+  // ─── קריאת שירות: מלל הטכנאי → תאור התיקון, תמונות → נספחים (עידן, 15/09/2026) ──
+  // מסלול נוסף ליד כרטיס הלקוח, עם יומן משלו (`priority_call_push_log`), כדי
+  // שהצלחה באחד לא תסמן את השני. המזהה חוזר ב-ack עם הקידומת `call:`.
+  if (!testCust) {
+    const { data: callRows, error: callErr } = await supabaseAdmin
+      .rpc('priority_call_push_candidates', { p_limit: 60, p_docno: testDocno });
+    if (callErr) throw new Error(`call candidates: ${callErr.message}`);
+    const callKeys: string[] = [];
+    for (const c of (callRows as Row[] | null) ?? []) {
+      if (callKeys.length >= EVENT_BATCH || payload > MAX_PAYLOAD) break;
+      const docno = s(c.docno);
+      const key = s(c.key);
+      if (!docno || !key) continue;
+      if (c.kind === 'file_upload') {
+        // 🔴 התקרה נבדקת רק לפני פריט, לא באמצע: פריט שחלק מהתמונות שלו
+        // נשלחו היה מאושר ב-ack ושאר התמונות היו הולכות לאיבוד.
+        const images = (c.metadata as { imageUrls?: string[] } | null)?.imageUrls ?? [];
+        const pending: Row[] = [];
+        let idx = 0;
+        for (const url of images) {
+          const file = await toDataUri(url);
+          if (!file) continue;
+          idx++;
+          const body = JSON.stringify({ EXTFILEDES: photoDes(docno, String(c.at), idx, file.ext), EXTFILENAME: file.dataUri });
+          pending.push({ event_id: `call:${key}`, url: callSubformUrl(PRIORITY, docno, 'EXTFILES_SUBFORM'), body });
+        }
+        if (!pending.length) continue;
+        for (const w of pending) payload += String(w.body).length;
+        writes.push(...pending);
+        callKeys.push(key);
+      } else {
+        const line = repairLine({
+          kind: String(c.kind),
+          user_name: s(c.user_name),
+          content: s(c.content),
+          at: String(c.at),
+          resolution_kind: s(c.resolution_kind),
+        });
+        if (!line) continue;
+        writes.push({
+          event_id: `call:${key}`,
+          url: callSubformUrl(PRIORITY, docno, 'DOCTEXT_Q_SUBFORM'),
+          body: JSON.stringify({ TEXT: line, APPEND: true }),
+        });
+        callKeys.push(key);
+      }
+    }
+    if (callKeys.length) {
+      const { error: claimCallErr } = await supabaseAdmin.rpc('priority_call_push_claim', { p_keys: callKeys });
+      if (claimCallErr) throw new Error(`claim calls: ${claimCallErr.message}`);
+    }
+  }
+
   // תופסים את האירועים שאנו מחזירים — GET מקביל/כפול לא יקבל אותם שוב (מונע כפילות בפריוריטי)
-  const claimedIds = [...new Set(writes.map((w) => w.event_id as string))];
+  // (רק אירועי כרטיס הלקוח; `contact:` ו-`call:` נתפסים בטבלאות שלהם)
+  const claimedIds = [...new Set(writes.map((w) => w.event_id as string))].filter((id) => !id.includes(':'));
   if (claimedIds.length) {
     const { error: claimErr } = await supabaseAdmin
       .from('timeline_events')
@@ -183,7 +240,12 @@ async function handleAck(req: VercelRequest, res: VercelResponse) {
   const all: string[] = Array.isArray(body?.ids) ? body.ids.map(String) : [];
   if (!all.length) return res.status(200).json({ acked: 0 });
   const contactIds = all.filter((x) => x.startsWith('contact:')).map((x) => x.slice('contact:'.length));
-  const ids = all.filter((x) => !x.startsWith('contact:'));
+  const callKeys = all.filter((x) => x.startsWith('call:')).map((x) => x.slice('call:'.length));
+  const ids = all.filter((x) => !x.startsWith('contact:') && !x.startsWith('call:'));
+  if (callKeys.length) {
+    const { error } = await supabaseAdmin.rpc('priority_call_push_ack', { p_keys: callKeys });
+    if (error) throw new Error(`ack calls: ${error.message}`);
+  }
   if (ids.length) {
     const { error } = await supabaseAdmin
       .from('timeline_events')
