@@ -324,8 +324,12 @@ const PARKED_JOB = "push-parked";
 
 interface ParkedRow { key: string; docno: string | null; fail_reason: string | null; last_error: string | null; failed_at: string }
 
-async function checkParkedPushes(now: Date): Promise<string> {
-  const since = new Date(now.getTime() - 65 * 60000).toISOString();
+async function checkParkedPushes(now: Date, prev: Record<string, unknown> | undefined): Promise<string> {
+  // 🔴 18/09/2026, מיד אחרי ההשקה: חלון של 65 דקות מול בדיקה שרצה כל שעה
+  // שלח שלושה מיילים על אותו פריט. הגבול התחתון הוא **ההתראה הקודמת**,
+  // ולכן כל פריט מדווח בדיוק פעם אחת, בלי חנק שמבליע פריט חדש.
+  const alertedAt = prev?.last_alerted_at ? new Date(prev.last_alerted_at as string).getTime() : 0;
+  const since = new Date(Math.max(alertedAt, now.getTime() - 24 * 3600000)).toISOString();
   const { data, error } = await sb.from("priority_call_push_log")
     .select("key,docno,fail_reason,last_error,failed_at")
     .gt("failed_at", since)
@@ -452,7 +456,7 @@ Deno.serve(async () => {
   // 🔴 שאלה רביעית: לא "מתי רץ" אלא "מה ויתרנו עליו". פריט שנעצר לצמיתות
   // נעלם מכל מדד של הצלחה, ולכן הוא צריך פעמון משלו.
   try {
-    report[PARKED_JOB] = await checkParkedPushes(now);
+    report[PARKED_JOB] = await checkParkedPushes(now, alerts.get(PARKED_JOB));
   } catch (e) {
     report[PARKED_JOB] = `check crashed: ${e instanceof Error ? e.message : String(e)}`;
     console.error("[watchdog] parked check crashed", e);
