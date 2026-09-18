@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 import { supabaseAdmin } from './_lib/supabase-admin.js';
 import { checkUserAdminPolicy } from './_lib/user-admin-policy.js';
-import { sendTemplate } from './_lib/heyy-v3.js';
+import { issueResetLink } from './_lib/reset-link.js';
 
 // Admin user-management endpoint. Single POST endpoint with `action` switch.
 //
@@ -75,37 +75,6 @@ interface AdminAction {
   userId?: string;
   disabled?: boolean;
   phoneE164?: string | null;
-}
-
-/** תוקף הקישור. רבע שעה מספיק כדי לפתוח הודעה, וקצר מכדי להישכח פתוח. */
-const RESET_TTL_MINUTES = 15;
-/**
- * המפתח במרשם התבניות (`wa_templates`), לא מזהה התבנית עצמו.
- * 🔴 חייב להסכים עם `keyFor()` ב-`_lib/templates-sync.ts`, שגוזר את המפתח
- *    משם התבנית ב-heyy. שם התבנית שם: `rashal_password_reset`.
- */
-const RESET_TEMPLATE_KEY = 'rashal_password_reset';
-
-/**
- * 🔴🔴 **התבנית הזאת נשלפת ישירות ולא דרך `getTemplate`, בכוונה.**
- * `getTemplate` מסנן `active = true`, ו-`active` פירושו "מוצעת לצוות
- * בחלונית" — החלטת תצוגה, לא החלטת הרשאה. תבנית חדשה נכנסת מהסנכרון
- * **כבויה**, ולכן שימוש בשער ההוא היה גורם לכך שכפתור האיפוס נשבר בשקט
- * עד שמישהו ידליק מתג שנועד למשהו אחר לגמרי.
- * מה שכן נבדק הוא שמטא אישרה אותה: תבנית שאינה `active` אצל heyy תיבלע.
- */
-async function getResetTemplate(): Promise<{ id: string; status: string | null } | null> {
-  const { data } = await supabaseAdmin
-    .from('wa_templates')
-    .select('heyy_template_id, heyy_status')
-    .eq('key', RESET_TEMPLATE_KEY)
-    .maybeSingle();
-  return data ? { id: data.heyy_template_id as string, status: (data.heyy_status as string) ?? null } : null;
-}
-
-/** למסך המנהל: אישור שההודעה יצאה למספר הנכון, בלי להציג אותו במלואו. */
-function maskPhone(p: string): string {
-  return p.length <= 4 ? p : `${p.slice(0, 5)}****${p.slice(-2)}`;
 }
 
 function generateTempPassword(): string {
@@ -438,78 +407,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           });
         }
 
-        const template = await getResetTemplate();
-        if (!template) {
-          return res.status(503).json({
-            ok: false,
-            error: 'תבנית איפוס הסיסמה עדיין לא מסונכרנת מ-heyy. אפשר להשתמש בינתיים בכפתור המפתח.',
-          });
-        }
-        // 🔴 תבנית שמטא עוד לא אישרה נבלעת אצלה בשקט ומחזירה הצלחה.
-        if (template.status && template.status !== 'active') {
-          return res.status(503).json({
-            ok: false,
-            error: `תבנית האיפוס אינה מאושרת (${template.status}). אפשר להשתמש בינתיים בכפתור המפתח.`,
-          });
-        }
-
-        // 🔴 קישור פתוח קודם מת ברגע שנשלח חדש. אחרת נשארות בשטח כמה
-        //    כתובות חיות לאותו חשבון, וכל אחת מהן מספיקה כדי להשתלט עליו.
-        await supabaseAdmin
-          .from('password_reset_tokens')
-          .update({ expires_at: new Date().toISOString() })
-          .eq('user_id', target.id)
-          .is('used_at', null)
-          .gt('expires_at', new Date().toISOString());
-
-        const token = randomBytes(32).toString('base64url');
-        const tokenHash = createHash('sha256').update(token).digest('hex');
-        const expiresAt = new Date(Date.now() + RESET_TTL_MINUTES * 60_000).toISOString();
-
-        const { data: row, error: insErr } = await supabaseAdmin
-          .from('password_reset_tokens')
-          .insert({
-            user_id: target.id,
-            token_hash: tokenHash,
-            expires_at: expiresAt,
-            created_by: guard.userId,
-            sent_to_phone: target.phone_e164,
-          })
-          .select('id')
-          .single();
-        if (insErr) return res.status(500).json({ ok: false, error: insErr.message });
-
-        const sent = await sendTemplate({
+        // ⭐ מכאן זהה לחלוטין למסלול שהאדם יוזם ממסך ההתחברות, ולכן
+        //    הוא יושב ב-`_lib/reset-link.ts` ולא בשני עותקים. שם גם
+        //    נמצאת בדיקת רשימת המושתקים, שהמסלול הזה פספס עד 18/09/2026.
+        const issued = await issueResetLink({
+          userId: target.id,
           phoneE164: target.phone_e164,
-          templateId: template.id,
-          variables: {
-            name: (target.full_name || target.username || '').toString(),
-            token,
-          },
+          name: (target.full_name || target.username || '').toString(),
+          createdBy: guard.userId,
         });
-
-        await supabaseAdmin
-          .from('password_reset_tokens')
-          .update({ send_ok: sent.ok, send_detail: sent.ok ? null : String(sent.detail ?? '').slice(0, 300) })
-          .eq('id', row.id);
-
-        // 🔴 שליחה שנכשלה משאירה אסימון חי שאיש לא קיבל. הוא נסגר מיד,
-        //    אחרת הוא ממתין רבע שעה ככתובת תקפה שאין לה בעלים.
-        if (!sent.ok) {
-          await supabaseAdmin
-            .from('password_reset_tokens')
-            .update({ expires_at: new Date().toISOString() })
-            .eq('id', row.id);
-          return res.status(502).json({
-            ok: false,
-            error: `ההודעה לא יצאה: ${sent.detail ?? 'שגיאה לא ידועה'}`,
-          });
-        }
+        if (!issued.ok) return res.status(issued.status).json({ ok: false, error: issued.error });
 
         return res.status(200).json({
           ok: true,
-          sentTo: maskPhone(target.phone_e164),
-          expiresInMinutes: RESET_TTL_MINUTES,
+          sentTo: issued.sentTo,
+          expiresInMinutes: issued.expiresInMinutes,
         });
       }
 

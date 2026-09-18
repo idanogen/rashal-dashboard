@@ -4,6 +4,13 @@ import { readFileSync } from 'node:fs';
 
 const api = readFileSync(new URL('../api/password-reset.ts', import.meta.url), 'utf8');
 const admin = readFileSync(new URL('../api/admin-users.ts', import.meta.url), 'utf8');
+/**
+ * ⭐ **18/09/2026: ההנפקה עברה למודול משותף** (`_lib/reset-link.ts`),
+ * כי נוסף מסלול שני שבו האדם עצמו מבקש קישור ממסך ההתחברות. הערובות
+ * לא השתנו, רק המקום שבו הן נאכפות, ומעכשיו הן נבדקות פעם אחת ומגנות
+ * על שני המסלולים.
+ */
+const issue = readFileSync(new URL('../api/_lib/reset-link.ts', import.meta.url), 'utf8');
 
 /**
  * 🔴🔴 **הנקודה היחידה במערכת שמחליפה סיסמה בלי משתמש מחובר.**
@@ -22,13 +29,26 @@ test('🔴🔴 היעד נקרא מהכרטיס במסד, ולעולם לא ממ
     !/phoneE164:\s*body\./.test(block),
     '🔴 מספר שמגיע מגוף הבקשה מאפשר להפנות איפוס של חשבון זר למכשיר של התוקף',
   );
+  assert.ok(
+    /phoneE164: target\.phone_e164/.test(block),
+    'מה שנשלח למנוע ההנפקה הוא הטלפון מהכרטיס',
+  );
+});
+
+test('🔴🔴 שני המסלולים עוברים דרך מנוע הנפקה אחד, ודרך רשימת המושתקים', () => {
+  // שני עותקים של ההנפקה הם שני מקומות לשכוח בהם ערובה. וזה כבר קרה:
+  // המסלול של המנהל שלח בלי לבדוק מושתקים עד 18/09/2026, כי בדיקת
+  // `optout` סרקה שמות פונקציה ולא הכירה את `sendTemplate`.
+  assert.match(admin, /issueResetLink\(/, 'מסלול המנהל');
+  assert.match(api, /issueResetLink\(/, 'מסלול השירות העצמי');
+  assert.match(issue, /checkSuppressed\(/, '🔴 המנוע המשותף חייב לעבור בשער');
+  assert.doesNotMatch(admin, /sendTemplate\(/, '🔴 נשארה שליחה ישירה מחוץ למנוע');
 });
 
 test('🔴 האסימון נשמר כטביעה ולא כערך גולמי', () => {
-  const block = admin.slice(admin.indexOf("case 'send_reset_link'"), admin.indexOf("default:"));
-  assert.ok(/createHash\('sha256'\)/.test(block), 'חייבת להישמר טביעת sha256');
+  assert.ok(/createHash\('sha256'\)/.test(issue), 'חייבת להישמר טביעת sha256');
   assert.ok(
-    !/token_hash:\s*token\b/.test(block),
+    !/token_hash:\s*token\b/.test(issue),
     '🔴 שמירת הערך הגולמי הופכת דליפת טבלה לדליפת מפתחות',
   );
   assert.ok(/createHash\('sha256'\)/.test(api), 'החיפוש בצד הציבורי נעשה לפי הטביעה');
@@ -62,8 +82,7 @@ test('⭐ חשבון מושבת אינו נפתח דרך הקישור, גם אם
 });
 
 test('🔴 שליחה שנכשלה לא משאירה קישור חי שאיש לא קיבל', () => {
-  const block = admin.slice(admin.indexOf("case 'send_reset_link'"), admin.indexOf("default:"));
-  const failBranch = block.slice(block.indexOf('if (!sent.ok)'));
+  const failBranch = issue.slice(issue.indexOf('if (!sent.ok)'));
   assert.ok(
     /expires_at/.test(failBranch),
     '🔴 אסימון שנוצר ולא נשלח חייב להיסגר מיד, אחרת הוא כתובת תקפה בלי בעלים',

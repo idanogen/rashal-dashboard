@@ -17,6 +17,8 @@
 
 import { supabaseAdmin } from './supabase-admin.js';
 import { heyySendText } from './heyy-server.js';
+import { checkSuppressed } from './suppression.js';
+import { normalizePhone } from './phone.js';
 import { BUCKET as WA_BUCKET, type HeyyAttachment } from './wa-media.js';
 
 const TIMELINE_BUCKET = 'timeline-files';
@@ -225,6 +227,11 @@ export async function afterInboundUnidentified(opts: {
       // 08/09/2026: טקסט חופשי אינו נושא ארבעה כפתורים, ולכן שורת שפות
       // בתחתית. תשובה של EN / AR / RU / TH נקראת בוובהוק כבחירת שפה.
       const askText = `${cfg.ask_text.trim()}\nEnglish / العربية / Русский / ไทย / አማርኛ: EN / AR / RU / TH / AM`;
+      // 🔴 **18/09/2026: גם השאלה הזאת היא הודעה שלנו.** היא נשלחת
+      //    אוטומטית בתגובה לתמונה, ולכן מי שביקש שנפסיק לפנות אליו לא
+      //    אמור לקבל אותה. ההודעה שלו נשארת בתיבה של המשרד כרגיל.
+      const muted = await checkSuppressed(normalizePhone(opts.phoneE164) ?? opts.phoneE164);
+      if (!muted.allowed) return `ask_skipped:${muted.reason}`;
       const r = await heyySendText(opts.phoneE164, askText);
       if (!r.ok) return `ask_failed:${r.statusDetail ?? ''}`;
       await supabaseAdmin.from('wa_conversations').update({ identity_asked_at: new Date().toISOString() }).eq('id', conv.id);

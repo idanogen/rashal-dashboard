@@ -1,5 +1,7 @@
 import { supabaseAdmin } from './supabase-admin.js';
 import { heyySendText, isHeyyDemo } from './heyy-server.js';
+import { checkSuppressed } from './suppression.js';
+import { normalizePhone } from './phone.js';
 import { paramsToValues, renderTranslated, type Lang } from './wa-lang-core.js';
 
 export { LANGS, isLang, detectLanguageReply, renderTranslated, type Lang } from './wa-lang-core.js';
@@ -76,6 +78,14 @@ export async function handleLanguageChoice(phoneE164: string, lang: Lang): Promi
   if (!body) return { ok: true, note: `${saved}. אין נוסח ${lang} למפתח ${key}` };
 
   const text = renderTranslated(body, values, dict, lang);
+
+  // 🔴 **18/09/2026: השער הזה נעדר כאן.** הוא התגלה כשהסריקה ב-
+  //    `test/optout.test.mjs` הורחבה לכל שם שליחה ולכל `api/_lib`.
+  //    לחיצה על כפתור שפה פותחת חלון 24 שעות, אבל הכלל בבית הוא
+  //    שבקשת הסרה גוברת על שיחה פתוחה, ולכן גם כאן לא שולחים.
+  const gate = await checkSuppressed(normalizePhone(phoneE164) ?? phoneE164);
+  if (!gate.allowed) return { ok: false, note: `${saved}. לא נשלח: ${gate.message}` };
+
   const result = await heyySendText(phoneE164, text);
   await supabaseAdmin.from('whatsapp_outbound').insert({
     wa_message_id: result.waMessageId || null,

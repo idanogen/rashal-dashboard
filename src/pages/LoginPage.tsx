@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -76,6 +76,13 @@ export function LoginPage() {
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'התחבר'}
             </Button>
+            {/* ⭐ הקישור מוביל לזיהוי לפי נייד, ולא לשם משתמש: מי ששכח
+                סיסמה סביר ששכח גם את שם המשתמש. (עידן, 18/09/2026) */}
+            <p className="text-center text-sm">
+              <Link to="/forgot" className="text-slate-500 hover:text-slate-800 underline underline-offset-4">
+                שכחתי סיסמה
+              </Link>
+            </p>
           </form>
         </CardContent>
       </Card>

@@ -30,18 +30,46 @@ test('🔴🔴 השער קיים במודול משותף, ולא מועתק', ()
   assert.match(mod, /check_failed/, '🔴 אין מסלול עצירה לכשל בבדיקה');
 });
 
+/**
+ * 🔴🔴 **הסריקה הזאת פספסה שולח במשך שבוע (18/09/2026).** היא חיפשה
+ * שלושה שמות פונקציה, ו-`api/admin-users.ts` שולח את קישור איפוס
+ * הסיסמה דרך `sendTemplate(` — שם רביעי שלא היה ברשימה. השער לא היה
+ * שבור, הוא פשוט לא הכיר את השולח. בנוסף היא סרקה רק את `api/*.ts`
+ * ולא את `api/_lib`, ששם יושב היום המנוע המשותף.
+ * ⭐ הלקח: שומר שמזהה לפי שם הוא שומר שמפספס את השם הבא. כאן זה נסגר
+ * בכך שכל פונקציית שליחה שמיוצאת מהמודולים של heyy נכנסת לרשימה
+ * אוטומטית, ולא בהוספה ידנית של עוד שם.
+ */
+const TRANSPORT = ['heyy-server.ts', 'heyy-v3.ts'];
+
+/** שמות פונקציות השליחה, נגזרים מקבצי התעבורה עצמם ולא מרשימה קשיחה. */
+function senderNames() {
+  const names = new Set();
+  for (const f of TRANSPORT) {
+    for (const m of api('_lib', f).matchAll(/export async function ([a-zA-Z0-9_]+)/g)) {
+      if (/^(send|heyySend)/.test(m[1])) names.add(m[1]);
+    }
+  }
+  names.add('sendWithRateLimit');
+  return [...names];
+}
+
 test('🔴🔴 כל שולח עובר בשער, בלי יוצא מן הכלל', () => {
   // ⭐ מי ששולח נמצא לפי הקריאה עצמה ולא לפי רשימה ידנית של קבצים,
   // כי רשימה ידנית מתיישנת בדיוק כשמוסיפים את השולח שישכח לבדוק.
-  const senders = readdirSync(join(here, '..', 'api'))
-    .filter((f) => f.endsWith('.ts'))
-    .filter((f) => {
-      const body = api(f);
-      return /heyySendTemplate\(|heyySendText\(|sendWithRateLimit\(/.test(body);
-    });
-  assert.ok(senders.length >= 2, `נמצאו רק ${senders.length} שולחים, הסריקה כנראה שבורה`);
-  for (const f of senders) {
-    assert.match(api(f), /checkSuppressed\(/, `🔴 ${f} שולח בלי לבדוק את רשימת המושתקים`);
+  const names = senderNames();
+  assert.ok(names.length >= 3, `נמצאו רק ${names.length} שמות שליחה, הגזירה כנראה שבורה`);
+  const pattern = new RegExp(names.map((n) => `${n}\\(`).join('|'));
+
+  const files = [
+    ...readdirSync(join(here, '..', 'api')).filter((f) => f.endsWith('.ts')).map((f) => [f]),
+    ...readdirSync(join(here, '..', 'api', '_lib')).filter((f) => f.endsWith('.ts')).map((f) => ['_lib', f]),
+  ].filter((p) => !TRANSPORT.includes(p[p.length - 1]));
+
+  const senders = files.filter((p) => pattern.test(api(...p)));
+  assert.ok(senders.length >= 3, `נמצאו רק ${senders.length} שולחים, הסריקה כנראה שבורה`);
+  for (const p of senders) {
+    assert.match(api(...p), /checkSuppressed\(/, `🔴 ${p.join('/')} שולח בלי לבדוק את רשימת המושתקים`);
   }
 });
 

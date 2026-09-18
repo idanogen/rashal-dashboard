@@ -1,12 +1,15 @@
 // Build "sales by HMO" xlsx from pulled invoice-line JSON files.
-// usage: node build.mjs <linesDir> <out.xlsx> [patients.json]
+// usage: node invoice-lines-by-hmo.mjs <linesDir> <out.xlsx> [patients.json] [--no-patient-ids]
+// --no-patient-ids: the version that leaves the house (email). Drops patient name and number, keeps the HMO-conflict flag.
 import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 const require = createRequire("/Users/idanogen/Projects/rashal-dashboard/package.json");
 const XLSX = require("xlsx");
 
-const [linesDir, outFile, patientsFile] = process.argv.slice(2);
+const args = process.argv.slice(2);
+const noPatientIds = args.includes("--no-patient-ids");
+const [linesDir, outFile, patientsFile] = args.filter((a) => !a.startsWith("--"));
 const patients = patientsFile && fs.existsSync(patientsFile) ? JSON.parse(fs.readFileSync(patientsFile, "utf8")) : {};
 
 const PAYER = {
@@ -103,7 +106,101 @@ function add(name, rows, widths) {
 }
 add("סיכום", summary);
 for (const h of HMO_ORDER) add(h, skuSummary(detail.filter((d) => d["קופה"] === h)), { "תיאור": 50, "מק\"ט": 18 });
-add("פירוט שורות", detail, { "תיאור": 45, "משלם": 28 });
+// per-SKU stats per HMO ("אחר" is not an HMO, so it never counts toward overlap or ownership)
+const HMOS = HMO_ORDER.filter((h) => h !== "אחר");
+const bySku = new Map();
+for (const d of detail) {
+  if (d["מק\"ט"] === "ללא מק\"ט" || !HMOS.includes(d["קופה"])) continue;
+  const g = bySku.get(d["מק\"ט"]) ?? { sku: d["מק\"ט"], descs: new Map(), h: {} };
+  g.descs.set(d["תיאור"], (g.descs.get(d["תיאור"]) ?? 0) + 1);
+  const s = (g.h[d["קופה"]] ??= { qty: 0, net: 0 });
+  s.qty += d["כמות"]; s.net += d["סה\"כ לפני מע\"מ"];
+  bySku.set(d["מק\"ט"], g);
+}
+for (const g of bySku.values()) {
+  g.desc = [...g.descs].sort((a, b) => b[1] - a[1])[0][0];
+  g.hmos = HMOS.filter((h) => g.h[h]?.qty > 0);
+  g.main = g.hmos.slice().sort((a, b) => g.h[b].qty - g.h[a].qty)[0];
+  g.qty = g.hmos.reduce((s, h) => s + g.h[h].qty, 0);
+  g.net = g.hmos.reduce((s, h) => s + g.h[h].net, 0);
+}
+const avg = (s) => (s?.qty > 0 ? r2(s.net / s.qty) : "");
+
+const overlap = [...bySku.values()].filter((g) => g.hmos.length >= 2)
+  .sort((a, b) => b.hmos.length - a.hmos.length || b.net - a.net)
+  .map((g) => {
+    const prices = g.hmos.map((h) => g.h[h].net / g.h[h].qty).filter((p) => p > 0);
+    const row = { "מק\"ט": g.sku, "תיאור": g.desc, "מספר קופות": g.hmos.length, "קופות": g.hmos.join(", ") };
+    for (const h of HMOS) { row[`כמות ${h}`] = g.h[h]?.qty > 0 ? r2(g.h[h].qty) : ""; row[`מחיר ממוצע ${h}`] = avg(g.h[h]); }
+    row["פער בין המחיר הגבוה לנמוך %"] = prices.length >= 2 ? r2((Math.max(...prices) / Math.min(...prices) - 1) * 100) : "";
+    row["סה\"כ לפני מע\"מ"] = r2(g.net);
+    return row;
+  });
+
+// same product under a different SKU per HMO: identical description, similar description with a shared model token,
+// or the same number inside the code (2157 / RUB2157). Pairs only link SKUs whose main HMO differs.
+const STOP = new Set(["לכסא", "לכיסא", "כסא", "כיסא", "גלגלים", "של", "עם", "כולל", "דגם", "תוצרת", "חח", "ל", "מ", "ח", "את", "או", "ו"]);
+const tokens = (t) => String(t).toLowerCase().replace(/ח"+ח/g, " ").replace(/[^a-z0-9א-ת]+/g, " ").split(" ").filter((w) => w && !STOP.has(w));
+// a model token names a product line (EC2000, RUBIX, Q6); plain English words and bare small numbers do not
+const PLAIN = new Set(["tilt", "on", "off", "pu", "air", "cushion", "assembly", "basic", "back", "seat", "and", "for", "with"]);
+const isModel = (w) => (/[a-z]/.test(w) && /\d/.test(w)) || (/[a-z0-9]/.test(w) && w.length >= 3 && !PLAIN.has(w));
+const cands = [...bySku.values()].filter((g) => g.main).map((g) => {
+  const tk = tokens(g.desc);
+  const heb = [...new Set(tk.filter((w) => !isModel(w) && /[א-ת]/.test(w)))].sort().join(" ");
+  const sizes = (String(g.desc).match(/\d+\s*[x*X]\s*\d+/g) ?? []).map((s) => s.replace(/\s/g, "").replace(/[xX]/, "*")).sort().join(",");
+  return { g, set: new Set(tk), key: [...new Set(tk)].sort().join(" "), heb, sizes, models: tk.filter(isModel),
+    code: g.sku.toUpperCase().replace(/[^A-Z0-9]/g, "") };
+});
+// JX21818 / MJX21818, 2157 / RUB2157. Shared digits alone are not enough, sizes like 1616 repeat across series.
+const codeContains = (a, b) => { const [s, l] = a.code.length <= b.code.length ? [a.code, b.code] : [b.code, a.code];
+  return s.length >= 4 && /\d/.test(s) && s !== l && l.includes(s); };
+const parent = new Map(cands.map((c) => [c.g.sku, c.g.sku]));
+const find = (x) => (parent.get(x) === x ? x : (parent.set(x, find(parent.get(x))), parent.get(x)));
+const why = new Map();
+const link = (a, b, reason) => { const [ra, rb] = [find(a.g.sku), find(b.g.sku)]; if (ra !== rb) parent.set(ra, rb);
+  for (const c of [a, b]) { const s = why.get(c.g.sku) ?? new Set(); s.add(reason); why.set(c.g.sku, s); } };
+for (let i = 0; i < cands.length; i++) for (let j = i + 1; j < cands.length; j++) {
+  const a = cands[i], b = cands[j];
+  if (a.g.main === b.g.main || !a.key || !b.key) continue;
+  // 16*18 and 18*16 are different cushions; a cover (כיסוי) is not the cushion
+  if (a.sizes && b.sizes && a.sizes !== b.sizes) continue;
+  if (a.set.has("כיסוי") !== b.set.has("כיסוי")) continue;
+  if (a.key === b.key) { link(a, b, "תיאור זהה"); continue; }
+  const inter = [...a.set].filter((w) => b.set.has(w));
+  const aModel = [...a.set].some((w) => !b.set.has(w) && isModel(w)), bModel = [...b.set].some((w) => !a.set.has(w) && isModel(w));
+  // different model names on both sides (Q6EDGE / Q6EDGE HD) are different products
+  if (inter.length && codeContains(a, b) && !(aModel && bModel)) { link(a, b, "קוד אחד מוכל בשני"); continue; }
+  // similar: same Hebrew words and same model tokens, so the difference is only wording. A model on one side only
+  // (Tilt / Tilt Q400) would chain parts of different chairs through the generic row.
+  const nums = (c) => [...c.set].filter((w) => /^\d+$/.test(w)).sort().join(",");
+  const jac = inter.length / new Set([...a.set, ...b.set]).size;
+  if (a.heb && a.heb === b.heb && jac >= 0.6 && inter.some(isModel) && nums(a) === nums(b) && !aModel && !bModel) link(a, b, "תיאור דומה");
+}
+const groups = new Map();
+for (const c of cands) if (why.has(c.g.sku)) { const r = find(c.g.sku); groups.set(r, [...(groups.get(r) ?? []), c]); }
+const sameProduct = [];
+let gno = 0;
+for (const members of [...groups.values()].sort((a, b) => b.reduce((s, c) => s + c.g.net, 0) - a.reduce((s, c) => s + c.g.net, 0))) {
+  if (new Set(members.map((c) => c.g.main)).size < 2) continue;
+  gno++;
+  // a generic Hebrew-only name ("ריפוד משענת יד") is often the same part for different chair models
+  const specific = members.every((c) => c.models.length > 0) || members.some((c) => why.get(c.g.sku).has("קוד אחד מוכל בשני"));
+  for (const c of members.sort((a, b) => HMOS.indexOf(a.g.main) - HMOS.indexOf(b.g.main))) {
+    sameProduct.push({
+      "קבוצה": gno, "ביטחון": specific ? "גבוה" : "נמוך, שם כללי. ייתכן חלק לדגם כסא אחר",
+      "למה נראים זהים": [...why.get(c.g.sku)].join(", "), "מק\"ט": c.g.sku, "תיאור": c.g.desc,
+      "קופה עיקרית": c.g.main, "נמכר גם ל": c.g.hmos.filter((h) => h !== c.g.main).join(", "),
+      "כמות": r2(c.g.qty), "מחיר ממוצע ליחידה": c.g.qty > 0 ? r2(c.g.net / c.g.qty) : "", "סה\"כ לפני מע\"מ": r2(c.g.net),
+    });
+  }
+}
+sameProduct.sort((a, b) => (a["ביטחון"] !== "גבוה") - (b["ביטחון"] !== "גבוה") || a["קבוצה"] - b["קבוצה"]);
+const renum = new Map();
+for (const r of sameProduct) r["קבוצה"] = renum.get(r["קבוצה"]) ?? renum.set(r["קבוצה"], renum.size + 1).get(r["קבוצה"]);
+
+add("פריטים חופפים", overlap, { "תיאור": 45, "מק\"ט": 18, "קופות": 30 });
+add("מק\"ט ייעודי לקופה", sameProduct, { "תיאור": 45, "מק\"ט": 18, "ביטחון": 34, "למה נראים זהים": 22, "נמכר גם ל": 24 });
+add("פירוט שורות", noPatientIds ? detail.map(({ "מטופל": _n, "מספר מטופל": _id, ...rest }) => rest) : detail, { "תיאור": 45, "משלם": 28 });
 add("בקרה", [
   ...fileStats,
   { "קובץ": "מסמכים שהוצאו", "מסמכים": Object.entries(excluded).map(([k, v]) => `${k}: ${v}`).join(" · ") },

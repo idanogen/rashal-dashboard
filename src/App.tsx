@@ -23,6 +23,7 @@ import { DriverDashboardPage } from '@/pages/DriverDashboardPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { SurveyPage } from '@/pages/SurveyPage';
 import { ResetPasswordPage } from '@/pages/ResetPasswordPage';
+import { ForgotPasswordPage } from '@/pages/ForgotPasswordPage';
 import { AuthProvider } from '@/lib/auth-context';
 import { screenAllow } from '@/lib/screen-access';
 import { PermissionsPage } from '@/pages/PermissionsPage';
@@ -66,6 +67,7 @@ function App() {
                 הוא נפתח בלי משתמש מחובר, וחייב לשבת מעל ה-catch-all: מי
                 שנעול בחוץ לא יכול לעבור דרך מסך ההתחברות. */}
             <Route path="/reset/:token" element={<ResetPasswordPage />} />
+            <Route path="/forgot" element={<ForgotPasswordPage />} />
 
             {/* Driver view — minimal layout, mobile-first */}
             <Route
