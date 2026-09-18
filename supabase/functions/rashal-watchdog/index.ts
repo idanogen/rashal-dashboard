@@ -310,6 +310,61 @@ async function checkScreenLoads(now: Date, prev: Record<string, unknown> | undef
   return `ALERT sent (${failed.length} failed loads)`;
 }
 
+// ── כתיבות שנעצרו לצמיתות ───────────────────────────────
+//
+// 🔴🔴 **הפער שזה סוגר (18/09/2026).** הערה של טכנאי על קריאה שכבר "סופית"
+// בפריוריטי נדחית ב-400 בכל ריצה, לנצח. עד היום זה החזיק את `push-chat`
+// באדום יומיים והמייל אמר "הסנכרון לא רץ כצפוי" בזמן שהכל רץ. מהיום
+// הפריט נעצר ביומן, וה-job חוזר לירוק.
+//
+// ⭐ אבל **עצירה היא איבוד מידע**: מה שהטכנאי כתב לא ייכנס לפריוריטי אף
+// פעם. לכן הפעמון עובר לכאן, פעם אחת לכל פריט שנעצר, עם הנוסח שפריוריטי
+// החזיר. בלי זה היינו מחליפים רעש קבוע בשקט מוחלט. [[log_without_a_bell_is_not_monitoring]]
+const PARKED_JOB = "push-parked";
+
+interface ParkedRow { key: string; docno: string | null; fail_reason: string | null; last_error: string | null; failed_at: string }
+
+async function checkParkedPushes(now: Date): Promise<string> {
+  const since = new Date(now.getTime() - 65 * 60000).toISOString();
+  const { data, error } = await sb.from("priority_call_push_log")
+    .select("key,docno,fail_reason,last_error,failed_at")
+    .gt("failed_at", since)
+    .order("failed_at", { ascending: false })
+    .limit(50);
+  if (error) return `query failed: ${error.message}`;
+  const rows = (data ?? []) as ParkedRow[];
+  if (!rows.length) return "ok";
+
+  const REASON: Record<string, string> = {
+    call_locked: "הקריאה נעולה לשינויים בפריוריטי",
+    read_only_subform: "תת-הטופס בפריוריטי לקריאה בלבד",
+    priority_rejected: "פריוריטי דחה את התוכן",
+  };
+  const lines = rows.map((r) =>
+    `• <bdi>${r.docno ?? r.key}</bdi> — ${REASON[r.fail_reason ?? ""] ?? r.fail_reason ?? "לא ידוע"}` +
+    (r.last_error ? `<br>&nbsp;&nbsp;<span style="color:#6b7688">${r.last_error.slice(0, 160)}</span>` : "")
+  );
+  await sendEmail(
+    `🟠 ${rows.length === 1 ? "הערה של טכנאי לא נכנסה" : `${rows.length} רישומי טכנאי לא נכנסו`} לפריוריטי`,
+    wrap(
+      `<b style="font-size:16px">מה שנרשם בשטח נשאר אצלנו בלבד</b><br><br>` +
+      lines.join("<br>") +
+      `<br><br>המערכת הפסיקה לנסות על אלה, כדי שהן לא יחזיקו את הסנכרון באדום. ` +
+      `הכל רשום בדשבורד: הערת צ'אט של נהג נכתבת גם לכרטיס הלקוח בפריוריטי, ` +
+      `אבל סיבת "לא בוצע" או "להמשך טיפול" נשארת אצלנו בלבד. ` +
+      `כדי להכניס אותה לקריאה ידנית צריך לפתוח אותה לשינויים בפריוריטי.`,
+      "#d98324",
+    ),
+  );
+  await sb.from("sync_alerts").upsert({
+    job: PARKED_JOB, state: "alerting", last_alerted_at: now.toISOString(),
+    detail: rows.map((r) => `${r.docno ?? r.key}: ${r.fail_reason}`).join(" · ").slice(0, 400),
+    updated_at: now.toISOString(),
+  });
+  return `ALERT sent (${rows.length} parked)`;
+}
+
+
 Deno.serve(async () => {
   const now = new Date();
   const report: Record<string, string> = {};
@@ -394,6 +449,15 @@ Deno.serve(async () => {
 
   // 🔴 שאלה שלישית ומנגנון שלישי: לא "מתי רץ" ולא "מה heyy אומרת", אלא
   // "מה קרה בדפדפן של מי שעובד". [[open_tab_runs_stale_code]]
+  // 🔴 שאלה רביעית: לא "מתי רץ" אלא "מה ויתרנו עליו". פריט שנעצר לצמיתות
+  // נעלם מכל מדד של הצלחה, ולכן הוא צריך פעמון משלו.
+  try {
+    report[PARKED_JOB] = await checkParkedPushes(now);
+  } catch (e) {
+    report[PARKED_JOB] = `check crashed: ${e instanceof Error ? e.message : String(e)}`;
+    console.error("[watchdog] parked check crashed", e);
+  }
+
   try {
     report[SCREEN_JOB] = await checkScreenLoads(now, alerts.get(SCREEN_JOB));
   } catch (e) {

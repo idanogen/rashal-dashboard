@@ -97,6 +97,7 @@ async function handleGet(req: VercelRequest, res: VercelResponse) {
   const writes: Row[] = [];
   let payload = 0;
   let skipped = 0;
+  let blocked = 0;
   const pushedEvents = new Set<string>();
 
   for (const ev of rows) {
@@ -176,11 +177,27 @@ async function handleGet(req: VercelRequest, res: VercelResponse) {
       .rpc('priority_call_push_candidates', { p_limit: 60, p_docno: testDocno });
     if (callErr) throw new Error(`call candidates: ${callErr.message}`);
     const callKeys: string[] = [];
+    // 🔴 18/09/2026: קריאה בסטטוס נעול ("סופית" · "מבוטלת" · "טופל טכנאי")
+    // מחזירה 400 "מסך טקסט DOCTEXT_Q הינו לקריאה בלבד" בכל ריצה, לנצח.
+    // היא לא מסוננת בשקט אלא נעצרת ביומן עם הסיבה, כדי שמה שלא נכתב
+    // לפריוריטי יישאר דבר שאפשר לספור. [[empty_row_rule_hides_committed_items]]
+    const blockedKeys = ((callRows as Row[] | null) ?? [])
+      .filter((c) => s(c.blocked_reason) && s(c.key))
+      .map((c) => s(c.key) as string);
+    if (blockedKeys.length) {
+      const { error: parkErr } = await supabaseAdmin.rpc('priority_call_push_park', {
+        p_keys: blockedKeys,
+        p_reason: 'call_locked',
+        p_error: 'הקריאה בפריוריטי בסטטוס נעול לשינויים',
+      });
+      if (parkErr) console.error('[priority-push] park blocked', parkErr.message);
+      blocked = blockedKeys.length;
+    }
     for (const c of (callRows as Row[] | null) ?? []) {
       if (callKeys.length >= EVENT_BATCH || payload > MAX_PAYLOAD) break;
       const docno = s(c.docno);
       const key = s(c.key);
-      if (!docno || !key) continue;
+      if (!docno || !key || s(c.blocked_reason)) continue;
       if (c.kind === 'file_upload') {
         // 🔴 התקרה נבדקת רק לפני פריט, לא באמצע: פריט שחלק מהתמונות שלו
         // נשלחו היה מאושר ב-ack ושאר התמונות היו הולכות לאיבוד.
@@ -232,7 +249,7 @@ async function handleGet(req: VercelRequest, res: VercelResponse) {
     if (claimErr) throw new Error(`claim: ${claimErr.message}`);
   }
 
-  return res.status(200).json({ writes, skipped, pending });
+  return res.status(200).json({ writes, skipped, pending, blocked });
 }
 
 async function handleAck(req: VercelRequest, res: VercelResponse) {

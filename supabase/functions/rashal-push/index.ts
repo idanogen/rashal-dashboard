@@ -5,6 +5,7 @@
 // ⚠זהירות: POST לפריוריטי אינו אידמפוטנטי — אסור ששני pollers ירוצו במקביל (Make כובה לפני תזמון הפונקציה הזו).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { failureLine, isPermanentRejection, parkReason, priorityErrorText } from "./push-failure.ts";
 
 const OUTBOX = "https://rashal-dashboard.vercel.app/api/priority-push";
 const UA = "OgenSync/1.0";
@@ -27,6 +28,7 @@ async function logEvent(ev: Record<string, unknown>) {
 async function fetchRetry(runId: number, entity: string, url: string, init: RequestInit, urlPath: string, ref?: string) {
   const delays = [0, 2000, 5000];
   let lastErr = "";
+  let lastStatus: number | null = null;
   for (let i = 0; i < delays.length; i++) {
     if (delays[i]) await new Promise((r) => setTimeout(r, delays[i]));
     const t0 = Date.now();
@@ -38,14 +40,18 @@ async function fetchRetry(runId: number, entity: string, url: string, init: Requ
         duration_ms: Date.now() - t0, url_path: urlPath, ref: ref ?? null,
         error_snippet: res.ok ? null : body.slice(0, 300),
       });
-      if (res.ok) return { res, body, attempts: i + 1 };
+      if (res.ok) return { res, body, attempts: i + 1, status: res.status, raw: body };
+      lastStatus = res.status;
       lastErr = `HTTP ${res.status}: ${body.slice(0, 200)}`;
+      // 🔴 דחייה סופית לא מרוויחה מניסיון שני: שלוש בקשות זהות לפריוריטי
+      // על אותו תוכן שנדחה הן בזבוז מכסה בלבד.
+      if (isPermanentRejection(res.status)) return { res: null, body, attempts: i + 1, status: res.status, raw: body };
     } catch (e) {
       lastErr = String(e).slice(0, 300);
       await logEvent({ run_id: runId, entity, attempt: i + 1, ok: false, duration_ms: Date.now() - t0, url_path: urlPath, ref: ref ?? null, error_snippet: lastErr });
     }
   }
-  return { res: null, body: lastErr, attempts: delays.length };
+  return { res: null, body: lastErr, attempts: delays.length, status: lastStatus, raw: lastErr };
 }
 
 Deno.serve(async (req: Request) => {
@@ -81,20 +87,27 @@ Deno.serve(async (req: Request) => {
     await sb.from("sync_runs").update({ status: "error", finished_at: new Date().toISOString(), duration_ms: Date.now() - t0, retries, error_summary: `outbox: ${ob.body.slice(0, 300)}` }).eq("id", runId);
     return new Response(JSON.stringify({ run_id: runId, ok: false, stage: "outbox" }), { status: 200, headers: { "Content-Type": "application/json" } });
   }
-  const parsed = JSON.parse(ob.body) as { writes?: { event_id: string; url: string; body: string }[]; skipped?: number; pending?: number };
+  const parsed = JSON.parse(ob.body) as { writes?: { event_id: string; url: string; body: string }[]; skipped?: number; pending?: number; blocked?: number };
   const writes = parsed.writes ?? [];
   // 🔴 אפס כתיבות בזמן שיש ממתינים = תקלה, לא שקט. ב-02-03/09/2026 הריצות
   // דיווחו success עם אפס דחיפות 30 שעות, והוואצ'דוג היה ירוק. [[silence_needs_a_positive_control]]
   if (!writes.length && (parsed.pending ?? 0) > 0) errors.push(`outbox: ${parsed.pending} ממתינים ואפס כתיבות`);
 
   // 2) דחיפה לפריוריטי, כתיבה-כתיבה. מעקב הצלחה פר-אירוע.
+  //
+  // 🔴 18/09/2026: כתיבה שפריוריטי דוחה בשגיאת תוכן (4xx) לא תצליח בריצה
+  // הבאה ולא בזו שאחריה. פריט כזה נעצר ביומן עם הנוסח שנרשם, ומפסיק
+  // להחזיק את ה-job באדום. עצירה שקטה היא איבוד מידע, ולכן היא נספרת
+  // והוואצ'דוג מתריע עליה בנפרד. [[dead_letter]]
   const evOk = new Map<string, boolean>();
+  const parked = new Map<string, string>();   // event_id → הנוסח של פריוריטי
   let pushed = 0;
   let held = 0;
   for (const w of writes) {
     // מעבר לתקרה — לא נדחף ולא מאושר, יישלף שוב בריצה הבאה. אירוע שחלק
     // מהכתיבות שלו כבר יצאו לא ייחסם כאן, אחרת הוא ייתקע חצי-דחוף.
     if (pushed >= max && !evOk.has(w.event_id)) { held++; continue; }
+    if (parked.has(w.event_id)) continue;   // נדחה כבר, אין טעם לשלוח את שאר התמונות שלו
     const path = w.url.replace(/^https?:\/\/[^/]+/, "").split("?")[0];
     const pr = await fetchRetry(runId, "push_write", w.url, {
       method: "POST",
@@ -104,8 +117,27 @@ Deno.serve(async (req: Request) => {
     retries += pr.attempts - 1;
     const ok = !!pr.res;
     if (ok) pushed++;
-    else errors.push(`write ${w.event_id}: ${pr.body.slice(0, 150)}`);
+    else {
+      errors.push(`write ${failureLine(w.event_id, pr.status, pr.raw)}`);
+      // 🔴 רק כתיבות הקריאה (`call:`) נעצרות: ליומן שלהן יש טור לזה.
+      // כרטיס הלקוח ואנשי הקשר עדיין חוזרים בריצה הבאה.
+      if (isPermanentRejection(pr.status) && w.event_id.startsWith("call:")) {
+        parked.set(w.event_id, priorityErrorText(pr.raw) ?? `HTTP ${pr.status}`);
+      }
+    }
     evOk.set(w.event_id, (evOk.get(w.event_id) ?? true) && ok);
+  }
+
+  // עצירה ביומן (מפתח אחד לכל אירוע, בלי הקידומת `call:`)
+  if (parked.size) {
+    for (const [eventId, text] of parked) {
+      const { error } = await sb.rpc("priority_call_push_park", {
+        p_keys: [eventId.slice("call:".length)],
+        p_reason: parkReason(text),
+        p_error: text,
+      });
+      if (error) console.error("park failed:", eventId, error.message);
+    }
   }
 
   // 3) ack רק לאירועים שהושלמו במלואם
@@ -129,7 +161,7 @@ Deno.serve(async (req: Request) => {
     error_summary: errors.length ? errors.join(" | ").slice(0, 900) : null,
   }).eq("id", runId);
 
-  return new Response(JSON.stringify({ run_id: runId, job: "push-chat", status, writes: writes.length, pushed, held, acked, skipped: parsed.skipped ?? 0 }), {
+  return new Response(JSON.stringify({ run_id: runId, job: "push-chat", status, writes: writes.length, pushed, held, acked, parked: parked.size, blocked: parsed.blocked ?? 0, skipped: parsed.skipped ?? 0 }), {
     headers: { "Content-Type": "application/json" },
   });
 });
