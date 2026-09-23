@@ -337,7 +337,15 @@ async function checkParkedPushes(now: Date, prev: Record<string, unknown> | unde
     .limit(50);
   if (error) return `query failed: ${error.message}`;
   const rows = (data ?? []) as ParkedRow[];
-  if (!rows.length) return "ok";
+  // כרטיס הלקוח (23/09/2026): תמונה או הערה שפריוריטי דחה נעצרת על השורה שלה.
+  const { data: card, error: cardErr } = await sb.from("timeline_events")
+    .select("id,customer_number,push_fail_reason,push_failed_at")
+    .gt("push_failed_at", since)
+    .order("push_failed_at", { ascending: false })
+    .limit(50);
+  if (cardErr) return `card query failed: ${cardErr.message}`;
+  const cardRows = (card ?? []) as { id: string; customer_number: string | null; push_fail_reason: string | null }[];
+  if (!rows.length && !cardRows.length) return "ok";
 
   const REASON: Record<string, string> = {
     call_locked: "הקריאה נעולה לשינויים בפריוריטי",
@@ -345,27 +353,38 @@ async function checkParkedPushes(now: Date, prev: Record<string, unknown> | unde
     priority_rejected: "פריוריטי דחה את התוכן",
   };
   const lines = rows.map((r) =>
-    `• <bdi>${r.docno ?? r.key}</bdi> — ${REASON[r.fail_reason ?? ""] ?? r.fail_reason ?? "לא ידוע"}` +
+    `• <bdi>${r.docno ?? r.key}</bdi>: ${REASON[r.fail_reason ?? ""] ?? r.fail_reason ?? "לא ידוע"}` +
     (r.last_error ? `<br>&nbsp;&nbsp;<span style="color:#6b7688">${r.last_error.slice(0, 160)}</span>` : "")
   );
+  const cardLines = cardRows.map((r) =>
+    `• כרטיס לקוח${r.customer_number ? ` <bdi>${r.customer_number}</bdi>` : ""}: פריוריטי דחה את התוכן` +
+    (r.push_fail_reason ? `<br>&nbsp;&nbsp;<span style="color:#6b7688">${r.push_fail_reason.slice(0, 160)}</span>` : "")
+  );
+  const total = rows.length + cardRows.length;
+  const subject = cardRows.length
+    ? (total === 1 ? "פריט אחד לא נכנס לפריוריטי" : `${total} פריטים לא נכנסו לפריוריטי`)
+    : (rows.length === 1 ? "הערה של טכנאי לא נכנסה לפריוריטי" : `${rows.length} רישומי טכנאי לא נכנסו לפריוריטי`);
   await sendEmail(
-    `🟠 ${rows.length === 1 ? "הערה של טכנאי לא נכנסה" : `${rows.length} רישומי טכנאי לא נכנסו`} לפריוריטי`,
+    `🟠 ${subject}`,
     wrap(
-      `<b style="font-size:16px">מה שנרשם בשטח נשאר אצלנו בלבד</b><br><br>` +
-      lines.join("<br>") +
-      `<br><br>המערכת הפסיקה לנסות על אלה, כדי שהן לא יחזיקו את הסנכרון באדום. ` +
-      `הכל רשום בדשבורד: הערת צ'אט של נהג נכתבת גם לכרטיס הלקוח בפריוריטי, ` +
-      `אבל סיבת "לא בוצע" או "להמשך טיפול" נשארת אצלנו בלבד. ` +
-      `כדי להכניס אותה לקריאה ידנית צריך לפתוח אותה לשינויים בפריוריטי.`,
+      `<b style="font-size:16px">מה שנרשם אצלנו לא ייכנס לפריוריטי</b><br><br>` +
+      [...lines, ...cardLines].join("<br>") +
+      `<br><br>המערכת הפסיקה לנסות על אלה, כדי שהן לא יחזיקו את הסנכרון באדום, והכל נשאר רשום בדשבורד.` +
+      (rows.length ? ` הערת צ'אט של נהג נכתבת גם לכרטיס הלקוח בפריוריטי, ` +
+        `אבל סיבת "לא בוצע" או "להמשך טיפול" נשארת אצלנו בלבד. ` +
+        `כדי להכניס אותה לקריאה ידנית צריך לפתוח אותה לשינויים בפריוריטי.` : "") +
+      (cardRows.length ? ` מה שנדחה בכרטיס הלקוח (למשל תמונה בפורמט שפריוריטי לא מקבל) ` +
+        `אפשר לצרף ידנית לכרטיס מתוך הדשבורד.` : ""),
       "#d98324",
     ),
   );
   await sb.from("sync_alerts").upsert({
     job: PARKED_JOB, state: "alerting", last_alerted_at: now.toISOString(),
-    detail: rows.map((r) => `${r.docno ?? r.key}: ${r.fail_reason}`).join(" · ").slice(0, 400),
+    detail: [...rows.map((r) => `${r.docno ?? r.key}: ${r.fail_reason}`),
+             ...cardRows.map((r) => `card ${r.customer_number ?? r.id}`)].join(" · ").slice(0, 400),
     updated_at: now.toISOString(),
   });
-  return `ALERT sent (${rows.length} parked)`;
+  return `ALERT sent (${total} parked)`;
 }
 
 

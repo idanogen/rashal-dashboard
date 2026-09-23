@@ -101,6 +101,7 @@ Deno.serve(async (req: Request) => {
   // והוואצ'דוג מתריע עליה בנפרד. [[dead_letter]]
   const evOk = new Map<string, boolean>();
   const parked = new Map<string, string>();   // event_id → הנוסח של פריוריטי
+  const parkedCust = new Map<string, string>();   // event_id → מספר הלקוח מתוך כתובת הכתיבה, למייל
   let pushed = 0;
   let held = 0;
   for (const w of writes) {
@@ -119,18 +120,29 @@ Deno.serve(async (req: Request) => {
     if (ok) pushed++;
     else {
       errors.push(`write ${failureLine(w.event_id, pr.status, pr.raw)}`);
-      // 🔴 רק כתיבות הקריאה (`call:`) נעצרות: ליומן שלהן יש טור לזה.
-      // כרטיס הלקוח ואנשי הקשר עדיין חוזרים בריצה הבאה.
-      if (isPermanentRejection(pr.status) && w.event_id.startsWith("call:")) {
+      // 🔴 כתיבות הקריאה (`call:`) וכרטיס הלקוח (מזהה אירוע בלי קידומת) נעצרות.
+      // 23/09/2026: תמונת webp מלקוח נשלחה לכרטיס 91 פעמים ב-23 שעות, כי העצירה
+      // חלה רק על `call:`. אנשי הקשר (`contact:`) עדיין חוזרים בריצה הבאה.
+      if (isPermanentRejection(pr.status) && !w.event_id.startsWith("contact:")) {
         parked.set(w.event_id, priorityErrorText(pr.raw) ?? `HTTP ${pr.status}`);
+        const cust = /CUSTOMERS\('([^']+)'\)/.exec(w.url)?.[1];
+        if (cust) parkedCust.set(w.event_id, decodeURIComponent(cust));
       }
     }
     evOk.set(w.event_id, (evOk.get(w.event_id) ?? true) && ok);
   }
 
-  // עצירה ביומן (מפתח אחד לכל אירוע, בלי הקידומת `call:`)
+  // עצירה ביומן (מפתח אחד לכל אירוע, בלי הקידומת `call:`); אירוע של כרטיס
+  // הלקוח נעצר על השורה שלו ב-`timeline_events`, ויוצא מ-`priority_push_candidates`.
   if (parked.size) {
     for (const [eventId, text] of parked) {
+      if (!eventId.startsWith("call:")) {
+        const { error } = await sb.from("timeline_events")
+          .update({ push_failed_at: new Date().toISOString(), push_fail_reason: (parkedCust.has(eventId) ? `לקוח ${parkedCust.get(eventId)} · ` : "") + text.slice(0, 480), push_claimed_at: null })
+          .eq("id", eventId);
+        if (error) console.error("park failed:", eventId, error.message);
+        continue;
+      }
       const { error } = await sb.rpc("priority_call_push_park", {
         p_keys: [eventId.slice("call:".length)],
         p_reason: parkReason(text),
