@@ -6,6 +6,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { failureLine, isPermanentRejection, parkReason, priorityErrorText } from "./push-failure.ts";
+import { requireSecret } from "../_shared/require-secret.ts";
 
 const OUTBOX = "https://rashal-dashboard.vercel.app/api/priority-push";
 const UA = "OgenSync/1.0";
@@ -55,6 +56,8 @@ async function fetchRetry(runId: number, entity: string, url: string, init: Requ
 }
 
 Deno.serve(async (req: Request) => {
+  const denied = requireSecret(req);
+  if (denied) return denied;
   let trigger = "manual";
   // `max` מגביל כמה כתיבות ייצאו בריצה הזו. נועד לניקוז מבוקר של תור שהצטבר:
   // ריצה ראשונה קטנה, אימות מול פריוריטי, ורק אז שחרור מלא.

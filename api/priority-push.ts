@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabaseAdmin } from './_lib/supabase-admin.js';
 import { callSubformUrl, israelStamp, photoDes, repairLine } from './_lib/call-repair-text.js';
+import { secretEquals } from './_lib/secret-equals.js';
 
 // Priority PUSH — field-chat + photos → customer card (see docs/CHAT-TO-PRIORITY-PLAN.md)
 //
@@ -282,7 +283,7 @@ async function handleAck(req: VercelRequest, res: VercelResponse) {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!SECRET) return res.status(500).json({ error: 'PRIORITY_SYNC_SECRET not configured' });
-  if (req.headers['x-sync-secret'] !== SECRET) return res.status(401).json({ error: 'bad secret' });
+  if (!secretEquals(req.headers['x-sync-secret'], SECRET)) return res.status(401).json({ error: 'bad secret' });
   try {
     if (req.method === 'GET') return await handleGet(req, res);
     if (req.method === 'POST') return await handleAck(req, res);

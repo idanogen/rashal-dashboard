@@ -12,6 +12,7 @@
 //   ולכן ההודעה והמסך לא יכולים לסתור זה את זה.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { requireSecret } from "../_shared/require-secret.ts";
 
 const SEND_URL = "https://rashal-dashboard.vercel.app/api/heyy-send";
 const SEND_SECRET = Deno.env.get("RASHAL_SEND_SECRET") ?? "";
@@ -48,6 +49,8 @@ function israelNow(): { hour: number; date: string } {
 }
 
 Deno.serve(async (req: Request) => {
+  const denied = requireSecret(req);
+  if (denied) return denied;
   let trigger = "manual";
   let forceDry: boolean | null = null;
   let dateArg: string | null = null;

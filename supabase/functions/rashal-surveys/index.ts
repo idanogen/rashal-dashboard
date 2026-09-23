@@ -14,6 +14,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildAlertMail, shouldAlert, type SurveyAnswer } from "./low-rating.ts";
+import { requireSecret } from "../_shared/require-secret.ts";
 
 const SEND_URL = "https://rashal-dashboard.vercel.app/api/heyy-send";
 
@@ -55,6 +56,8 @@ interface DueRow {
 }
 
 Deno.serve(async (req: Request) => {
+  const denied = requireSecret(req);
+  if (denied) return denied;
   let trigger = "manual";
   let forceDry: boolean | null = null;
   let max = 20;

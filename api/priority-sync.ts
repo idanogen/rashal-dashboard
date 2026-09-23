@@ -3,6 +3,7 @@ import { supabaseAdmin } from './_lib/supabase-admin.js';
 import { priorityLocalToUtc } from './_lib/priority-time.js';
 import { faultTextFromExpand } from './_lib/priority-text.js';
 import { requireUser } from './_lib/require-user.js';
+import { secretEquals } from './_lib/secret-equals.js';
 
 // Priority OData Pull — sync endpoint (see docs/SYNC-PULL-PLAN.md)
 //
@@ -1067,7 +1068,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  if (req.headers['x-sync-secret'] !== SECRET) {
+  if (!secretEquals(req.headers['x-sync-secret'], SECRET)) {
     return res.status(401).json({ error: 'bad secret' });
   }
 

@@ -7,6 +7,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { assessHeyy, type HeyyHealth } from "./heyy-health.ts";
+import { requireSecret } from "../_shared/require-secret.ts";
 
 const sb = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -388,7 +389,9 @@ async function checkParkedPushes(now: Date, prev: Record<string, unknown> | unde
 }
 
 
-Deno.serve(async () => {
+Deno.serve(async (req: Request) => {
+  const denied = requireSecret(req);
+  if (denied) return denied;
   const now = new Date();
   const report: Record<string, string> = {};
   const { data: alertRows } = await sb.from("sync_alerts").select("*");

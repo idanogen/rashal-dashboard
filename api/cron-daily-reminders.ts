@@ -4,6 +4,7 @@ import { heyySendTemplate, isHeyyDemo } from './_lib/heyy-server.js';
 import { getTemplate } from './_lib/templates-store.js';
 import { checkSuppressed } from './_lib/suppression.js';
 import { normalizePhone, toE164 } from './_lib/phone.js';
+import { secretEquals } from './_lib/secret-equals.js';
 
 /**
  * עבודת הערב: תזכורת ליום המחר, ומדריך הבטיחות אחרי אספקת מנוף.
@@ -120,6 +121,14 @@ const CRANE_MODEL_RE = /^G\d{3}E?$/i;
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET' && req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  // 🔴🔴 23/09/2026: עד היום בלי אימות בכלל. כל אחד קיבל את שמות וטלפונים של
+  // לקוחות המחר, ועם `WA_REMINDERS_ENABLED` גם הפעיל שליחה. Vercel Cron שולח
+  // `Authorization: Bearer <CRON_SECRET>`; בלי המשתנה בסביבה, סגור.
+  const bearer = String(req.headers.authorization ?? '').replace(/^Bearer\s+/i, '');
+  if (!secretEquals(bearer, process.env.CRON_SECRET)) {
+    return res.status(401).json({ error: 'unauthorized' });
   }
 
   const tomorrow = israelDate(1);

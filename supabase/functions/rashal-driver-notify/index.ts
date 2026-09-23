@@ -8,6 +8,7 @@
 // driver_devices, שהאפליקציה מעדכנת בכל התחברות.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { requireSecret } from "../_shared/require-secret.ts";
 
 const GROUP_WAIT_MS = 30_000;
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
@@ -33,6 +34,8 @@ type PushMessage = {
 };
 
 Deno.serve(async (req: Request) => {
+  const denied = requireSecret(req);
+  if (denied) return denied;
   const sb = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!

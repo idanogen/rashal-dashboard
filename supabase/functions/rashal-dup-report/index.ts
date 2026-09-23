@@ -16,6 +16,7 @@
 // חייב להישאר גלוי ולא להיראות כמו ריצה מוצלחת.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { requireSecret } from "../_shared/require-secret.ts";
 
 const sb = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -96,6 +97,8 @@ function buildHtml(rep: Row): string {
 }
 
 Deno.serve(async (req) => {
+  const denied = requireSecret(req);
+  if (denied) return denied;
   const body = await req.json().catch(() => ({}));
   const since: string | null = body?.since ?? null;
 

@@ -7,6 +7,7 @@ import { afterInboundUnidentified } from './_lib/wa-link.js';
 import { detectLanguageReply, handleLanguageChoice } from './_lib/wa-lang.js';
 import { copyMediaForMessage } from './_lib/wa-media.js';
 import { describeAttachments } from './_lib/attachments.js';
+import { secretEquals } from './_lib/secret-equals.js';
 
 /**
  * מקלט הוובהוקים של heyy.
@@ -46,10 +47,10 @@ function pick(obj: unknown, paths: string[]): string | null {
 }
 
 function isAuthorized(req: VercelRequest): boolean {
-  if (!SECRET) return true; // לא הוגדר סוד — לא חוסמים, אבל זו חשיפה
+  // 🔴 23/09/2026: סוד חסר = סגור (עד היום: פתוח לכולם), והשוואה בזמן קבוע.
   const fromQuery = typeof req.query.k === 'string' ? req.query.k : null;
   const fromHeader = req.headers['x-heyy-secret'] ?? req.headers['x-webhook-secret'];
-  return fromQuery === SECRET || fromHeader === SECRET;
+  return secretEquals(fromQuery, SECRET) || secretEquals(fromHeader, SECRET);
 }
 
 /**

@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { requireUser } from './_lib/require-user.js';
+import { requireOffice } from './_lib/require-user.js';
 import { linkConversation, rememberContact, candidatesForPhone } from './_lib/wa-link.js';
 import { supabaseAdmin } from './_lib/supabase-admin.js';
 import { loadThread, windowState } from './_lib/thread.js';
@@ -178,7 +178,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ ok: false, error: 'method_not_allowed' });
   }
 
-  const user = await requireUser(req);
+  // 🔴 23/09/2026: תיקי לקוחות ושיחות למשרד בלבד, כמו `is_office_staff()` במסד.
+  const user = await requireOffice(req);
   if (!user) return res.status(401).json({ ok: false, error: 'unauthorized' });
 
   // ── שיוך מספר ללקוח (06/09/2026) ─────────────────────────────────────
