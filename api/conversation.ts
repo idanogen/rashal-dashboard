@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { requireOffice } from './_lib/require-user.js';
+import { requireUser, OFFICE_ROLES } from './_lib/require-user.js';
 import { linkConversation, rememberContact, candidatesForPhone } from './_lib/wa-link.js';
 import { supabaseAdmin } from './_lib/supabase-admin.js';
 import { loadThread, windowState } from './_lib/thread.js';
@@ -141,6 +141,31 @@ async function listInbox(req: VercelRequest, res: VercelResponse) {
  * דברים: הלקוח עדיין ממתין לתשובה גם אחרי שקראנו, וזו עובדה שלא נרצה
  * למחוק. [[label_and_math_from_two_mechanisms]]
  */
+/**
+ * האם הטלפון שייך לעצירה של הנהג (24/09/2026). אותו רעיון של
+ * `driver_customer_visible()` במסד, אבל לפי טלפון ועם חלון קדימה: התיאום
+ * נעשה לפני הביקור. מ-30 יום אחורה עד 14 קדימה, בלי עצירות שבוטלו.
+ */
+async function driverHasPhone(userId: string, phone: string): Promise<boolean> {
+  const want = normalizePhone(phone);
+  if (!want) return false;
+  const { data: prof } = await supabaseAdmin.from('profiles').select('linked_driver').eq('id', userId).maybeSingle();
+  const driver = prof?.linked_driver ? String(prof.linked_driver) : '';
+  if (!driver) return false;
+  const day = (offset: number) =>
+    new Date(Date.now() + offset * 86_400_000).toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
+  const { data: stops } = await supabaseAdmin
+    .from('calendar_stops')
+    .select('phone')
+    .eq('driver', driver)
+    .neq('status', 'cancelled')
+    .gte('delivery_date', day(-30))
+    .lte('delivery_date', day(14))
+    .not('phone', 'is', null)
+    .limit(1000);
+  return (stops ?? []).some((s) => normalizePhone(String(s.phone)) === want);
+}
+
 async function markRead(
   res: VercelResponse,
   email: string | null,
@@ -179,8 +204,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // 🔴 23/09/2026: תיקי לקוחות ושיחות למשרד בלבד, כמו `is_office_staff()` במסד.
-  const user = await requireOffice(req);
+  // 🔴 24/09/2026 (אישור עידן): חריג אחד לנהג, אחרי שהנעילה שברה את דיאלוג
+  // התיאום במסך הנהג (ScheduleCoordinationDialog טוען את השרשור כדי להראות
+  // מה הלקוח ענה). נהג מקבל **רק** שרשור לפי טלפון שמופיע בעצירה שלו, ובלי
+  // הכרטיס הפתוח. בלי חיפוש, בלי רשימה, בלי שיוך ובלי סימון "נקראה".
+  const user = await requireUser(req);
   if (!user) return res.status(401).json({ ok: false, error: 'unauthorized' });
+  const isOffice = OFFICE_ROLES.has(user.role);
+  if (!isOffice) {
+    const q = req.query;
+    const threadOnly = req.method === 'GET' && typeof q.phone === 'string'
+      && !q.customer && !q.card && !q.search && !q.markRead && !q.tab;
+    if (user.role !== 'driver' || !threadOnly || !(await driverHasPhone(user.id, String(q.phone)))) {
+      return res.status(401).json({ ok: false, error: 'unauthorized' });
+    }
+  }
 
   // ── שיוך מספר ללקוח (06/09/2026) ─────────────────────────────────────
   // על אותה נקודת קצה, כמו כל השאר, בגלל תקרת 12 הפונקציות.
@@ -307,6 +345,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // "שובץ" נגזרת מהעצירה ביומן במקום אחד. כשל שלה אינו מפיל את
     // השרשור: הוא שווה משהו גם בלי הרצועה.
     let open: unknown = null;
+    // נהג: השרשור בלבד, בלי מה שפתוח אצל הלקוח (הזמנות, קריאות, מלאי).
+    if (!isOffice) return res.status(200).json({ ok: true, ...thread, templates, open });
     try {
       const { data, error: cardErr } = await supabaseAdmin.rpc('customer_card', {
         p_customer: thread.conversation?.customerNumber ?? null,
