@@ -209,13 +209,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // מה הלקוח ענה). נהג מקבל **רק** שרשור לפי טלפון שמופיע בעצירה שלו, ובלי
   // הכרטיס הפתוח. בלי חיפוש, בלי רשימה, בלי שיוך ובלי סימון "נקראה".
   const user = await requireUser(req);
-  if (!user) return res.status(401).json({ ok: false, error: 'unauthorized' });
+  // אבחון דחייה (24/09): תפקיד ושמות פרמטרים בלבד, בלי טלפון או תוכן.
+  const denyLog = (why: string, role?: string) =>
+    console.warn(`[conversation] 401 ${why} role=${role ?? '-'} method=${req.method} params=${Object.keys(req.query).sort().join(',')}`);
+  if (!user) {
+    denyLog(req.headers.authorization ? 'no-user-or-no-role' : 'no-token');
+    return res.status(401).json({ ok: false, error: 'unauthorized' });
+  }
   const isOffice = OFFICE_ROLES.has(user.role);
   if (!isOffice) {
     const q = req.query;
     const threadOnly = req.method === 'GET' && typeof q.phone === 'string'
       && !q.customer && !q.card && !q.search && !q.markRead && !q.tab;
     if (user.role !== 'driver' || !threadOnly || !(await driverHasPhone(user.id, String(q.phone)))) {
+      denyLog(user.role !== 'driver' ? 'role' : !threadOnly ? 'driver-not-thread' : 'driver-phone-not-in-stops', user.role);
       return res.status(401).json({ ok: false, error: 'unauthorized' });
     }
   }
