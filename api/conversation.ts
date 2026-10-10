@@ -6,6 +6,7 @@ import { loadThread, windowState } from './_lib/thread.js';
 import { listActiveTemplates } from './_lib/templates-store.js';
 import { toPanelTemplates, type PanelTemplate } from './_lib/panel-templates.js';
 import { toItem, sortItems, matchesQuery, type ConversationRow } from './_lib/inbox.js';
+import { urgencyOf, type UrgencyFacts } from './_lib/urgency.js';
 import { normalizePhone } from './_lib/phone.js';
 
 /**
@@ -40,7 +41,7 @@ const LIST_COLUMNS =
   'id, phone_local, phone_e164, contact_name, customer_number, customer_name, ' +
   'last_inbound_at, last_message_at, last_message_preview, last_message_direction, ' +
   'unanswered_since, message_count, read_at, contact_label, suggested, lang, ' +
-  'last_human_preview, last_human_at, last_human_direction, human_count';
+  'last_human_preview, last_human_at, last_human_direction, human_count, urgent_marked_at, urgent_marked_by';
 
 async function listInbox(req: VercelRequest, res: VercelResponse) {
   const tab = req.query.tab === 'all' ? 'all' : 'waiting';
@@ -114,15 +115,56 @@ async function listInbox(req: VercelRequest, res: VercelResponse) {
   // ⭐ "מחכה" ולא "לא נענה". שיחה שנפתחה ונקראה יורדת מכאן גם בלי תשובה,
   // וההכרעה יושבת ב-`isWaiting` שהוא המקום היחיד שמחזיק אותה.
   const waitingAll = all.filter((i) => i.waitingMinutes != null);
+
+  // ── דחיפות (08/10/2026) ─────────────────────────────────
+  // העובדות שאינן על שורת השיחה (ההודעה הנכנסת האחרונה, הביקור הקרוב)
+  // נאספות בקריאה אחת לכל הממתינות והמסומנות, לא אחת לשורה.
+  const needFacts = all.filter((i) => i.waitingMinutes != null || i.urgentMarkedAt);
+  const facts = new Map<string, UrgencyFacts>();
+  if (needFacts.length) {
+    try {
+      const { data: rowsF, error: fErr } = await supabaseAdmin.rpc('wa_inbox_urgency_facts', { p_ids: needFacts.map((i) => i.id) });
+      if (fErr) throw new Error(fErr.message);
+      for (const f of (rowsF ?? []) as Array<Record<string, unknown>>) {
+        facts.set(String(f.conversation_id), {
+          lastInboundBody: (f.last_inbound_body as string) ?? null,
+          nextStopDate: (f.next_stop_date as string) ?? null,
+        });
+      }
+    } catch (e) {
+      // 🔴 נכשל בשקט: בלי עובדות נשארים הכללים שעל השורה עצמה (המתנה, סקר, ידני).
+      console.error('[conversation] urgency facts failed', e instanceof Error ? e.message : e);
+    }
+  }
+  for (const item of needFacts) {
+    item.urgent = urgencyOf(
+      {
+        waitingMinutes: item.waitingMinutes,
+        survey: item.survey ?? null,
+        urgentMarkedAt: item.urgentMarkedAt,
+        urgentMarkedBy: item.urgentMarkedBy,
+        lastHumanAt: item.lastHumanAt,
+        lastHumanDirection: rows.find((r) => r.id === item.id)?.last_human_direction ?? null,
+      },
+      facts.get(item.id),
+      now,
+    );
+  }
+  const urgentAll = all.filter((i) => i.urgent?.active);
+  const urgentOnly = req.query.urgentOnly === '1';
   const autoOnlyCount = all.filter((i) => i.autoOnly).length;
   // 🔴 חיפוש מפורש מחפש בכל השיחות, גם האוטומטיות: מי שמקליד שם רוצה למצוא.
-  const pool = tab === 'waiting' ? waitingAll : (includeAuto || q ? all : all.filter((i) => !i.autoOnly));
+  // ⭐ שיחה שסומנה ידנית נכנסת ל"ממתינים" גם אם כבר נקראה: הסימון אומר "אל תעזבו".
+  const basePool = tab === 'waiting'
+    ? all.filter((i) => i.waitingMinutes != null || i.urgent?.manual)
+    : (includeAuto || q ? all : all.filter((i) => !i.autoOnly));
+  const pool = urgentOnly ? basePool.filter((i) => i.urgent?.active) : basePool;
   const filtered = q ? pool.filter((i) => matchesQuery(i, q)) : pool;
 
   return res.status(200).json({
     ok: true,
     tab,
-    counts: { waiting: waitingAll.length, all: all.length, autoOnly: autoOnlyCount },
+    counts: { waiting: waitingAll.length, all: all.length, autoOnly: autoOnlyCount, urgent: urgentAll.length },
     matched: filtered.length,
     truncated: rows.length >= HARD_CAP,
     items: sortItems(filtered, tab).slice(0, limit),

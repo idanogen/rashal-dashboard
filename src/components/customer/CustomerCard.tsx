@@ -4,6 +4,7 @@ import {
   Loader2, AlertTriangle, Clock, User, MapPin, Phone, Camera, MessageCircle,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { CustomerPhoneBook } from '@/components/customer/CustomerPhoneBook';
 import { LastVisitBadge } from '@/components/customer/LastVisitBadge';
 import {
   fetchCustomerCard, customerCardKey,
@@ -322,6 +323,14 @@ export function CustomerCardBody({
             </Badge>
           )}
         </div>
+        {/* ⭐ ספר הטלפונים עם דלת ידנית (עמי, 06-07/10/2026). הכרטיס נשאר קורא בלבד
+            כלפי פריוריטי: מספר שנוסף כאן הוא איש קשר אצלנו, שנכתב לתת-הטופס. */}
+        {c.customerNumber && (
+          <div className="mt-3 border-t pt-2">
+            <div className="mb-1 text-[12.5px] font-bold text-slate-800">טלפונים</div>
+            <CustomerPhoneBook customerNumber={c.customerNumber} mainPhone={c.phone} />
+          </div>
+        )}
       </div>
 
       {/* ── התשובה ללקוח ── */}

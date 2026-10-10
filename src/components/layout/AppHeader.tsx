@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { RefreshCw, LogOut, Settings, ChevronDown, DownloadCloud } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -18,6 +19,10 @@ import { BrandMark } from '@/components/BrandMark';
 import { screenAllow } from '@/lib/screen-access';
 import { ROLE_LABELS } from '@/types/profile';
 import { useFreshness, pullNow, formatAgo, isWorkHoursIL } from '@/lib/sync-freshness';
+import { useOfficeTasks } from '@/hooks/useOfficeTasks';
+import { useStaffMessages } from '@/hooks/useStaffChat';
+import { myOpenCounts } from '@/lib/office-tasks';
+import { localDateStr as toLocalDateStr } from '@/lib/visit-history';
 
 /**
  * הקישורים בתפריט.
@@ -33,6 +38,10 @@ const PRIMARY_LINKS = [
   { to: '/inbox', label: '💬 שיחות' },
   // ⭐ נקודת הכניסה כשלקוח מתקשר, ולכן היא בשורה הראשית ולא בתפריט הניהול.
   { to: '/customer', label: '🪪 כרטיס לקוח' },
+  // ⭐ משימות למשרד (08/10/2026). המונה האדום ליד הקישור: כמה פתוחות עליי.
+  { to: '/tasks', label: '✅ משימות' },
+  // ⭐ צ'אט צוות (09/10/2026). המונה הכחול: הודעות שלא קראתי.
+  { to: '/chat', label: '💬 צוות' },
 ];
 
 const ADMIN_LINKS = [
@@ -74,6 +83,15 @@ export function AppHeader() {
   const { data: profile } = useCurrentProfile();
   const role = profile?.role;
   const canSee = (to: string) => !!role && screenAllow(to).includes(role);
+  // מונה המשימות שלי (08/10/2026): רק לצוות המשרד, בלי שאילתה לנהג.
+  const { user } = useAuth();
+  const tasksQuery = useOfficeTasks(!!role && screenAllow('/tasks').includes(role));
+  // צ'אט צוות: הערוץ החי נפתח כאן פעם אחת לכל האפליקציה, והתראת הדפדפן יוצאת ממנו.
+  const staffChat = useStaffMessages(!!role && screenAllow('/chat').includes(role));
+  const myTasks = useMemo(
+    () => myOpenCounts(tasksQuery.data ?? [], user?.id ?? '', toLocalDateStr(new Date())),
+    [tasksQuery.data, user?.id],
+  );
   // 🔴 07/09/2026: עד כה נמדד הזמן מאז הטעינה האחרונה מהמסד, וזה נקרא
   // "עודכן". זה לא ענה על השאלה שהמשרד שואל: "מתי בפעם האחרונה משכתם
   // מפריוריטי". מהיום השעון הוא ריצת הסנכרון האחרונה שהצליחה, מהשרת.
@@ -142,6 +160,16 @@ export function AppHeader() {
           <nav className="flex items-center gap-1">
             {PRIMARY_LINKS.filter((l) => canSee(l.to)).map((link) => (
               <NavLink key={link.to} to={link.to} className={navLinkClass}>
+                {link.to === '/chat' && staffChat.unread > 0 && (
+                  <span className="me-1 inline-flex min-w-[1.25rem] justify-center rounded-full bg-blue-600 px-1 text-[10.5px] font-bold text-white" title="הודעות שלא קראתי">
+                    {staffChat.unread}
+                  </span>
+                )}
+                {link.to === '/tasks' && myTasks.open > 0 && (
+                  <span className={`me-1 inline-flex min-w-[1.25rem] justify-center rounded-full px-1 text-[10.5px] font-bold text-white ${myTasks.overdue > 0 ? 'bg-red-600' : 'bg-slate-500'}`} title={myTasks.overdue > 0 ? `${myTasks.overdue} באיחור` : 'משימות פתוחות עליי'}>
+                    {myTasks.open}
+                  </span>
+                )}
                 {link.label}
               </NavLink>
             ))}

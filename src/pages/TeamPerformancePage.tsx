@@ -15,8 +15,9 @@
  * הראשונה היא הפתוחות מימים שעברו, כי כל אחת מהן היא לקוח שלא יודע מה
  * קורה איתו.
  */
-import { useMemo, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { CalendarClock, ClipboardList, Repeat, Users, XCircle } from 'lucide-react';
+import { countUp, reducedMotion, rise, stagger, stretch } from '@/lib/motion';
 import { useTeamPerformance } from '@/hooks/useTeamPerformance';
 import {
   needsAttention,
@@ -66,8 +67,8 @@ function Panel({
 
 function Stat({ n, t, color }: { n: React.ReactNode; t: string; color?: string }) {
   return (
-    <div className="text-center">
-      <div className="text-2xl font-extrabold leading-none" style={{ color: color ?? NAVY }}>{n}</div>
+    <div className="mo-stat text-center">
+      <div className="mo-num text-2xl font-extrabold leading-none" style={{ color: color ?? NAVY }}>{n}</div>
       <div className="mt-1 text-[11px] text-slate-400">{t}</div>
     </div>
   );
@@ -86,8 +87,31 @@ export function TeamPerformancePage() {
   const dowMax = Math.max(1, ...dow.map((d) => d.stops));
   const reasonTotal = (data?.reasons ?? []).reduce((s, r) => s + r.n, 0);
 
+  /**
+   * ⭐ אותו רגע כמו בדוח הבוקר (עידן, 10/10/2026: "תעשה גם לביצועי הצוות"):
+   * המספרים סופרים למקום, שורות הצוות עולות, וכל הפסים (סיבות, זמן תגובה,
+   * עומס לפי יום) נמתחים מימין בדירוג. פעם אחת לכל חלון ימים, אחרי שהנתונים
+   * הגיעו; prefers-reduced-motion = המסך הסופי מיד.
+   */
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const motionKey = data ? days : null;
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root || motionKey == null || reducedMotion()) return;
+    const stats = root.querySelectorAll<HTMLElement>('.mo-stat');
+    const rows = root.querySelectorAll<HTMLElement>('tr.mo-row');
+    const bars = root.querySelectorAll<HTMLElement>('.mo-bar');
+    void stagger(stats, (el, d) => {
+      const num = el.querySelector<HTMLElement>('.mo-num');
+      if (num) void countUp(num, 0.1 + d, undefined, 1.4);
+      return rise(el, d, 10);
+    }, 0.1);
+    void stagger(rows, (el, d) => rise(el, 0.5 + d, 8), 0.07, 0.9);
+    void stagger(bars, (el, d) => stretch(el, 0.9 + d), 0.05, 1.2);
+  }, [motionKey]);
+
   return (
-    <div style={{ background: '#f5f7fb' }} className="-mx-4 -my-6 min-h-screen px-4 py-5 sm:-mx-6 sm:px-6">
+    <div ref={rootRef} style={{ background: '#f5f7fb' }} className="-mx-4 -my-6 min-h-screen px-4 py-5 sm:-mx-6 sm:px-6">
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3 px-1">
         <div>
           <div className="text-xl font-extrabold" style={{ color: NAVY }}>ביצועי הצוות</div>
@@ -194,7 +218,7 @@ export function TeamPerformancePage() {
                   </thead>
                   <tbody>
                     {rows.map((r) => (
-                      <tr key={r.name} className={`border-t ${r.tooFewDays ? 'opacity-60' : ''}`} style={{ borderColor: '#eef1f6' }}>
+                      <tr key={r.name} className={`mo-row border-t ${r.tooFewDays ? 'opacity-60' : ''}`} style={{ borderColor: '#eef1f6' }}>
                         <td className="p-2 font-bold" style={{ color: NAVY }}>
                           {r.name}
                           {/* 🔴 מי שכמעט לא נכח מסומן, ולא מדורג בשקט לתחתית */}
@@ -247,7 +271,7 @@ export function TeamPerformancePage() {
                         </span>
                         <div className="h-4 flex-1 overflow-hidden rounded-full bg-slate-100">
                           <div
-                            className="h-full rounded-full"
+                            className="mo-bar h-full rounded-full"
                             style={{
                               width: `${reasonTotal ? (r.n / reasonTotal) * 100 : 0}%`,
                               background: unclassified ? '#cbd5e1' : '#f97316',
@@ -289,7 +313,7 @@ export function TeamPerformancePage() {
                           <span className="w-28 shrink-0">{b.label}</span>
                           <div className="h-4 flex-1 overflow-hidden rounded-full bg-slate-100">
                             <div
-                              className="h-full rounded-full"
+                              className="mo-bar h-full rounded-full"
                               style={{ width: `${lead.n ? (n / lead.n) * 100 : 0}%`, background: b.color }}
                             />
                           </div>
@@ -357,7 +381,7 @@ export function TeamPerformancePage() {
                       <span className="w-12 shrink-0">{DOW_LABEL[d.dow] ?? d.dow}</span>
                       <div className="h-4 flex-1 overflow-hidden rounded-full bg-slate-100">
                         <div
-                          className="h-full rounded-full"
+                          className="mo-bar h-full rounded-full"
                           style={{ width: `${dowMax ? (d.stops / dowMax) * 100 : 0}%`, background: '#2563eb' }}
                         />
                       </div>

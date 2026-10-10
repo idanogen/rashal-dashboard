@@ -23,6 +23,7 @@ export function toViewStop(s: DbStop) {
     deliveryDate: s.deliveryDate,
     driver: s.driver as AssigneeName,
     customerName: s.customerName,
+    customerNumber: s.customerNumber,
     address: s.address,
     city: s.city,
     phone: s.phone,

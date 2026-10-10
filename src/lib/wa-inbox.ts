@@ -52,12 +52,16 @@ export interface InboxItem {
    * (`customer_surveys`) ולא מוואטסאפ, ולכן היא נושאת גם את הציון.
    */
   survey?: { score: number | null; answeredAt: string | null; comment: string | null };
+  /** דחיפות (08/10/2026): תג עם סיבות. */
+  urgent?: { active: boolean; reasons: string[]; manual: boolean; markedBy?: string | null };
+  urgentMarkedAt?: string | null;
+  urgentMarkedBy?: string | null;
 }
 
 export interface InboxResponse {
   ok: true;
   tab: 'waiting' | 'all';
-  counts: { waiting: number; all: number; autoOnly?: number };
+  counts: { waiting: number; all: number; autoOnly?: number; urgent?: number };
   matched: number;
   truncated: boolean;
   items: InboxItem[];
@@ -209,10 +213,12 @@ export async function fetchInbox(
   tab: 'waiting' | 'all',
   q: string,
   includeAuto = false,
+  urgentOnly = false,
 ): Promise<InboxResponse> {
   const params = new URLSearchParams({ tab });
   if (q.trim()) params.set('q', q.trim());
   if (includeAuto) params.set('includeAuto', '1');
+  if (urgentOnly) params.set('urgentOnly', '1');
   // 🔴 הרשימה יושבת ב-`api/conversation` בלי פרמטר לקוח, כי תוכנית
   // Hobby של Vercel חוסמת ב-12 פונקציות לפריסה והקובץ ה-13 נפל.
   return authFetch(`/api/conversation?${params.toString()}`);
@@ -354,5 +360,14 @@ export const WA_LANG_LABELS: Record<string, string> = { he: 'עברית', en: 'E
  */
 export async function setConversationLanguage(phone: string, lang: string): Promise<void> {
   const { error } = await supabase.rpc('wa_set_language', { p_phone: phone, p_lang: lang, p_source: 'staff' });
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * סימון ידני "דחוף" על שיחה (08/10/2026). ישירות למסד (`wa_mark_urgent`,
+ * משרד בלבד), כי תקרת הפונקציות ב-Vercel מלאה. יורד לבד כשעונים ללקוח.
+ */
+export async function markUrgent(conversationId: string, on: boolean): Promise<void> {
+  const { error } = await supabase.rpc('wa_mark_urgent', { p_conversation: conversationId, p_on: on });
   if (error) throw new Error(error.message);
 }

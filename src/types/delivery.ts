@@ -39,6 +39,8 @@ export interface CalendarStop {
   /** המשובץ (נהג או טכנאי) */
   driver: AssigneeName;
   customerName: string;
+  /** מספר הלקוח בפריוריטי (ספר הטלפונים, 08/10/2026). */
+  customerNumber?: string;
   address?: string;
   city?: string;
   phone?: string;

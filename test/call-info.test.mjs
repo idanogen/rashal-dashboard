@@ -73,3 +73,65 @@ test('גיליון בלי קבצים אומר למה', () => {
   assert.match(emptyMediaLine({ sentAt: '2026-09-15T09:12:00Z' }, t), /נשלחה 09:12/);
   assert.match(emptyMediaLine(null, t), /לא שלח/);
 });
+
+// ─── אספקה ואיסוף (עמי, 06/10/2026: "כשפותח את הלקוח יראה את המשימה") ─────
+import { itemLine, infoKindLabel, infoDocno, infoButtonLabel } from '../src/lib/call-info.ts';
+
+test('אספקה: מה לספק, בלי "השתתפות עצמית" ובלי שורות ריקות', () => {
+  const info = parseCallInfo({
+    stop_id: 's1', call: null, media: [], texts: [], office_note: null, media_request: null,
+    order: {
+      id: 'o1', docno: 'SO2603553', order_type: 'משרד הבריאות', priority_status: 'בוצעה',
+      items: [
+        { part: 'G175', desc: 'מנוף חשמלי SUNRISE MEDICAL', qty: 1, serial: null },
+        { part: 'X1', desc: null, qty: 2, serial: 'SN-9' },
+        { part: null, desc: null, qty: 1, serial: null },
+      ],
+    },
+  });
+  assert.equal(info.kind, 'delivery');
+  assert.equal(info.call, null);
+  assert.equal(info.order.docno, 'SO2603553');
+  assert.deepEqual(info.order.items.map(itemLine), ['מנוף חשמלי SUNRISE MEDICAL', 'X1 ×2']);
+  assert.equal(info.order.items[1].serial, 'SN-9');
+  assert.equal(infoKindLabel(info.kind), 'אספקה');
+  assert.equal(infoDocno(info), 'SO2603553');
+});
+
+test('איסוף: שורות עם סיבת החזרה ומקור, ולאן', () => {
+  const info = parseCallInfo({
+    stop_id: 's2', call: null, media: [], texts: [], office_note: { user_name: 'עמי גז', content: 'לאסוף גם את המטען', at: '2026-10-08T07:00:00Z' }, media_request: null,
+    pickup: {
+      id: 'p1', docno: 'PK123', pickup_status: 'ממתין לתאום', to_warehouse: 'מחסן ראשי', total_qty: '3',
+      lines: [
+        { part: '218RAFPS', desc: 'גרדיאן שלמות', qty: 1, unit: "יח'", source_order: 'SO2603553', return_reason: null },
+        { part: 'C1', desc: 'מטען', qty: 2, unit: null, source_order: null, return_reason: 'תקול' },
+      ],
+    },
+  });
+  assert.equal(info.kind, 'pickup');
+  assert.equal(info.pickup.toWarehouse, 'מחסן ראשי');
+  assert.equal(info.pickup.totalQty, 3);
+  assert.deepEqual(info.pickup.lines.map(itemLine), ['גרדיאן שלמות', 'מטען ×2']);
+  assert.equal(info.pickup.lines[1].returnReason, 'תקול');
+  assert.equal(info.pickup.lines[0].sourceOrder, 'SO2603553');
+  assert.equal(info.officeNote.content, 'לאסוף גם את המטען');
+  assert.equal(infoKindLabel(info.kind), 'איסוף');
+});
+
+test('משימה חופשית: כלום, והכפתור לא מוצג', () => {
+  const info = parseCallInfo({ stop_id: 's3', call: null, media: [], texts: [], office_note: null, media_request: null });
+  assert.equal(info.kind, 'none');
+  assert.equal(info.order, null);
+  assert.equal(info.pickup, null);
+  assert.equal(infoButtonLabel('task', false), '');
+  assert.equal(infoButtonLabel('delivery', true), 'פרטי האספקה');
+  assert.equal(infoButtonLabel('pickup', true), 'פרטי האיסוף');
+  assert.equal(infoButtonLabel('service', true), 'פרטי הקריאה');
+});
+
+test('קריאה נשארת כמו שהייתה', () => {
+  const info = parseCallInfo({ stop_id: 's4', call: { id: 'c', docno: 'SC1' }, media: [], texts: [], office_note: null, media_request: null });
+  assert.equal(info.kind, 'service');
+  assert.equal(infoDocno(info), 'SC1');
+});

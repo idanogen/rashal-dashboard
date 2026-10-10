@@ -218,14 +218,21 @@ begin
     raise exception 'not authorized';
   end if;
 
-  if v_stop.service_call_id is null then
-    return jsonb_build_object('stop_id', p_stop_id, 'call', null,
-                              'media', '[]'::jsonb, 'texts', '[]'::jsonb,
-                              'office_note', null, 'media_request', null);
+  -- 08/10/2026 (עמי): גם אספקה ואיסוף. המטען של כל סוג נבנה בפונקציה שלו
+  -- (20261008_stop_info_delivery_pickup.sql); כאן רק ניתוב.
+  if v_stop.service_call_id is not null then
+    return jsonb_build_object('stop_id', p_stop_id)
+           || coalesce(public.call_info_payload(v_stop.service_call_id), '{}'::jsonb);
   end if;
 
-  return jsonb_build_object('stop_id', p_stop_id)
-         || coalesce(public.call_info_payload(v_stop.service_call_id), '{}'::jsonb);
+  return jsonb_build_object('stop_id', p_stop_id, 'call', null,
+                            'media', '[]'::jsonb, 'texts', '[]'::jsonb,
+                            'office_note', null, 'media_request', null)
+         || case
+              when v_stop.order_id is not null then coalesce(public.order_info_payload(v_stop.order_id), '{}'::jsonb)
+              when v_stop.pickup_id is not null then coalesce(public.pickup_info_payload(v_stop.pickup_id, p_stop_id), '{}'::jsonb)
+              else '{}'::jsonb
+            end;
 end;
 $$;
 

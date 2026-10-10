@@ -8,7 +8,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { TemplateSendDialog } from '@/components/wa/TemplateSendDialog';
 import { CustomerCardButton } from '@/components/customer/CustomerCardSheet';
 import { LinkCustomerDialog } from '@/components/wa/LinkCustomerDialog';
-import { linkConversation, setConversationLanguage, WA_LANG_LABELS, type SuggestedCustomer } from '@/lib/wa-inbox';
+import { linkConversation, setConversationLanguage, WA_LANG_LABELS, type SuggestedCustomer,
+  markUrgent,
+} from '@/lib/wa-inbox';
 import { searchCustomers, customerSearchKey } from '@/lib/customer-card';
 import { surveyMark, SURVEY_TONE } from '@/lib/survey-badge';
 import {
@@ -463,9 +465,11 @@ function Row({
       className={`w-full rounded-xl border px-3 py-2.5 text-start transition ${item.autoOnly ? 'opacity-60 ' : ''}${
         active
           ? 'border-emerald-300 bg-emerald-50/70'
-          : waiting
-            ? 'border-amber-200 bg-amber-50/40 hover:bg-amber-50'
-            : 'border-slate-200 bg-white hover:bg-slate-50'
+          : item.urgent?.active
+            ? 'border-red-300 bg-red-50/50 hover:bg-red-50'
+            : waiting
+              ? 'border-amber-200 bg-amber-50/40 hover:bg-amber-50'
+              : 'border-slate-200 bg-white hover:bg-slate-50'
       }`}
     >
       <div className="flex items-baseline justify-between gap-2">
@@ -484,6 +488,12 @@ function Row({
       </div>
       <div className="truncate text-xs text-muted-foreground">{item.preview || ' '}</div>
       <div className="mt-1 flex flex-wrap items-center gap-1.5">
+        {/* ⭐ דחוף תמיד עם הסיבה (08/10/2026): תג אדום בלי סיבה הוא תג שלומדים להתעלם ממנו. */}
+        {item.urgent?.active && (
+          <Badge variant="outline" className="border-red-300 bg-red-100 text-[10px] font-bold text-red-800" title={item.urgent.reasons.join(' · ')}>
+            דחוף · {item.urgent.reasons.join(' · ')}
+          </Badge>
+        )}
         {waiting && (
           <Badge variant="outline" className="border-amber-300 bg-amber-100 text-[10px] text-amber-800">
             מחכה {waitLabel(item.waitingMinutes)}
@@ -573,6 +583,9 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
   // להרזות את ההתכתבות (06/09/2026): שיחות אוטומטיות בלבד מאחורי מתג,
   // ושורות מערכת שנפתחו לבועה מלאה.
   const [includeAuto, setIncludeAuto] = useState(false);
+  // דחיפות (08/10/2026): מסנן "רק דחופות" וסימון ידני.
+  const [urgentOnly, setUrgentOnly] = useState(false);
+  const [markingUrgent, setMarkingUrgent] = useState(false);
   const [openedAuto, setOpenedAuto] = useState<Set<string>>(() => new Set());
   // 🔴 מתג חד-פעמי. בלעדיו כל רענון של הרשימה היה מחזיר את הלשונית
   // ל"כל השיחות" גם אחרי שהעובד בחר במפורש "ממתינים", וזה נקרא כמו מסך
@@ -590,8 +603,8 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
   // 🔴 **אותו מפתח בדיוק שהכפתור הצף משתמש בו.** קודם היו שני מפתחות
   // לאותם נתונים, ולכן יצאו שתי בקשות זהות לשרת על כל סבב.
   const inbox = useQuery({
-    queryKey: [...inboxKey(tab, q), includeAuto ? 'auto' : 'human'],
-    queryFn: () => fetchInbox(tab, q, includeAuto),
+    queryKey: [...inboxKey(tab, q), includeAuto ? 'auto' : 'human', urgentOnly ? 'urgent' : 'all'],
+    queryFn: () => fetchInbox(tab, q, includeAuto, urgentOnly),
     refetchInterval: idle ? WA_IDLE_POLL_MS : WA_INBOX_POLL_MS,
     // ⭐ ראה את ההערה על השרשור. הרשימה מתרעננת גם היא בחזרה לחלון,
     // אבל רק אם עברה חצי דקה, כי סדר השורות משתנה לאט.
@@ -805,9 +818,21 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
                 >
                   {t === 'waiting' ? counts.waiting : counts.all}
                 </span>
+                {t === 'waiting' && (counts.urgent ?? 0) > 0 && (
+                  <span className="rounded-full bg-red-600 px-1.5 text-[11px] font-bold text-white" title="מתוכן דחופות">
+                    {counts.urgent} דחופות
+                  </span>
+                )}
               </button>
             ))}
           </div>
+          {/* דחיפות (08/10/2026): תג אדום עם סיבה על השיחה, ומסנן. */}
+          {(counts.urgent ?? 0) > 0 || urgentOnly ? (
+            <label className="flex w-fit cursor-pointer items-center gap-2 px-1 text-xs text-muted-foreground">
+              <input type="checkbox" className="accent-red-600" checked={urgentOnly} onChange={(e) => setUrgentOnly(e.target.checked)} />
+              רק דחופות{counts.urgent ? ` (${counts.urgent})` : ''}
+            </label>
+          ) : null}
           {tab === 'all' && (
             <label className="flex w-fit cursor-pointer items-center gap-2 px-1 text-xs text-muted-foreground">
               <input type="checkbox" className="accent-emerald-700" checked={includeAuto} onChange={(e) => setIncludeAuto(e.target.checked)} />
@@ -1009,6 +1034,31 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                {/* סימון ידני "דחוף" (08/10/2026): נרשם מי ומתי, ויורד לבד כשעונים ללקוח. */}
+                {thread.data?.conversation?.id && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={markingUrgent}
+                    className={`h-7 ${current?.urgent?.manual ? 'border-red-400 bg-red-50 text-red-800 hover:bg-red-100' : 'border-slate-300 text-slate-700'}`}
+                    title={current?.urgent?.manual ? `סומן על ידי ${current.urgent.markedBy ?? ''}. לחיצה מורידה.` : 'סמן את השיחה כדחופה. יורד לבד כשעונים ללקוח.'}
+                    onClick={async () => {
+                      const id = thread.data?.conversation?.id;
+                      if (!id) return;
+                      setMarkingUrgent(true);
+                      try {
+                        await markUrgent(id, !current?.urgent?.manual);
+                        await qc.invalidateQueries({ queryKey: [WA_INBOX_KEY] });
+                      } catch (e) {
+                        toast.error(e instanceof Error ? e.message : 'הסימון נכשל');
+                      } finally {
+                        setMarkingUrgent(false);
+                      }
+                    }}
+                  >
+                    {current?.urgent?.manual ? '🔴 דחוף · הסר' : 'סמן דחוף'}
+                  </Button>
+                )}
                 {/* שפת ההודעות ללקוח הזה (08/09/2026). נקבעת מלחיצה שלו על
                     כפתור שפה, והעובד יכול לקבוע או לתקן כאן ביד. */}
                 {head.phone && (

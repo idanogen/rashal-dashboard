@@ -46,6 +46,9 @@ export interface ConversationRow {
   last_human_at?: string | null;
   last_human_direction?: string | null;
   human_count?: number | null;
+  /** סימון ידני "דחוף" (08/10/2026). */
+  urgent_marked_at?: string | null;
+  urgent_marked_by?: string | null;
 }
 
 export interface InboxItem {
@@ -85,6 +88,14 @@ export interface InboxItem {
    * את **הציון** ואת ההערה, ולא רק את העובדה שהודעה נשלחה.
    */
   survey?: { score: number | null; answeredAt: string | null; comment: string | null };
+  /**
+   * דחיפות (08/10/2026): תג עם סיבות, מכללים אוטומטיים ומסימון ידני.
+   * מחושב ב-`urgency.ts` אחרי שהעובדות נאספו; כאן רק נושאים אותו.
+   */
+  urgent?: { active: boolean; reasons: string[]; manual: boolean; markedBy?: string | null };
+  /** הסימון הידני הגולמי, כדי שהכפתור ידע אם הוא "סמן" או "הסר". */
+  urgentMarkedAt?: string | null;
+  urgentMarkedBy?: string | null;
 }
 
 /**
@@ -163,6 +174,8 @@ export function toItem(row: ConversationRow, win: WindowState, now = Date.now())
     read: Boolean(row.unanswered_since) && !waiting,
     messageCount: Number(row.message_count ?? 0),
     window: win,
+    urgentMarkedAt: row.urgent_marked_at ?? null,
+    urgentMarkedBy: row.urgent_marked_by ?? null,
   };
 }
 
@@ -180,6 +193,10 @@ export function sortItems(items: InboxItem[], tab: 'waiting' | 'all'): InboxItem
   const out = [...items];
   if (tab === 'waiting') {
     out.sort((a, b) => {
+      // ⭐ דחופות למעלה (08/10/2026), ובתוכן לפי זמן ההמתנה כמו תמיד.
+      const au = a.urgent?.active ? 1 : 0;
+      const bu = b.urgent?.active ? 1 : 0;
+      if (au !== bu) return bu - au;
       const byWait = (b.waitingMinutes ?? -1) - (a.waitingMinutes ?? -1);
       if (byWait !== 0) return byWait;
       if (a.window.open !== b.window.open) return a.window.open ? -1 : 1;

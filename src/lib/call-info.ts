@@ -33,8 +33,58 @@ export interface CallText {
   body: string;
 }
 
+export interface OrderItemInfo {
+  part?: string;
+  desc?: string;
+  qty?: number;
+  serial?: string;
+}
+
+export interface PickupLineInfo {
+  part?: string;
+  desc?: string;
+  qty?: number;
+  unit?: string;
+  barcode?: string;
+  sourceOrder?: string;
+  returnReason?: string;
+}
+
+/** אספקה: מה לספק (עמי, 06/10/2026). */
+export interface OrderInfo {
+  id: string;
+  docno?: string;
+  orderType?: string;
+  healthFund?: string;
+  priorityStatus?: string;
+  openedAt?: string;
+  agent?: string;
+  items: OrderItemInfo[];
+}
+
+/** איסוף: מה לאסוף ולאן. */
+export interface PickupInfo {
+  id: string;
+  docno?: string;
+  pickupStatus?: string;
+  pickupDate?: string;
+  sourceOrder?: string;
+  deliveryNote?: string;
+  reference?: string;
+  toWarehouse?: string;
+  agent?: string;
+  totalQty?: number;
+  lines: PickupLineInfo[];
+}
+
+export type StopInfoKind = 'service' | 'delivery' | 'pickup' | 'none';
+
 export interface CallInfo {
   stopId: string;
+  /** מה הכרטיס מציג: קריאה, אספקה, איסוף, או כלום (משימה חופשית). */
+  kind: StopInfoKind;
+  order: OrderInfo | null;
+  pickup: PickupInfo | null;
   call: {
     id: string;
     docno?: string;
@@ -78,8 +128,48 @@ export function parseCallInfo(raw: unknown): CallInfo | null {
   const c = r.call && typeof r.call === 'object' ? (r.call as Raw) : null;
   const note = r.office_note && typeof r.office_note === 'object' ? (r.office_note as Raw) : null;
   const req = r.media_request && typeof r.media_request === 'object' ? (r.media_request as Raw) : null;
+  const o = r.order && typeof r.order === 'object' ? (r.order as Raw) : null;
+  const pk = r.pickup && typeof r.pickup === 'object' ? (r.pickup as Raw) : null;
+  const num = (v: unknown): number | undefined => (v == null || v === '' || Number.isNaN(Number(v)) ? undefined : Number(v));
+  const order: OrderInfo | null = o
+    ? {
+        id: String(o.id ?? ''),
+        docno: str(o.docno),
+        orderType: str(o.order_type),
+        healthFund: str(o.health_fund),
+        priorityStatus: str(o.priority_status),
+        openedAt: str(o.opened_at),
+        agent: str(o.agent),
+        items: (Array.isArray(o.items) ? (o.items as Raw[]) : [])
+          .filter((i) => str(i.desc) || str(i.part))
+          .map((i) => ({ part: str(i.part), desc: str(i.desc), qty: num(i.qty), serial: str(i.serial) })),
+      }
+    : null;
+  const pickup: PickupInfo | null = pk
+    ? {
+        id: String(pk.id ?? ''),
+        docno: str(pk.docno),
+        pickupStatus: str(pk.pickup_status),
+        pickupDate: str(pk.pickup_date),
+        sourceOrder: str(pk.source_order),
+        deliveryNote: str(pk.delivery_note),
+        reference: str(pk.reference),
+        toWarehouse: str(pk.to_warehouse),
+        agent: str(pk.agent),
+        totalQty: num(pk.total_qty),
+        lines: (Array.isArray(pk.lines) ? (pk.lines as Raw[]) : [])
+          .filter((l) => str(l.desc) || str(l.part))
+          .map((l) => ({
+            part: str(l.part), desc: str(l.desc), qty: num(l.qty), unit: str(l.unit), barcode: str(l.barcode),
+            sourceOrder: str(l.source_order), returnReason: str(l.return_reason),
+          })),
+      }
+    : null;
   return {
     stopId: String(r.stop_id ?? ''),
+    kind: c ? 'service' : order ? 'delivery' : pickup ? 'pickup' : 'none',
+    order,
+    pickup,
     call: c
       ? {
           id: String(c.id ?? ''),
@@ -162,4 +252,27 @@ export function emptyMediaLine(req: CallInfo['mediaRequest'], timeLabel: (iso: s
     return `הלקוח עוד לא שלח תמונות. בקשת "תמונה לפני טכנאי" נשלחה ${timeLabel(req.sentAt)}.`;
   }
   return 'הלקוח לא שלח תמונות או סרטונים מאז שהקריאה נפתחה.';
+}
+
+/** "מנוף חשמלי G175 ×2": שורה אחת לפריט, בלי רעש של ריק. */
+export function itemLine(i: { part?: string; desc?: string; qty?: number }): string {
+  const name = i.desc ?? i.part ?? '';
+  const qty = i.qty != null && i.qty !== 1 ? ` ×${i.qty}` : '';
+  return `${name}${qty}`;
+}
+
+/** כותרת הכרטיס לפי הסוג: "קריאת שירות" · "אספקה" · "איסוף" · "משימה". */
+export function infoKindLabel(kind: StopInfoKind): string {
+  return kind === 'service' ? 'קריאת שירות' : kind === 'delivery' ? 'אספקה' : kind === 'pickup' ? 'איסוף' : 'משימה';
+}
+
+/** מספר המסמך של מה שהכרטיס מציג. */
+export function infoDocno(info: CallInfo): string | undefined {
+  return info.call?.docno ?? info.order?.docno ?? info.pickup?.docno;
+}
+
+/** כפתור הכרטיס על העצירה: "פרטי הקריאה" · "פרטי האספקה" · "פרטי האיסוף". ריק = אין כרטיס. */
+export function infoButtonLabel(sourceType: string, hasSource: boolean): string {
+  if (!hasSource) return '';
+  return sourceType === 'service' ? 'פרטי הקריאה' : sourceType === 'delivery' ? 'פרטי האספקה' : sourceType === 'pickup' ? 'פרטי האיסוף' : '';
 }

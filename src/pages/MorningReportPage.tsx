@@ -13,10 +13,11 @@
  * 🔴 15/09: "המשך טיפול" נספר בנפרד ולא כ"לא סופק", כי הטכנאי היה אצל
  * הלקוח. גם הוא מחוץ לאחוז, ומוצג בצבע משלו.
  */
-import { useMemo } from 'react';
+import { useLayoutEffect, useMemo, useRef } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { CalendarDays, ChevronLeft, ChevronRight, ClipboardList, Sun, TrendingUp, XCircle } from 'lucide-react';
 import { useMorningReport } from '@/hooks/useMorningReport';
+import { countUp, reducedMotion, rise, stagger, stretch } from '@/lib/motion';
 import {
   deliveryRate, driverReported, morningDayLabel, morningMonthLabel, morningShortDay, shiftDate, todayLocal,
 } from '@/lib/morning-report';
@@ -45,8 +46,8 @@ function Panel({ icon, title, hint, children }: { icon: React.ReactNode; title: 
 
 function Kpi({ n, t, sub, color, accent }: { n: React.ReactNode; t: string; sub?: string; color?: string; accent: string }) {
   return (
-    <div className="rounded-2xl border bg-white p-4 text-center shadow-sm" style={{ borderColor: '#eef1f6', borderTopWidth: 3, borderTopColor: accent }}>
-      <div className="text-3xl font-extrabold leading-none" style={{ color: color ?? NAVY }}><bdi>{n}</bdi></div>
+    <div className="mo-kpi rounded-2xl border bg-white p-4 text-center shadow-sm" style={{ borderColor: '#eef1f6', borderTopWidth: 3, borderTopColor: accent }}>
+      <div className="text-3xl font-extrabold leading-none" style={{ color: color ?? NAVY }}><bdi className="mo-num">{n}</bdi></div>
       <div className="mt-1.5 text-[12px] font-semibold text-slate-600">{t}</div>
       {sub && <div className="text-[10.5px] text-slate-400">{sub}</div>}
     </div>
@@ -63,7 +64,7 @@ function RateBar({ delivered, notDelivered, reported }: { delivered: number; not
   return (
     <span className="inline-flex items-center gap-2">
       <span className="h-2 w-16 overflow-hidden rounded-full bg-slate-100">
-        <span className="block h-full rounded-full" style={{ width: `${rate}%`, background: color }} />
+        <span className="mo-bar block h-full rounded-full" style={{ width: `${rate}%`, background: color }} />
       </span>
       <bdi className="text-[12px] font-bold" style={{ color }}>{rate}%</bdi>
     </span>
@@ -83,10 +84,40 @@ export function MorningReportPage() {
   const canGoForward = date !== '' && date < shiftDate(today, -1);
 
   const trend = useMemo(() => (data?.trend ?? []).filter((d) => d.planned > 0), [data]);
+
+  /**
+   * ⭐ רגע 7 מהמוקאפים (עידן, 09/10/2026): הדוח נכנס בסדר הקריאה. המספרים
+   * סופרים למקום (האחוז ראשון), שורות הנהגים עולות והפס נמתח, ו"מה לא נסגר"
+   * נכנס אחרון כשהעין פנויה. רץ פעם אחת לכל תאריך, אחרי שהנתונים הגיעו,
+   * לפני הצביעה הראשונה (layout effect) כדי שלא יהבהב מצב סופי ואז יתחבא.
+   * הלקח מ-ORDio: קצב איטי מהפרוטוטייפ, ו-prefers-reduced-motion = בלי תנועה.
+   */
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const motionDate = data?.date ?? null;
+  useLayoutEffect(() => {
+    const root = rootRef.current;
+    if (!root || !motionDate || reducedMotion()) return;
+    const kpis = root.querySelectorAll<HTMLElement>('.mo-kpi');
+    const rows = root.querySelectorAll<HTMLElement>('tr.mo-row');
+    const issues = root.querySelectorAll<HTMLElement>('.mo-issue');
+    void stagger(kpis, (el, d, i) => {
+      // האחוז (הכרטיס האחרון) הוא מה שהמנהל מחפש: הוא סופר ראשון, השאר אחריו.
+      const first = i === kpis.length - 1;
+      const num = el.querySelector<HTMLElement>('.mo-num');
+      if (num) void countUp(num, first ? 0.1 : 0.35 + d, undefined, first ? 1.6 : 1.3);
+      return rise(el, first ? 0 : 0.2 + d, 12);
+    }, 0.08);
+    void stagger(rows, (el, d) => {
+      const bar = el.querySelector<HTMLElement>('.mo-bar');
+      if (bar) void stretch(bar, 0.9 + d);
+      return rise(el, 0.7 + d, 8);
+    }, 0.1);
+    void stagger(issues, (el, d) => rise(el, 1.5 + d, 10), 0.12, 1.2);
+  }, [motionDate]);
   const trendMax = Math.max(1, ...trend.map((d) => d.planned));
 
   return (
-    <div style={{ background: '#f5f7fb' }} className="-mx-4 -my-6 min-h-screen px-4 py-5 sm:-mx-6 sm:px-6">
+    <div ref={rootRef} style={{ background: '#f5f7fb' }} className="-mx-4 -my-6 min-h-screen px-4 py-5 sm:-mx-6 sm:px-6">
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3 px-1">
         <div>
           <div className="flex items-center gap-2 text-xl font-extrabold" style={{ color: NAVY }}>
@@ -176,7 +207,7 @@ export function MorningReportPage() {
                     {(data?.byDriver ?? []).map((d) => {
                       const reported = driverReported(d);
                       return (
-                        <tr key={d.name} className="border-t" style={{ borderColor: '#f0f3f8' }}>
+                        <tr key={d.name} className="mo-row border-t" style={{ borderColor: '#f0f3f8' }}>
                           <td className="py-2 font-semibold" style={{ color: NAVY }}>
                             {d.name}
                             {d.kind && <span className="ms-1.5 text-[10px] font-normal text-slate-400">{KIND_LABEL[d.kind] ?? d.kind}</span>}
@@ -209,7 +240,7 @@ export function MorningReportPage() {
             ) : (
               <div className="space-y-2">
                 {(data?.followUp ?? []).map((s) => (
-                  <div key={s.id} className="rounded-xl border px-3 py-2" style={{ borderColor: '#cbe7ee', background: '#f2fafc' }}>
+                  <div key={s.id} className="mo-issue rounded-xl border px-3 py-2" style={{ borderColor: '#cbe7ee', background: '#f2fafc' }}>
                     <div className="flex items-center justify-between gap-2">
                       <div className="text-[12.5px] font-bold" style={{ color: NAVY }}>
                         {s.customer ?? 'לקוח'}{s.city ? ` · ${s.city}` : ''}
@@ -226,7 +257,7 @@ export function MorningReportPage() {
                   </div>
                 ))}
                 {(data?.notDelivered ?? []).map((s) => (
-                  <div key={s.id} className="rounded-xl border px-3 py-2" style={{ borderColor: '#fde2d3', background: '#fff8f4' }}>
+                  <div key={s.id} className="mo-issue rounded-xl border px-3 py-2" style={{ borderColor: '#fde2d3', background: '#fff8f4' }}>
                     <div className="flex items-center justify-between gap-2">
                       <div className="text-[12.5px] font-bold" style={{ color: NAVY }}>
                         {s.customer ?? 'לקוח'}{s.city ? ` · ${s.city}` : ''}
@@ -243,7 +274,7 @@ export function MorningReportPage() {
                   </div>
                 ))}
                 {(data?.open ?? []).map((s) => (
-                  <div key={s.id} className="rounded-xl border px-3 py-2" style={{ borderColor: '#fdecc8', background: '#fffbf0' }}>
+                  <div key={s.id} className="mo-issue rounded-xl border px-3 py-2" style={{ borderColor: '#fdecc8', background: '#fffbf0' }}>
                     <div className="flex items-center justify-between gap-2">
                       <div className="text-[12.5px] font-bold" style={{ color: NAVY }}>
                         {s.customer ?? 'לקוח'}{s.city ? ` · ${s.city}` : ''}

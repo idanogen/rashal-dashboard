@@ -13,6 +13,8 @@ import { RouteNavigationPage } from '@/pages/RouteNavigationPage';
 import { WhatsAppPage } from '@/pages/WhatsAppPage';
 import { InboxPage } from '@/pages/InboxPage';
 import { CustomerPage } from '@/pages/CustomerPage';
+import { TasksPage } from '@/pages/TasksPage';
+import { StaffChatPage } from '@/pages/StaffChatPage';
 import { AdminUsersPage } from '@/pages/AdminUsersPage';
 import { WaAutomationsPage } from '@/pages/WaAutomationsPage';
 import { TeamPage } from '@/pages/TeamPage';
@@ -112,6 +114,8 @@ function App() {
                         <Route path="/whatsapp" element={<RoleBasedRoute allow={screenAllow('/whatsapp')}><WhatsAppPage /></RoleBasedRoute>} />
                         <Route path="/inbox" element={<RoleBasedRoute allow={screenAllow('/inbox')}><InboxPage /></RoleBasedRoute>} />
                         <Route path="/customer" element={<RoleBasedRoute allow={screenAllow('/customer')}><CustomerPage /></RoleBasedRoute>} />
+                        <Route path="/tasks" element={<RoleBasedRoute allow={screenAllow('/tasks')}><TasksPage /></RoleBasedRoute>} />
+                        <Route path="/chat" element={<RoleBasedRoute allow={screenAllow('/chat')}><StaffChatPage /></RoleBasedRoute>} />
                         <Route
                           path="/admin/wa-templates"
                           element={

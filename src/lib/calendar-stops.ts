@@ -537,3 +537,35 @@ export async function geocodeStopAddress(stop: {
     return false;
   }
 }
+
+/**
+ * עריכת כתובת, עיר או טלפון על עצירה משובצת (עמי, 07/10/2026).
+ *
+ * 🔴 כתובת או עיר שהשתנו מאפסות את המיקום על המפה באותה כתיבה. אחרת
+ * הסיכה נשארת על הכתובת הישנה והניווט לוקח את הנהג למקום הלא נכון.
+ * המיקום החדש נקבע אחר כך ב-`geocodeStopAddress` (fire-and-forget).
+ */
+export async function updateStopDetails(
+  id: string,
+  fields: { address?: string; city?: string; phone?: string },
+  relocate: boolean,
+): Promise<CalendarStop> {
+  const row: Record<string, unknown> = {};
+  if ('address' in fields) row.address = fields.address || null;
+  if ('city' in fields) row.city = fields.city || null;
+  if ('phone' in fields) row.phone = fields.phone || null;
+  if (relocate) {
+    row.geocoded_lat = null;
+    row.geocoded_lng = null;
+    row.geocoded_at = null;
+    row.geocoded_address = null;
+  }
+  const { data, error } = await supabase
+    .from('calendar_stops')
+    .update(row)
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw new Error(`updateStopDetails: ${error.message}`);
+  return rowToStop(data as CalendarStopRow);
+}

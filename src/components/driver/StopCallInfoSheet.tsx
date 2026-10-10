@@ -3,6 +3,9 @@ import {
   ChevronLeft,
   ChevronRight,
   ClipboardList,
+  Contact,
+  PackageOpen,
+  Truck,
   Image as ImageIcon,
   Loader2,
   MessageCircle,
@@ -16,10 +19,11 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useServiceCallInfo, useStopCallInfo, type SignedCallInfo } from '@/hooks/useStopCallInfo';
 import type { ServiceCall } from '@/types/service-call';
-import { emptyMediaLine, splitPhones, type CallMedia } from '@/lib/call-info';
+import { emptyMediaLine, infoDocno, infoKindLabel, itemLine, splitPhones, type CallMedia, type OrderInfo, type PickupInfo } from '@/lib/call-info';
 import { buildWazeUrl } from '@/lib/navigation';
 import type { CalendarStop } from '@/types/calendar-stop';
 import type { CalendarStop as CalendarViewStop } from '@/types/delivery';
+import { CustomerPhoneBook } from '@/components/customer/CustomerPhoneBook';
 
 const TZ = 'Asia/Jerusalem';
 const hhmm = (iso: string) =>
@@ -29,8 +33,8 @@ const ddmm = (iso: string) =>
 
 function friendlyError(message: string): string {
   return /not authorized/i.test(message)
-    ? 'הפרטים של הקריאה הזאת פתוחים רק לטכנאי שהיא משובצת אצלו.'
-    : 'לא הצלחנו לטעון את פרטי הקריאה. נסו שוב בעוד רגע.';
+    ? 'הפרטים של העצירה הזאת פתוחים רק למי שהיא משובצת אצלו.'
+    : 'לא הצלחנו לטעון את הפרטים. נסו שוב בעוד רגע.';
 }
 
 interface StopCallInfoSheetProps {
@@ -60,10 +64,18 @@ export function StopCallInfoSheet({ stop, call: serviceCall, calendarStop, open,
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
   const call = data?.call;
+  // הסוג מהנתונים כשנטענו, ולפני כן מהעצירה עצמה, כדי שהכותרת לא תקפוץ.
+  const kind = data?.kind ?? (serviceCall || (stop ?? calendarStop)?.sourceType === 'service' ? 'service'
+    : (stop ?? calendarStop)?.sourceType === 'delivery' ? 'delivery'
+    : (stop ?? calendarStop)?.sourceType === 'pickup' ? 'pickup' : 'none');
+  const docno = data ? infoDocno(data) : undefined;
   const s = stop ?? calendarStop;
   const name = s?.customerName ?? serviceCall?.customerName ?? '';
   const city = s?.city ?? serviceCall?.city;
   const address = s?.address ?? serviceCall?.address;
+  // ספר הטלפונים (עמי, 06-07/10/2026): מספר הלקוח מהעצירה או מהקריאה, הראשי מהרשומה.
+  const customerNumber = stop?.customerNumber ?? calendarStop?.customerNumber ?? serviceCall?.customerNumber ?? null;
+  const mainPhone = s?.phone ?? serviceCall?.phone ?? null;
   const window = s?.timeWindowStart && s?.timeWindowEnd ? `${s.timeWindowStart}-${s.timeWindowEnd}` : '';
   const wazeUrl = buildWazeUrl({
     address: address ? `${address}${city ? `, ${city}` : ''}` : null,
@@ -85,8 +97,8 @@ export function StopCallInfoSheet({ stop, call: serviceCall, calendarStop, open,
           <SheetHeader className="space-y-1.5 border-b px-4 pb-3 pt-1 text-start">
             <SheetTitle className="pe-8 text-base leading-snug">{name}</SheetTitle>
             <div className="flex flex-wrap gap-1.5 text-[11px]">
-              <span className="rounded bg-orange-100 px-1.5 font-semibold text-orange-700">
-                קריאת שירות{call?.docno && <> <bdi>{call.docno}</bdi></>}
+              <span className={`rounded px-1.5 font-semibold ${KIND_BADGE[kind]}`}>
+                {infoKindLabel(kind)}{docno && <> <bdi>{docno}</bdi></>}
               </span>
               {(city || window) && (
                 <span className="rounded bg-slate-100 px-1.5 text-slate-600">
@@ -108,15 +120,26 @@ export function StopCallInfoSheet({ stop, call: serviceCall, calendarStop, open,
             {isLoading ? (
               <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                טוען את פרטי הקריאה…
+                טוען את הפרטים…
               </div>
             ) : error ? (
               <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
                 {friendlyError((error as Error).message)}
               </div>
             ) : data ? (
-              <InfoBody info={data} onOpenMedia={setViewerIndex} />
+              data.kind === 'delivery' && data.order ? (
+                <OrderBody order={data.order} officeNote={data.officeNote} />
+              ) : data.kind === 'pickup' && data.pickup ? (
+                <PickupBody pickup={data.pickup} officeNote={data.officeNote} />
+              ) : (
+                <InfoBody info={data} onOpenMedia={setViewerIndex} />
+              )
             ) : null}
+            {!isLoading && !error && (
+              <Section icon={<Contact className="h-4 w-4 text-blue-600" />} title="טלפונים" meta="גם להודעות האוטומטיות">
+                <CustomerPhoneBook customerNumber={customerNumber} mainPhone={mainPhone} compact />
+              </Section>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-2 border-t p-3">
@@ -144,6 +167,92 @@ export function StopCallInfoSheet({ stop, call: serviceCall, calendarStop, open,
           onIndex={setViewerIndex}
         />
       )}
+    </>
+  );
+}
+
+const KIND_BADGE: Record<string, string> = {
+  service: 'bg-orange-100 text-orange-700',
+  delivery: 'bg-blue-100 text-blue-700',
+  pickup: 'bg-teal-100 text-teal-700',
+  none: 'bg-slate-100 text-slate-600',
+};
+
+function OfficeNoteSection({ note }: { note: { userName: string; content: string; at: string } | null }) {
+  if (!note) return null;
+  return (
+    <Section icon={<MessageCircle className="h-4 w-4 text-primary" />} title="מהמשרד" meta="צ'אט">
+      <div className="rounded-lg border bg-slate-50 p-2.5 text-[13px]">
+        <div className="mb-0.5 text-[11px] font-bold text-slate-700">
+          {note.userName} · <bdi>{ddmm(note.at)} {hhmm(note.at)}</bdi>
+        </div>
+        <div className="whitespace-pre-line">{note.content}</div>
+      </div>
+    </Section>
+  );
+}
+
+/** אספקה: מה לספק (עמי, 06/10/2026). הפריטים מ-ORDERITEMS בפריוריטי. */
+function OrderBody({ order, officeNote }: { order: OrderInfo; officeNote: { userName: string; content: string; at: string } | null }) {
+  const meta = [order.orderType, order.healthFund].filter(Boolean).join(' · ');
+  return (
+    <>
+      <Section icon={<Truck className="h-4 w-4 text-blue-600" />} title="מה לספק" meta={meta || 'מפריוריטי'}>
+        {order.items.length ? (
+          <ul className="divide-y rounded-lg border border-blue-200 bg-blue-50/60">
+            {order.items.map((i, idx) => (
+              <li key={`${i.part ?? ''}-${idx}`} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-2.5 py-1.5 text-sm">
+                <span className="font-semibold text-slate-900">{itemLine(i)}</span>
+                {i.part && i.desc && <bdi className="font-mono text-[11px] text-slate-500">{i.part}</bdi>}
+                {i.serial && (
+                  <bdi className="select-all rounded bg-white px-1.5 py-0.5 font-mono text-[10.5px] text-slate-600 ring-1 ring-slate-200">
+                    {i.serial}
+                  </bdi>
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <Empty>בהזמנה בפריוריטי לא רשומים פריטים.</Empty>
+        )}
+      </Section>
+      <OfficeNoteSection note={officeNote} />
+    </>
+  );
+}
+
+/** איסוף: מה לאסוף, מאיזו הזמנה, ולאן. */
+function PickupBody({ pickup, officeNote }: { pickup: PickupInfo; officeNote: { userName: string; content: string; at: string } | null }) {
+  const where = [pickup.toWarehouse ? `ליעד: ${pickup.toWarehouse}` : '', pickup.sourceOrder ? `מהזמנה ${pickup.sourceOrder}` : '']
+    .filter(Boolean).join(' · ');
+  return (
+    <>
+      <Section icon={<PackageOpen className="h-4 w-4 text-teal-600" />} title="מה לאסוף" meta={pickup.totalQty != null ? `${pickup.totalQty} פריטים` : undefined}>
+        {pickup.lines.length ? (
+          <ul className="divide-y rounded-lg border border-teal-200 bg-teal-50/60">
+            {pickup.lines.map((l, idx) => (
+              <li key={`${l.part ?? ''}-${idx}`} className="px-2.5 py-1.5 text-sm">
+                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                  <span className="font-semibold text-slate-900">{itemLine(l)}</span>
+                  {l.part && l.desc && <bdi className="font-mono text-[11px] text-slate-500">{l.part}</bdi>}
+                  {l.sourceOrder && <bdi className="text-[11px] text-slate-500">מהזמנה {l.sourceOrder}</bdi>}
+                </div>
+                {l.returnReason && <div className="text-[12px] text-amber-800">סיבת ההחזרה: {l.returnReason}</div>}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <Empty>במסמך האיסוף בפריוריטי לא רשומים פריטים.</Empty>
+        )}
+        {(where || pickup.deliveryNote || pickup.reference) && (
+          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11.5px] text-slate-600">
+            {where && <span>{where}</span>}
+            {pickup.deliveryNote && <span>תעודת משלוח <bdi>{pickup.deliveryNote}</bdi></span>}
+            {pickup.reference && <span>אסמכתה <bdi>{pickup.reference}</bdi></span>}
+          </div>
+        )}
+      </Section>
+      <OfficeNoteSection note={officeNote} />
     </>
   );
 }

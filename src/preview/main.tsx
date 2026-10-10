@@ -58,6 +58,16 @@ import type { CalendarStop } from '@/types/calendar-stop';
 import { WeeklyTargetStrip } from '@/components/management/WeeklyTargetStrip';
 import { deliveryTargetStatus as dts } from '@/lib/delivery-target';
 import { DispatcherHome } from '@/components/dispatch/DispatcherHome';
+import { CustomerPhoneBook } from '@/components/customer/CustomerPhoneBook';
+import { EditStopDetailsDialog } from '@/components/deliveries/EditStopDetailsDialog';
+import { phoneBookKey } from '@/hooks/useCustomerPhoneBook';
+import { TasksPage } from '@/pages/TasksPage';
+import { OfficeTaskDialog } from '@/components/tasks/OfficeTaskDialog';
+import { OFFICE_TASKS_KEY } from '@/hooks/useOfficeTasks';
+import { rowToTask, type OfficeTaskRow } from '@/lib/office-tasks';
+import { StaffChatPage } from '@/pages/StaffChatPage';
+import { STAFF_MESSAGES_KEY, STAFF_PEOPLE_KEY, STAFF_PREFS_KEY } from '@/hooks/useStaffChat';
+import { rowToMessage, type StaffMessageRow } from '@/lib/staff-chat';
 
 /**
  * 🔴 **המצב הריק מצולם גם הוא, כי הוא המצב של רוב הלקוחות.** נמדד
@@ -181,7 +191,7 @@ function Providers({ children }: { children: React.ReactNode }) {
         <GlobalChatProvider>
           {/* 🔴 מסך הסדרן נשען על `useSearchParams`, ובלי נתב הוא זורק
               והצילום יוצא לבן. */}
-          <MemoryRouter initialEntries={['/dispatch?tab=all']}>{children}</MemoryRouter>
+          <MemoryRouter initialEntries={[location.search.includes('staff-chat') ? '/chat?to=avi' : '/dispatch?tab=all']}>{children}</MemoryRouter>
         </GlobalChatProvider>
       </AuthProvider>
     </QueryClientProvider>
@@ -487,6 +497,49 @@ previewQc.setQueryData(['wa-thread', JUMP_PHONE], {
   messages: [],
 });
 
+// ─── דחיפות בתיבה (08/10/2026): `?view=inbox-urgent` ─────────────────────
+// המפתח המדויק של השאילתה: לשונית, חיפוש, אנושיות, ומסנן הדחופות.
+if (location.search.includes('inbox-urgent')) {
+  const URGENT_A = {
+    ...(DECOY_ITEM as Record<string, unknown>),
+    urgent: { active: true, reasons: ['סומן על ידי אילונה', 'ביקור מחר'], manual: true, markedBy: 'אילונה' },
+    urgentMarkedAt: '2026-09-01T11:00:00Z', urgentMarkedBy: 'אילונה',
+  } as never;
+  const URGENT_B = {
+    id: 'conv-3', phone: '0509145601', title: "אבו ג'אנם הודה", customerNumber: '037460839',
+    unidentified: false, preview: 'המנוף נפל ולא עובד, דחוף בבקשה',
+    lastMessageAt: '2026-09-01T13:30:00Z', lastMessageDirection: 'in',
+    unansweredSince: '2026-09-01T13:30:00Z', waitingMinutes: 95, read: false, messageCount: 3,
+    window: { open: true, expiresAt: null, minutesLeft: 900, reason: null },
+    urgent: { active: true, reasons: ['ממתין מעל שעה', 'כתב "נפל"'], manual: false },
+  } as never;
+  const PLAIN = {
+    id: 'conv-4', phone: '0523248420', title: 'דניאל דולי', customerNumber: '52122900',
+    unidentified: false, preview: 'תודה, מחכה לכם',
+    lastMessageAt: '2026-09-01T14:40:00Z', lastMessageDirection: 'in',
+    unansweredSince: '2026-09-01T14:40:00Z', waitingMinutes: 12, read: false, messageCount: 2,
+    window: { open: true, expiresAt: null, minutesLeft: 1400, reason: null },
+  } as never;
+  previewQc.setQueryData(['wa-inbox', 'waiting', '', 'human', 'all'], {
+    ok: true, tab: 'waiting', counts: { waiting: 3, all: 225, urgent: 2 }, matched: 3,
+    truncated: false, items: [URGENT_B, URGENT_A, PLAIN], phones: ['0543295286', '0509145601', '0523248420'],
+  });
+  previewQc.setQueryData(['wa-inbox', 'waiting', '', 'human', 'urgent'], {
+    ok: true, tab: 'waiting', counts: { waiting: 3, all: 225, urgent: 2 }, matched: 2,
+    truncated: false, items: [URGENT_B, URGENT_A], phones: ['0543295286', '0509145601'],
+  });
+  previewQc.setQueryData(['wa-thread', '0509145601'], {
+    ok: true,
+    conversation: {
+      id: 'conv-3', phone: '0509145601', phoneE164: '+972509145601', contactName: null,
+      customerNumber: '037460839', customerName: "אבו ג'אנם הודה", messageCount: 3,
+      lastMessageAt: '2026-09-01T13:30:00Z', unansweredSince: '2026-09-01T13:30:00Z', waiting: true,
+      window: { open: true, expiresAt: null, minutesLeft: 900, reason: null },
+    },
+    messages: [],
+  });
+}
+
 /**
  * ⭐ **מדדי הצוות, עם המספרים האמיתיים שנמדדו ב-<bdi>02/09/2026</bdi>.**
  * לא נתונים מומצאים: זו בדיוק התשובה של `team_performance(90)` מהייצור,
@@ -740,6 +793,7 @@ const VIEWS: Record<string, React.ReactElement> = {
   'inbox-jump-cold': <InboxBoard initialPhone={JUMP_PHONE} />,
   /** ⭐ בקרה חיובית: בלי קישור, השורה הראשונה עדיין נבחרת לבד. */
   'inbox-plain': <InboxBoard />,
+  'inbox-urgent': <InboxBoard />,
   /** תמונה בבועת שיחה עם כפתור השמירה הצף. */
   'wa-image': (
     <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
@@ -1013,11 +1067,11 @@ if (view === 'callinfo' || view === 'callinfo-empty') {
   const img = (n: number, at: string) => ({ messageId: `m${n}`, index: 0, at, type: 'image' as const, path: `p${n}` });
   const info: SignedCallInfo = empty
     ? {
-        stopId: 'ci1', call: { id: 'sc1', docno: 'SC2603301' }, media: [], texts: [], officeNote: null,
+        stopId: 'ci1', kind: 'service', order: null, pickup: null, call: { id: 'sc1', docno: 'SC2603301' }, media: [], texts: [], officeNote: null,
         mediaRequest: { state: 'sent', sentAt: '2026-09-15T06:12:00Z' }, urls: {},
       }
     : {
-        stopId: 'ci1',
+        stopId: 'ci1', kind: 'service', order: null, pickup: null,
         call: {
           id: 'sc1', docno: 'SC2603230', faultText: 'ברקס בגב הכסא לא נועל',
           deviceDesc: 'גב הטייה 40 ר.פ.מ.גרדיאן תוצרת SUNRISE MEDICAL', deviceSerial: 'A180606718',
@@ -1068,7 +1122,7 @@ if (view === 'calendar-callinfo') {
   const IMG = 'https://kukstfxtznymfkirdmty.supabase.co/storage/v1/object/public/timeline-files/wa-media/c70aaf46-6a43-4d15-a769-4c40ed1f81a3/1789371235879-0.jpeg';
   const today = localDateStr(new Date());
   previewQc.setQueryData(['stopCallInfo', 'cal1'], {
-    stopId: 'cal1',
+    stopId: 'cal1', kind: 'service', order: null, pickup: null,
     call: {
       id: 'sc1', docno: 'SC2603230', faultText: 'ברקס בגב הכסא לא נועל',
       deviceDesc: 'גב הטייה 40 ר.פ.מ.גרדיאן תוצרת SUNRISE MEDICAL', deviceSerial: 'A180606718',
@@ -1109,6 +1163,183 @@ if (view === 'calendar-callinfo') {
             onResolveStop={() => {}}
           />
         </RealDnd>
+      </div>
+    </div>
+  );
+}
+
+
+/**
+ * ספר הטלפונים עם דלת ידנית (עמי, 06-07/10/2026) ועריכת פרטי עצירה.
+ * `?view=phonebook` : הרכיב לבד + בתוך כרטיס הקריאה ביומן.
+ * `?view=stop-edit` : דיאלוג העריכה פתוח על עצירת שירות.
+ */
+/**
+ * כרטיס העצירה לאספקה ולאיסוף (עמי, 06/10/2026): `?view=delivery-info` · `?view=pickup-info`.
+ * המטען הוא מה ש-stop_call_info החזירה בפועל ב-08/10 (SO2602255, RT2601900) בהרשאות נהג.
+ */
+if (view === 'delivery-info' || view === 'pickup-info') {
+  const today = localDateStr(new Date());
+  const base = { call: null, media: [], texts: [], mediaRequest: null, urls: {}, pickup: null, order: null };
+  previewQc.setQueryData(['stopCallInfo', 'd1'], {
+    ...base, stopId: 'd1', kind: 'delivery',
+    order: {
+      id: 'o1', docno: 'SO2602255', orderType: 'משרד הבריאות', healthFund: 'כללית הנדסה', priorityStatus: 'שולמה', agent: 'משרד',
+      items: [
+        { part: '218RAFPS', desc: 'גרדיאן שלמות רוחב מושב 45 תוצרת SUNRISE MEDICAL', qty: 1 },
+        { part: 'CLRSHLEC2271', desc: 'חגורת אגן לייצוב', qty: 1 },
+        { part: 'G175', desc: 'מנוף חשמלי SUNRISE MEDICAL למשקל עד 175 ק"ג', qty: 1, serial: 'A180606718' },
+      ],
+    },
+    officeNote: { userName: 'עמי גז', content: 'להרכיב את החגורה אצל הלקוח ולהראות לבת איך סוגרים', at: '2026-10-08T06:41:33Z' },
+  } satisfies SignedCallInfo);
+  previewQc.setQueryData(['stopCallInfo', 'p1'], {
+    ...base, stopId: 'p1', kind: 'pickup',
+    pickup: {
+      id: 'pk1', docno: 'RT2601900', pickupStatus: 'ממתין לתאום', toWarehouse: 'משרד הבריאות', totalQty: 2, sourceOrder: 'SO2601553',
+      lines: [
+        { part: 'G175', desc: 'מנוף חשמלי SUNRISE MEDICAL למשקל עד 175 ק"ג', qty: 1, unit: "יח'", sourceOrder: 'SO2601553' },
+        { part: 'CHG1', desc: 'מטען למנוף', qty: 1, returnReason: 'תקול' },
+      ],
+    },
+    officeNote: null,
+  } satisfies SignedCallInfo);
+  previewQc.setQueryData(phoneBookKey('52122900'), []);
+  const dStop = {
+    stopId: 'd1', sourceId: 'o1', sourceType: 'delivery' as const, status: 'planned' as const,
+    deliveryDate: today, driver: 'רודי' as const, customerName: 'דניאל דולי', customerNumber: '52122900',
+    address: 'אלתרמן 8', city: 'רחובות', phone: '0523248420', timeWindowStart: '09:00', timeWindowEnd: '11:00', scheduledBy: 'עמי גז',
+  };
+  const pStop = { ...dStop, stopId: 'p1', sourceId: 'pk1', sourceType: 'pickup' as const, driver: 'דוד חסידים' as const, customerName: 'וולנרמן עדי' };
+  VIEWS['delivery-info'] = (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
+      <div className="mx-auto max-w-sm">
+        <RealDnd><DeliveryCalendar deliveries={[{ id: 'g1', date: today, driver: 'רודי', stops: [dStop, pStop] }]} /></RealDnd>
+        <StopCallInfoSheet calendarStop={dStop} open onOpenChange={() => undefined} />
+      </div>
+    </div>
+  );
+  VIEWS['pickup-info'] = (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
+      <div className="mx-auto max-w-sm">
+        <StopCallInfoSheet calendarStop={pStop} open onOpenChange={() => undefined} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * משימות למשרד (08/10/2026): `?view=tasks` (הרשימה, "שלי" = המשתמש הריק של התצוגה) · `?view=tasks-new` (הדיאלוג).
+ */
+if (view === 'tasks' || view === 'tasks-new') {
+  const today = localDateStr(new Date());
+  const d = (days: number) => { const x = new Date(); x.setDate(x.getDate() + days); return localDateStr(x); };
+  const row = (o: Record<string, unknown>) => ({
+    details: null, customer_number: null, customer_name: null, created_by: 'm1', created_by_name: 'עמי גז',
+    due_date: null, priority: 'normal', status: 'open', done_at: null, done_by: null, done_note: null,
+    created_at: '2026-10-06T07:12:00Z', updated_at: '2026-10-06T07:12:00Z', assignee_id: '', assignee_name: 'אילונה', ...o,
+  });
+  previewQc.setQueryData(OFFICE_TASKS_KEY, [
+    row({ id: 't1', title: 'להתקשר לאבו ג\'אנם ולתאם החלפת מצבר למנוף', customer_number: '037460839', customer_name: "אבו ג'אנם הודה", due_date: d(-1), priority: 'high', details: 'הבת ביקשה אחרי 14:00. המצבר במלאי לפי עמי.' }),
+    row({ id: 't2', title: 'לשלוח לקופה אישור אספקה SO2602255', customer_number: '52122900', customer_name: 'דניאל דולי', due_date: today }),
+    row({ id: 't3', title: 'לבדוק מול כללית הנדסה למה ההזמנה של וולנרמן תקועה', due_date: d(2), created_by: 's1', created_by_name: 'שלומי קורן' }),
+    row({ id: 't4', title: 'לעדכן את שורה על הנוהל החדש לבקשת תמונות', assignee_id: 'u2', assignee_name: 'שורה', due_date: d(5) }),
+    row({ id: 't5', title: 'להזכיר לרונן לחתום על הזמנת הרכש', status: 'done', done_at: '2026-10-07T13:40:00Z', done_by: 'אילונה', done_note: 'חתם, נשלח לספק', updated_at: '2026-10-07T13:40:00Z' }),
+  ].map((r) => rowToTask(r as OfficeTaskRow)));
+  previewQc.setQueryData(['profiles'], [
+    { id: 'u1', email: 'ilona@rashal.internal', username: 'אילונה', fullName: 'אילונה', role: 'viewer', disabled: false, createdAt: '2026-08-01T00:00:00Z' },
+    { id: 'u2', email: 'shura@rashal.internal', username: 'שורה', fullName: 'שורה', role: 'viewer', disabled: false, createdAt: '2026-08-01T00:00:00Z' },
+    { id: 'm1', email: 'ami@rashal.internal', username: 'עמי', fullName: 'עמי גז', role: 'team_manager', disabled: false, createdAt: '2026-08-01T00:00:00Z' },
+    { id: 'd1', email: 'avi@rashal.internal', username: 'אבי', fullName: 'אבי', role: 'driver', disabled: false, createdAt: '2026-08-01T00:00:00Z' },
+  ]);
+  VIEWS['tasks'] = (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
+      <div className="mx-auto max-w-4xl"><TasksPage initialTab="all" /></div>
+    </div>
+  );
+  VIEWS['tasks-new'] = (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
+      <OfficeTaskDialog open onOpenChange={() => undefined} onSubmit={() => undefined} defaultAssigneeId="u1" />
+    </div>
+  );
+}
+
+/** צ'אט צוות (09/10/2026): `?view=staff-chat&to=avi`. "אני" = המשתמש הריק של התצוגה. */
+if (view === 'staff-chat') {
+  const m = (o: Record<string, unknown>) => rowToMessage({ id: String(o.id), sender_id: String(o.from), sender_name: String(o.fromName ?? o.from), recipient_id: String(o.to), recipient_name: String(o.toName ?? o.to), body: String(o.body), created_at: String(o.at), read_at: (o.read as string) ?? null } as StaffMessageRow);
+  previewQc.setQueryData(STAFF_PEOPLE_KEY, [
+    { id: 'ami', name: 'עמי גז', role: 'team_manager' },
+    { id: 'avi', name: 'אבי', role: 'driver', linkedDriver: 'אבי' },
+    { id: 'oleg', name: 'אולג בולשטיין', role: 'driver', linkedDriver: 'אולג' },
+    { id: 'shura', name: 'שורה', role: 'viewer' },
+    { id: 'shlomi', name: 'שלומי קורן', role: 'management' },
+  ]);
+  previewQc.setQueryData(STAFF_MESSAGES_KEY, [
+    m({ id: '1', from: 'avi', fromName: 'אבי', to: '', toName: 'אילונה', body: 'הגעתי לדניאל דולי, אין מענה בדלת ובטלפון. ממשיך הלאה?', at: '2026-10-09T07:41:00Z' }),
+    m({ id: '2', from: '', fromName: 'אילונה', to: 'avi', toName: 'אבי', body: 'רגע, אני מתקשרת לבת', at: '2026-10-09T07:42:00Z', read: '2026-10-09T07:42:30Z' }),
+    m({ id: '3', from: 'avi', fromName: 'אבי', to: '', toName: 'אילונה', body: 'אוקיי מחכה ברכב', at: '2026-10-09T07:43:00Z' }),
+    m({ id: '4', from: 'ami', fromName: 'עמי גז', to: '', toName: 'אילונה', body: 'תזכרי להוציא היום את האישורים לקופה', at: '2026-10-09T06:10:00Z', read: '2026-10-09T06:12:00Z' }),
+    m({ id: '5', from: '', fromName: 'אילונה', to: 'shura', toName: 'שורה', body: 'שלחתי לך את הנוהל במייל', at: '2026-10-08T12:00:00Z' }),
+  ]);
+  // נעוצים וסדר ידני (09/10/2026): שלומי נעוץ, ואחרי הנעוצים שורה לפני עמי.
+  previewQc.setQueryData([...STAFF_PREFS_KEY, ''], { pinned: ['shlomi'], sortOrder: ['shura', 'ami'] });
+  VIEWS['staff-chat'] = (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
+      <div className="mx-auto max-w-5xl"><StaffChatPage /></div>
+    </div>
+  );
+}
+
+if (view === 'phonebook' || view === 'stop-edit' || view === 'stop-card') {
+  const today = localDateStr(new Date());
+  previewQc.setQueryData(phoneBookKey('037460839'), [
+    { kind: 'linked', phone_local: '0587777777', label: 'הבת, מיכל', created_by: 'עמי גז', created_at: '2026-10-02T10:00:00Z', priority_pushed_at: '2026-10-02T10:15:00Z' },
+    { kind: 'linked', phone_local: '0501234567', label: null, created_by: 'אולג', created_at: '2026-10-08T07:00:00Z', priority_pushed_at: null },
+    { kind: 'priority', phone_local: '0541111111', label: 'דנה · פיזיותרפיסטית', created_by: null, created_at: '2026-09-01T00:00:00Z', priority_pushed_at: null },
+  ]);
+  previewQc.setQueryData(['stopCallInfo', 'cal1'], {
+    stopId: 'cal1', kind: 'service', order: null, pickup: null,
+    call: { id: 'sc1', docno: 'SC2602269', faultText: 'בדיקת כ"ג: תיקון וחיזוק ברקסים', deviceDesc: 'RUBIX43*43.5S' },
+    media: [], texts: [], officeNote: null,
+    mediaRequest: { state: 'waiting', sentAt: '2026-10-08T07:30:13Z' },
+    urls: {},
+  } satisfies SignedCallInfo);
+  const stop = {
+    stopId: 'cal1', sourceId: 'sc1', sourceType: 'service' as const, status: 'planned' as const,
+    deliveryDate: today, driver: 'אולג' as const, customerName: "אבו ג'אנם הודה", customerNumber: '037460839',
+    address: 'הרצל 5', city: 'חדרה', phone: '0523694547', timeWindowStart: '10:00', timeWindowEnd: '12:00', scheduledBy: 'עמי גז',
+  };
+  VIEWS['phonebook'] = (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
+      <div className="mx-auto max-w-md space-y-4">
+        <div className="rounded-xl border bg-white p-3">
+          <div className="mb-1 text-[12.5px] font-bold text-slate-800">טלפונים (כרטיס הלקוח)</div>
+          <CustomerPhoneBook customerNumber="037460839" mainPhone="0523694547" />
+        </div>
+        <div className="rounded-xl border bg-white p-3">
+          <div className="mb-1 text-[12.5px] font-bold text-slate-800">בלי מספר לקוח</div>
+          <CustomerPhoneBook customerNumber={null} mainPhone="0523694547" />
+        </div>
+        <StopCallInfoSheet calendarStop={stop} open onOpenChange={() => undefined} />
+      </div>
+    </div>
+  );
+  VIEWS['stop-card'] = (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
+      <div className="mx-auto max-w-sm">
+        <RealDnd>
+          <DeliveryCalendar deliveries={[{ id: 'g1', date: today, driver: 'אולג', stops: [stop] }]} />
+        </RealDnd>
+      </div>
+    </div>
+  );
+  VIEWS['stop-edit'] = (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
+      <div className="mx-auto max-w-sm">
+        <RealDnd>
+          <DeliveryCalendar deliveries={[{ id: 'g1', date: today, driver: 'אולג', stops: [stop] }]} />
+        </RealDnd>
+        <EditStopDetailsDialog stop={{ ...stop, address: 'בית ספר חצב' }} open onOpenChange={() => undefined} />
       </div>
     </div>
   );

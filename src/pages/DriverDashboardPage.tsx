@@ -866,10 +866,14 @@ export function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve,
   // ⭐ כרטיס הקריאה (15/09/2026): לחיצה בכל מקום בכרטיס של עצירת שירות, חוץ
   // מהכפתורים והקישורים שממשיכים לעשות את מה שעשו.
   const isServiceCall = stop.sourceType === 'service' && !!stop.serviceCallId;
+  // 08/10/2026 (עמי): גם אספקה (מה לספק) ואיסוף (מה לאסוף) פותחים כרטיס.
+  const hasInfo = isServiceCall
+    || (stop.sourceType === 'delivery' && !!stop.orderId)
+    || (stop.sourceType === 'pickup' && !!stop.pickupId);
   const [infoOpen, setInfoOpen] = useState(false);
   const [chatFromInfo, setChatFromInfo] = useState(false);
   const handleCardClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isServiceCall) return;
+    if (!hasInfo) return;
     const target = e.target as HTMLElement;
     // 🔴 אירוע מתוך פורטל (הצ'אט, דיאלוג) מבעבע בעץ של React עד הכרטיס,
     // אבל הוא לא נמצא בתוך הכרטיס ב-DOM. בלי הבדיקה, סגירת הצ'אט פותחת את הגיליון.
@@ -942,7 +946,7 @@ export function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve,
 
   return (
     <>
-    <Card className={`${bgClass} transition-all ${isServiceCall ? 'cursor-pointer' : ''}`} onClick={handleCardClick}>
+    <Card className={`${bgClass} transition-all ${hasInfo ? 'cursor-pointer' : ''}`} onClick={handleCardClick}>
       <CardContent className="p-4 space-y-3">
         {/* Top row: stop number + source + name */}
         <div className="flex items-start gap-3">
@@ -1180,7 +1184,7 @@ export function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve,
       </CardContent>
     </Card>
 
-    {isServiceCall && (
+    {hasInfo && (
       <>
         <StopCallInfoSheet
           stop={stop}
@@ -1192,7 +1196,11 @@ export function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve,
           }}
         />
         <OrderChatSheet
-          order={{ id: stop.serviceCallId!, customerName: stop.customerName, city: stop.city, kind: 'service' }}
+          order={isServiceCall
+            ? { id: stop.serviceCallId!, customerName: stop.customerName, city: stop.city, kind: 'service' }
+            : stop.sourceType === 'delivery' && stop.orderId
+              ? { id: stop.orderId, customerName: stop.customerName, city: stop.city, kind: 'order' }
+              : { id: stop.id, customerName: stop.customerName, city: stop.city, kind: 'stop' }}
           open={chatFromInfo}
           onOpenChange={setChatFromInfo}
         />

@@ -211,3 +211,13 @@ test('אותיות סופיות מנורמלות בחיפוש התיבה', () =>
   assert.ok(matchesQuery(i, 'חלף'), 'ף סופית לא מצאה פ רגילה');
   assert.ok(matchesQuery(i, 'כרים חלף'), 'רב-מילים עם אות סופית');
 });
+
+// ─── דחיפות (08/10/2026): דחופות למעלה בממתינים, ואז לפי זמן ההמתנה ─────
+test('ממתינים: שיחה דחופה עולה מעל שיחה שמחכה יותר', () => {
+  const a = item({ id: 'a', waiting: ago(200) });
+  const b = item({ id: 'b', waiting: ago(20) });
+  b.urgent = { active: true, reasons: ['ביקור מחר'], manual: false };
+  const c = item({ id: 'c', waiting: ago(90) });
+  c.urgent = { active: true, reasons: ['ממתין מעל שעה'], manual: false };
+  assert.deepEqual(sortItems([a, b, c], 'waiting').map((i) => i.id), ['c', 'b', 'a']);
+});
