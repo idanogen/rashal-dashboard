@@ -104,3 +104,45 @@
 ::-webkit-scrollbar-thumb:hover {
   background: oklch(0.7 0 0);
 }
+
+/*
+ * ⭐ 17/10/2026: גיבוי לדפדפן ישן. הצבעים כאן ב-oklch, ש-Chrome תומך בו רק
+ * מגרסה 111. בטאבלט ישן (Galaxy Tab A, אנדרואיד 9) לחיצה על כפתור בחירה בטופס
+ * "לא עשתה כלום": הבחירה נרשמה, אבל הצבע של המצב הנבחר היה ערך לא חוקי ונעלם.
+ * אותם צבעים בדיוק, ב-hex (חושבו מה-oklch), למי שלא מכיר oklch.
+ */
+@supports not (color: oklch(0 0 0)) {
+  :root {
+    --background: #f9fafb;
+    --foreground: #0a0a0a;
+    --card: #ffffff;
+    --card-foreground: #0a0a0a;
+    --popover: #ffffff;
+    --popover-foreground: #0a0a0a;
+    --primary: #0053b3;
+    --primary-foreground: #fafafa;
+    --secondary: #edf3f8;
+    --secondary-foreground: #171717;
+    --muted: #eff2f5;
+    --muted-foreground: #636363;
+    --accent: #edf3f8;
+    --accent-foreground: #171717;
+    --destructive: #e7000b;
+    --border: #dfe2e4;
+    --input: #dfe2e4;
+    --ring: #0053b3;
+    --chart-1: #0053b3;
+    --chart-2: #009c5e;
+    --chart-3: #d78e00;
+    --chart-4: #9543c6;
+    --chart-5: #f84331;
+    --sidebar: #fafafa;
+    --sidebar-foreground: #0a0a0a;
+    --sidebar-primary: #0053b3;
+    --sidebar-primary-foreground: #fafafa;
+    --sidebar-accent: #edf3f8;
+    --sidebar-accent-foreground: #171717;
+    --sidebar-border: #dfe2e4;
+    --sidebar-ring: #0053b3;
+  }
+}

@@ -346,7 +346,11 @@ function FieldInput({
                 invalid && !str && 'border-destructive',
               )}
             >
-              {opt.label}
+              <span className="inline-flex items-center gap-1.5">
+                {/* ⭐ סימן ולא רק צבע: הבחירה נראית גם בדפדפן שבו הצבע לא נטען. */}
+                {str === opt.value && <Check className="h-4 w-4 shrink-0" />}
+                {opt.label}
+              </span>
             </button>
           ))}
         </div>
