@@ -32,11 +32,17 @@ import { Badge } from '@/components/ui/badge';
 import { SurveysPage } from '@/pages/SurveysPage';
 import { ManagementDashboard } from '@/pages/ManagementDashboard';
 import { CraneChecklistDialog } from '@/components/crane/CraneChecklistDialog';
+import { SignFormDialog } from '@/components/forms/SignFormDialog';
+import { getFormByKey } from '@/lib/forms/registry';
+import { buildContext, buildInitialValues } from '@/lib/forms/prefill';
+import { buildFormHtml, generateFormPdf } from '@/lib/forms/render';
 import { CraneTrainingDialog } from '@/components/crane/CraneTrainingDialog';
 import { CollectionsPage, CustomerDebtDialog } from '@/pages/CollectionsPage';
 import { LoadReportPanel } from '@/components/LoadReportLine';
 import { analyzeLoad } from '@/lib/perf';
 import { AuthProvider } from '@/lib/auth-context';
+import { NewVersionBanner } from '@/components/NewVersionBar';
+import { OtherNumberDialog, SaveContactPrompt } from '@/components/wa/OtherNumberDialog';
 import { GlobalChatProvider } from '@/context/GlobalChatContext';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
@@ -494,7 +500,12 @@ previewQc.setQueryData(['wa-thread', JUMP_PHONE], {
     lastMessageAt: '2026-09-01T15:00:00Z', unansweredSince: null, waiting: false,
     window: { open: false, expiresAt: null, minutesLeft: 0, reason: 'no_inbound' },
   },
-  messages: [],
+  // 🔴 13/10/2026: קישור ארוך בלי רווחים חרג מהבועה. נשמר כאן כבדיקה ויזואלית.
+  messages: [
+    { id: 'm1', direction: 'out', body: 'https://rashal-dashboard.vercel.app/', attachments: [], buttons: [], status: 'read', template_id: null, entity_type: null, entity_key: null, author: 'עמי', sent_at: '2026-09-06T10:00:00Z', kind: 'human' },
+    { id: 'm2', direction: 'out', body: 'https://chromewebstore.google.com/detail/jffiepfabfmngfnemgldanbjdnhmapae?hl=iw&utm_source=ext_sidebar', attachments: [], buttons: [], status: 'read', template_id: null, entity_type: null, entity_key: null, author: 'עמי', sent_at: '2026-09-06T10:01:00Z', kind: 'human' },
+    { id: 'm3', direction: 'in', body: 'מתאים לי, תודה. הנה הקישור ששלחו לי https://example.com/very/long/path/without/any/spaces/at/all/1234567890', attachments: [], buttons: [], status: null, template_id: null, entity_type: null, entity_key: null, author: null, sent_at: '2026-09-06T10:02:00Z', kind: 'human' },
+  ],
 });
 
 // ─── דחיפות בתיבה (08/10/2026): `?view=inbox-urgent` ─────────────────────
@@ -1290,9 +1301,12 @@ if (view === 'staff-chat') {
   );
 }
 
-if (view === 'phonebook' || view === 'stop-edit' || view === 'stop-card') {
+if (view === 'phonebook' || view === 'stop-edit' || view === 'stop-card' || view === 'other-number' || view === 'save-contact') {
   const today = localDateStr(new Date());
+  // ⭐ המתג מוצג רק למשרד (`useIsOfficeEditor`). בלי התחברות, `user` ריק.
+  previewQc.setQueryData(['profile', undefined], { id: 'p', role: 'dispatcher', disabled: false });
   previewQc.setQueryData(phoneBookKey('037460839'), [
+    { kind: 'muted', phone_local: '0523694547', label: null, created_by: 'עמי גז', created_at: '2026-10-13T08:00:00Z', priority_pushed_at: null },
     { kind: 'linked', phone_local: '0587777777', label: 'הבת, מיכל', created_by: 'עמי גז', created_at: '2026-10-02T10:00:00Z', priority_pushed_at: '2026-10-02T10:15:00Z' },
     { kind: 'linked', phone_local: '0501234567', label: null, created_by: 'אולג', created_at: '2026-10-08T07:00:00Z', priority_pushed_at: null },
     { kind: 'priority', phone_local: '0541111111', label: 'דנה · פיזיותרפיסטית', created_by: null, created_at: '2026-09-01T00:00:00Z', priority_pushed_at: null },
@@ -1324,6 +1338,18 @@ if (view === 'phonebook' || view === 'stop-edit' || view === 'stop-card') {
       </div>
     </div>
   );
+  // "שלח למספר אחר" מהתיבה (13/10/2026): בחירת מספר, ואחרי השליחה שאלת השמירה.
+  const otherCustomer = { number: '037460839', name: "אבו ג'אנם הודה", mainPhone: '0523694547' };
+  VIEWS['other-number'] = (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
+      <OtherNumberDialog open onOpenChange={() => undefined} customer={otherCustomer} onContinue={() => undefined} />
+    </div>
+  );
+  VIEWS['save-contact'] = (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
+      <SaveContactPrompt open onOpenChange={() => undefined} customer={otherCustomer} phone="0529876543" />
+    </div>
+  );
   VIEWS['stop-card'] = (
     <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
       <div className="mx-auto max-w-sm">
@@ -1343,6 +1369,66 @@ if (view === 'phonebook' || view === 'stop-edit' || view === 'stop-card') {
       </div>
     </div>
   );
+}
+
+// הפס "יש גרסה חדשה" (13/10/2026) מעל כותרת אמיתית.
+VIEWS['new-version'] = (
+  <div dir="rtl" className="min-h-screen bg-slate-50">
+    <NewVersionBanner />
+    <div className="p-6 pt-24 text-sm text-slate-600">תוכן המסך מתחת לפס</div>
+  </div>
+);
+
+// טפסי הקופות (16/10/2026): `?view=form&form=<key>` לטופס במסך הטלפון,
+// `?view=form-pdf&form=<key>` לדף כפי שייכנס ל-PDF (ממולא בנתוני דמה).
+if (view === 'form' || view === 'form-pdf') {
+  const def = getFormByKey(new URLSearchParams(location.search).get('form') ?? 'moh-repair')!;
+  const lines = [{ name: 'כסא ממונע Q400 M תוצרת SUNRISE MEDICAL', serial: '230243950522921', catalog: 'SRQ400M' }];
+  const ctx = buildContext({
+    customerName: 'כהן משה', phone: '050-1234567', address: 'הרצל 12', city: 'רחובות', customerNumber: '8449321',
+    healthFund: def.fundLabel, docNumber: 'SC2603627', deviceName: 'SRQ400M',
+    deviceDesc: 'כסא ממונע Q400 M', deviceSerial: '230243950522921', installDate: '2024-05-02', faultDesc: 'הכסא לא נוסע אחורה', lines,
+  }, 'דוד גוזלן', new Date(2026, 9, 16));
+  if (view === 'form') {
+    VIEWS.form = (
+      <div dir="rtl" className="min-h-screen bg-slate-50">
+        <SignFormDialog open onOpenChange={() => undefined} definition={def} context={ctx} lines={lines}
+          driverName="דוד גוזלן"
+          // ⭐ בתצוגה המקדימה: ה-PDF האמיתי נוצר ונפתח בלשונית, בלי לשמור כלום.
+          onSubmit={async (p) => {
+            const blob = await generateFormPdf(def, p.values, p.signatures, p.signerNames,
+              { customerName: ctx.customerName, orderNumber: 'SC2603627', driverName: 'דוד גוזלן', signedAt: new Date() }, p.photos);
+            location.href = URL.createObjectURL(blob);
+          }} />
+      </div>
+    );
+  } else {
+    const values = buildInitialValues(def, ctx, lines);
+    for (const sec of def.sections) for (const f of sec.fields) {
+      if (f.type === 'radio' && f.required && f.options) values[f.key] = f.options[0].value;
+      if (f.type === 'id') values[f.key] = '000000018';
+      if (f.key === 'returnReason') values[f.key] = 'החלפת מכשיר';
+      if (f.key === 'returnReasonDetail') values[f.key] = 'הוחלף לכסא ממונע';
+      if (f.key === 'dev1Detail') values[f.key] = 'משענת יד שרוטה';
+    }
+    const sig = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="80"><path d="M10 60 C 60 10, 90 70, 140 30 S 220 60, 290 20" stroke="#1e3a8a" stroke-width="3" fill="none"/></svg>');
+    const html = buildFormHtml(def, values, { customer: sig, driver: sig, guarantor: sig },
+      { customer: 'כהן משה', driver: 'דוד גוזלן', guarantor: 'כהן רחל' },
+      { customerName: 'כהן משה', orderNumber: 'SC2603627', driverName: 'דוד גוזלן', signedAt: new Date(2026, 9, 16, 11, 20), location: { lat: 31.89, lng: 34.81 } });
+    // ⭐ `&compare=1`: הסריקה המקורית של עמי לצד ההעתק שלנו. הסריקות לא בריפו
+    // (טפסים של הקופות); מקומית הן ב-`node_modules/.cache/scans/<key>.png`.
+    const compare = new URLSearchParams(location.search).get('compare');
+    VIEWS['form-pdf'] = compare ? (
+      <div dir="rtl" style={{ background: '#e6e9ee', padding: 16, display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+        <div><div style={{ fontWeight: 700, marginBottom: 6 }}>ההעתק שלנו</div><div dangerouslySetInnerHTML={{ __html: html }} /></div>
+        <div><div style={{ fontWeight: 700, marginBottom: 6 }}>הטופס המקורי של עמי</div>
+          {(def.key === 'meuhedet-delivery' ? [1, 2, 3].map((n) => `${def.key}-p${n}`) : [def.key]).map((f) => (
+            <img key={f} src={`/node_modules/.cache/scans/${f}.png`} style={{ width: 794, background: '#fff', display: 'block', marginBottom: 0 }} />
+          ))}</div>
+      </div>
+    ) : <div style={{ background: '#e6e9ee', padding: 20 }} dangerouslySetInnerHTML={{ __html: html }} />;
+  }
 }
 
 if (view && VIEWS[view]) {

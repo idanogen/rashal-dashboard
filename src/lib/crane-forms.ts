@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { formsClient } from './forms/client';
 import { CRANE_CHECKLIST_VERSION, type CraneVerdict } from './crane-checklist';
 
 /**
@@ -30,7 +30,8 @@ export interface CraneFormInput {
 }
 
 export async function saveCraneForm(input: CraneFormInput): Promise<string> {
-  const { data, error } = await supabase
+  // ⭐ `formsClient`: מעמוד החתימה שנפתח מהאפליקציה זה החיבור באסימון; בווב זה הרגיל.
+  const { data, error } = await formsClient()
     .from('crane_forms')
     .insert({
       form_type: input.formType,
@@ -64,7 +65,7 @@ export async function saveCraneForm(input: CraneFormInput): Promise<string> {
 
 /** הטפסים של מנוף מסוים, החדש קודם. */
 export async function fetchCraneForms(serial: string) {
-  const { data, error } = await supabase
+  const { data, error } = await formsClient()
     .from('crane_forms')
     .select('*')
     .eq('crane_serial', serial)

@@ -45,8 +45,10 @@ as $$
     and coalesce(nullif(trim(o.customer_number), ''), nullif(trim(sc.customer_number), ''),
                  nullif(trim(p.customer_number), ''), nullif(trim(cs.customer_number), ''),
                  nullif(trim(te.customer_number), '')) is not null
+    -- 16/10/2026: טופס חתום נרשם ב-`fileUrls` (PDF בדלי פרטי), לא ב-`imageUrls`.
     and (te.type::text <> 'file_upload'
-         or jsonb_array_length(coalesce(te.metadata->'imageUrls', '[]'::jsonb)) > 0)
+         or jsonb_array_length(coalesce(te.metadata->'imageUrls', '[]'::jsonb)) > 0
+         or jsonb_array_length(coalesce(te.metadata->'fileUrls', '[]'::jsonb)) > 0)
     and (p_custname is null or o.customer_number = p_custname or sc.customer_number = p_custname or te.customer_number = p_custname)
   order by te.created_at asc
   limit greatest(1, least(p_limit, 500));

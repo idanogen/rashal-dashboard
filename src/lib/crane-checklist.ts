@@ -31,8 +31,25 @@ export interface ChecklistSection {
 export const CRANE_CHECKLIST_TITLE = 'רשימת בדיקה לטכנאי, מנוף SUNLIFT (175/150)';
 export const CRANE_CHECKLIST_SUBTITLE = 'מבוסס על מדריך למשתמש של חברת SUNRISE';
 
-/** גרסת הטופס. 🔴 נשמרת עם כל מילוי, כדי שטופס ישן יישאר קריא כפי שנחתם. */
-export const CRANE_CHECKLIST_VERSION = 1;
+/**
+ * גרסת הטופס. 🔴 נשמרת עם כל מילוי, כדי שטופס ישן יישאר קריא כפי שנחתם.
+ * 2 (16/10/2026): הנוסח מהטופס המעודכן שעמי שלח ב-15/10 ("(005).docx"),
+ * שלושה ניסוחים בפרק הבטיחות. הנוסח של גרסה 1 ב-`CRANE_CHECKLIST_V1_TEXT`.
+ */
+export const CRANE_CHECKLIST_VERSION = 2;
+
+/** הפריטים שנוסחו אחרת בגרסה 1 (27/08 עד 16/10/2026), להצגת טופס ישן. */
+export const CRANE_CHECKLIST_V1_TEXT: Record<string, string> = {
+  b4: 'הועברו דגשים לשימוש בערסל בדגש על בדיקת אי היתפרות קרעים, שפשופים ברצועות הערסל',
+  b5: 'הוסבר לפנות ידיים ומהמפעיל החשמלי ומהחלקים הנעים בעת הרמה/הורדה',
+  b7: 'הוסבר כי אין להשתמש במנוף או להטעין באמבטיה / חדר אמבטיה',
+};
+
+/** נוסח הפריט כפי שהיה בגרסה שבה נחתם הטופס. */
+export function itemTextForVersion(id: string, version: number): string | undefined {
+  if (version === 1 && CRANE_CHECKLIST_V1_TEXT[id]) return CRANE_CHECKLIST_V1_TEXT[id];
+  return CRANE_CHECKLIST.flatMap((s) => s.items).find((i) => i.id === id)?.text;
+}
 
 export const CRANE_CHECKLIST: ChecklistSection[] = [
   {
@@ -83,12 +100,12 @@ export const CRANE_CHECKLIST: ChecklistSection[] = [
       },
       {
         id: 'b4',
-        text: 'הועברו דגשים לשימוש בערסל בדגש על בדיקת אי היתפרות קרעים, שפשופים ברצועות הערסל',
+        text: 'הועברו דגשים לשימוש בערסל בדגש על בדיקת אי הימצאות קרעים, שפשופים ברצועות הערסל',
         critical: true,
       },
-      { id: 'b5', text: 'הוסבר לפנות ידיים ומהמפעיל החשמלי ומהחלקים הנעים בעת הרמה/הורדה' },
+      { id: 'b5', text: 'הוסבר לפנות ידיים מהמפעיל החשמלי ומהחלקים הנעים בעת הרמה/הורדה' },
       { id: 'b6', text: 'הוסבר לכוון ולנעול את רגלי המנוף לפני הזזה/העברה' },
-      { id: 'b7', text: 'הוסבר כי אין להשתמש במנוף או להטעין באמבטיה / חדר אמבטיה' },
+      { id: 'b7', text: 'הוסבר כי אין להשתמש במנוף או להטעין אותו במקלחת / חדר אמבטיה' },
       { id: 'b8', text: 'הוסברה טעינת הסוללות התקינה (חיבור למנוף לפני החשמל)' },
     ],
   },

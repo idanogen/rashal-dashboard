@@ -60,8 +60,19 @@ function custUrl(cust: string, sub: string): string {
 }
 
 // מוריד תמונה מה-Storage שלנו ומחזיר data URI (base64) — פורמט שפריוריטי מזהה כקובץ
+// ⭐ 16/10/2026: `sb://<bucket>/<path>` = קובץ בדלי פרטי (טפסים חתומים), שאין לו
+// כתובת ציבורית. מורד עם מפתח השרת במקום fetch.
 async function toDataUri(url: string): Promise<{ dataUri: string; ext: string } | null> {
   try {
+    const sb = url.match(/^sb:\/\/([^/]+)\/(.+)$/);
+    if (sb) {
+      const { data, error } = await supabaseAdmin.storage.from(sb[1]).download(sb[2]);
+      if (error || !data) return null;
+      const mime = data.type || 'application/pdf';
+      const buf = Buffer.from(await data.arrayBuffer());
+      const ext = mime.split('/')[1]?.split(';')[0] ?? 'pdf';
+      return { dataUri: `data:${mime};base64,${buf.toString('base64')}`, ext };
+    }
     const r = await fetch(url);
     if (!r.ok) return null;
     const mime = r.headers.get('content-type') ?? 'image/jpeg';
@@ -108,8 +119,9 @@ async function handleGet(req: VercelRequest, res: VercelResponse) {
     const src = { cust: s(ev.cust), ctx: s(ev.ctx) ?? '' };
     if (!src.cust) { skipped++; continue; } // לא אמור לקרות: הפונקציה במסד כבר סיננה
     const cust = src.cust;
-    const meta = ev.metadata as { imageUrls?: string[] } | null;
-    const images = meta?.imageUrls ?? [];
+    const meta = ev.metadata as { imageUrls?: string[]; fileUrls?: string[]; fileDes?: string } | null;
+    // `fileUrls` = טופס חתום (PDF). נפרד מ-`imageUrls` כדי שהיומן לא יציג אותו כתמונה.
+    const images = [...(meta?.imageUrls ?? []), ...(meta?.fileUrls ?? [])];
 
     if (ev.type === 'comment') {
       writes.push({
@@ -126,7 +138,9 @@ async function handleGet(req: VercelRequest, res: VercelResponse) {
         const file = await toDataUri(url);
         if (!file) continue;
         idx++;
-        const des = `${src.ctx} ${new Date(ev.created_at as string).toLocaleDateString('he-IL')} (${idx}).${file.ext}`.slice(0, 60);
+        const des = (meta?.fileDes
+          ? `${meta.fileDes}.${file.ext}`
+          : `${src.ctx} ${new Date(ev.created_at as string).toLocaleDateString('he-IL')} (${idx}).${file.ext}`).slice(0, 60);
         const body = JSON.stringify({ EXTFILEDES: des, EXTFILENAME: file.dataUri });
         payload += body.length;
         writes.push({ event_id: ev.id, url: custUrl(cust, 'CUSTEXTFILE_SUBFORM'), body });

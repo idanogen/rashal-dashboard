@@ -69,3 +69,12 @@ test('שתי ההכרעות מנוסחות בעברית', () => {
   assert.equal(VERDICT_LABELS.ok, 'תקין להפעלה');
   assert.match(VERDICT_LABELS.out_of_service, /לא תקין/);
 });
+
+test('גרסה 2 (15/10/2026): הנוסח של עמי, והישן נשאר קריא', async () => {
+  const { CRANE_CHECKLIST_VERSION, itemTextForVersion } = await import('../src/lib/crane-checklist.ts');
+  assert.equal(CRANE_CHECKLIST_VERSION, 2);
+  assert.match(itemTextForVersion('b7', 2), /במקלחת \/ חדר אמבטיה/);
+  assert.match(itemTextForVersion('b7', 1), /באמבטיה \/ חדר אמבטיה/);
+  assert.match(itemTextForVersion('b4', 2), /אי הימצאות קרעים/);
+  assert.equal(itemTextForVersion('s1', 1), itemTextForVersion('s1', 2));
+});

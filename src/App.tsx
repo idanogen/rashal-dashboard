@@ -9,6 +9,7 @@ import { SurveysPage } from '@/pages/SurveysPage';
 import { CollectionsPage } from '@/pages/CollectionsPage';
 import { DispatchPage } from '@/pages/DispatchPage';
 import { InspectionsPage } from '@/pages/InspectionsPage';
+import { SignStopPage } from '@/pages/SignStopPage';
 import { RouteNavigationPage } from '@/pages/RouteNavigationPage';
 import { WhatsAppPage } from '@/pages/WhatsAppPage';
 import { InboxPage } from '@/pages/InboxPage';
@@ -70,6 +71,10 @@ function App() {
                 שנעול בחוץ לא יכול לעבור דרך מסך ההתחברות. */}
             <Route path="/reset/:token" element={<ResetPasswordPage />} />
             <Route path="/forgot" element={<ForgotPasswordPage />} />
+            {/* 16/10/2026: חתימה על טופס קופה. מחוץ ל-ProtectedRoute כי מהאפליקציה
+                ההתחברות מגיעה באסימון בכתובת (`#t=`) ולא בסשן של הדפדפן. ההרשאה
+                נבדקת במסד (`stop_form_access`). */}
+            <Route path="/sign/:stopId" element={<SignStopPage />} />
 
             {/* Driver view — minimal layout, mobile-first */}
             <Route
