@@ -25,7 +25,8 @@ const TONE_CLASS: Record<Tone, string> = {
 };
 
 function latest(h: HistoryHit): string {
-  return [h.lastVisitDate, h.lastNoteDate, h.lastCallDate, h.lastOrderDate].filter(Boolean).sort().at(-1) ?? '';
+  // משובץ קדימה קודם לכל: זו העבודה הפעילה.
+  return [h.nextStopDate, h.lastVisitDate, h.lastNoteDate, h.lastCallDate, h.lastOrderDate].filter(Boolean).sort().at(-1) ?? '';
 }
 
 function useDebounced(value: string, ms: number): string {

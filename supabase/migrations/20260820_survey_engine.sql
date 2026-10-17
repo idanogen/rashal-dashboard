@@ -239,49 +239,36 @@ $fn$;
 -- 🔴 חלון השליחה נאכף **כאן** ולא רק ב-scheduled_send_at. שורה שנדחתה לבוקר
 -- ונשארה תקועה הופכת ל"מגיע לה עכשיו" גם ב-23:00, ובלי השער הזה היא היתה
 -- יוצאת בדיוק בשעה שההגנה נועדה למנוע.
-create or replace function public.survey_claim_due(p_limit int default 20)
-returns table (id uuid, token text, customer_name text, phone_e164 text)
+-- 🔴 עודכן 13/10/2026 (מתג ההודעות האוטומטיות, `20261013_auto_messages_switch.sql`). זו הגרסה החיה.
+create or replace function public.survey_claim_due(p_limit integer default 20)
+returns table(id uuid, token text, customer_name text, phone_e164 text, extra_phones text[])
 language plpgsql
 security definer
-set search_path = public
-as $fn$
-declare
-  cfg  public.survey_settings;
-  sent_today int;
-  room int;
+set search_path to 'public'
+as $function$
+declare cfg public.survey_settings; sent_today int; room int;
 begin
-  select * into cfg from public.survey_settings where id;
-
+  select ss.* into cfg from public.survey_settings ss where ss.id;
   if not public.survey_window_open() then return; end if;
-
-  -- תור שפג: לא שולחים סקר על ביקור ששכחנו יום שלם
-  update public.customer_surveys
-     set status = 'skipped', skip_reason = 'פג תוקף בתור'
-   where status = 'pending'
-     and scheduled_send_at < now() - make_interval(hours => cfg.stale_after_hours);
-
-  select count(*) into sent_today
-    from public.customer_surveys
+  update public.customer_surveys set status = 'skipped', skip_reason = 'פג תוקף בתור'
+   where status = 'pending' and scheduled_send_at < now() - make_interval(hours => cfg.stale_after_hours);
+  select count(*) into sent_today from public.customer_surveys
    where sent_at >= date_trunc('day', now() at time zone 'Asia/Jerusalem') at time zone 'Asia/Jerusalem';
-
   room := least(p_limit, greatest(cfg.max_per_day - sent_today, 0));
   if room = 0 then return; end if;
-
   return query
-  update public.customer_surveys s
-     set send_claimed_at = now()
-   where s.id in (
-     select c.id from public.customer_surveys c
-      where c.status = 'pending'
-        and c.scheduled_send_at <= now()
-        and (c.send_claimed_at is null or c.send_claimed_at < now() - interval '10 minutes')
-      order by c.scheduled_send_at
-      limit room
-      for update skip locked
-   )
-  returning s.id, s.token, s.customer_name, s.phone_e164;
-end;
-$fn$;
+  with claimed as (
+    update public.customer_surveys s set send_claimed_at = now()
+     where s.id in (select c.id from public.customer_surveys c
+                     where c.status = 'pending' and c.scheduled_send_at <= now()
+                       and (c.send_claimed_at is null or c.send_claimed_at < now() - interval '10 minutes')
+                     order by c.scheduled_send_at limit room for update skip locked)
+    returning s.id, s.token, s.customer_name, s.phone_e164, s.customer_number),
+  r as (
+    select c.*, public.customer_auto_recipients(c.customer_number, c.phone_e164) as rec from claimed c)
+  select r.id, r.token, r.customer_name, coalesce(r.rec[1], r.phone_e164), coalesce(r.rec[2:], '{}'::text[])
+    from r;
+end; $function$;
 
 -- ── בריאות המנוע ─────────────────────────────────────────────────────────
 -- לא "האם הריצה הצליחה" אלא "האם יצא מה שהיה אמור לצאת".

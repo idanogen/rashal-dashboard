@@ -19,6 +19,11 @@ export interface PhoneBookEntry {
   createdAt?: string | null;
   /** רק ל-linked: מתי נכתב לפריוריטי. null = עדיין ממתין. */
   priorityPushedAt?: string | null;
+  /**
+   * ⭐ המתג (13/10/2026): true = המספר הזה לא מקבל הודעות אוטומטיות של הלקוח.
+   * רלוונטי לראשי ולמקושרים. אנשי קשר מפריוריטי ממילא לא מקבלים.
+   */
+  autoMuted?: boolean;
 }
 
 /**
@@ -65,6 +70,11 @@ export function buildPhoneBook(mainPhone: string | null | undefined, rows: Phone
     out.push({ kind: 'main', phone: main, label: null });
     seen.add(main);
   }
+  // שורות 'muted' הן לא מספרים בספר, רק סימון על הראשי או על מקושר.
+  const muted = new Set(
+    rows.filter((r) => r.kind === 'muted' && r.phone_local).map((r) => String(r.phone_local).replace(/\D/g, '')),
+  );
+  if (out.length && muted.has(out[0].phone)) out[0].autoMuted = true;
   const order: Record<string, number> = { linked: 0, priority: 1 };
   const sorted = [...rows]
     .filter((r) => r.phone_local && (r.kind === 'linked' || r.kind === 'priority'))
@@ -80,6 +90,7 @@ export function buildPhoneBook(mainPhone: string | null | undefined, rows: Phone
       createdBy: r.created_by,
       createdAt: r.created_at,
       priorityPushedAt: r.priority_pushed_at,
+      ...(r.kind === 'linked' ? { autoMuted: muted.has(phone) } : {}),
     });
   }
   return out;
@@ -89,7 +100,7 @@ export function buildPhoneBook(mainPhone: string | null | undefined, rows: Phone
 export function addResultLine(result: string, phone: string): string {
   const p = formatMobile(phone);
   switch (result) {
-    case 'added': return `${p} נוסף. ההודעות האוטומטיות יישלחו גם אליו, והוא ייכתב לפריוריטי כאיש קשר.`;
+    case 'added': return `${p} נוסף. ההודעות האוטומטיות יישלחו גם אליו (אפשר לכבות במתג), והוא ייכתב לפריוריטי כאיש קשר בתוך רבע שעה.`;
     case 'already_linked': return `${p} כבר מקושר ללקוח הזה.`;
     case 'is_main_phone': return `${p} הוא הטלפון הראשי של הלקוח, אין צורך להוסיף.`;
     default: return `${p}: ${result}`;
@@ -101,4 +112,42 @@ export function addErrorLine(message: string): string {
   if (/not a mobile number/i.test(message)) return 'זה לא מספר נייד ישראלי (05X). הודעות וואטסאפ יוצאות רק לנייד.';
   if (/not authorized/i.test(message)) return 'אין לך הרשאה להוסיף טלפון ללקוח הזה.';
   return 'לא הצלחנו להוסיף את המספר. נסו שוב בעוד רגע.';
+}
+
+/** מקבל הודעות אוטומטיות בכלל: הראשי (אם נייד) והמקושרים. */
+function receivesAuto(e: PhoneBookEntry): boolean {
+  return (e.kind === 'main' && /^05\d{8}$/.test(e.phone)) || e.kind === 'linked';
+}
+
+/** ליד אילו מספרים מופיע המתג. */
+export function hasAutoSwitch(e: PhoneBookEntry): boolean {
+  return receivesAuto(e);
+}
+
+/**
+ * 🔴 אי אפשר לכבות את המספר האחרון שמקבל: לקוח בלי אף נמען היה מפסיק לקבל
+ * בקשת תמונה, "בדרך אליך" וסקר בלי שאיש ישים לב. המסד אוכף את אותו כלל.
+ */
+export function isLastAutoRecipient(entries: PhoneBookEntry[], phone: string): boolean {
+  const live = entries.filter((e) => receivesAuto(e) && !e.autoMuted);
+  return live.length === 1 && live[0].phone === phone;
+}
+
+/**
+ * מספר שכבר מוכר ללקוח (ראשי או מקושר). אחרי שליחה למספר כזה לא שואלים
+ * "להוסיף לאנשי הקשר?", כי הוא כבר שם. איש קשר מפריוריטי לא נחשב: הוא לא
+ * מקבל הודעות, והוספה שלו היא החלטה אמיתית.
+ */
+export function isLinkedNumber(entries: PhoneBookEntry[], phone: string | null | undefined): boolean {
+  const p = normalizeMobile(phone);
+  if (!p) return false;
+  return entries.some((e) => (e.kind === 'main' || e.kind === 'linked') && e.phone === p);
+}
+
+/** שגיאת המתג → משפט לנציג. */
+export function autoToggleErrorLine(message: string): string {
+  if (/last recipient/i.test(message)) return 'זה המספר האחרון שמקבל הודעות אוטומטיות. כדי לכבות אותו, הפעילו קודם מספר אחר.';
+  if (/not authorized/i.test(message)) return 'רק המשרד יכול לשנות מי מקבל הודעות אוטומטיות.';
+  if (/not a mobile number/i.test(message)) return 'המתג קיים רק לנייד.';
+  return 'השינוי לא נשמר. נסו שוב בעוד רגע.';
 }

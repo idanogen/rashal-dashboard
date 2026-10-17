@@ -249,15 +249,22 @@ revoke all on function public.wa_remember_contact(text, text, text, text, text) 
 
 -- ─── יעדי ההודעות האוטומטיות: הלקוח וגם בני המשפחה שקישרנו ────────────────
 -- (החלטת עידן 06/09: "אל שניהם"). רק customer_contacts, לא priority_contacts.
+-- 🔴 עודכן 13/10/2026: מכבדת את המתג (`customer_auto_muted`, בקובץ 20261013).
+-- plpgsql ולא sql, כי גוף sql נבדק בזמן היצירה והטבלה נוצרת בקובץ מאוחר יותר.
 create or replace function public.customer_extra_phones(p_customer text)
 returns setof text
-language sql
+language plpgsql
 stable
 security definer
 set search_path = public
 as $$
-  select distinct cc.phone_e164 from public.customer_contacts cc
-   where cc.customer_number = p_customer and cc.phone_e164 ~ '^\+9725\d{8}$';
+begin
+  return query
+    select distinct cc.phone_e164 from public.customer_contacts cc
+     where cc.customer_number = p_customer and cc.phone_e164 ~ '^\+9725\d{8}$'
+       and not exists (select 1 from public.customer_auto_muted m
+                        where m.customer_number = p_customer and m.phone_e164 = cc.phone_e164);
+end;
 $$;
 revoke all on function public.customer_extra_phones(text) from public, anon;
 grant execute on function public.customer_extra_phones(text) to authenticated, service_role;

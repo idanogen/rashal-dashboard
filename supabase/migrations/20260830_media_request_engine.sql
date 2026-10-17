@@ -248,89 +248,56 @@ end;
 $fn$;
 
 -- ── תפיסה לשליחה: ראשונות + תזכורות, עם כל תחזוקת הבית ───────────────────
-create or replace function public.media_claim_due(p_limit int default 20)
-returns table (id uuid, stage text, customer_name text, phone_e164 text, device_name text)
+-- 🔴 עודכן 13/10/2026 (מתג ההודעות האוטומטיות, `20261013_auto_messages_switch.sql`). זו הגרסה החיה.
+create or replace function public.media_claim_due(p_limit integer default 20)
+returns table(id uuid, stage text, customer_name text, phone_e164 text, device_name text, extra_phones text[])
 language plpgsql
 security definer
-set search_path = public
-as $fn$
-declare
-  cfg public.media_request_settings;
-  sent_today int;
-  room int;
+set search_path to 'public'
+as $function$
+declare cfg public.media_request_settings; sent_today int; room int;
 begin
-  -- 🔴 s.id ולא id: לפונקציה יש עמודת OUT בשם id, ו-plpgsql מסרב להכריע
-  -- בין המשתנה לעמודה. נתפס בריצה החיה הראשונה, אחרי שכל הריצות היבשות
-  -- עברו כי הן לא מגיעות ל-claim.
   select * into cfg from public.media_request_settings s where s.id;
-
-  -- קריאה שעזבה את "לביצוע", אורכבה, או שכבר שובץ לה טכנאי ביומן,
-  -- לא מקבלת יותר כלום. ההודעה נועדה לפני שיבוץ, לא אחריו.
-  update public.media_requests m
-     set state = 'cancelled',
-         skip_reason = 'הקריאה כבר לא ממתינה לביצוע'
+  update public.media_requests m set state = 'cancelled', skip_reason = 'הקריאה כבר לא ממתינה לביצוע'
    where m.state in ('pending','first_sent','reminder_sent')
-     and exists (
-       select 1 from public.service_calls c
-        where c.id = m.service_call_id
-          and (c.priority_status is distinct from 'לביצוע' or c.archived_at is not null)
-     );
-
-  update public.media_requests m
-     set state = 'cancelled',
-         skip_reason = 'שובץ טכנאי לפני שהתקבלה תמונה'
+     and exists (select 1 from public.service_calls c where c.id = m.service_call_id and (c.priority_status is distinct from 'לביצוע' or c.archived_at is not null));
+  update public.media_requests m set state = 'cancelled', skip_reason = 'שובץ טכנאי לפני שהתקבלה תמונה'
    where m.state in ('pending','first_sent','reminder_sent')
-     and exists (
-       select 1 from public.calendar_stops s
-        where s.service_call_id = m.service_call_id
-          and s.status in ('planned','in_progress')
-     );
-
-  -- תור שנתקע הרבה מעבר לסביר (72 שעות מכסות גם את סוף השבוע).
-  update public.media_requests
-     set state = 'skipped', skip_reason = 'פג תוקף בתור'
-   where state = 'pending'
-     and scheduled_send_at < now() - make_interval(hours => cfg.stale_after_hours);
-
-  -- גם התזכורת לא עזרה: מסמנים למוקד. זה דגל, לא הודעה, ולכן בלי חלון.
-  update public.media_requests
-     set state = 'no_response'
-   where state = 'reminder_sent'
-     and no_response_due_at is not null
-     and no_response_due_at <= now();
-
+     and exists (select 1 from public.calendar_stops s where s.service_call_id = m.service_call_id and s.status in ('planned','in_progress'));
+  update public.media_requests m set state = 'skipped', skip_reason = 'פג תוקף בתור'
+   where m.state = 'pending' and m.scheduled_send_at < now() - make_interval(hours => cfg.stale_after_hours);
+  update public.media_requests m set state = 'no_response'
+   where m.state = 'reminder_sent' and m.no_response_due_at is not null and m.no_response_due_at <= now();
   if not public.media_window_open() then return; end if;
-
-  select count(*) into sent_today
-    from public.media_requests
-   where first_sent_at >= date_trunc('day', now() at time zone 'Asia/Jerusalem') at time zone 'Asia/Jerusalem'
-      or reminder_sent_at >= date_trunc('day', now() at time zone 'Asia/Jerusalem') at time zone 'Asia/Jerusalem';
-
+  select count(*) into sent_today from public.media_requests m
+   where m.first_sent_at >= date_trunc('day', now() at time zone 'Asia/Jerusalem') at time zone 'Asia/Jerusalem'
+      or m.reminder_sent_at >= date_trunc('day', now() at time zone 'Asia/Jerusalem') at time zone 'Asia/Jerusalem';
   room := least(p_limit, greatest(cfg.max_per_day - sent_today, 0));
   if room = 0 then return; end if;
-
   return query
-  update public.media_requests m
-     set send_claimed_at = now()
-   where m.id in (
-     select x.id from (
-       select r.id, r.scheduled_send_at as due_at from public.media_requests r
-        where r.state = 'pending' and r.scheduled_send_at <= now()
-       union all
-       select r.id, r.reminder_due_at from public.media_requests r
-        where r.state = 'first_sent' and r.reminder_due_at is not null and r.reminder_due_at <= now()
-     ) x
-     join public.media_requests l on l.id = x.id
-     where l.send_claimed_at is null or l.send_claimed_at < now() - interval '10 minutes'
-     order by x.due_at
-     limit room
-     for update of l skip locked
-   )
-  returning m.id,
-            case when m.state = 'pending' then 'first' else 'reminder' end,
-            m.customer_name, m.phone_e164, m.device_name;
-end;
-$fn$;
+  with claimed as (
+    update public.media_requests m set send_claimed_at = now()
+     where m.id in (
+       select x.id from (
+         select r.id, r.scheduled_send_at as due_at from public.media_requests r where r.state = 'pending' and r.scheduled_send_at <= now()
+         union all
+         select r.id, r.reminder_due_at from public.media_requests r where r.state = 'first_sent' and r.reminder_due_at is not null and r.reminder_due_at <= now()
+       ) x
+       join public.media_requests l on l.id = x.id
+       where l.send_claimed_at is null or l.send_claimed_at < now() - interval '10 minutes'
+       order by x.due_at limit room
+       for update of l skip locked)
+    returning m.id, m.state, m.customer_name, m.phone_e164, m.device_name, m.service_call_id),
+  r as (
+    select c.*, public.customer_auto_recipients(
+             (select sc.customer_number from public.service_calls sc where sc.id = c.service_call_id),
+             c.phone_e164) as rec
+      from claimed c)
+  select r.id, case when r.state = 'pending' then 'first' else 'reminder' end, r.customer_name,
+         coalesce(r.rec[1], r.phone_e164), r.device_name,
+         coalesce(r.rec[2:], '{}'::text[])
+    from r;
+end; $function$;
 
 -- ── תשובת הלקוח מהוובהוק ─────────────────────────────────────────────────
 -- תמונה/סרטון: הבקשה נסגרת כ"תמונה התקבלה", גם אם עוד לא שלחנו (הלקוח

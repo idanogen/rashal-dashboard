@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { Loader2, Phone, Plus } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { useAddCustomerContact, useCustomerPhoneBook } from '@/hooks/useCustomerPhoneBook';
+import { useAddCustomerContact, useCustomerPhoneBook, useSetAutoMessages } from '@/hooks/useCustomerPhoneBook';
+import { useIsOfficeEditor } from '@/hooks/useProfile';
 import {
-  addErrorLine, addResultLine, buildPhoneBook, formatMobile, normalizeMobile, type PhoneBookEntry,
+  addErrorLine, addResultLine, autoToggleErrorLine, buildPhoneBook, formatMobile, hasAutoSwitch,
+  isLastAutoRecipient, normalizeMobile, type PhoneBookEntry,
 } from '@/lib/contact-phone';
 
 /**
@@ -31,6 +33,9 @@ export function CustomerPhoneBook({
 }) {
   const { data, isLoading, error } = useCustomerPhoneBook(customerNumber);
   const add = useAddCustomerContact(customerNumber);
+  const toggle = useSetAutoMessages(customerNumber);
+  // ⭐ המתג רק למשרד. טכנאי רואה את המצב (מקבל או לא) בלי לשנות אותו.
+  const canToggle = useIsOfficeEditor();
   const [phone, setPhone] = useState('');
   const [label, setLabel] = useState('');
   const [note, setNote] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
@@ -78,7 +83,31 @@ export function CustomerPhoneBook({
           {entries.length === 0 && (
             <li className="text-xs text-muted-foreground">אין טלפון רשום ללקוח הזה.</li>
           )}
-          {entries.map((e) => <PhoneLine key={`${e.kind}-${e.phone}`} entry={e} compact={compact} />)}
+          {entries.map((e) => (
+            <PhoneLine
+              key={`${e.kind}-${e.phone}`}
+              entry={e}
+              compact={compact}
+              canToggle={canToggle}
+              isLast={isLastAutoRecipient(entries, e.phone)}
+              busy={toggle.isPending && toggle.variables?.phone === e.phone}
+              onToggle={(enabled) => {
+                setNote(null);
+                toggle.mutate(
+                  { phone: e.phone, enabled },
+                  {
+                    onSuccess: () => setNote({
+                      tone: 'ok',
+                      text: enabled
+                        ? `${formatMobile(e.phone)} יקבל שוב את ההודעות האוטומטיות.`
+                        : `${formatMobile(e.phone)} לא יקבל יותר הודעות אוטומטיות של הלקוח הזה.`,
+                    }),
+                    onError: (err) => setNote({ tone: 'err', text: autoToggleErrorLine(err instanceof Error ? err.message : String(err)) }),
+                  },
+                );
+              }}
+            />
+          ))}
         </ul>
       )}
 
@@ -107,8 +136,9 @@ export function CustomerPhoneBook({
           </Button>
         </div>
         <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">
-          מספר שנוסף כאן מקבל את ההודעות האוטומטיות (בקשת תמונות, תזכורת, סקר) יחד עם הטלפון הראשי,
-          ונכתב לפריוריטי כאיש קשר של הלקוח. הטלפון הראשי בכרטיס הלקוח נשאר כמו שהוא בפריוריטי.
+          מספר שנוסף כאן מקבל את ההודעות האוטומטיות (בקשת תמונות, בדרך אליך, סקר) יחד עם הטלפון הראשי,
+          ונכתב לפריוריטי כאיש קשר של הלקוח. המתג ליד כל מספר קובע אם הוא מקבל אותן. הטלפון הראשי בכרטיס
+          הלקוח נשאר כמו שהוא בפריוריטי.
         </p>
         {note && (
           <p className={`mt-1 text-[12px] ${note.tone === 'ok' ? 'text-emerald-700' : 'text-red-700'}`} role="status">
@@ -126,8 +156,18 @@ const KIND_TAG: Record<PhoneBookEntry['kind'], { text: string; cls: string }> = 
   priority: { text: 'איש קשר בפריוריטי', cls: 'bg-slate-100 text-slate-600' },
 };
 
-function PhoneLine({ entry, compact }: { entry: PhoneBookEntry; compact: boolean }) {
+function PhoneLine({
+  entry, compact, canToggle, isLast, busy, onToggle,
+}: {
+  entry: PhoneBookEntry;
+  compact: boolean;
+  canToggle: boolean;
+  isLast: boolean;
+  busy: boolean;
+  onToggle: (enabled: boolean) => void;
+}) {
   const tag = KIND_TAG[entry.kind];
+  const on = !entry.autoMuted;
   return (
     <li className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px]">
       <a href={`tel:${entry.phone}`} dir="ltr" className="flex items-center gap-1 font-mono font-semibold text-blue-700 hover:underline">
@@ -142,6 +182,46 @@ function PhoneLine({ entry, compact }: { entry: PhoneBookEntry; compact: boolean
           {entry.createdBy ? ` · ${entry.createdBy}` : ''}
         </span>
       )}
+      {hasAutoSwitch(entry) && (
+        canToggle ? (
+          <AutoSwitch on={on} busy={busy} lockedOn={on && isLast} onChange={onToggle} />
+        ) : (
+          <span className={`text-[10.5px] ${on ? 'text-emerald-700' : 'text-slate-500'}`}>
+            {on ? 'מקבל הודעות אוטומטיות' : 'לא מקבל הודעות אוטומטיות'}
+          </span>
+        )
+      )}
     </li>
+  );
+}
+
+/**
+ * ⭐ המתג "הודעות אוטומטיות" (עידן, 13/10/2026: "הוא יקבל את ההודעות אבל יהיה
+ * מנגנון שיאפשר להעביר למספר השני"). כבוי = המספר הזה לא מקבל בקשת תמונה,
+ * "בדרך אליך" וסקר של הלקוח. האחרון שדולק נעול, כי לקוח בלי נמען מפסיק
+ * לקבל הכל בשקט, והמסד אוכף את אותו כלל.
+ */
+function AutoSwitch({
+  on, busy, lockedOn, onChange,
+}: { on: boolean; busy: boolean; lockedOn: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label="מקבל הודעות אוטומטיות"
+      disabled={busy || lockedOn}
+      title={lockedOn ? 'זה המספר היחיד שמקבל הודעות אוטומטיות. הפעילו קודם מספר אחר.' : undefined}
+      onClick={() => onChange(!on)}
+      className="ms-auto inline-flex items-center gap-1.5 rounded-full py-0.5 text-[11px] text-slate-600 disabled:cursor-not-allowed disabled:opacity-60"
+    >
+      <span className={on ? 'text-emerald-700' : 'text-slate-500'}>
+        {on ? 'מקבל הודעות אוטומטיות' : 'לא מקבל הודעות אוטומטיות'}
+      </span>
+      <span className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors ${on ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+        <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all ${on ? 'start-3.5' : 'start-0.5'}`} />
+      </span>
+      {busy && <Loader2 className="h-3 w-3 animate-spin" />}
+    </button>
   );
 }

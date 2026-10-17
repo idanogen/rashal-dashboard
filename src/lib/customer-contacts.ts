@@ -23,3 +23,16 @@ export async function addCustomerContact(customerNumber: string, phone: string, 
   if (error) throw new Error(error.message);
   return data as AddContactResult;
 }
+
+/**
+ * המתג "מקבל הודעות אוטומטיות" (`customer_set_auto_messages`, 13/10/2026).
+ * השגיאות: 'last recipient' · 'not authorized' · 'not a mobile number'.
+ */
+export async function setAutoMessages(customerNumber: string, phone: string, enabled: boolean): Promise<void> {
+  const { error } = await supabase.rpc('customer_set_auto_messages', {
+    p_customer: customerNumber,
+    p_phone: phone,
+    p_enabled: enabled,
+  });
+  if (error) throw new Error(error.message);
+}

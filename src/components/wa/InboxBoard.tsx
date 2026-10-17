@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { TemplateSendDialog } from '@/components/wa/TemplateSendDialog';
 import { CustomerCardButton } from '@/components/customer/CustomerCardSheet';
 import { LinkCustomerDialog } from '@/components/wa/LinkCustomerDialog';
+import { OtherNumberDialog, SaveContactPrompt, type OtherNumberCustomer } from '@/components/wa/OtherNumberDialog';
 import { linkConversation, setConversationLanguage, WA_LANG_LABELS, type SuggestedCustomer,
   markUrgent,
 } from '@/lib/wa-inbox';
@@ -366,14 +367,22 @@ function Bubble({ m }: { m: WaMessage }) {
   return (
     <div className={`flex ${out ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`relative max-w-[78%] rounded-2xl px-3 py-2 text-sm shadow-sm ${
+        className={`relative min-w-0 max-w-[78%] rounded-2xl px-3 py-2 text-sm shadow-sm ${
           m.survey?.answeredAt ? 'mb-3.5 ' : ''
         }${
           out ? 'rounded-ee-sm bg-emerald-100' : 'rounded-es-sm bg-white'
         }`}
       >
         {who && <div className="mb-0.5 text-[11px] font-semibold text-emerald-700">{who}</div>}
-        {m.body && <div className="whitespace-pre-wrap leading-relaxed">{m.body}</div>}
+        {/*
+          🔴 13/10/2026 (עידן, צילום): קישור ארוך של גוגל בלי רווחים חרג מהבועה
+          ודחף את השרשור לגלילה הצידה, וקישור לבד הוצג "/https://...".
+          `[overflow-wrap:anywhere]` שובר מילה ארוכה בתוך הבועה, ו-`dir="auto"`
+          נותן להודעה שמתחילה בלועזית כיוון משמאל לימין (הלוכסן נשאר בסוף).
+        */}
+        {m.body && (
+          <div dir="auto" className="whitespace-pre-wrap leading-relaxed [overflow-wrap:anywhere]">{m.body}</div>
+        )}
         {atts.map((a) =>
           a.kind === 'image' && a.ready ? (
             <ImageThumb key={a.index} messageId={m.id} att={a} />
@@ -669,7 +678,16 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
    * 🔴 **המפתח הוא `threadKey` ולא מפתח משלו**, ולכן מה שנטען כאן משרת
    * גם את פתיחת השיחה מיד אחרי השליחה, בלי משיכה שנייה.
    */
-  const [outreach, setOutreach] = useState<{ phone: string; name: string } | null>(null);
+  const [outreach, setOutreach] = useState<{
+    phone: string;
+    name: string;
+    /** ⭐ נשלח מ"שלח למספר אחר": אחרי השליחה שואלים אם להוסיף לאנשי הקשר. */
+    customer?: OtherNumberCustomer;
+    known?: boolean;
+  } | null>(null);
+  // "שלח למספר אחר" (13/10/2026): חלון בחירת המספר, ואחרי השליחה שאלת השמירה.
+  const [otherFor, setOtherFor] = useState<OtherNumberCustomer | null>(null);
+  const [savePrompt, setSavePrompt] = useState<{ customer: OtherNumberCustomer; phone: string } | null>(null);
   const outreachThread = useQuery({
     queryKey: threadKey(outreach?.phone ?? null),
     queryFn: () => fetchThread(outreach!.phone),
@@ -925,6 +943,23 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
                             שלח תבנית
                           </Button>
                         )}
+                        {c.customer_number && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 px-2 text-[11px] text-slate-600"
+                            title="שליחת תבנית למספר שאינו הטלפון שבכרטיס"
+                            onClick={() =>
+                              setOtherFor({
+                                number: c.customer_number as string,
+                                name: c.customer_name || '',
+                                mainPhone: c.phone_local ?? null,
+                              })
+                            }
+                          >
+                            למספר אחר
+                          </Button>
+                        )}
                         <CustomerCardButton
                           customerNumber={c.customer_number}
                           phone={c.phone_local}
@@ -1034,6 +1069,20 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
+                {head.customerNumber && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 gap-1 border-slate-300 text-slate-700"
+                    title="שליחת תבנית למספר אחר של הלקוח הזה"
+                    onClick={() =>
+                      setOtherFor({ number: head.customerNumber as string, name: head.title })
+                    }
+                  >
+                    <Send className="h-3 w-3" />
+                    למספר אחר
+                  </Button>
+                )}
                 {/* סימון ידני "דחוף" (08/10/2026): נרשם מי ומתי, ויורד לבד כשעונים ללקוח. */}
                 {thread.data?.conversation?.id && (
                   <Button
@@ -1267,7 +1316,35 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
             setTab('all');
             setSelected(phone);
           }
+          // ⭐ מספר חדש ללקוח: שואלים אם לשמור אותו, אצלנו ובפריוריטי.
+          if (phone && outreach?.customer && !outreach.known) {
+            setSavePrompt({ customer: outreach.customer, phone });
+          }
         }}
+      />
+
+      <OtherNumberDialog
+        open={Boolean(otherFor)}
+        onOpenChange={(v) => { if (!v) setOtherFor(null); }}
+        customer={otherFor}
+        onContinue={(phone, known, mainPhone) => {
+          const customer = otherFor ? { ...otherFor, mainPhone } : undefined;
+          setOtherFor(null);
+          setOutreach({ phone, name: customer?.name ?? '', customer, known });
+        }}
+      />
+      <SaveContactPrompt
+        open={Boolean(savePrompt)}
+        onOpenChange={(v) => {
+          if (v) return;
+          const phone = savePrompt?.phone;
+          setSavePrompt(null);
+          // השיחה החדשה מזוהה כשל הלקוח רק אחרי ההוספה, ולכן נשאלת מחדש.
+          if (phone) void qc.invalidateQueries({ queryKey: threadKey(phone) });
+          void qc.invalidateQueries({ queryKey: [WA_INBOX_KEY] });
+        }}
+        customer={savePrompt?.customer ?? null}
+        phone={savePrompt?.phone ?? null}
       />
     </>
   );

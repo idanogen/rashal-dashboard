@@ -21,6 +21,7 @@
 -- 'linked'   = customer_contacts: יעד להודעות אוטומטיות, נכתב לפריוריטי.
 -- 'priority' = אנשי קשר מפריוריטי (priority_contacts): לזיהוי נכנס בלבד,
 --              לא יעד להודעות (החלטת 06/09: לרוב פיזיותרפיסט או הנהלת חשבונות).
+-- 🔴 עודכן 13/10/2026 (מתג ההודעות האוטומטיות, `20261013_auto_messages_switch.sql`). זו הגרסה החיה.
 create or replace function public.customer_phone_book(p_customer text)
 returns table (
   kind               text,
@@ -55,9 +56,12 @@ begin
       ) as p(phone_local)
      where pc.custname = p_customer
        and p.phone_local is not null and p.phone_local <> ''
-       -- מספר שכבר קישרנו לא מופיע פעמיים.
        and not exists (select 1 from public.customer_contacts x
                         where x.customer_number = p_customer and x.phone_local = p.phone_local)
+    union all
+    select 'muted'::text, public.wa_normalize_phone(m.phone_e164), null::text, m.muted_by, m.muted_at, null::timestamptz
+      from public.customer_auto_muted m
+     where m.customer_number = p_customer
      order by 1, 5;
 end;
 $$;

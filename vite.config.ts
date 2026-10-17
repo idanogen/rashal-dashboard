@@ -3,6 +3,8 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 import { execSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
 
 /**
  * 🔴🔴 **מזהה הבנייה, ולמה הוא קיים.**
@@ -24,19 +26,43 @@ import { execSync } from 'node:child_process'
  * 🔴 מזהה לפי הקומיט ולא לפי שעת הבנייה, כדי שפריסה חוזרת של אותו קוד לא
  * תבקש מכולם לרענן לחינם.
  */
-function buildId(): string {
-  const fromCi = process.env.VERCEL_GIT_COMMIT_SHA
-  if (fromCi) return fromCi.slice(0, 12)
-  try {
-    return execSync('git rev-parse --short=12 HEAD', {
-      stdio: ['ignore', 'pipe', 'ignore'],
-    })
-      .toString()
-      .trim()
-  } catch {
-    // בנייה מחוץ ל-git: שעת הבנייה. עדיף מזהה משתנה מדי על פני מזהה קבוע.
-    return `t${Date.now()}`
+/**
+ * 🔴 13/10/2026: פריסה מעץ שלא קומט (`vercel --prod` מהמחשב) קיבלה את המזהה
+ * של הקומיט הקודם, ולכן הפס "יש גרסה חדשה" לא עלה אצל אף אחד. הבנייה רצה
+ * בשרתי Vercel בלי `.git`, ולכן אי אפשר לשאול את git מה השתנה. במקום זה:
+ * טביעה של קבצי המקור עצמם, אחרי הקומיט. אותו תוכן = אותו מזהה (בלי רענון
+ * לחינם), כל שינוי בקוד = מזהה חדש.
+ */
+function sourceFingerprint(): string {
+  const h = createHash('sha1')
+  const walk = (dir: string) => {
+    let entries: string[] = []
+    try { entries = readdirSync(dir).sort() } catch { return }
+    for (const name of entries) {
+      const full = path.join(dir, name)
+      if (statSync(full).isDirectory()) walk(full)
+      else h.update(path.relative(__dirname, full)).update(readFileSync(full))
+    }
   }
+  for (const d of ['src', 'public']) walk(path.resolve(__dirname, d))
+  for (const f of ['index.html', 'preview.html', 'package.json']) {
+    try { h.update(f).update(readFileSync(path.resolve(__dirname, f))) } catch { /* אין קובץ */ }
+  }
+  return h.digest('hex').slice(0, 6)
+}
+
+function buildId(): string {
+  let head = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) ?? ''
+  if (!head) {
+    try {
+      head = execSync('git rev-parse --short=12 HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+        .toString()
+        .trim()
+    } catch {
+      head = 'nogit'
+    }
+  }
+  return `${head}-${sourceFingerprint()}`
 }
 
 /**

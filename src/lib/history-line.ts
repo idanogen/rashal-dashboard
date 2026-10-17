@@ -88,10 +88,20 @@ export interface HistoryHit {
   lastCallBy: string | null;
   lastCallType: string | null;
   lastNoteDate: string | null;
+  /** סטטוס התעודה האחרונה (סופית / טיוטא). מבוטלת לא מגיעה לכאן. */
+  lastNoteStatus?: string | null;
   openOrders: number;
   openCalls: number;
   deliveries: number;
+  /** העצירה הקרובה ביומן (מהיום והלאה, עוד לא בוצעה). */
+  nextStopDate?: string | null;
+  nextStopDriver?: string | null;
+  nextStopType?: string | null;
 }
+
+const STOP_KIND: Record<string, string> = {
+  delivery: 'לאספקה', service: 'לביקור טכנאי', pickup: 'לאיסוף', inspection: 'לבדיקה',
+};
 
 const ORDER_OPEN = new Set(['ממתין לתאום', 'תואמה אספקה', 'אין במלאי', 'ממתין לליקוט']);
 const CALL_OPEN = new Set(['קריאה חדשה', 'תואם ביקור']);
@@ -102,9 +112,18 @@ const CALL_OPEN = new Set(['קריאה חדשה', 'תואם ביקור']);
  * שהוא קורא על אספקה מ-2024.
  */
 export function historyHitLine(h: HistoryHit): { text: string; tone: Tone } {
+  // 🔴 15/10/2026 (עמי, רבקה קשטיאל): לקוח שכבר משובץ הופיע כ"הזמנה פתוחה ·
+  // אספקה 15/10", והסדרן חשב שהוא לא בסידור. עצירה קרובה נאמרת ראשונה, והיא
+  // מכסה הזמנה אחת (עצירת אספקה) או קריאה אחת (עצירת שירות) מהפתוחות.
+  const next = h.nextStopDate
+    ? [`משובץ ${STOP_KIND[h.nextStopType ?? ''] ?? ''} ${shortDate(h.nextStopDate)}`.replace(/\s+/g, ' '), h.nextStopDriver]
+        .filter(Boolean).join(' · ')
+    : null;
+  const ordersLeft = Math.max(0, h.openOrders - (next && h.nextStopType === 'delivery' ? 1 : 0));
+  const callsLeft = Math.max(0, h.openCalls - (next && h.nextStopType === 'service' ? 1 : 0));
   const open: string[] = [];
-  if (h.openOrders > 0) open.push(plural(h.openOrders, 'הזמנה פתוחה', 'הזמנות פתוחות'));
-  if (h.openCalls > 0) open.push(plural(h.openCalls, 'קריאה פתוחה', 'קריאות פתוחות'));
+  if (ordersLeft > 0) open.push(plural(ordersLeft, 'הזמנה פתוחה', 'הזמנות פתוחות'));
+  if (callsLeft > 0) open.push(plural(callsLeft, 'קריאה פתוחה', 'קריאות פתוחות'));
 
   const events: Array<{ d: string; text: string; tone: Tone }> = [];
   if (h.lastVisitDate) {
@@ -116,7 +135,13 @@ export function historyHitLine(h: HistoryHit): { text: string; tone: Tone } {
     });
   }
   if (h.lastNoteDate) {
-    events.push({ d: h.lastNoteDate, text: `אספקה ${shortDate(h.lastNoteDate)}`, tone: 'good' });
+    // טיוטא = התעודה הוכנה ועוד לא סופקה. "אספקה" רק על סופית.
+    const draft = h.lastNoteStatus === 'טיוטא';
+    events.push({
+      d: h.lastNoteDate,
+      text: `${draft ? 'תעודה מוכנה' : 'אספקה'} ${shortDate(h.lastNoteDate)}`,
+      tone: draft ? 'neutral' : 'good',
+    });
   }
   if (h.lastCallDate) {
     // סטטוס ריק (ייבוא היסטורי בלי סטטוס שלנו) אינו "פתוחה": לא טוענים מה שלא יודעים.
@@ -139,7 +164,7 @@ export function historyHitLine(h: HistoryHit): { text: string; tone: Tone } {
   }
   events.sort((a, b) => (a.d < b.d ? 1 : a.d > b.d ? -1 : 0));
   const last = events[0];
-  const text = [...open, last?.text].filter(Boolean).join(' · ');
+  const text = [next, ...open, last?.text].filter(Boolean).join(' · ');
   if (!text) return { text: 'מוכר לנו, בלי אירועים רשומים', tone: 'new' };
-  return { text, tone: open.length ? 'bad' : (last?.tone ?? 'neutral') };
+  return { text, tone: open.length ? 'bad' : next ? 'good' : (last?.tone ?? 'neutral') };
 }

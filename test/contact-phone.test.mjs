@@ -59,3 +59,51 @@ test('תוצאת ההוספה והשגיאות במילים של הנציג', ()
   assert.match(addErrorLine('not authorized'), /הרשאה/);
   assert.match(addErrorLine('boom'), /נסו שוב/);
 });
+
+// ─── המתג "הודעות אוטומטיות" ו"שלח למספר אחר" (13/10/2026) ───────────────
+import { hasAutoSwitch, isLastAutoRecipient, isLinkedNumber, autoToggleErrorLine } from '../src/lib/contact-phone.ts';
+
+const row = (kind, phone_local, extra = {}) => ({
+  kind, phone_local, label: null, created_by: null, created_at: null, priority_pushed_at: null, ...extra,
+});
+
+test('שורת muted מסמנת את הראשי ואת המקושר, ולא נכנסת לספר כמספר', () => {
+  const book = buildPhoneBook('0521111111', [
+    row('linked', '0522222222'),
+    row('priority', '0523333333'),
+    row('muted', '0521111111'),
+  ]);
+  assert.deepEqual(book.map((e) => [e.kind, e.phone, !!e.autoMuted]), [
+    ['main', '0521111111', true],
+    ['linked', '0522222222', false],
+    ['priority', '0523333333', false],
+  ]);
+});
+
+test('מתג רק לראשי נייד ולמקושר, לא לאיש קשר מפריוריטי ולא לקווי', () => {
+  const book = buildPhoneBook('035551234', [row('linked', '0522222222'), row('priority', '0523333333')]);
+  assert.deepEqual(book.map(hasAutoSwitch), [false, true, false]);
+});
+
+test('האחרון שדולק נעול, וכשיש עוד אחד דולק אפשר לכבות', () => {
+  const both = buildPhoneBook('0521111111', [row('linked', '0522222222')]);
+  assert.equal(isLastAutoRecipient(both, '0521111111'), false);
+  const mainOff = buildPhoneBook('0521111111', [row('linked', '0522222222'), row('muted', '0521111111')]);
+  assert.equal(isLastAutoRecipient(mainOff, '0522222222'), true);
+  assert.equal(isLastAutoRecipient(mainOff, '0521111111'), false);
+});
+
+test('מספר מוכר = ראשי או מקושר, בכל צורת הקלדה. איש קשר מפריוריטי אינו מוכר', () => {
+  const book = buildPhoneBook('0521111111', [row('linked', '0522222222'), row('priority', '0523333333')]);
+  assert.equal(isLinkedNumber(book, '+972 52-111-1111'), true);
+  assert.equal(isLinkedNumber(book, '052-2222222'), true);
+  assert.equal(isLinkedNumber(book, '0523333333'), false);
+  assert.equal(isLinkedNumber(book, '0529999999'), false);
+  assert.equal(isLinkedNumber(book, 'שטויות'), false);
+});
+
+test('שגיאות המתג במילים', () => {
+  assert.match(autoToggleErrorLine('last recipient'), /האחרון/);
+  assert.match(autoToggleErrorLine('not authorized'), /המשרד/);
+  assert.match(autoToggleErrorLine('boom'), /לא נשמר/);
+});

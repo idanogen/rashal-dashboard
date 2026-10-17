@@ -9,6 +9,12 @@ alter table public.delivery_notes add column if not exists distributed_on date;
 -- ⭐ חיפוש היסטוריה: כל הלקוחות המוכרים שמתאימים לחיפוש, מכל השנים, עם
 -- האירוע האחרון שלהם. עוטף את customer_search (שכבר יודע מספר/טלפון/שם/מסמך
 -- וביקור אחרון מהיומן) ומצרף את המסמך האחרון מפריוריטי.
+-- 🔴 15/10/2026 (עמי, רבקה קשטיאל וסימי): השורה אמרה "אספקה" על תעודה בטיוטא
+-- (שעוד לא סופקה) ועל תעודה מבוטלת, ולא אמרה שהלקוח כבר משובץ. מעכשיו: מבוטלת
+-- לא נספרת, טיוטא חוזרת עם הסטטוס שלה ("תעודה מוכנה"), והעצירה הקרובה ביומן
+-- (planned/in_progress מהיום והלאה) חוזרת כ-next_stop_*. שינוי בצורת התשובה
+-- מחייב drop.
+drop function if exists public.history_search(text, integer);
 create or replace function public.history_search(p_query text, p_limit integer default 8)
 returns table(
   customer_number text, customer_name text, phone text, city text,
@@ -16,16 +22,18 @@ returns table(
   last_visit_date date, last_visit_driver text, last_visit_outcome text,
   last_order_date date, last_order_status text, last_order_ref text,
   last_call_date date, last_call_status text, last_call_ref text, last_call_by text, last_call_type text,
-  last_note_date date,
-  open_orders integer, open_calls integer, deliveries integer
+  last_note_date date, last_note_status text,
+  open_orders integer, open_calls integer, deliveries integer,
+  next_stop_date date, next_stop_driver text, next_stop_type text
 )
 language sql stable security definer set search_path = public as $$
   select cs.customer_number, cs.customer_name, cs.phone, cs.city, cs.match_kind, cs.score,
          cs.last_visit_date, cs.last_visit_driver, cs.last_visit_outcome,
          lo.d, lo.st, lo.ref,
          lc.d, lc.st, lc.ref, lc.by, lc.ct,
-         ln.d,
-         coalesce(oo.n, 0)::int, coalesce(oc.n, 0)::int, coalesce(dn.n, 0)::int
+         ln.d, ln.st,
+         coalesce(oo.n, 0)::int, coalesce(oc.n, 0)::int, coalesce(dn.n, 0)::int,
+         ns.d, ns.dr, ns.t
     from public.customer_search(p_query, least(greatest(coalesce(p_limit, 8), 1), 20)) cs
     left join lateral (
       select o.created_at::date d, o.order_status::text st, o.priority_order_id ref
@@ -45,9 +53,9 @@ language sql stable security definer set search_path = public as $$
          and coalesce(c.archived_reason,'') <> 'webhook-legacy-20260805'
        order by c.created_at desc limit 1) lc on cs.customer_number is not null
     left join lateral (
-      select coalesce(n.distributed_on, n.doc_date) d
+      select coalesce(n.distributed_on, n.doc_date) d, n.status::text st
         from public.delivery_notes n
-       where n.customer_number = cs.customer_number
+       where n.customer_number = cs.customer_number and coalesce(n.status,'') <> 'מבוטלת'
        order by n.doc_date desc limit 1) ln on cs.customer_number is not null
     left join lateral (
       select count(*) n from public.orders o
@@ -59,7 +67,13 @@ language sql stable security definer set search_path = public as $$
          and c.service_call_status::text in ('קריאה חדשה','תואם ביקור')) oc on cs.customer_number is not null
     left join lateral (
       select count(*) n from public.delivery_notes n
-       where n.customer_number = cs.customer_number and coalesce(n.status,'') <> 'מבוטלת') dn on cs.customer_number is not null
+       where n.customer_number = cs.customer_number and n.status = 'סופית') dn on cs.customer_number is not null
+    left join lateral (
+      select s.delivery_date d, s.driver dr, s.source_type::text t
+        from public.calendar_stops s
+       where s.customer_number = cs.customer_number
+         and s.status in ('planned','in_progress') and s.delivery_date >= current_date
+       order by s.delivery_date, s.sequence nulls last limit 1) ns on cs.customer_number is not null
 $$;
 revoke all on function public.history_search(text, integer) from public;
 revoke all on function public.history_search(text, integer) from anon;

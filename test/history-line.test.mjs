@@ -70,3 +70,27 @@ test('an unknown call status is neither open nor closed', () => {
   assert.equal(r.text, 'קריאת שירות 31/08/22 · טכנאי אלכס');
   assert.equal(r.tone, 'neutral');
 });
+
+// 15/10/2026, עמי: רבקה קשטיאל הופיעה כ"הזמנה פתוחה · אספקה 15/10/26" כשהיא כבר
+// משובצת ל-18/10 אצל דוד, והתעודה בטיוטא בכלל לא סופקה.
+test('a scheduled customer reads as scheduled first, and the stop covers the open order', () => {
+  const r = historyHitLine({
+    ...hit, customerName: 'קשטיאל רבקה', lastOrderDate: '2026-10-15', lastOrderStatus: 'תואמה אספקה',
+    lastNoteDate: '2026-10-15', lastNoteStatus: 'טיוטא', openOrders: 1,
+    nextStopDate: '2026-10-18', nextStopDriver: 'דוד חסידים', nextStopType: 'delivery',
+  });
+  assert.equal(r.text, 'משובץ לאספקה 18/10/26 · דוד חסידים · תעודה מוכנה 15/10/26');
+  assert.equal(r.tone, 'good');
+  assert.doesNotMatch(r.text, /הזמנה פתוחה|אספקה 15/);
+});
+
+test('a scheduled delivery does not hide an open call', () => {
+  const r = historyHitLine({ ...hit, openOrders: 1, openCalls: 1, nextStopDate: '2026-10-18', nextStopDriver: 'דוד', nextStopType: 'delivery' });
+  assert.match(r.text, /^משובץ לאספקה 18\/10\/26 · דוד · קריאה פתוחה/);
+  assert.equal(r.tone, 'bad');
+});
+
+test('a final delivery note still reads as a delivery', () => {
+  const r = historyHitLine({ ...hit, lastOrderDate: null, lastOrderStatus: null, openOrders: 0, lastNoteDate: '2025-06-17', lastNoteStatus: 'סופית' });
+  assert.equal(r.text, 'אספקה 17/06/25');
+});

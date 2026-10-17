@@ -13,8 +13,9 @@ type HitRow = {
   last_order_date: string | null; last_order_status: string | null; last_order_ref: string | null;
   last_call_date: string | null; last_call_status: string | null; last_call_ref: string | null;
   last_call_by: string | null; last_call_type: string | null;
-  last_note_date: string | null;
+  last_note_date: string | null; last_note_status: string | null;
   open_orders: number; open_calls: number; deliveries: number;
+  next_stop_date: string | null; next_stop_driver: string | null; next_stop_type: string | null;
 };
 
 /** כל הלקוחות המוכרים שמתאימים לחיפוש, מכל השנים, עם האירוע האחרון. */
@@ -40,9 +41,13 @@ export async function historySearch(query: string, limit = 8): Promise<HistoryHi
     lastCallBy: r.last_call_by,
     lastCallType: r.last_call_type,
     lastNoteDate: r.last_note_date,
+    lastNoteStatus: r.last_note_status ?? null,
     openOrders: r.open_orders ?? 0,
     openCalls: r.open_calls ?? 0,
     deliveries: r.deliveries ?? 0,
+    nextStopDate: r.next_stop_date ?? null,
+    nextStopDriver: r.next_stop_driver ?? null,
+    nextStopType: r.next_stop_type ?? null,
   }));
 }
 

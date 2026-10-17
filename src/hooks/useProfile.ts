@@ -35,6 +35,16 @@ export function useIsManagement(): boolean {
   return profile.role === 'admin' || profile.role === 'management';
 }
 
+/**
+ * משרד שעובד: מי שמשנה הגדרות של לקוח (המתג של ההודעות האוטומטיות).
+ * לא צופה ולא נהג. זהה לבדיקה ב-`customer_set_auto_messages`.
+ */
+export function useIsOfficeEditor(): boolean {
+  const { data: profile } = useCurrentProfile();
+  if (!profile || profile.disabled) return false;
+  return ['admin', 'team_manager', 'dispatcher', 'management'].includes(profile.role);
+}
+
 export function useIsAdmin(): boolean {
   const { data: profile } = useCurrentProfile();
   return profile?.role === 'admin' && !profile.disabled;
