@@ -67,6 +67,7 @@ export const maccabiDelivery: FormDefinition = {
       ],
     },
   ],
+  declarationStyle: 'plain',
   declarations: ['אני החתום מטה, מאשר שקיבלתי את הפריט במצב תקין.'],
   signatures: [{ key: 'customer', label: 'חתימת המקבל', nameLabel: 'שם המקבל', required: true }],
 };

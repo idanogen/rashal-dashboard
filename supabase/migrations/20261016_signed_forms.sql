@@ -239,7 +239,9 @@ begin
     now(), v_by, p_lat, p_lng, p_pdf_path, case when v_cust is not null then v_event end);
 
   -- בלי מספר לקוח אין לאן לצרף בפריוריטי. הטופס נשמר אצלנו בכל מקרה.
-  if v_cust is not null then
+  -- ⭐ 17/10/2026: גם מספר לקוח שאין לו כרטיס אצלנו (לקוח בדיקה, מספר שגוי)
+  -- לא נשלח: הכתיבה הייתה נכשלת ב-404 וממלאת את התור והתראות `push-parked`.
+  if v_cust is not null and exists (select 1 from public.priority_customers where custname = v_cust) then
     insert into public.timeline_events (
       id, order_id, service_call_id, calendar_stop_id, customer_number, type, user_id, user_name,
       content, files, metadata)

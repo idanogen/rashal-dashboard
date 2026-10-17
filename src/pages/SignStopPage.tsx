@@ -1,44 +1,44 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { CheckCircle2, FileSignature, Loader2, TriangleAlert } from 'lucide-react';
+import { CheckCircle2, FileSignature, TriangleAlert, Wrench } from 'lucide-react';
 import { toast } from 'sonner';
-import { SignFormDialog } from '@/components/forms/SignFormDialog';
+import { SignFlow } from '@/components/forms/SignFlow';
+import { FormLogo } from '@/components/forms/FormLogo';
 import { CraneChecklistDialog } from '@/components/crane/CraneChecklistDialog';
 import { CraneTrainingDialog } from '@/components/crane/CraneTrainingDialog';
 import { formsClient, openedFromApp } from '@/lib/forms/client';
 import { loadFormContext, type LoadedFormContext } from '@/lib/forms/context';
-import {
-  FORM_DEFINITIONS, FORM_KIND_LABEL, findForm, formKindForStop, getFormByKey, noFormReason,
-} from '@/lib/forms/registry';
+import { FORM_KIND_LABEL, findForm, formKindForStop, noFormReason } from '@/lib/forms/registry';
 import { saveSignedForm } from '@/lib/forms/save';
 
 /**
  * עמוד החתימה על עצירה: `/sign/<stop_id>`.
  *
  * נפתח מהאפליקציה של הטכנאי (עם `#t=`, ראה `lib/forms/client.ts`) או ממסך
- * הנהג בווב (עם ההתחברות הרגילה). הטופס נבחר לבד לפי סוג העצירה והקופה,
- * ואפשר להחליף ידנית לטופס אחר מאותו סוג כשהקופה בפריוריטי לא נכונה.
+ * הנהג בווב (עם ההתחברות הרגילה).
  *
- * ⭐ `?return=<url>`: לאן לחזור בסוף. האפליקציה מעבירה `rashaldriver://...`,
- * והמעבר לכתובת הזו סוגר את הדפדפן ומחזיר אותה לקדמת המסך.
+ * 🔴 17/10/2026 (עידן): **לטכנאי אין בחירה של טופס.** הטופס נקבע לפי סוג
+ * העצירה והקופה בפריוריטי בלבד. כשאין טופס מתאים (קופה לא רשומה, משרד
+ * הביטחון) הטכנאי רואה הסבר ולא רשימה, והתיקון הוא בפריוריטי, במשרד.
+ *
+ * ⭐ `?return=<url>`: לאן לחזור בסוף. האפליקציה מעבירה `rashaldriver://...`.
  */
 export function SignStopPage() {
   const { stopId = '' } = useParams();
   const [search] = useSearchParams();
   const returnUrl = search.get('return');
+  const navigate = useNavigate();
+  const location = useLocation();
   // ⭐ נקרא פעם אחת לפני כל שליפה: בולע את `#t=` ומוחק אותו מההיסטוריה.
   const client = useMemo(() => formsClient(), []);
 
   const [ctx, setCtx] = useState<LoadedFormContext | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [needsLogin, setNeedsLogin] = useState(false);
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [formKey, setFormKey] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [done, setDone] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
   const [craneOpen, setCraneOpen] = useState(false);
   const [craneDone, setCraneDone] = useState(false);
 
@@ -47,18 +47,13 @@ export function SignStopPage() {
     loadFormContext(stopId, undefined, client)
       .then((c) => {
         if (!alive) return;
-        if (!c) return setLoadError('העצירה לא נמצאה');
-        setCtx(c);
-        const kind = formKindForStop(c.sourceType);
-        setFormKey(kind ? (findForm(c.healthFund, kind)?.key ?? null) : null);
+        if (!c) setLoadError('העצירה לא נמצאה');
+        else setCtx(c);
       })
       .catch((e: Error) => {
         if (!alive) return;
         // בלי התחברות (נפתח בדפדפן רגיל, לא מהאפליקציה): הפונקציה סגורה ל-anon.
-        if (!openedFromApp() && /permission denied/i.test(e.message)) {
-          setNeedsLogin(true);
-          return;
-        }
+        if (!openedFromApp() && /permission denied/i.test(e.message)) return setNeedsLogin(true);
         setLoadError(
           /not authorized|JWT|jwt/.test(e.message)
             ? 'אין הרשאה לעצירה הזו. ייתכן שההתחברות פגה: לסגור ולפתוח שוב מהאפליקציה.'
@@ -69,51 +64,34 @@ export function SignStopPage() {
   }, [stopId, client]);
 
   const kind = ctx ? formKindForStop(ctx.sourceType) : null;
-  const definition = formKey ? getFormByKey(formKey) : null;
-  const sameKind = kind ? FORM_DEFINITIONS.filter((d) => d.kind === kind) : [];
+  const definition = ctx && kind ? findForm(ctx.healthFund, kind) : null;
+  const craneSigned = !!ctx?.crane && (craneDone || ctx.craneSigned.some((c) => c.formType === ctx.crane?.kind));
 
-  const finish = () => {
-    if (returnUrl) window.location.href = returnUrl;
-  };
-
-  const submit: React.ComponentProps<typeof SignFormDialog>['onSubmit'] = async (p) => {
+  const submit: React.ComponentProps<typeof SignFlow>['onSubmit'] = async (p) => {
     if (!ctx || !definition) return;
     setSaving(true);
     try {
-      let location: { lat: number; lng: number } | null = null;
-      try {
-        location = await new Promise((resolve) => {
-          if (!navigator.geolocation) return resolve(null);
-          navigator.geolocation.getCurrentPosition(
-            (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-            () => resolve(null),
-            { timeout: 5000, maximumAge: 120000 },
-          );
-        });
-      } catch { /* מיקום הוא תוספת, לא תנאי */ }
-
-      const res = await saveSignedForm(
+      const where: { lat: number; lng: number } | null = await new Promise((resolve) => {
+        if (!navigator.geolocation) return resolve(null);
+        navigator.geolocation.getCurrentPosition(
+          (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+          () => resolve(null),
+          { timeout: 5000, maximumAge: 120000 },
+        );
+      });
+      await saveSignedForm(
         {
-          definition,
-          values: p.values,
-          signatures: p.signatures,
-          signerNames: p.signerNames,
-          photos: p.photos,
-          stopId: ctx.stopId,
-          healthFund: ctx.healthFund,
+          definition, values: p.values, signatures: p.signatures, signerNames: p.signerNames, photos: p.photos,
+          stopId: ctx.stopId, healthFund: ctx.healthFund,
           meta: {
-            customerName: ctx.context.customerName,
-            orderNumber: ctx.docNumber ?? undefined,
-            driverName: ctx.driver,
-            signedAt: new Date(),
-            location,
+            customerName: ctx.context.customerName, orderNumber: ctx.docNumber ?? undefined,
+            driverName: ctx.driver, signedAt: new Date(), location: where,
           },
         },
         client,
       );
       setOpen(false);
-      setDone(res.fileName);
-      toast.success('הטופס נשמר');
+      setDone(true);
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -121,171 +99,152 @@ export function SignStopPage() {
     }
   };
 
+  if (open && ctx && definition) {
+    return (
+      <SignFlow
+        key={definition.key}
+        definition={definition}
+        context={ctx.context}
+        lines={ctx.lines}
+        driverName={ctx.driver}
+        submitting={saving}
+        onCancel={() => setOpen(false)}
+        onSubmit={submit}
+      />
+    );
+  }
+
+  const lastSigned = ctx?.signed.length ? ctx.signed[ctx.signed.length - 1] : null;
+
   return (
-    <div dir="rtl" className="min-h-screen bg-slate-50 px-4 py-6">
-      <div className="mx-auto max-w-lg space-y-4">
-        <div className="flex items-center gap-2 text-slate-900">
-          <FileSignature className="h-6 w-6" />
-          <h1 className="text-lg font-bold">חתימה על טופס</h1>
+    <div dir="rtl" className="min-h-screen bg-background">
+      <header className="border-b bg-card">
+        <div className="mx-auto flex max-w-2xl items-center gap-2 px-4 py-4 md:px-6">
+          <FileSignature className="h-5 w-5 text-muted-foreground" />
+          <h1 className="text-lg font-semibold text-foreground">חתימה על טופס</h1>
         </div>
+      </header>
 
-        {loadError && (
-          <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-            <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
-            <span>{loadError}</span>
-          </div>
-        )}
-
+      <main className="mx-auto max-w-2xl space-y-4 px-4 py-5 md:px-6">
         {needsLogin && (
-          <div className="space-y-3 rounded-xl border bg-white p-4 text-sm">
-            <p className="text-slate-700">כדי לחתום על טופס צריך להתחבר למערכת.</p>
+          <section className="space-y-3 rounded-xl border bg-card p-5">
+            <p className="text-[15px] text-foreground">כדי לחתום על טופס צריך להתחבר למערכת.</p>
             <Button className="h-12 w-full text-base" onClick={() => navigate('/login', { state: { from: location } })}>
               התחברות
             </Button>
-          </div>
+          </section>
+        )}
+
+        {loadError && (
+          <section className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-5 text-[15px] text-foreground">
+            <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+            <span>{loadError}</span>
+          </section>
         )}
 
         {!ctx && !loadError && !needsLogin && (
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            טוען את פרטי העצירה
+          <div className="space-y-3">
+            <div className="h-24 animate-pulse rounded-xl bg-muted" />
+            <div className="h-32 animate-pulse rounded-xl bg-muted" />
           </div>
         )}
 
         {ctx && (
-          <div className="space-y-1 rounded-xl border bg-white p-4 text-sm">
-            <div className="text-base font-semibold text-slate-900">{ctx.context.customerName}</div>
-            <div className="text-slate-600">
-              {kind ? FORM_KIND_LABEL[kind] : 'משימה'}
-              {ctx.docNumber && <> · <bdi>{ctx.docNumber}</bdi></>}
+          <section className="rounded-xl border bg-card p-5">
+            <div className="text-xl font-semibold text-foreground">{ctx.context.customerName}</div>
+            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-sm text-muted-foreground">
+              <span>{kind ? FORM_KIND_LABEL[kind] : 'משימה'}</span>
+              {ctx.docNumber && <bdi dir="ltr">{ctx.docNumber}</bdi>}
+              {ctx.context.city && <span>{ctx.context.city}</span>}
             </div>
-            <div className="text-slate-600">קופה בפריוריטי: {ctx.healthFund || 'לא רשומה'}</div>
-          </div>
-        )}
-
-        {ctx && ctx.signed.length > 0 && (
-          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
-            <div className="mb-1 font-semibold">כבר נחתם על העצירה הזו</div>
-            {ctx.signed.map((s) => (
-              <div key={s.id}>
-                {getFormByKey(s.formKey)?.title ?? s.formKey} ·{' '}
-                <bdi>{new Date(s.signedAt).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' })}</bdi>
-                {s.signedBy && <> · {s.signedBy}</>}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {ctx?.crane && (
-          <div className="space-y-2 rounded-xl border border-orange-200 bg-orange-50 p-4 text-sm">
-            <div className="font-semibold text-orange-950">
-              {ctx.crane.kind === 'inspection' ? 'רשימת בדיקה לטכנאי, מנוף' : 'אישור קבלת הדרכה, מנוף'}
-              {ctx.crane.model && <> · <bdi>{ctx.crane.model}</bdi></>}
-            </div>
-            <p className="text-orange-900">
-              {ctx.crane.kind === 'inspection'
-                ? 'חובה בכל ביקור אצל מנוף (עמי, 15/10). בלי הטופס אי אפשר לסמן את העצירה כבוצעה.'
-                : 'חובה באספקת מנוף. בלי הטופס אי אפשר לסמן את העצירה כבוצעה.'}
-            </p>
-            {craneDone || ctx.craneSigned.some((c) => c.formType === ctx.crane?.kind) ? (
-              <div className="flex items-center gap-1.5 font-semibold text-emerald-700">
-                <CheckCircle2 className="h-4 w-4" />
-                טופס המנוף נחתם
-              </div>
-            ) : (
-              <Button className="h-12 w-full bg-orange-600 text-base hover:bg-orange-700" onClick={() => setCraneOpen(true)}>
-                פתח את טופס המנוף
-              </Button>
-            )}
-          </div>
+          </section>
         )}
 
         {done ? (
-          <div className="space-y-3 rounded-xl border border-emerald-300 bg-white p-5 text-center">
-            <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-600" />
-            <div className="font-semibold text-slate-900">הטופס נשמר</div>
-            <p className="text-sm text-slate-600">
-              הוא נשמר במערכת ויצורף לכרטיס הלקוח בפריוריטי תוך כמה דקות.
-            </p>
-            {returnUrl || openedFromApp() ? (
-              <Button className="h-12 w-full text-base" onClick={finish}>
+          <section className="space-y-4 rounded-xl border bg-card p-6 text-center">
+            <CheckCircle2 className="mx-auto h-12 w-12 text-emerald-600" />
+            <div>
+              <div className="text-lg font-semibold text-foreground">הטופס נשמר</div>
+              <p className="mt-1 text-[15px] text-muted-foreground">הוא יצורף לכרטיס הלקוח בפריוריטי תוך כמה דקות.</p>
+            </div>
+            {returnUrl && (
+              <Button className="h-12 w-full text-base" onClick={() => { window.location.href = returnUrl; }}>
                 חזרה לאפליקציה
               </Button>
-            ) : null}
-          </div>
+            )}
+          </section>
         ) : ctx && kind ? (
-          <div className="space-y-3 rounded-xl border bg-white p-4">
-            {sameKind.length > 1 && (
-              <label className="block text-sm">
-                <span className="mb-1 block text-slate-500">הטופס</span>
-                <select
-                  value={formKey ?? ''}
-                  onChange={(e) => setFormKey(e.target.value || null)}
-                  className="h-11 w-full rounded-lg border bg-white px-3 text-base"
-                >
-                  <option value="">בחר טופס</option>
-                  {sameKind.map((d) => (
-                    <option key={d.key} value={d.key}>
-                      {d.fundLabel} · {d.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {!definition && (
-              <p className="text-sm text-amber-800">{noFormReason(ctx.healthFund, kind)}. אפשר לבחור טופס ידנית.</p>
-            )}
-            <Button
-              className="h-12 w-full text-base"
-              disabled={!definition}
-              onClick={() => setOpen(true)}
-            >
-              {ctx.signed.length ? 'חתימה על טופס נוסף' : 'פתח את הטופס'}
-            </Button>
-          </div>
+          definition ? (
+            <section className="rounded-xl border bg-card p-5">
+              <div className="flex items-center gap-4">
+                <FormLogo formKey={definition.key} className="h-10 w-auto shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[15px] font-semibold text-foreground">{definition.title}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {definition.photoOnly ? 'צילום של הטופס החתום' : 'מילוי וחתימה על המסך'}
+                  </div>
+                </div>
+              </div>
+              {lastSigned && (
+                <p className="mt-4 flex items-center gap-1.5 text-sm text-emerald-700">
+                  <CheckCircle2 className="h-4 w-4" />
+                  כבר נחתם טופס על העצירה הזו,{' '}
+                  <bdi>{new Date(lastSigned.signedAt).toLocaleString('he-IL', { dateStyle: 'short', timeStyle: 'short' })}</bdi>
+                </p>
+              )}
+              <Button className="mt-5 h-12 w-full text-base" onClick={() => setOpen(true)}>
+                {lastSigned ? 'חתימה על טופס נוסף' : definition.photoOnly ? 'צילום הטופס' : 'התחלת מילוי'}
+              </Button>
+            </section>
+          ) : (
+            <section className="flex items-start gap-3 rounded-xl border bg-card p-5 text-[15px] text-foreground">
+              <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+              <div>
+                <div className="font-semibold">{noFormReason(ctx.healthFund, kind)}</div>
+                <p className="mt-1 text-muted-foreground">
+                  אין טופס קופה לחתימה בעצירה הזו. אם הקופה רשומה לא נכון, המשרד מתקן אותה בפריוריטי.
+                </p>
+              </div>
+            </section>
+          )
         ) : ctx ? (
-          <p className="text-sm text-slate-600">לעצירה מהסוג הזה אין טופס קופה.</p>
+          <p className="text-[15px] text-muted-foreground">לעצירה מהסוג הזה אין טופס קופה.</p>
         ) : null}
-      </div>
+
+        {ctx?.crane && !done && (
+          <section className="rounded-xl border bg-card p-5">
+            <div className="flex items-center gap-2 text-[15px] font-semibold text-foreground">
+              <Wrench className="h-4 w-4 text-muted-foreground" />
+              {ctx.crane.kind === 'inspection' ? 'רשימת בדיקה לטכנאי, מנוף' : 'אישור קבלת הדרכה, מנוף'}
+              {ctx.crane.model && <bdi dir="ltr" className="text-muted-foreground">{ctx.crane.model}</bdi>}
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">חובה לפני סימון בוצע.</p>
+            {craneSigned ? (
+              <p className="mt-4 flex items-center gap-1.5 text-sm font-medium text-emerald-700">
+                <CheckCircle2 className="h-4 w-4" />
+                טופס המנוף נחתם
+              </p>
+            ) : (
+              <Button variant="outline" className="mt-4 h-12 w-full text-base" onClick={() => setCraneOpen(true)}>
+                פתיחת טופס המנוף
+              </Button>
+            )}
+          </section>
+        )}
+      </main>
 
       {ctx?.crane?.kind === 'inspection' && (
         <CraneChecklistDialog
-          open={craneOpen}
-          onOpenChange={setCraneOpen}
-          craneSerial={ctx.crane.serial}
-          customerName={ctx.context.customerName}
-          customerNumber={ctx.customerNumber}
-          stopId={ctx.stopId}
-          serviceCallId={ctx.serviceCallId}
-          technicianName={ctx.driver}
-          onSaved={() => setCraneDone(true)}
+          open={craneOpen} onOpenChange={setCraneOpen} craneSerial={ctx.crane.serial}
+          customerName={ctx.context.customerName} customerNumber={ctx.customerNumber} stopId={ctx.stopId}
+          serviceCallId={ctx.serviceCallId} technicianName={ctx.driver} onSaved={() => setCraneDone(true)}
         />
       )}
       {ctx?.crane?.kind === 'training' && (
         <CraneTrainingDialog
-          open={craneOpen}
-          onOpenChange={setCraneOpen}
-          craneSerial={ctx.crane.serial}
-          customerName={ctx.context.customerName}
-          customerNumber={ctx.customerNumber}
-          stopId={ctx.stopId}
-          orderId={ctx.orderId}
-          technicianName={ctx.driver}
-          onSaved={() => setCraneDone(true)}
-        />
-      )}
-
-      {ctx && definition && open && (
-        <SignFormDialog
-          key={definition.key}
-          open={open}
-          onOpenChange={setOpen}
-          definition={definition}
-          context={ctx.context}
-          lines={ctx.lines}
-          driverName={ctx.driver}
-          submitting={saving}
-          onSubmit={submit}
+          open={craneOpen} onOpenChange={setCraneOpen} craneSerial={ctx.crane.serial}
+          customerName={ctx.context.customerName} customerNumber={ctx.customerNumber} stopId={ctx.stopId}
+          orderId={ctx.orderId} technicianName={ctx.driver} onSaved={() => setCraneDone(true)}
         />
       )}
     </div>

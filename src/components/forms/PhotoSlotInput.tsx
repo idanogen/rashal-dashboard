@@ -63,12 +63,12 @@ export function PhotoSlotInput({
   };
 
   return (
-    <div className="rounded-xl border border-slate-200 p-3">
-      <div className="mb-1 text-sm font-semibold text-slate-900">
+    <section className="rounded-xl border bg-card p-4 md:p-5">
+      <div className="text-[15px] font-semibold text-foreground">
         {slot.label}
-        {slot.required && <span className="text-red-600"> *</span>}
+        {slot.required && <span className="text-destructive"> *</span>}
       </div>
-      {slot.hint && <p className="mb-2 text-xs text-slate-500">{slot.hint}</p>}
+      {slot.hint && <p className="mt-1 text-sm text-muted-foreground">{slot.hint}</p>}
 
       <input
         ref={inputRef}
@@ -80,30 +80,24 @@ export function PhotoSlotInput({
       />
 
       {value ? (
-        <div className="space-y-2">
-          <img src={value} alt={slot.label} className="max-h-64 w-full rounded-lg border object-contain" />
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={disabled || busy}
-            onClick={() => inputRef.current?.click()}
-            className="gap-1.5"
-          >
+        <div className="mt-3 space-y-3">
+          <img src={value} alt={slot.label} className="max-h-80 w-full rounded-lg border bg-muted object-contain" />
+          <Button variant="outline" disabled={disabled || busy} onClick={() => inputRef.current?.click()} className="h-11 gap-1.5">
             <RotateCcw className="h-4 w-4" />
-            צלם מחדש
+            צילום מחדש
           </Button>
         </div>
       ) : (
-        <Button
-          variant="outline"
+        <button
+          type="button"
           disabled={disabled || busy}
           onClick={() => inputRef.current?.click()}
-          className="h-12 w-full gap-2 text-base"
+          className="mt-3 flex h-40 w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-input bg-muted/40 text-muted-foreground transition-colors hover:bg-muted"
         >
-          {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Camera className="h-5 w-5" />}
-          צלם
-        </Button>
+          {busy ? <Loader2 className="h-7 w-7 animate-spin" /> : <Camera className="h-7 w-7" />}
+          <span className="text-base font-medium text-foreground">צילום</span>
+        </button>
       )}
-    </div>
+    </section>
   );
 }

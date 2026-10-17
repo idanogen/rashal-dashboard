@@ -32,7 +32,7 @@ import { Badge } from '@/components/ui/badge';
 import { SurveysPage } from '@/pages/SurveysPage';
 import { ManagementDashboard } from '@/pages/ManagementDashboard';
 import { CraneChecklistDialog } from '@/components/crane/CraneChecklistDialog';
-import { SignFormDialog } from '@/components/forms/SignFormDialog';
+import { SignFlow } from '@/components/forms/SignFlow';
 import { getFormByKey } from '@/lib/forms/registry';
 import { buildContext, buildInitialValues } from '@/lib/forms/prefill';
 import { buildFormHtml, generateFormPdf } from '@/lib/forms/render';
@@ -1392,8 +1392,8 @@ if (view === 'form' || view === 'form-pdf') {
   if (view === 'form') {
     VIEWS.form = (
       <div dir="rtl" className="min-h-screen bg-slate-50">
-        <SignFormDialog open onOpenChange={() => undefined} definition={def} context={ctx} lines={lines}
-          driverName="דוד גוזלן"
+        <SignFlow definition={def} context={ctx} lines={lines} driverName="דוד גוזלן" onCancel={() => undefined}
+          initialStep={(new URLSearchParams(location.search).get('step') ?? undefined) as 'fill' | 'sign' | 'photos' | 'review' | undefined}
           // ⭐ בתצוגה המקדימה: ה-PDF האמיתי נוצר ונפתח בלשונית, בלי לשמור כלום.
           onSubmit={async (p) => {
             const blob = await generateFormPdf(def, p.values, p.signatures, p.signerNames,
