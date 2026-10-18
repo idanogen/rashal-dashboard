@@ -94,6 +94,6 @@ export function mohReturnLayout({ values: v, signatures, names, meta }: LayoutIn
       אם החזרת המכשיר/ים והחתימה על אישור ההחזרה לא נעשו בלשכת הבריאות,<br/>
       יש להעביר את הטופס הזה אל חברת נטלי/ המחסן הארצי ברחוב יהודה ונח מוזס 15 תל אביב
     </div>
-    <div style="position:absolute;bottom:20px;right:40px">${stamp(meta)}</div>
+    ${stamp(meta)}
   `);
 }

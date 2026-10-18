@@ -76,12 +76,12 @@ export function maccabiDeliveryLayout({ values: v, signatures, names, meta }: La
       </td></tr>
     </table>
 
-    <div style="font-size:14.5px;font-weight:700;margin:44px 0 0">*אני החתום מטה, מאשר שקיבלתי את הפריט במצב תקין.</div>
+    <div style="font-size:14.5px;font-weight:700;margin:32px 0 0">*אני החתום מטה, מאשר שקיבלתי את הפריט במצב תקין.</div>
     <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:30px;font-weight:700">
       ${line('<b style="font-size:14px">שם המקבל</b> <b style="font-size:20px">X</b>', names.customer ?? '', 200)}
       ${signatureLine('<b style="font-size:14px">חתימת המקבל</b> <b style="font-size:20px">X</b>', signatures.customer, 220)}
     </div>
-    <div style="position:absolute;bottom:20px;right:40px">${stamp(meta)}</div>
+    ${stamp(meta)}
   `);
 }
 
@@ -139,6 +139,6 @@ export function maccabiReturnLayout({ values: v, signatures, names, meta }: Layo
       ${line('שם המקבל', names.driver ?? '', 140)}
       ${signatureLine('חתימת המקבל', signatures.driver, 150)}
     </div>
-    <div style="position:absolute;bottom:20px;right:40px">${stamp(meta)}</div>
+    ${stamp(meta)}
   `);
 }
