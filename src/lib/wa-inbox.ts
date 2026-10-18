@@ -229,6 +229,24 @@ export async function fetchThread(phone: string): Promise<ThreadResponse> {
 }
 
 /**
+ * ⭐ באיזה ממשק בדשבורד העובד נמצא: דף התיבה (`/inbox`) או החלונית הצפה.
+ * נוסע עם כל שליחה וכל פתיחת שיחה, כדי שהמדידה תבדיל בינם לבין התוסף
+ * בפריוריטי (18/10/2026, `api/_lib/ui-source.ts`).
+ */
+export type WaSurface = 'inbox' | 'dock';
+
+/**
+ * רישום פתיחה של התיבה. 🔴 נכשל בשקט, והמסד מדלל לפתיחה אחת בעשר דקות
+ * לכל אדם, כך שהרכבה כפולה לא מנפחת את המספר (`log_wa_ui_open`).
+ */
+export function logWaUiOpen(surface: WaSurface): void {
+  void supabase.rpc('log_wa_ui_open', { p_ui: surface }).then(
+    () => undefined,
+    () => undefined,
+  );
+}
+
+/**
  * מסמן שהעובד פתח את השיחה במפורש.
  *
  * 🔴🔴 **רק מלחיצה של אדם, אף פעם לא מטעינה.** השרשור נטען גם בבחירה
@@ -239,18 +257,24 @@ export async function fetchThread(phone: string): Promise<ThreadResponse> {
  * ⭐ ונכשל בשקט. סימון שלא נרשם אינו סיבה להפריע לעובד באמצע עבודה,
  * והשיחה פשוט תישאר ברשימה.
  */
-export async function markThreadRead(phone: string): Promise<void> {
+export async function markThreadRead(phone: string, surface: WaSurface = 'inbox'): Promise<void> {
   try {
-    await authFetch(`/api/conversation?phone=${encodeURIComponent(phone)}&markRead=1`);
+    await authFetch(
+      `/api/conversation?phone=${encodeURIComponent(phone)}&markRead=1&source=${surface}`,
+    );
   } catch {
     /* לא מפריעים */
   }
 }
 
-export async function sendText(phone: string, bodyText: string): Promise<void> {
+export async function sendText(
+  phone: string,
+  bodyText: string,
+  surface: WaSurface = 'inbox',
+): Promise<void> {
   await authFetch('/api/wa-send', {
     method: 'POST',
-    body: JSON.stringify({ phone, kind: 'text', bodyText }),
+    body: JSON.stringify({ phone, kind: 'text', bodyText, source: surface }),
   });
 }
 
@@ -264,10 +288,11 @@ export async function sendTemplate(
   phone: string,
   templateKey: string,
   values: Record<string, string>,
+  surface: WaSurface = 'inbox',
 ): Promise<void> {
   await authFetch('/api/wa-send', {
     method: 'POST',
-    body: JSON.stringify({ phone, kind: 'template', templateKey, values }),
+    body: JSON.stringify({ phone, kind: 'template', templateKey, values, source: surface }),
   });
 }
 

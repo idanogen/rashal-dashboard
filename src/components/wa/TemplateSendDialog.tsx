@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { renderPreview, missingVariables } from '@/lib/template-render';
-import { sendTemplate, type SendableTemplate } from '@/lib/wa-inbox';
+import { sendTemplate, type SendableTemplate, type WaSurface } from '@/lib/wa-inbox';
 import { cn } from '@/lib/utils';
 
 /**
@@ -61,10 +61,12 @@ interface Props {
   templates?: SendableTemplate[];
   loading?: boolean;
   onSent?: () => void;
+  /** מאיזה ממשק נשלח, למדידת השימוש. */
+  surface?: WaSurface;
 }
 
 export function TemplateSendDialog({
-  open, onOpenChange, phone, customerName, templates, loading, onSent,
+  open, onOpenChange, phone, customerName, templates, loading, onSent, surface = 'inbox',
 }: Props) {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -92,7 +94,7 @@ export function TemplateSendDialog({
     try {
       const payload: Record<string, string> = {};
       for (const n of selected.variables) payload[n] = values[n] ?? '';
-      await sendTemplate(phone, selected.key, payload);
+      await sendTemplate(phone, selected.key, payload, surface);
       toast.success('התבנית יצאה אל heyy. הסטטוס יתעדכן בשרשור.');
       onSent?.();
       onOpenChange(false);

@@ -7,6 +7,8 @@ import { listActiveTemplates } from './_lib/templates-store.js';
 import { normalizeLearnedProc, procsToMap } from './_lib/print-procs.js';
 import { toPanelTemplates, type PanelTemplate } from './_lib/panel-templates.js';
 import { pickDocument } from './_lib/doc-prefill.js';
+import { waUiSource } from './_lib/ui-source.js';
+import { recordWaUsage } from './_lib/ui-usage.js';
 
 /**
  * "על מי אני עומד בפריוריטי", ואז כל השיחה איתו. קריאה אחת.
@@ -181,6 +183,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (body.learnedProc !== undefined) void recordLearnedProc(body.learnedProc, user.email ?? null);
 
   const candidates = cleanCandidates(body.candidates);
+  // ⭐ 18/10/2026: החלונית עמדה על מסמך. זה הסימן היחיד שהתוסף בשימוש
+  // כשלא נשלחה הודעה ולא נפתחה שיחה. רק עם מועמדים, כי בקשה של למידת
+  // מסך הדפסה בלבד אינה עבודה מול לקוח.
+  if (candidates.length) await recordWaUsage(user, waUiSource(undefined, req.headers.origin), 'context');
   if (!candidates.length) {
     // ⭐ **בקשה שכל תוכנה הוא מה שנלמד על מסך ההדפסה היא בקשה תקינה.**
     // 🔴 נתפס ב-24/08/2026: הלמידה נסעה על גבה של בקשת הזיהוי, ובמסך

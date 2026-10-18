@@ -36,6 +36,7 @@ import {
   fetchThread,
   sendText,
   markThreadRead,
+  logWaUiOpen,
   attachmentUrl,
   attachmentDownloadUrl,
   authorLabel,
@@ -44,6 +45,7 @@ import {
   type WaMessage,
   type WaAttachment,
   type WaButton,
+  type WaSurface,
 } from '@/lib/wa-inbox';
 import {
   inboxKey,
@@ -560,12 +562,17 @@ export interface InboxBoardProps {
    * מהרשימה", כלומר לקישור שנראה שבור.
    */
   initialPhone?: string | null;
+  /**
+   * ⭐ דף התיבה או החלונית הצפה. נוסע עם כל שליחה ופתיחת שיחה, ונרשם
+   * כפתיחה כשהלוח עולה, כדי לדעת מי משתמש במה (18/10/2026).
+   */
+  surface?: WaSurface;
 }
 
 export const HEIGHT_PAGE = 'lg:h-[calc(100vh-13rem)]';
 export const HEIGHT_DOCK = 'h-[calc(100vh-6rem)]';
 
-export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: InboxBoardProps) {
+export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null, surface = 'inbox' }: InboxBoardProps) {
   /**
    * 🔴🔴 **הגעה מקישור נקבעת כאן, במצב ההתחלתי, ולא ב-`useEffect`.**
    *
@@ -720,6 +727,12 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
   // ⭐ קישור חדש בזמן שהמסך כבר פתוח (`/inbox?phone=` אחר). הפתיחה
   // הראשונה כבר נעשתה במצב ההתחלתי, ולכן כאן מטפלים רק בשינוי.
   const lastJump = useRef(initialPhone);
+
+  // ⭐ פתיחה של התיבה, למדידת השימוש (18/10/2026). הלוח עולה רק כשהדף
+  // או החלונית נפתחים, ולכן הרכבה = פתיחה. הדילול במסד.
+  useEffect(() => {
+    logWaUiOpen(surface);
+  }, [surface]);
   useEffect(() => {
     if (!initialPhone || initialPhone === lastJump.current) return;
     lastJump.current = initialPhone;
@@ -752,7 +765,7 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
   const openConversation = (phone: string | null) => {
     setSelected(phone);
     if (!phone) return;
-    void markThreadRead(phone).then(() => {
+    void markThreadRead(phone, surface).then(() => {
       // ⭐ הרשימה נשאלת מחדש כדי שהתג הכתום והמונה ירדו מיד.
       void qc.invalidateQueries({ queryKey: [WA_INBOX_KEY] });
     });
@@ -802,7 +815,7 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
     if (!text || !selected || sending) return;
     setSending(true);
     try {
-      await sendText(selected, text);
+      await sendText(selected, text, surface);
       setDraft('');
       toast.success('יצא אל heyy. הסטטוס יתעדכן כאן.');
       await qc.invalidateQueries({ queryKey: threadKey(selected) });
@@ -1149,7 +1162,7 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
                     className="h-7 gap-1 px-2 text-[11px]"
                     onClick={() => {
                       if (!selected) return;
-                      void markThreadRead(selected).then(() => {
+                      void markThreadRead(selected, surface).then(() => {
                         void qc.invalidateQueries({ queryKey: [WA_INBOX_KEY] });
                         void qc.invalidateQueries({ queryKey: threadKey(selected) });
                       });
@@ -1283,6 +1296,7 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
         />
       )}
       <TemplateSendDialog
+        surface={surface}
         templates={thread.data?.templates}
         loading={thread.isLoading}
         open={templateOpen}
@@ -1302,6 +1316,7 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null }: I
         [[heyy_outbound_chat_stays_closed]]
       */}
       <TemplateSendDialog
+        surface={surface}
         templates={outreachThread.data?.templates}
         loading={outreachThread.isLoading}
         open={Boolean(outreach)}

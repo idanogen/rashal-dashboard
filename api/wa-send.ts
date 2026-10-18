@@ -14,6 +14,7 @@ import {
   type WaTemplate,
 } from './_lib/templates-store.js';
 import { isLang, translateValues } from './_lib/wa-lang-core.js';
+import { waUiSource } from './_lib/ui-source.js';
 
 /**
  * מסלול השליחה של החלונית בפריוריטי.
@@ -59,6 +60,11 @@ interface SendBody {
   documentUrl?: string;
   /** שם הקובץ שהלקוח יראה בוואטסאפ. */
   documentName?: string;
+  /**
+   * ⭐ הממשק בדשבורד ששלח: `inbox` (דף התיבה) או `dock` (החלונית הצפה).
+   * התוסף לא שולח את זה ומזוהה לפי `Origin`. ראה `_lib/ui-source.ts`.
+   */
+  source?: string;
 }
 
 /**
@@ -391,6 +397,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       status_detail: result.statusDetail,
       // ⭐ מי שלח, ומאיזה מסמך. זה מה שהופך את השרשור לקריא בדיעבד.
       triggered_by: `priority-panel:${user.email ?? user.id}${sendLang !== 'he' ? `:${sendLang}` : ''}`,
+      // ⭐ 18/10/2026: איזה ממשק. `triggered_by` נשאר כמו שהוא, כי מיגרציות
+      // קיימות מזהות שליחה של עובד לפי הקידומת שלו.
+      sent_from: waUiSource(body.source, req.headers.origin),
       is_demo: isHeyyDemo,
     })
     .select('id')

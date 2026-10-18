@@ -113,7 +113,7 @@ export function WaDock() {
           </SheetHeader>
           <div className="overflow-hidden p-3">
             {/* נטען רק כשנפתח, כדי שהסקר לא ירוץ ברקע בכל מסך */}
-            {open && <InboxBoard heightClass={HEIGHT_DOCK} />}
+            {open && <InboxBoard heightClass={HEIGHT_DOCK} surface="dock" />}
           </div>
         </SheetContent>
       </Sheet>

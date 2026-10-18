@@ -8,6 +8,8 @@ import { toPanelTemplates, type PanelTemplate } from './_lib/panel-templates.js'
 import { toItem, sortItems, matchesQuery, type ConversationRow } from './_lib/inbox.js';
 import { urgencyOf, type UrgencyFacts } from './_lib/urgency.js';
 import { normalizePhone } from './_lib/phone.js';
+import { waUiSource } from './_lib/ui-source.js';
+import { recordWaUsage } from './_lib/ui-usage.js';
 
 /**
  * השיחה המלאה מול לקוח אחד, לצריכה מהדשבורד.
@@ -324,7 +326,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // שקט רץ כל עשרים שניות. אם טעינה הייתה מסמנת קריאה, שיחה שאיש לא
     // ראה הייתה יורדת מהרשימה בשקט, וזה בדיוק הכשל שהמסך נועד למנוע.
     // [[render_is_not_a_user_event]]
-    if (req.query.markRead === '1') return await markRead(res, user.email, phone, customer);
+    if (req.query.markRead === '1') {
+      // ⭐ 18/10/2026: גם מי פתח ומאיזה ממשק. `read_by` שומר רק את האחרון,
+      // ולכן לבדו הוא לא יכול לענות על "כמה הצוות קורא".
+      await recordWaUsage(user, waUiSource(req.query.source, req.headers.origin), 'read');
+      return await markRead(res, user.email, phone, customer);
+    }
 
     // ⭐⭐ **הכרטיס המלא, לחלונית שבתוך פריוריטי.** עידן, 25/08/2026:
     // "איפה הכרטיס לקוח? ... זה כבר פרטים על הלקוח". הרצועה לבדה עונה
