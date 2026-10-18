@@ -375,6 +375,11 @@ as $$
      and sf.form_kind = 'delivery'
      and coalesce(case when sf.payload->>'docno' ~ '^SH[0-9]{1,20}$' then sf.payload->>'docno' end,
                   dn.priority_doc_id) is not null
+     -- 🔴 רק לתעודה שהסנכרון מכיר. מספר מהמייל שעוד לא סונכרן מחכה לריצה
+     -- הבאה (חלון של 14 יום), ותעודת בדיקה שלא קיימת בפריוריטי לא נשלחת לעולם.
+     and exists (select 1 from public.delivery_notes k
+                  where k.priority_doc_id = coalesce(case when sf.payload->>'docno' ~ '^SH[0-9]{1,20}$'
+                                                          then sf.payload->>'docno' end, dn.priority_doc_id))
      and sf.signed_at > now() - interval '14 days'
      and l.pushed_at is null
      and l.failed_at is null
