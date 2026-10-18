@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { toItem, sortItems, matchesQuery, waitLabel, isWaiting } from '../api/_lib/inbox.ts';
+import { toItem, sortItems, matchesQuery, searchInbox, waitLabel, isWaiting } from '../api/_lib/inbox.ts';
 
 /**
  * 🔴 מה שנבדק כאן הוא **הסדר**, וזה לב המסך. מסך שנקרא "מי מחכה לתשובה"
@@ -220,4 +220,29 @@ test('ממתינים: שיחה דחופה עולה מעל שיחה שמחכה י
   const c = item({ id: 'c', waiting: ago(90) });
   c.urgent = { active: true, reasons: ['ממתין מעל שעה'], manual: false };
   assert.deepEqual(sortItems([a, b, c], 'waiting').map((i) => i.id), ['c', 'b', 'a']);
+});
+
+// ── חיפוש מול ספר הלקוחות (עידן, 18/10/2026) ──────────────────
+// 🔴 הלקוח הופיע לרגע ונעלם: ספר הלקוחות מצא אותו לפי השם, הטלפון שלו
+// בשיחה ולכן הוסתר מ"לקוחות בלי שיחה", והשיחה עצמה לא עברה את חיפוש
+// הטקסט כי הכותרת שלה היא שם הפרופיל בוואטסאפ.
+test('searchInbox: שיחה לא מזוהה נמצאת דרך הטלפון שספר הלקוחות החזיר', () => {
+  const unidentified = item({ id: 'u', phone: '0549568956', contact: 'Anonymous Stamm' });
+  const other = item({ id: 'o', phone: '0501111111', name: 'כהן משה', num: '1' });
+  assert.equal(matchesQuery(unidentified, 'אריאל בת שבע'), false);
+  const hits = searchInbox([unidentified, other], 'אריאל בת שבע', ['0549568956']);
+  assert.deepEqual(hits.map((i) => i.id), ['u']);
+});
+
+test('searchInbox: טלפון משפחתי משותף, החיפוש בשם של בן משפחה אחר מוצא את השיחה', () => {
+  const shared = item({ id: 's', phone: '0527128559', name: 'מגורי אריאל', num: '22' });
+  assert.deepEqual(searchInbox([shared], 'מגורי רחל', ['0527128559']).map((i) => i.id), ['s']);
+  assert.deepEqual(searchInbox([shared], 'מגורי רחל', []).map((i) => i.id), []);
+});
+
+test('searchInbox: חיפוש הטקסט נשאר, טלפונים ריקים לא מתאימים לשורה בלי טלפון', () => {
+  const named = item({ id: 'n', phone: '0501234567', name: 'לוי דוד', num: '5' });
+  const noPhone = item({ id: 'x', phone: null, name: 'מישהו' });
+  assert.deepEqual(searchInbox([named, noPhone], 'לוי', [null, undefined, '']).map((i) => i.id), ['n']);
+  assert.deepEqual(searchInbox([named, noPhone], '   ', ['0501234567']).length, 2);
 });

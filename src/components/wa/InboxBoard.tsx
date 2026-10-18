@@ -717,11 +717,16 @@ export function InboxBoard({ heightClass = HEIGHT_PAGE, initialPhone = null, sur
    * הלשונית או את החיפוש נעלמה גם מהחישוב הזה.
    */
   const otherPeople = useMemo(() => {
+    // 🔴 **לא לפני שהרשימה של אותו חיפוש הגיעה** (18/10/2026). ספר
+    // הלקוחות עונה מהר יותר, ובלי הרשימה אין ממה לדעת מי כבר בשיחה: לקוח
+    // שיש לו שיחה הופיע לרגע כ"לקוח בלי שיחה" ונעלם, וזה נקרא כמו חיפוש
+    // שמצא ואיבד.
+    if (!inbox.data) return [];
     const seen = new Set(
       (inbox.data?.phones ?? items.map((i) => i.phone)).filter(Boolean) as string[],
     );
     return (people.data ?? []).filter((c) => !c.phone_local || !seen.has(c.phone_local));
-  }, [people.data, items, inbox.data?.phones]);
+  }, [people.data, items, inbox.data]);
   const counts = inbox.data?.counts ?? { waiting: 0, all: 0 };
 
   // ⭐ קישור חדש בזמן שהמסך כבר פתוח (`/inbox?phone=` אחר). הפתיחה

@@ -266,3 +266,28 @@ export function matchesQuery(item: InboxItem, raw: string): boolean {
   }
   return false;
 }
+
+/**
+ * סינון התיבה לפי חיפוש: טקסט השורה, **או** טלפון של לקוח שספר הלקוחות
+ * מצא לאותו חיפוש.
+ *
+ * 🔴🔴 עידן, 18/10/2026: חיפש לקוח, הלקוח הופיע לרגע ונעלם, ונשאר "אין
+ * שיחה שמתאימה לחיפוש". מה שהופיע לרגע היה שורת "לקוחות בלי שיחה" מספר
+ * הלקוחות (`customer_search`). כשהרשימה הגיעה, הטלפון שלו נמצא בין
+ * הטלפונים שיש להם שיחה ולכן הוסתר שם, אבל השיחה עצמה לא עברה את חיפוש
+ * הטקסט, כי שמה שונה מהשם בספר. נמדד באותו יום: 81 שיחות לא מזוהות
+ * שהטלפון שלהן שייך ללקוח, ועוד 71 שהכותרת שלהן לא מכילה את שם הלקוח
+ * (טלפון משפחתי משותף, שם שהשתנה). ספר הלקוחות מוצא גם לפי מספר מסמך.
+ *
+ * ⭐ שתי הרשימות עונות עכשיו מאותה הכרעה: לקוח שהספר מצא והטלפון שלו
+ * בשיחה, השיחה שלו בתוצאות.
+ */
+export function searchInbox<T extends InboxItem>(
+  items: T[],
+  raw: string,
+  directoryPhones: Iterable<string | null | undefined> = [],
+): T[] {
+  if (!String(raw ?? '').trim()) return items;
+  const phones = new Set(Array.from(directoryPhones).filter(Boolean) as string[]);
+  return items.filter((i) => matchesQuery(i, raw) || (i.phone != null && phones.has(i.phone)));
+}

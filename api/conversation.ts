@@ -5,7 +5,7 @@ import { supabaseAdmin } from './_lib/supabase-admin.js';
 import { loadThread, windowState } from './_lib/thread.js';
 import { listActiveTemplates } from './_lib/templates-store.js';
 import { toPanelTemplates, type PanelTemplate } from './_lib/panel-templates.js';
-import { toItem, sortItems, matchesQuery, type ConversationRow } from './_lib/inbox.js';
+import { toItem, sortItems, searchInbox, type ConversationRow } from './_lib/inbox.js';
 import { urgencyOf, type UrgencyFacts } from './_lib/urgency.js';
 import { normalizePhone } from './_lib/phone.js';
 import { waUiSource } from './_lib/ui-source.js';
@@ -37,7 +37,13 @@ import { recordWaUsage } from './_lib/ui-usage.js';
  */
 
 /** 🔴 PostgREST מחזיר לכל היותר 1,000 שורות לבקשה, גם בלי `limit`. */
-const HARD_CAP = 1000;
+const PAGE = 1000;
+/**
+ * 🔴 תקרה כוללת, בדפים של `PAGE`. עד 18/10/2026 הרשימה נמשכה בבקשה אחת,
+ * והתיבה עברה את 1,000 השיחות (1,018 באותו יום): 18 השיחות הישנות לא
+ * נמצאו בחיפוש, והלקוחות שלהן הוצגו כ"לקוחות בלי שיחה".
+ */
+const HARD_CAP = 5000;
 
 const LIST_COLUMNS =
   'id, phone_local, phone_e164, contact_name, customer_number, customer_name, ' +
@@ -54,16 +60,33 @@ async function listInbox(req: VercelRequest, res: VercelResponse) {
   const includeAuto = req.query.includeAuto === '1';
   const limit = Math.min(Math.max(Number(req.query.limit ?? 100) || 100, 1), 200);
 
-  // 🔴 `.range()` בלי `.order()` מחזיר שורות בסדר שרירותי.
-  const { data, error } = await supabaseAdmin
-    .from('wa_conversations')
-    .select(LIST_COLUMNS)
-    .order('last_message_at', { ascending: false, nullsFirst: false })
-    .range(0, HARD_CAP - 1);
+  // ⭐ חיפוש של שתי אותיות ומעלה שואל גם את ספר הלקוחות, במקביל לרשימה.
+  // ראה `searchInbox`. נכשל בשקט: בלי הספר נשאר חיפוש הטקסט.
+  const directory = q.trim().length >= 2
+    ? supabaseAdmin.rpc('customer_search', { p_query: q.trim(), p_limit: 25 }).then(
+        ({ data: d, error: e }) => {
+          if (e) console.error('[conversation] list search failed', e.message);
+          return ((d ?? []) as Array<{ phone_local: string | null }>).map((c) => c.phone_local);
+        },
+        () => [] as Array<string | null>,
+      )
+    : Promise.resolve([] as Array<string | null>);
 
-  if (error) throw new Error(error.message);
-
-  const rows = (data ?? []) as unknown as ConversationRow[];
+  // 🔴 `.range()` בלי `.order()` מחזיר שורות בסדר שרירותי. `id` שובר
+  // שוויון, אחרת שורה יכולה לדלג בין דפים.
+  const rows: ConversationRow[] = [];
+  for (let from = 0; from < HARD_CAP; from += PAGE) {
+    const { data, error } = await supabaseAdmin
+      .from('wa_conversations')
+      .select(LIST_COLUMNS)
+      .order('last_message_at', { ascending: false, nullsFirst: false })
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) throw new Error(error.message);
+    const page = (data ?? []) as unknown as ConversationRow[];
+    rows.push(...page);
+    if (page.length < PAGE) break;
+  }
   const now = Date.now();
   // ⭐ כלל 24 השעות מחושב מהמקום היחיד שמחזיק אותו.
   const all = rows.map((r) => toItem(r, windowState(r.last_inbound_at), now));
@@ -161,7 +184,7 @@ async function listInbox(req: VercelRequest, res: VercelResponse) {
     ? all.filter((i) => i.waitingMinutes != null || i.urgent?.manual)
     : (includeAuto || q ? all : all.filter((i) => !i.autoOnly));
   const pool = urgentOnly ? basePool.filter((i) => i.urgent?.active) : basePool;
-  const filtered = q ? pool.filter((i) => matchesQuery(i, q)) : pool;
+  const filtered = q ? searchInbox(pool, q, await directory) : pool;
 
   return res.status(200).json({
     ok: true,
