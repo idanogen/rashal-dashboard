@@ -306,8 +306,11 @@ returns table (stop_id uuid, form_signed boolean, crane_kind text, crane_signed 
 language sql stable security definer
 set search_path = public
 as $$
+  -- ⭐ 18/10/2026: תעודת משלוח חתומה (`delivery_note`) היא לא טופס הקופה,
+  -- ולא מכבה את התזכורת "טופס קופה חסר". המצב שלה ב-`stops_delivery_notes`.
   select s.id,
-         exists (select 1 from public.signed_forms f where f.stop_id = s.id),
+         exists (select 1 from public.signed_forms f
+                  where f.stop_id = s.id and f.form_key <> 'delivery_note'),
          case
            when c.device_name ~* '^G[0-9]{3}E?$' then 'inspection'
            when s.service_call_id is null and exists (
@@ -338,15 +341,18 @@ returns table (key text, docno text, metadata jsonb, at timestamptz)
 language sql stable security definer
 set search_path = public
 as $$
+  -- ⭐ 18/10/2026: תעודה שנחתמה במקור (`delivery_note`) יודעת בדיוק לאיזו
+  -- תעודה היא שייכת (`payload.docno`), ואז אין ניחוש לפי הזמנה או לקוח.
   select 'formdn:' || sf.id::text,
-         dn.priority_doc_id,
+         coalesce(case when sf.payload->>'docno' ~ '^SH[0-9]{1,20}$' then sf.payload->>'docno' end,
+                  dn.priority_doc_id),
          jsonb_build_object('fileUrls', jsonb_build_array('sb://signed-forms/' || sf.pdf_path),
                             'fileDes', te.metadata->>'fileDes'),
          sf.signed_at
     from public.signed_forms sf
     left join public.orders o on o.id = sf.order_id
     left join public.timeline_events te on te.id = sf.priority_event_id
-    join lateral (
+    left join lateral (
       -- ⭐ שני מסלולים (נמדד 18/10/2026 על 45 יום של אספקות שבוצעו): עצירת
       -- הזמנה לפי `source_order` (190 מ-196), ועצירת לקוח חדש בלי הזמנה לפי
       -- הלקוח ותעודה שנפתחה עד שבוע לפני החתימה או יום אחריה (15 מ-15).
@@ -367,6 +373,8 @@ as $$
     left join public.priority_call_push_log l on l.key = 'formdn:' || sf.id::text
    where sf.pdf_path is not null
      and sf.form_kind = 'delivery'
+     and coalesce(case when sf.payload->>'docno' ~ '^SH[0-9]{1,20}$' then sf.payload->>'docno' end,
+                  dn.priority_doc_id) is not null
      and sf.signed_at > now() - interval '14 days'
      and l.pushed_at is null
      and l.failed_at is null
