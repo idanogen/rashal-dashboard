@@ -39,6 +39,8 @@ const VAR_LABELS: Record<string, string> = {
   purpose: 'מטרת ההגעה',
   day: 'היום',
   hours: 'חלון השעות',
+  // תבנית בקשת התמונה (`rashal-media-request`), נשלחת גם ידנית מ-18/10/2026.
+  product: 'המוצר',
 };
 
 /**
@@ -50,6 +52,15 @@ const VAR_HINTS: Record<string, string> = {
   purpose: 'לאספקת הציוד · לאיסוף הציוד · לביקור טכנאי · להתקנת הציוד',
   day: 'רביעי, 26.8.2026',
   hours: '09:00 עד 13:00',
+  product: 'RUBIX52 · מזרן אוויר · המוצר שברשותך',
+};
+
+/**
+ * ⭐ ערך פתיחה לשדה שיש לו ברירת מחדל מוסכמת. "המוצר שברשותך" הוא בדיוק
+ * מה שהבקשה האוטומטית שולחת כשאין שם מוצר (`product_fallback`).
+ */
+const VAR_DEFAULTS: Record<string, string> = {
+  product: 'המוצר שברשותך',
 };
 
 interface Props {
@@ -82,7 +93,7 @@ export function TemplateSendDialog({
   useEffect(() => {
     if (!open) return;
     setSelectedKey(null);
-    setValues(customerName ? { customer_name: customerName, name: customerName } : {});
+    setValues(customerName ? { ...VAR_DEFAULTS, customer_name: customerName, name: customerName } : { ...VAR_DEFAULTS });
   }, [open, customerName]);
 
   const missing = selected ? missingVariables(selected.variables, values) : [];
