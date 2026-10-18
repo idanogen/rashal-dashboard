@@ -52,6 +52,24 @@ with ev as (
           or jsonb_array_length(coalesce(te.metadata->'imageUrls', '[]'::jsonb)) > 0)
      and (te.type::text <> 'comment' or nullif(btrim(coalesce(te.content, '')), '') is not null)
 ),
+-- ⭐ 18/10/2026 (עידן: "שזה ייכנס גם לקריאת שירות"): טופס התיקון החתום
+-- נכנס גם לנספחים של הקריאה, לא רק לכרטיס הלקוח. ה-PDF בדלי הפרטי (`fileUrls`).
+forms as (
+  select 'formdoc:' || sf.id::text as key,
+         'file_upload'::text as kind,
+         sc.priority_call_id as docno,
+         sc.priority_status,
+         sf.signed_by as user_name,
+         null::text as content,
+         jsonb_build_object('fileUrls', jsonb_build_array('sb://signed-forms/' || sf.pdf_path),
+                            'fileDes', te.metadata->>'fileDes') as metadata,
+         sf.signed_at as at,
+         null::text as resolution_kind
+    from public.signed_forms sf
+    join public.service_calls sc on sc.id = sf.service_call_id
+    left join public.timeline_events te on te.id = sf.priority_event_id
+   where sf.pdf_path is not null
+),
 notes as (
   select 'note:' || cs.id::text || ':' || md5(cs.resolution_note) as key,
          'note'::text as kind,
@@ -73,7 +91,7 @@ select c.key, c.kind, c.docno, c.priority_status, c.user_name, c.content, c.meta
        l.claimed_at, l.pushed_at, l.failed_at, l.fail_reason, l.last_error,
        case when coalesce(c.priority_status, '') in ('סופית', 'מבוטלת', 'טופל טכנאי')
             then 'call_locked' end as blocked_reason
-  from (select * from ev union all select * from notes) c
+  from (select * from ev union all select * from forms union all select * from notes) c
   left join public.priority_call_push_log l on l.key = c.key
  where c.docno ~ '^[A-Za-z0-9_-]{1,30}$';
 

@@ -323,3 +323,55 @@ as $$
 $$;
 revoke all on function public.stops_form_status(uuid[]) from public, anon;
 grant execute on function public.stops_form_status(uuid[]) to authenticated;
+
+-- ─── הטופס גם לתעודת המשלוח (18/10/2026) ────────────────────────────────
+--
+-- עידן: "אני רוצה שזה ייכנס גם לתעודת משלוח או קריאת שירות". קריאה: דרך
+-- `priority_call_push_queue` (מפתח `formdoc:`). אספקה: כאן. תעודת המשלוח
+-- (`DOCUMENTS_D`, SH...) נמצאת לפי ההזמנה (`delivery_notes.source_order` =
+-- `orders.priority_order_id`), בלי מבוטלת, האחרונה.
+-- ⭐ אם עוד אין תעודה, הטופס מחכה ונבדק בכל ריצה עד 14 יום. אותו יומן כמו
+-- הקריאות (`priority_call_push_log`, מפתח `formdn:`): תפיסה, אישור ועצירה
+-- עם הסיבה כשפריוריטי דוחה.
+create or replace function public.priority_dn_form_candidates(p_limit integer default 20)
+returns table (key text, docno text, metadata jsonb, at timestamptz)
+language sql stable security definer
+set search_path = public
+as $$
+  select 'formdn:' || sf.id::text,
+         dn.priority_doc_id,
+         jsonb_build_object('fileUrls', jsonb_build_array('sb://signed-forms/' || sf.pdf_path),
+                            'fileDes', te.metadata->>'fileDes'),
+         sf.signed_at
+    from public.signed_forms sf
+    left join public.orders o on o.id = sf.order_id
+    left join public.timeline_events te on te.id = sf.priority_event_id
+    join lateral (
+      -- ⭐ שני מסלולים (נמדד 18/10/2026 על 45 יום של אספקות שבוצעו): עצירת
+      -- הזמנה לפי `source_order` (190 מ-196), ועצירת לקוח חדש בלי הזמנה לפי
+      -- הלקוח ותעודה שנפתחה עד שבוע לפני החתימה או יום אחריה (15 מ-15).
+      select d.priority_doc_id
+        from public.delivery_notes d
+       where coalesce(d.status, '') <> 'מבוטלת'
+         and d.priority_doc_id ~ '^[A-Za-z0-9_-]{1,30}$'
+         and (
+           (o.id is not null and d.source_order = o.priority_order_id)
+           or (o.id is null and sf.service_call_id is null and sf.pickup_id is null
+               and d.customer_number = sf.customer_number
+               and d.doc_date between (sf.signed_at at time zone 'Asia/Jerusalem')::date - 7
+                                  and (sf.signed_at at time zone 'Asia/Jerusalem')::date + 1)
+         )
+       order by d.doc_date desc nulls last, d.created_at desc
+       limit 1
+    ) dn on true
+    left join public.priority_call_push_log l on l.key = 'formdn:' || sf.id::text
+   where sf.pdf_path is not null
+     and sf.form_kind = 'delivery'
+     and sf.signed_at > now() - interval '14 days'
+     and l.pushed_at is null
+     and l.failed_at is null
+     and (l.claimed_at is null or l.claimed_at < now() - interval '10 minutes')
+   order by sf.signed_at
+   limit greatest(1, least(coalesce(p_limit, 20), 100));
+$$;
+revoke all on function public.priority_dn_form_candidates(integer) from public, anon, authenticated;

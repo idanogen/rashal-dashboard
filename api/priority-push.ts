@@ -216,14 +216,17 @@ async function handleGet(req: VercelRequest, res: VercelResponse) {
       if (c.kind === 'file_upload') {
         // 🔴 התקרה נבדקת רק לפני פריט, לא באמצע: פריט שחלק מהתמונות שלו
         // נשלחו היה מאושר ב-ack ושאר התמונות היו הולכות לאיבוד.
-        const images = (c.metadata as { imageUrls?: string[] } | null)?.imageUrls ?? [];
+        // ⭐ 18/10/2026: גם טופס חתום (`fileUrls`, PDF בדלי פרטי, מפתח `formdoc:`).
+        const meta = c.metadata as { imageUrls?: string[]; fileUrls?: string[]; fileDes?: string } | null;
+        const images = [...(meta?.imageUrls ?? []), ...(meta?.fileUrls ?? [])];
         const pending: Row[] = [];
         let idx = 0;
         for (const url of images) {
           const file = await toDataUri(url);
           if (!file) continue;
           idx++;
-          const body = JSON.stringify({ EXTFILEDES: photoDes(docno, String(c.at), idx, file.ext), EXTFILENAME: file.dataUri });
+          const des = meta?.fileDes ? `${meta.fileDes}.${file.ext}`.slice(0, 60) : photoDes(docno, String(c.at), idx, file.ext);
+          const body = JSON.stringify({ EXTFILEDES: des, EXTFILENAME: file.dataUri });
           pending.push({ event_id: `call:${key}`, url: callSubformUrl(PRIORITY, docno, 'EXTFILES_SUBFORM'), body });
         }
         if (!pending.length) continue;
@@ -246,6 +249,36 @@ async function handleGet(req: VercelRequest, res: VercelResponse) {
         });
         callKeys.push(key);
       }
+    }
+    // ─── טופס אספקה חתום → נספחים של תעודת המשלוח (18/10/2026) ───
+    // עידן: "שזה ייכנס גם לתעודת משלוח". `DOCUMENTS_D(DOCNO='SH…',TYPE='D')/EXTFILES_SUBFORM`
+    // (אומת במטלפרס, בית הידע של רוני). אותו יומן ואותו `call:` כמו הקריאות,
+    // ולכן אישור ועצירה עם סיבה עובדים בלי שינוי ב-rashal-push.
+    // בבדיקה ממוקדת של קריאה אחת (`test_docno`) לא נוגעים בתעודות משלוח.
+    const { data: dnRows, error: dnErr } = testDocno
+      ? { data: [] as Row[], error: null }
+      : await supabaseAdmin.rpc('priority_dn_form_candidates', { p_limit: 20 });
+    if (dnErr) console.error('[priority-push] dn forms', dnErr.message);
+    for (const d of (dnRows as Row[] | null) ?? []) {
+      if (callKeys.length >= EVENT_BATCH || payload > MAX_PAYLOAD) break;
+      const docno = s(d.docno);
+      const key = s(d.key);
+      if (!docno || !key) continue;
+      const meta = d.metadata as { fileUrls?: string[]; fileDes?: string } | null;
+      const url = meta?.fileUrls?.[0];
+      const file = url ? await toDataUri(url) : null;
+      if (!file) continue;
+      const body = JSON.stringify({
+        EXTFILEDES: `${meta?.fileDes ?? docno}.${file.ext}`.slice(0, 60),
+        EXTFILENAME: file.dataUri,
+      });
+      payload += body.length;
+      writes.push({
+        event_id: `call:${key}`,
+        url: `${PRIORITY}/DOCUMENTS_D(DOCNO='${encodeURIComponent(docno)}',TYPE='D')/EXTFILES_SUBFORM`,
+        body,
+      });
+      callKeys.push(key);
     }
     if (callKeys.length) {
       const { error: claimCallErr } = await supabaseAdmin.rpc('priority_call_push_claim', { p_keys: callKeys });
