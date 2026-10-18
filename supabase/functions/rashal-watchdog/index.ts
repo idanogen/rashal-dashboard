@@ -334,6 +334,9 @@ async function checkParkedPushes(now: Date, prev: Record<string, unknown> | unde
   const { data, error } = await sb.from("priority_call_push_log")
     .select("key,docno,fail_reason,last_error,failed_at")
     .gt("failed_at", since)
+    // test_form נעצר ביד ובכוונה (טופס בדיקה על לקוח אמיתי), אין מה להתריע עליו.
+    // neq לבד מפיל גם שורות עם fail_reason ריק, לכן or.
+    .or("fail_reason.is.null,fail_reason.neq.test_form")
     .order("failed_at", { ascending: false })
     .limit(50);
   if (error) return `query failed: ${error.message}`;
