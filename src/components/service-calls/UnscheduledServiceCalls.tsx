@@ -12,6 +12,7 @@ import {
 import { ServiceTrafficLight } from '@/components/dispatch/ServiceTrafficLight';
 import { ManualGreenDialog } from '@/components/service-calls/ManualGreenDialog';
 import { StopCallInfoSheet } from '@/components/driver/StopCallInfoSheet';
+import { useCallsWithDoc } from '@/hooks/useStopCallInfo';
 import {
   compareByLight,
   countLights,
@@ -71,6 +72,8 @@ export function UnscheduledServiceCalls({
   const { data: mediaStates } = useMediaRequests();
   // ⭐ רמזור קריאות השירות (עידן, 15/09/2026). כשהוא לא נטען המסך נראה כמו קודם.
   const { data: lights } = useServiceCallLights();
+  // חיווי "יש טופס קריאה" מהמייל (עידן, 19/10/2026: "שיהיה חיווי לקובץ").
+  const { data: docsByCall } = useCallsWithDoc(calls.map((c) => c.id));
   const [greenCall, setGreenCall] = useState<ServiceCall | null>(null);
   // מה שהלקוח שלח: אותו גיליון של עמוד הנהג, לפי קריאה (15/09/2026).
   const [mediaCall, setMediaCall] = useState<ServiceCall | null>(null);
@@ -78,7 +81,8 @@ export function UnscheduledServiceCalls({
   const [showOldRed, setShowOldRed] = useState(false);
 
   const items = useMemo(() => {
-    const built = buildServiceCallItems(calls, callZoneMap, groupSize, mediaStates, lights, setGreenCall, setMediaCall);
+    const docIds = docsByCall ? new Set(Object.keys(docsByCall)) : undefined;
+    const built = buildServiceCallItems(calls, callZoneMap, groupSize, mediaStates, lights, setGreenCall, setMediaCall, docIds);
     if (!lights) return built;
     return built
       .filter((vm) => {
@@ -90,7 +94,7 @@ export function UnscheduledServiceCalls({
         return true;
       })
       .sort((a, b) => compareByLight(lights.get(a.id), lights.get(b.id)));
-  }, [calls, callZoneMap, groupSize, mediaStates, lights, selectedLights, showOldRed]);
+  }, [calls, callZoneMap, groupSize, mediaStates, lights, docsByCall, selectedLights, showOldRed]);
 
   const counts = useMemo(() => {
     if (!lights) return null;

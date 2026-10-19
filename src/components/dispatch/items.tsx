@@ -113,7 +113,9 @@ export function buildServiceCallItems(
   /** "סמן ירוק" בכרטיס אדום. */
   onMarkGreen?: (call: ServiceCall) => void,
   /** פתיחת מה שהלקוח שלח (עידן, 15/09/2026: "אין לי במסך פה גישה לתמונות ולסרטונים"). */
-  onOpenMedia?: (call: ServiceCall) => void
+  onOpenMedia?: (call: ServiceCall) => void,
+  /** קריאות שיש להן טופס קריאה מהמייל (עידן, 19/10/2026: "שיהיה חיווי לקובץ"). */
+  docIds?: Set<string>
 ): DispatchItemVM[] {
   return calls.map((call) => {
     const mediaState = mediaStates?.get(call.id);
@@ -215,6 +217,23 @@ export function buildServiceCallItems(
               className="inline-flex items-center rounded-md border border-green-300 bg-green-50 px-2 py-0.5 text-[11px] font-bold text-green-800 hover:bg-green-100"
             >
               ✓ סמן ירוק
+            </button>
+          </p>
+        )}
+        {/* ⭐ חיווי טופס הקריאה מהמייל (עידן, 19/10/2026). לחיצה פותחת את הכרטיס, שם הטופס. */}
+        {docIds?.has(call.id) && (
+          <p className="mt-1">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenMedia?.(call);
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              title="טופס הקריאה המקורי מפריוריטי נקלט מהמייל. לחיצה לצפייה."
+              className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-700 underline-offset-2 hover:bg-indigo-100 hover:underline"
+            >
+              📄 טופס הקריאה ‹
             </button>
           </p>
         )}

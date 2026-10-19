@@ -46,6 +46,7 @@ import { ScheduleCoordinationDialog } from '@/components/whatsapp/ScheduleCoordi
 import { CoordinationStatusBadge } from '@/components/whatsapp/CoordinationStatusBadge';
 import { OrderChatButton } from '@/components/OrderChatButton';
 import { StopCallInfoSheet } from '@/components/driver/StopCallInfoSheet';
+import { useCallsWithDoc } from '@/hooks/useStopCallInfo';
 import { infoButtonLabel } from '@/lib/call-info';
 import { EditStopDetailsDialog } from '@/components/deliveries/EditStopDetailsDialog';
 
@@ -95,11 +96,13 @@ interface StopCardProps {
   onMoveStop?: (stopId: string) => void;
   /** כרטיס שירות: פתיחת כרטיס הקריאה (פריוריטי + מה שהלקוח שלח). */
   onOpenInfo?: (stop: CalendarStop) => void;
+  /** יש טופס קריאה מהמייל (עידן, 19/10/2026: "שיהיה חיווי לקובץ"). */
+  hasDoc?: boolean;
   /** עריכת כתובת, עיר וטלפון של העצירה (עמי, 07/10/2026). */
   onEditDetails?: (stop: CalendarStop) => void;
 }
 
-function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate, onMoveStop, onOpenInfo, onEditDetails }: StopCardProps) {
+function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate, onMoveStop, onOpenInfo, onEditDetails, hasDoc }: StopCardProps) {
   const cardRef = useRef<HTMLDivElement | null>(null);
   const prevCoordRef = useRef<typeof stop.coordinationStatus>(stop.coordinationStatus);
 
@@ -335,6 +338,7 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate, onMoveSto
         >
           <ClipboardList className="h-3 w-3" />
           {infoLabel}
+          {hasDoc && <span title="טופס הקריאה המקורי מפריוריטי נקלט מהמייל">· 📄 טופס</span>}
         </button>
       )}
 
@@ -513,6 +517,12 @@ export function DeliveryCalendar({
       return next;
     });
   const [coordinationStop, setCoordinationStop] = useState<CalendarStop | null>(null);
+  // חיווי "יש טופס קריאה" על עצירות שירות (עידן, 19/10/2026).
+  const serviceCallIds = useMemo(
+    () => deliveries.flatMap((d) => d.stops.filter((st) => st.sourceType === 'service' && st.sourceId && st.sourceId !== st.stopId).map((st) => st.sourceId!)),
+    [deliveries]
+  );
+  const { data: docsByCall } = useCallsWithDoc(serviceCallIds);
   const [infoStop, setInfoStop] = useState<CalendarStop | null>(null);
   const [editStop, setEditStop] = useState<CalendarStop | null>(null);
   // קבוצות נהג מקופלות ביומן (key = delivery.id = "date__driver").
@@ -909,6 +919,7 @@ export function DeliveryCalendar({
                                 onMoveStop={onMoveStop}
                                 onOpenInfo={setInfoStop}
                                 onEditDetails={setEditStop}
+                                hasDoc={stop.sourceType === 'service' && !!stop.sourceId && !!docsByCall?.[stop.sourceId]}
                               />
                             ))}
                           </SortableContext>

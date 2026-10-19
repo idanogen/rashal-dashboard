@@ -829,7 +829,7 @@ const VIEWS: Record<string, React.ReactElement> = {
     <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
       <DndContext>
         <div className="mx-auto grid max-w-4xl grid-cols-3 gap-4">
-          {buildServiceCallItems(PREVIEW_CALLS, new Map(), undefined, PREVIEW_MEDIA).map((vm) => (
+          {buildServiceCallItems(PREVIEW_CALLS, new Map(), undefined, PREVIEW_MEDIA, undefined, undefined, undefined, new Set([PREVIEW_CALLS[0]?.id ?? ''])).map((vm) => (
             <DispatchCard key={vm.id} vm={vm} accentBorder="border-s-orange-500" />
           ))}
         </div>

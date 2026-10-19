@@ -23,6 +23,29 @@ export function useStopsCallInfoCounts(stopIds: string[]) {
   });
 }
 
+/**
+ * חיווי "יש טופס קריאה" (עידן, 19/10/2026: "שיהיה חיווי לקובץ").
+ * קריאה שלא חזרה = אין טופס (או שהוא מבוטל). ההרשאה נאכפת במסד.
+ */
+export function useCallsWithDoc(callIds: (string | undefined)[]) {
+  const ids = [...new Set(callIds.filter((id): id is string => !!id))].sort().slice(0, 300);
+  return useQuery({
+    queryKey: ['callsWithDoc', ids.join(',')],
+    enabled: ids.length > 0,
+    staleTime: 60_000,
+    queryFn: async (): Promise<Record<string, { docno: string; status?: string }>> => {
+      const { data, error } = await supabase.rpc('calls_with_doc', { p_call_ids: ids });
+      if (error) throw new Error(error.message);
+      const out: Record<string, { docno: string; status?: string }> = {};
+      for (const r of Array.isArray(data) ? data : []) {
+        const row = r as { call_id?: string; docno?: string; doc_status?: string };
+        if (row.call_id && row.docno) out[row.call_id] = { docno: row.docno, status: row.doc_status ?? undefined };
+      }
+      return out;
+    },
+  });
+}
+
 export type SignedCallInfo = CallInfo & { urls: Record<string, string> };
 
 /**
