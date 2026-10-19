@@ -1079,7 +1079,7 @@ if (view === 'callinfo' || view === 'callinfo-empty') {
   const info: SignedCallInfo = empty
     ? {
         stopId: 'ci1', kind: 'service', order: null, pickup: null, call: { id: 'sc1', docno: 'SC2603301' }, media: [], texts: [], officeNote: null,
-        mediaRequest: { state: 'sent', sentAt: '2026-09-15T06:12:00Z' }, urls: {},
+        mediaRequest: { state: 'sent', sentAt: '2026-09-15T06:12:00Z' }, doc: null, urls: {},
       }
     : {
         stopId: 'ci1', kind: 'service', order: null, pickup: null,
@@ -1099,7 +1099,12 @@ if (view === 'callinfo' || view === 'callinfo-empty') {
         ],
         officeNote: { userName: 'עמי גז', content: 'ברקס בגב הכסא לא נועל', at: '2026-09-14T14:41:33Z' },
         mediaRequest: { state: 'media_received', sentAt: '2026-09-14T07:30:13Z', receivedAt: '2026-09-14T07:33:55Z' },
-        urls: { p1: IMG, p2: IMG, p3: IMG, p4: IMG, p5: IMG, v1: IMG },
+        // טופס הקריאה מפריוריטי (19/10/2026): עמוד אחד, נפתח למסך מלא.
+        doc: {
+          docno: 'SC2603758', status: 'לביצוע', docDate: '2026-10-19',
+          receivedAt: '2026-10-19T04:55:29Z', pdfPath: 'SC2603758/x.pdf', pagePaths: ['dp1'],
+        },
+        urls: { p1: IMG, p2: IMG, p3: IMG, p4: IMG, p5: IMG, v1: IMG, dp1: IMG },
       };
   previewQc.setQueryData(['stopCallInfo', 'ci1'], info);
   VIEWS[view] = (
@@ -1146,6 +1151,7 @@ if (view === 'calendar-callinfo') {
     texts: [{ messageId: 't1', at: '2026-09-14T07:39:16Z', body: 'הפרקסים לא עובדים' }],
     officeNote: { userName: 'עמי גז', content: 'ברקס בגב הכסא לא נועל', at: '2026-09-14T14:41:33Z' },
     mediaRequest: { state: 'media_received', sentAt: '2026-09-14T07:30:13Z', receivedAt: '2026-09-14T07:33:55Z' },
+    doc: null,
     urls: { p1: IMG, p2: IMG, v1: IMG },
   } satisfies SignedCallInfo);
   VIEWS[view] = (
@@ -1191,7 +1197,7 @@ if (view === 'calendar-callinfo') {
  */
 if (view === 'delivery-info' || view === 'pickup-info') {
   const today = localDateStr(new Date());
-  const base = { call: null, media: [], texts: [], mediaRequest: null, urls: {}, pickup: null, order: null };
+  const base = { call: null, media: [], texts: [], mediaRequest: null, doc: null, urls: {}, pickup: null, order: null };
   previewQc.setQueryData(['stopCallInfo', 'd1'], {
     ...base, stopId: 'd1', kind: 'delivery',
     order: {
@@ -1316,6 +1322,7 @@ if (view === 'phonebook' || view === 'stop-edit' || view === 'stop-card' || view
     call: { id: 'sc1', docno: 'SC2602269', faultText: 'בדיקת כ"ג: תיקון וחיזוק ברקסים', deviceDesc: 'RUBIX43*43.5S' },
     media: [], texts: [], officeNote: null,
     mediaRequest: { state: 'waiting', sentAt: '2026-10-08T07:30:13Z' },
+    doc: null,
     urls: {},
   } satisfies SignedCallInfo);
   const stop = {

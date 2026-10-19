@@ -135,3 +135,29 @@ test('קריאה נשארת כמו שהייתה', () => {
   assert.equal(info.kind, 'service');
   assert.equal(infoDocno(info), 'SC1');
 });
+
+// ─── טופס הקריאה מפריוריטי (מהמייל, 19/10/2026) ───────────────────────────
+
+test('טופס הקריאה: נקרא מהמטען, וחסר = null בלי להפיל', () => {
+  const withDoc = parseCallInfo({
+    stop_id: 's5',
+    call: { id: 'c5', docno: 'SC2603758' },
+    media: [], texts: [], office_note: null, media_request: null,
+    doc: {
+      docno: 'SC2603758', status: 'לביצוע', doc_date: '2026-10-19',
+      received_at: '2026-10-19T04:55:29Z',
+      pdf_path: 'SC2603758/abc.pdf',
+      page_paths: ['SC2603758/abc-p1.png', '', 7],
+      page_size: { w: 595, h: 842 },
+    },
+  });
+  assert.equal(withDoc.doc.docno, 'SC2603758');
+  assert.equal(withDoc.doc.status, 'לביצוע');
+  assert.deepEqual(withDoc.doc.pagePaths, ['SC2603758/abc-p1.png'], 'רק נתיבים אמיתיים');
+
+  const without = parseCallInfo({ stop_id: 's6', call: { id: 'c6' }, media: [], texts: [] });
+  assert.equal(without.doc, null);
+  // טופס בלי נתיב PDF אינו טופס.
+  const broken = parseCallInfo({ stop_id: 's7', call: { id: 'c7' }, media: [], texts: [], doc: { docno: 'SC1' } });
+  assert.equal(broken.doc, null);
+});

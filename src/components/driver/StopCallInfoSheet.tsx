@@ -4,6 +4,7 @@ import {
   ChevronRight,
   ClipboardList,
   Contact,
+  FileText,
   PackageOpen,
   Truck,
   Image as ImageIcon,
@@ -19,7 +20,7 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useServiceCallInfo, useStopCallInfo, type SignedCallInfo } from '@/hooks/useStopCallInfo';
 import type { ServiceCall } from '@/types/service-call';
-import { emptyMediaLine, infoDocno, infoKindLabel, itemLine, splitPhones, type CallMedia, type OrderInfo, type PickupInfo } from '@/lib/call-info';
+import { emptyMediaLine, infoDocno, infoKindLabel, itemLine, splitPhones, type CallDocInfo, type CallMedia, type OrderInfo, type PickupInfo } from '@/lib/call-info';
 import { buildWazeUrl } from '@/lib/navigation';
 import type { CalendarStop } from '@/types/calendar-stop';
 import type { CalendarStop as CalendarViewStop } from '@/types/delivery';
@@ -62,6 +63,16 @@ export function StopCallInfoSheet({ stop, call: serviceCall, calendarStop, open,
   const callQuery = useServiceCallInfo(serviceCall?.id ?? '', open && !stopId && !!serviceCall);
   const { data, isLoading, error } = stopId ? stopQuery : callQuery;
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  const [docViewerIndex, setDocViewerIndex] = useState<number | null>(null);
+
+  // עמודי טופס הקריאה כפריטי תצוגה, לאותו מציג מסך-מלא של המדיה.
+  const docPages: CallMedia[] = (data?.doc?.pagePaths ?? []).map((p, i) => ({
+    messageId: `doc-${i}`,
+    index: i,
+    at: data?.doc?.receivedAt ?? '',
+    type: 'image',
+    path: p,
+  }));
 
   const call = data?.call;
   // הסוג מהנתונים כשנטענו, ולפני כן מהעצירה עצמה, כדי שהכותרת לא תקפוץ.
@@ -132,7 +143,7 @@ export function StopCallInfoSheet({ stop, call: serviceCall, calendarStop, open,
               ) : data.kind === 'pickup' && data.pickup ? (
                 <PickupBody pickup={data.pickup} officeNote={data.officeNote} />
               ) : (
-                <InfoBody info={data} onOpenMedia={setViewerIndex} />
+                <InfoBody info={data} onOpenMedia={setViewerIndex} onOpenDoc={setDocViewerIndex} />
               )
             ) : null}
             {!isLoading && !error && (
@@ -165,6 +176,14 @@ export function StopCallInfoSheet({ stop, call: serviceCall, calendarStop, open,
           urls={data.urls}
           index={viewerIndex}
           onIndex={setViewerIndex}
+        />
+      )}
+      {data && docPages.length > 0 && (
+        <MediaViewer
+          items={docPages}
+          urls={data.urls}
+          index={docViewerIndex}
+          onIndex={setDocViewerIndex}
         />
       )}
     </>
@@ -276,7 +295,7 @@ function Empty({ children }: { children: React.ReactNode }) {
   return <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/60 p-2.5 text-xs text-muted-foreground">{children}</div>;
 }
 
-function InfoBody({ info, onOpenMedia }: { info: SignedCallInfo; onOpenMedia: (i: number) => void }) {
+function InfoBody({ info, onOpenMedia, onOpenDoc }: { info: SignedCallInfo; onOpenMedia: (i: number) => void; onOpenDoc: (i: number) => void }) {
   const faultText = info.call?.faultText;
   const images = info.media.filter((m) => m.type === 'image').length;
   const videos = info.media.filter((m) => m.type === 'video').length;
@@ -306,6 +325,8 @@ function InfoBody({ info, onOpenMedia }: { info: SignedCallInfo; onOpenMedia: (i
           <Empty>לא נרשם תאור תקלה בפריוריטי</Empty>
         )}
       </Section>
+
+      {info.doc && <CallDocSection doc={info.doc} urls={info.urls} onOpen={onOpenDoc} />}
 
       <Section icon={<ImageIcon className="h-4 w-4 text-emerald-600" />} title="מה הלקוח שלח בוואטסאפ" meta={mediaMeta || undefined}>
         {info.media.length > 0 ? (
@@ -340,6 +361,42 @@ function InfoBody({ info, onOpenMedia }: { info: SignedCallInfo; onOpenMedia: (i
         </Section>
       )}
     </>
+  );
+}
+
+/**
+ * טופס הקריאה המקורי מפריוריטי (מהמייל, 19/10/2026). עידן: "גם קריאות שירות
+ * וגם משלוחים ללקוח אלה דברים שאנחנו רוצים להציג לנהגים ב-PDF".
+ * תמונת עמוד שנפתחת למסך מלא; ה-PDF עצמו נשאר בדלי לצרכים הבאים.
+ */
+function CallDocSection({ doc, urls, onOpen }: { doc: CallDocInfo; urls: Record<string, string>; onOpen: (i: number) => void }) {
+  const meta = [doc.status, doc.docDate ? ddmm(doc.docDate) : ''].filter(Boolean).join(' · ');
+  return (
+    <Section icon={<FileText className="h-4 w-4 text-indigo-600" />} title="טופס הקריאה מפריוריטי" meta={meta || undefined}>
+      {doc.pagePaths.length ? (
+        <div className="grid grid-cols-4 gap-1.5">
+          {doc.pagePaths.map((p, i) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => onOpen(i)}
+              className="relative flex aspect-[3/4] items-center justify-center overflow-hidden rounded-md border bg-white"
+            >
+              {urls[p] ? (
+                <img src={urls[p]} alt={`טופס הקריאה, עמוד ${i + 1}`} loading="lazy" className="h-full w-full object-cover object-top" />
+              ) : (
+                <FileText className="h-5 w-5 text-slate-400" />
+              )}
+              {doc.pagePaths.length > 1 && (
+                <span className="absolute bottom-0.5 end-0.5 rounded bg-slate-900/70 px-1 text-[10px] text-white">{i + 1}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <Empty>הטופס נקלט בלי תמונת עמוד.</Empty>
+      )}
+    </Section>
   );
 }
 

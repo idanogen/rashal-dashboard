@@ -32,17 +32,20 @@ export type SignedCallInfo = CallInfo & { urls: Record<string, string> };
 async function withSignedUrls(raw: unknown): Promise<SignedCallInfo | null> {
   const info = parseCallInfo(raw);
   if (!info) return null;
-  const paths = [...new Set(info.media.map((m) => m.path))];
   const urls: Record<string, string> = {};
-  if (paths.length) {
+  const sign = async (bucket: string, paths: string[]) => {
+    if (!paths.length) return;
     const { data: signed, error: signErr } = await supabase.storage
-      .from('wa-media')
+      .from(bucket)
       .createSignedUrls(paths, SIGNED_SECONDS);
     if (signErr) throw new Error(signErr.message);
     for (const s of signed ?? []) {
       if (s.path && s.signedUrl) urls[s.path] = s.signedUrl;
     }
-  }
+  };
+  await sign('wa-media', [...new Set(info.media.map((m) => m.path))]);
+  // טופס הקריאה מפריוריטי יושב בדלי משלו; החתימה עוברת את אותה מדיניות אחסון.
+  if (info.doc) await sign('service-call-docs', [...new Set([...info.doc.pagePaths, info.doc.pdfPath])]);
   return { ...info, urls };
 }
 

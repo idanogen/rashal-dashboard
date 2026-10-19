@@ -79,6 +79,16 @@ export interface PickupInfo {
 
 export type StopInfoKind = 'service' | 'delivery' | 'pickup' | 'none';
 
+/** טופס הקריאה המקורי מפריוריטי (נקלט מהמייל, 19/10/2026). */
+export interface CallDocInfo {
+  docno: string;
+  status?: string;
+  docDate?: string;
+  receivedAt?: string;
+  pdfPath: string;
+  pagePaths: string[];
+}
+
 export interface CallInfo {
   stopId: string;
   /** מה הכרטיס מציג: קריאה, אספקה, איסוף, או כלום (משימה חופשית). */
@@ -100,6 +110,8 @@ export interface CallInfo {
   texts: CallText[];
   officeNote: { userName: string; content: string; at: string } | null;
   mediaRequest: { state?: string; sentAt?: string; receivedAt?: string } | null;
+  /** טופס הקריאה מהמייל של פריוריטי. null = עוד לא נקלט (או בוטל). */
+  doc: CallDocInfo | null;
 }
 
 type Raw = Record<string, unknown>;
@@ -130,6 +142,7 @@ export function parseCallInfo(raw: unknown): CallInfo | null {
   const req = r.media_request && typeof r.media_request === 'object' ? (r.media_request as Raw) : null;
   const o = r.order && typeof r.order === 'object' ? (r.order as Raw) : null;
   const pk = r.pickup && typeof r.pickup === 'object' ? (r.pickup as Raw) : null;
+  const d = r.doc && typeof r.doc === 'object' ? (r.doc as Raw) : null;
   const num = (v: unknown): number | undefined => (v == null || v === '' || Number.isNaN(Number(v)) ? undefined : Number(v));
   const order: OrderInfo | null = o
     ? {
@@ -201,6 +214,16 @@ export function parseCallInfo(raw: unknown): CallInfo | null {
       : null,
     mediaRequest: req
       ? { state: str(req.state), sentAt: str(req.sent_at), receivedAt: str(req.received_at) }
+      : null,
+    doc: d && str(d.docno) && str(d.pdf_path)
+      ? {
+          docno: String(d.docno),
+          status: str(d.status),
+          docDate: str(d.doc_date),
+          receivedAt: str(d.received_at),
+          pdfPath: String(d.pdf_path),
+          pagePaths: (Array.isArray(d.page_paths) ? d.page_paths : []).filter((p): p is string => typeof p === 'string' && p !== ''),
+        }
       : null,
   };
 }
