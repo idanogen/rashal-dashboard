@@ -37,7 +37,7 @@ import {
   BookOpenCheck,
   ClipboardCheck,
   Search,
-
+  Smartphone,
   UserRound,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -377,6 +377,8 @@ export function DriverDashboardPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-4">
+      <AppInstallBanner />
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -774,6 +776,29 @@ export function LeftoverStopCard({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * המסך הזה נטען רק בדפדפן: האפליקציה הנייטיבית לא עוברת כאן.
+ * לכן הבאנר מגיע בדיוק למי שעדיין על הקיצור הישן (20/10/2026).
+ */
+export function AppInstallBanner() {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-sky-200 bg-sky-50 p-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-sky-100">
+        <Smartphone className="h-5 w-5 text-sky-600" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-sky-900">עברנו לאפליקציה חדשה</p>
+        <p className="text-xs text-sky-800">
+          המסך הזה הוא הגרסה הישנה. ההתקנה לוקחת דקה והחיבור נשמר.
+        </p>
+      </div>
+      <Button asChild size="sm" className="shrink-0 bg-sky-600 hover:bg-sky-700">
+        <a href="/app/">להתקנה</a>
+      </Button>
+    </div>
   );
 }
 

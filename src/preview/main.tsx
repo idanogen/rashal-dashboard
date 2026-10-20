@@ -26,7 +26,7 @@ import { CustomerCardButton } from '@/components/customer/CustomerCardSheet';
 import { FIXTURE } from '@/preview/customer-fixture';
 import { DuplicateScheduleWarningDialog } from '@/components/deliveries/DuplicateScheduleWarningDialog';
 import { NotCompletedReasonDialog } from '@/components/NotCompletedReasonDialog';
-import { DriverStopCard, LeftoverStopCard } from '@/pages/DriverDashboardPage';
+import { AppInstallBanner, DriverStopCard, LeftoverStopCard } from '@/pages/DriverDashboardPage';
 import { AlertTriangle, CalendarClock } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { SurveysPage } from '@/pages/SurveysPage';
@@ -666,6 +666,22 @@ function DeadEndPreview({ withMatches }: { withMatches: boolean }) {
 }
 
 const VIEWS: Record<string, React.ReactElement> = {
+  /** באנר "עברנו לאפליקציה" בראש עמוד הנהג בווב (20/10/2026). */
+  'driver-banner': (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-3">
+      <div className="mx-auto space-y-4" style={{ width: 384 }}>
+        <AppInstallBanner />
+        <DriverStopCard
+          stop={driverStop({})}
+          index={1}
+          onCoordinate={() => {}}
+          onArrive={() => {}}
+          onResolve={() => {}}
+          resolving={false}
+        />
+      </div>
+    </div>
+  ),
   /** מסילת הניווט של מסך הסדרן (06/09/2026). */
   rail: <RailScene />,
   header: <HeaderScene />,
