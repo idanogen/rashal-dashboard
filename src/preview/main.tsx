@@ -1203,6 +1203,39 @@ if (view === 'calendar-callinfo') {
 
 
 /**
+ * חיווי מסמכים מצורפים ביומן (עידן, 21/10/2026): `?view=calendar-docs`.
+ * תעודה שמחכה · תעודה שנחתמה · טופס קריאה + תיקון חתום · החזרה חתומה · בלי מסמך.
+ */
+if (view === 'calendar-docs') {
+  const today = localDateStr(new Date());
+  const base = { status: 'planned' as const, deliveryDate: today, driver: 'רודי' as const, scheduledBy: 'עמי גז', city: 'נתניה', phone: '0524613444' };
+  const stops = [
+    { ...base, stopId: 'k1', sourceId: 'o1', sourceType: 'delivery' as const, customerName: 'אוגוסט נ לוזון', address: 'סמילנסקי 21', timeWindowStart: '09:00', timeWindowEnd: '11:00' },
+    { ...base, stopId: 'k2', sourceId: 'o2', sourceType: 'delivery' as const, customerName: 'גרינפסט רייצל', address: 'הרצל 4', timeWindowStart: '10:00', timeWindowEnd: '12:00', status: 'completed' as const },
+    { ...base, stopId: 'k3', sourceId: 'sc1', sourceType: 'service' as const, customerName: 'מרים טקלה', address: 'ויצמן 9', timeWindowStart: '12:00', timeWindowEnd: '14:00' },
+    { ...base, stopId: 'k4', sourceId: 'pk1', sourceType: 'pickup' as const, customerName: 'אפל רחל', address: 'החבצלת 8', timeWindowStart: '13:00', timeWindowEnd: '15:00' },
+    { ...base, stopId: 'k5', sourceId: 'o3', sourceType: 'delivery' as const, customerName: 'רבינוביץ רות', address: 'השומרון 61', timeWindowStart: '15:00', timeWindowEnd: '17:00' },
+  ];
+  const sig = (formKey: string) => ({ pdfPath: 'x.pdf', formKey, signedAt: '2026-10-21T08:00:00Z' });
+  previewQc.setQueryData(['stopDocs', ['k1', 'k2', 'k3', 'k4', 'k5'].join(',')], {
+    k1: { noteDocno: 'SH2604201', signed: [] },
+    k2: { noteDocno: 'SH2604188', signed: [sig('delivery_note'), sig('delivery_note')] },
+    k3: { signed: [sig('moh-repair')] },
+    k4: { signed: [sig('moh-return')] },
+  });
+  previewQc.setQueryData(['callsWithDoc', 'sc1'], { sc1: { docno: 'SC2603301' } });
+  VIEWS[view] = (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
+      <div className="mx-auto max-w-sm">
+        <RealDnd>
+          <DeliveryCalendar deliveries={[{ id: 'g1', date: today, driver: 'רודי', stops }]} onResolveStop={() => {}} />
+        </RealDnd>
+      </div>
+    </div>
+  );
+}
+
+/**
  * ספר הטלפונים עם דלת ידנית (עמי, 06-07/10/2026) ועריכת פרטי עצירה.
  * `?view=phonebook` : הרכיב לבד + בתוך כרטיס הקריאה ביומן.
  * `?view=stop-edit` : דיאלוג העריכה פתוח על עצירת שירות.

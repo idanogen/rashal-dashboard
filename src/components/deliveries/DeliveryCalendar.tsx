@@ -47,6 +47,9 @@ import { CoordinationStatusBadge } from '@/components/whatsapp/CoordinationStatu
 import { OrderChatButton } from '@/components/OrderChatButton';
 import { StopCallInfoSheet } from '@/components/driver/StopCallInfoSheet';
 import { useCallsWithDoc } from '@/hooks/useStopCallInfo';
+import { openStopDoc, useStopDocs, type StopDocState } from '@/hooks/useStopDocs';
+import { stopDocChips } from '@/lib/stop-docs';
+import { toast } from 'sonner';
 import { infoButtonLabel } from '@/lib/call-info';
 import { EditStopDetailsDialog } from '@/components/deliveries/EditStopDetailsDialog';
 
@@ -62,7 +65,12 @@ const SOURCE_META = {
   task: { Icon: ClipboardList, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-s-amber-500', dot: 'bg-amber-500', label: 'משימה' },
   customer: { Icon: UserPlus, color: 'text-violet-600', bg: 'bg-violet-50', border: 'border-s-violet-500', dot: 'bg-violet-500', label: 'לקוח חדש' },
 } as const;
-const SOURCE_ORDER = ['delivery', 'service', 'pickup', 'task', 'customer'] as const;
+const DOC_CHIP_CLASS = {
+  signed: 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100',
+  note: 'border-indigo-300 bg-indigo-50 text-indigo-800 hover:bg-indigo-100',
+  callDoc: 'border-indigo-300 bg-indigo-50 text-indigo-800 hover:bg-indigo-100',
+} as const;
+const SOURCE_ORDER =['delivery', 'service', 'pickup', 'task', 'customer'] as const;
 
 interface DeliveryCalendarProps {
   deliveries: CalendarDelivery[];
@@ -98,11 +106,13 @@ interface StopCardProps {
   onOpenInfo?: (stop: CalendarStop) => void;
   /** יש טופס קריאה מהמייל (עידן, 19/10/2026: "שיהיה חיווי לקובץ"). */
   hasDoc?: boolean;
+  /** תעודת משלוח וטפסים חתומים על העצירה (עידן, 21/10/2026). */
+  docs?: StopDocState;
   /** עריכת כתובת, עיר וטלפון של העצירה (עמי, 07/10/2026). */
   onEditDetails?: (stop: CalendarStop) => void;
 }
 
-function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate, onMoveStop, onOpenInfo, onEditDetails, hasDoc }: StopCardProps) {
+function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate, onMoveStop, onOpenInfo, onEditDetails, hasDoc, docs }: StopCardProps) {
   const cardRef = useRef<HTMLDivElement | null>(null);
   const prevCoordRef = useRef<typeof stop.coordinationStatus>(stop.coordinationStatus);
 
@@ -192,6 +202,12 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate, onMoveSto
   // 08/10/2026 (עמי): גם אספקה ואיסוף פותחים כרטיס (מה לספק, מה לאסוף).
   const infoLabel = infoButtonLabel(stop.sourceType, !!stop.sourceId && stop.sourceId !== stop.stopId);
   const openInfo = infoLabel && onOpenInfo ? () => onOpenInfo(stop) : undefined;
+  const docChips = stopDocChips({
+    sourceType: stop.sourceType,
+    noteDocno: docs?.noteDocno,
+    signedCount: docs?.signed.length,
+    hasCallDoc: hasDoc,
+  });
 
   return (
     <div
@@ -338,8 +354,32 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate, onMoveSto
         >
           <ClipboardList className="h-3 w-3" />
           {infoLabel}
-          {hasDoc && <span title="טופס הקריאה המקורי מפריוריטי נקלט מהמייל">· 📄 טופס</span>}
         </button>
+      )}
+
+      {/* מסמכים מצורפים: תעודה, טופס חתום, טופס קריאה */}
+      {docChips.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-1">
+          {docChips.map((c) => (
+            <button
+              key={c.kind}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (c.kind === 'callDoc') {
+                  openInfo?.();
+                  return;
+                }
+                if (docs) openStopDoc(stop.stopId, docs).catch((err) => toast.error(`פתיחת המסמך נכשלה: ${err.message}`));
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              title={c.title}
+              className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[11px] font-semibold ${DOC_CHIP_CLASS[c.kind]}`}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
       )}
 
       {/* Scheduling stamp — who scheduled / rescheduled */}
@@ -517,12 +557,6 @@ export function DeliveryCalendar({
       return next;
     });
   const [coordinationStop, setCoordinationStop] = useState<CalendarStop | null>(null);
-  // חיווי "יש טופס קריאה" על עצירות שירות (עידן, 19/10/2026).
-  const serviceCallIds = useMemo(
-    () => deliveries.flatMap((d) => d.stops.filter((st) => st.sourceType === 'service' && st.sourceId && st.sourceId !== st.stopId).map((st) => st.sourceId!)),
-    [deliveries]
-  );
-  const { data: docsByCall } = useCallsWithDoc(serviceCallIds);
   const [infoStop, setInfoStop] = useState<CalendarStop | null>(null);
   const [editStop, setEditStop] = useState<CalendarStop | null>(null);
   // קבוצות נהג מקופלות ביומן (key = delivery.id = "date__driver").
@@ -606,6 +640,21 @@ export function DeliveryCalendar({
     return getWeekWorkDays(currentDate);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentDate, todayStr]);
+
+  // ── חיווי מסמכים מצורפים: רק לשבוע שעל המסך ──
+  // 🔴 21/10/2026: הרשימה נבנתה מכל העצירות מכל הזמנים ונחתכה ל-300 לפי
+  // מזהה. ב-798 קריאות משובצות, רוב הקריאות של השבוע נפלו מחוץ לחתך
+  // ו"📄 טופס" לא הופיע עליהן.
+  const weekStops = useMemo(() => {
+    const days = new Set(visibleDays.map((d) => toLocalDateStr(d)));
+    return deliveries.filter((d) => days.has(d.date)).flatMap((d) => d.stops);
+  }, [deliveries, visibleDays]);
+  const serviceCallIds = useMemo(
+    () => weekStops.filter((st) => st.sourceType === 'service' && st.sourceId && st.sourceId !== st.stopId).map((st) => st.sourceId!),
+    [weekStops]
+  );
+  const { data: docsByCall } = useCallsWithDoc(serviceCallIds);
+  const { data: docsByStop } = useStopDocs(useMemo(() => weekStops.map((st) => st.stopId), [weekStops]));
 
   // כל יום שעבר מכווץ כברירת מחדל, גם בשבוע שכולו בעבר. אחרת חמש עמודות
   // רחבות לא נכנסות לרוחב המסך, ויום חמישי נדחף לשורה שנייה מתחת לקפל.
@@ -920,6 +969,7 @@ export function DeliveryCalendar({
                                 onOpenInfo={setInfoStop}
                                 onEditDetails={setEditStop}
                                 hasDoc={stop.sourceType === 'service' && !!stop.sourceId && !!docsByCall?.[stop.sourceId]}
+                                docs={docsByStop?.[stop.stopId]}
                               />
                             ))}
                           </SortableContext>

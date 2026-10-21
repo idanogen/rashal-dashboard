@@ -28,7 +28,9 @@ export function useStopsCallInfoCounts(stopIds: string[]) {
  * קריאה שלא חזרה = אין טופס (או שהוא מבוטל). ההרשאה נאכפת במסד.
  */
 export function useCallsWithDoc(callIds: (string | undefined)[]) {
-  const ids = [...new Set(callIds.filter((id): id is string => !!id))].sort().slice(0, 300);
+  // 🔴 בלי חיתוך ל-300 (21/10/2026): הרשימה ממוינת לפי מזהה, ולכן החיתוך
+  // השמיט קריאות אקראיות מתוך 389 הממתינות. המזהים נוסעים בגוף הבקשה.
+  const ids = [...new Set(callIds.filter((id): id is string => !!id))].sort();
   return useQuery({
     queryKey: ['callsWithDoc', ids.join(',')],
     enabled: ids.length > 0,
