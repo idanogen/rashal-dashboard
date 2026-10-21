@@ -47,9 +47,9 @@ import { CoordinationStatusBadge } from '@/components/whatsapp/CoordinationStatu
 import { OrderChatButton } from '@/components/OrderChatButton';
 import { StopCallInfoSheet } from '@/components/driver/StopCallInfoSheet';
 import { useCallsWithDoc } from '@/hooks/useStopCallInfo';
-import { openStopDoc, useStopDocs, type StopDocState } from '@/hooks/useStopDocs';
+import { useStopDocs, type StopDocState } from '@/hooks/useStopDocs';
 import { stopDocChips } from '@/lib/stop-docs';
-import { toast } from 'sonner';
+import { StopDocChip } from '@/components/deliveries/StopDocChip';
 import { infoButtonLabel } from '@/lib/call-info';
 import { EditStopDetailsDialog } from '@/components/deliveries/EditStopDetailsDialog';
 
@@ -64,11 +64,6 @@ const SOURCE_META = {
   pickup: { Icon: Undo2, color: 'text-teal-600', bg: 'bg-teal-50', border: 'border-s-teal-500', dot: 'bg-teal-500', label: 'איסוף' },
   task: { Icon: ClipboardList, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-s-amber-500', dot: 'bg-amber-500', label: 'משימה' },
   customer: { Icon: UserPlus, color: 'text-violet-600', bg: 'bg-violet-50', border: 'border-s-violet-500', dot: 'bg-violet-500', label: 'לקוח חדש' },
-} as const;
-const DOC_CHIP_CLASS = {
-  signed: 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100',
-  note: 'border-indigo-300 bg-indigo-50 text-indigo-800 hover:bg-indigo-100',
-  callDoc: 'border-indigo-300 bg-indigo-50 text-indigo-800 hover:bg-indigo-100',
 } as const;
 const SOURCE_ORDER =['delivery', 'service', 'pickup', 'task', 'customer'] as const;
 
@@ -361,23 +356,7 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate, onMoveSto
       {docChips.length > 0 && (
         <div className="mt-1.5 flex flex-wrap items-center gap-1">
           {docChips.map((c) => (
-            <button
-              key={c.kind}
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                if (c.kind === 'callDoc') {
-                  openInfo?.();
-                  return;
-                }
-                if (docs) openStopDoc(stop.stopId, docs).catch((err) => toast.error(`פתיחת המסמך נכשלה: ${err.message}`));
-              }}
-              onPointerDown={(e) => e.stopPropagation()}
-              title={c.title}
-              className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[11px] font-semibold ${DOC_CHIP_CLASS[c.kind]}`}
-            >
-              {c.label}
-            </button>
+            <StopDocChip key={c.kind} chip={c} stopId={stop.stopId} docs={docs} onOpenCallInfo={openInfo} />
           ))}
         </div>
       )}

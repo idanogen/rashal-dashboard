@@ -48,6 +48,47 @@ export function useStopDocs(stopIds: string[]) {
   });
 }
 
+export interface StopDocPreview {
+  pdfUrl: string;
+  /** עמודי התעודה המקורית כתמונות. לטופס חתום יש רק PDF. */
+  pageUrls: string[];
+  signed: boolean;
+}
+
+/** הקובץ שהתג מייצג: החתום האחרון, ואם אין, תעודת המקור. */
+async function resolveStopDoc(stopId: string, state: StopDocState): Promise<StopDocPreview> {
+  const last = state.signed.at(-1);
+  if (last) {
+    const { data, error } = await supabase.storage.from('signed-forms').createSignedUrl(last.pdfPath, 600);
+    if (error || !data?.signedUrl) throw new Error(error?.message ?? 'לא ניתן לפתוח את הקובץ');
+    return { pdfUrl: data.signedUrl, pageUrls: [], signed: true };
+  }
+  const { data, error } = await supabase.rpc('stop_delivery_note', { p_stop_id: stopId });
+  if (error) throw new Error(error.message);
+  const doc = data as { pdf_path?: string; page_paths?: string[] } | null;
+  if (!doc?.pdf_path) throw new Error('הקובץ לא נמצא');
+  const paths = [doc.pdf_path, ...(doc.page_paths ?? [])];
+  const { data: signed, error: signErr } = await supabase.storage.from('delivery-note-docs').createSignedUrls(paths, 600);
+  if (signErr) throw new Error(signErr.message);
+  const url = (p: string) => signed?.find((s) => s.path === p)?.signedUrl ?? '';
+  const pdfUrl = url(doc.pdf_path);
+  if (!pdfUrl) throw new Error('לא ניתן לפתוח את הקובץ');
+  return { pdfUrl, pageUrls: (doc.page_paths ?? []).map(url).filter(Boolean), signed: false };
+}
+
+/**
+ * תצוגה מקדימה במעבר עכבר (עידן, 21/10/2026: "במעבר על התעודה היא יכולה
+ * להיפתח לי בפופאפ?"). נטען רק כשהחלונית נפתחת; הכתובות חיות 10 דקות.
+ */
+export function useStopDocPreview(stopId: string, state: StopDocState | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ['stopDocPreview', stopId, state?.noteDocno ?? '', state?.signed.at(-1)?.pdfPath ?? ''],
+    enabled: enabled && !!state,
+    staleTime: 5 * 60_000,
+    queryFn: () => resolveStopDoc(stopId, state!),
+  });
+}
+
 /**
  * פותח את המסמך בלשונית חדשה. החלון נפתח לפני הקריאה למסד, אחרת הדפדפן
  * חוסם אותו כחלון קופץ (הלחיצה כבר לא "של המשתמש" אחרי await).
@@ -55,23 +96,9 @@ export function useStopDocs(stopIds: string[]) {
 export async function openStopDoc(stopId: string, state: StopDocState): Promise<void> {
   const win = window.open('', '_blank');
   try {
-    let bucket: string;
-    let path: string | undefined;
-    const last = state.signed.at(-1);
-    if (last) {
-      bucket = 'signed-forms';
-      path = last.pdfPath;
-    } else {
-      bucket = 'delivery-note-docs';
-      const { data, error } = await supabase.rpc('stop_delivery_note', { p_stop_id: stopId });
-      if (error) throw new Error(error.message);
-      path = (data as { pdf_path?: string } | null)?.pdf_path;
-    }
-    if (!path) throw new Error('הקובץ לא נמצא');
-    const { data: signed, error: signErr } = await supabase.storage.from(bucket).createSignedUrl(path, 600);
-    if (signErr || !signed?.signedUrl) throw new Error(signErr?.message ?? 'לא ניתן לפתוח את הקובץ');
-    if (win) win.location.href = signed.signedUrl;
-    else window.open(signed.signedUrl, '_blank');
+    const { pdfUrl } = await resolveStopDoc(stopId, state);
+    if (win) win.location.href = pdfUrl;
+    else window.open(pdfUrl, '_blank');
   } catch (e) {
     win?.close();
     throw e;

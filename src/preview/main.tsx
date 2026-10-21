@@ -54,6 +54,7 @@ import { buildServiceCallItems } from '@/components/dispatch/items';
 import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import type { ServiceCall } from '@/types/service-call';
 import { DeliveryCalendar } from '@/components/deliveries/DeliveryCalendar';
+import { StopDocChip } from '@/components/deliveries/StopDocChip';
 import { WaAutomationsPage } from '@/pages/WaAutomationsPage';
 import { CustomerCommentsList } from '@/components/surveys/CustomerCommentsList';
 import { SurveyDetailSheet } from '@/components/surveys/SurveyDetailSheet';
@@ -1224,7 +1225,22 @@ if (view === 'calendar-docs') {
     k4: { signed: [sig('moh-return')] },
   });
   previewQc.setQueryData(['callsWithDoc', 'sc1'], { sc1: { docno: 'SC2603301' } });
-  VIEWS[view] = (
+  // `?view=calendar-docs&hover=1`: החלונית במעבר עכבר פתוחה על התעודה, עם עמוד מצויר (לא מסמך של לקוח).
+  const PAGE = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="595" height="842"><rect width="595" height="842" fill="#fff"/>' +
+    '<text x="540" y="70" font-size="26" text-anchor="end" font-family="Arial" font-weight="bold">תעודת משלוח SH2604201</text>' +
+    Array.from({ length: 14 }, (_, i) => `<rect x="55" y="${130 + i * 42}" width="${485 - (i % 3) * 60}" height="14" fill="#e2e8f0"/>`).join('') +
+    '<rect x="55" y="740" width="200" height="50" fill="none" stroke="#94a3b8" stroke-dasharray="6 4"/></svg>'
+  );
+  previewQc.setQueryData(['stopDocPreview', 'k1', 'SH2604201', ''], { pdfUrl: '#', pageUrls: [PAGE], signed: false });
+  const hover = new URLSearchParams(location.search).get('hover') === '1';
+  VIEWS[view] = hover ? (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
+      <div className="ms-[480px] mt-6">
+        <StopDocChip chip={{ kind: 'note', label: '📄 תעודה', title: '' }} stopId="k1" docs={{ noteDocno: 'SH2604201', signed: [] }} defaultOpen />
+      </div>
+    </div>
+  ) : (
     <div dir="rtl" className="min-h-screen bg-slate-50 p-6">
       <div className="mx-auto max-w-sm">
         <RealDnd>
