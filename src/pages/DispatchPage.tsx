@@ -63,6 +63,7 @@ import {
   type DuplicateConflict,
 } from '@/components/deliveries/DuplicateScheduleWarningDialog';
 import { findActiveDuplicateStops } from '@/lib/calendar-stops';
+import { isOtherDocument } from '@/lib/dup-conflict';
 import { StuckStopsAlert } from '@/components/deliveries/StuckStopsAlert';
 import { NotCompletedReasonDialog } from '@/components/NotCompletedReasonDialog';
 import { ScheduleCoordinationDialog } from '@/components/whatsapp/ScheduleCoordinationDialog';
@@ -1010,6 +1011,9 @@ export function DispatchPage() {
               city: item.city,
               phone: item.phone,
               existing: dupes,
+              // ⭐ מסמך אחר לאותו לקוח (מנוף וכיסא, עמי 22/10): המסד מרשה,
+              // והדיאלוג מציע "שבץ גם את זה" במקום לחסום.
+              otherDocument: isOtherDocument(kind, item.id, dupes),
             });
           } else {
             nonConflicting.push(item);
@@ -1752,6 +1756,12 @@ export function DispatchPage() {
               void runSchedule(kind, nonConflicting, driver, date);
             }
           });
+        }}
+        onScheduleAlongside={() => {
+          if (!duplicateState) return;
+          const { items, kind, driver, date } = duplicateState;
+          setDuplicateState(null);
+          void runSchedule(kind, items, driver, date);
         }}
         onCloseExisting={() => {
           if (!duplicateState) return;

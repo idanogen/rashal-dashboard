@@ -18,6 +18,7 @@ import { HistoryScene } from './HistoryScene';
 import { CardScene } from './CardScene';
 import { TrafficScene } from './TrafficScene';
 import '@/index.css';
+import type { CalendarStop as DupPreviewStop } from '@/types/calendar-stop';
 import { CustomerCardBody } from '@/components/customer/CustomerCard';
 import { LastVisitBadge } from '@/components/customer/LastVisitBadge';
 import { localDateStr } from '@/lib/visit-history';
@@ -1347,6 +1348,25 @@ if (view === 'tasks' || view === 'tasks-new') {
 }
 
 /** צ'אט צוות (09/10/2026): `?view=staff-chat&to=avi`. "אני" = המשתמש הריק של התצוגה. */
+// שני איסופים לאותו לקוח, מנוף וכיסא (עמי, 22/10/2026).
+if (view === 'dup-alongside') {
+  const existing = [{ id: 's1', pickupId: 'crane', sourceType: 'pickup', customerName: 'אליהו דהן', city: 'נתיבות', deliveryDate: '2026-10-22', driver: 'דוד חסידים', status: 'planned' }] as unknown as DupPreviewStop[];
+  VIEWS['dup-alongside'] = (
+    <div dir="rtl" className="min-h-screen bg-slate-50">
+      <DuplicateScheduleWarningDialog
+        open
+        onOpenChange={() => {}}
+        conflicts={[{ customerName: 'אליהו דהן', city: 'נתיבות', existing, otherDocument: true }]}
+        onCancel={() => {}}
+        onReschedule={() => {}}
+        onCloseExisting={() => {}}
+        onScheduleAlongside={() => {}}
+        targetDate="2026-10-22"
+      />
+    </div>
+  );
+}
+
 if (view === 'staff-chat') {
   const m = (o: Record<string, unknown>) => rowToMessage({ id: String(o.id), sender_id: String(o.from), sender_name: String(o.fromName ?? o.from), recipient_id: String(o.to), recipient_name: String(o.toName ?? o.to), body: String(o.body), created_at: String(o.at), read_at: (o.read as string) ?? null } as StaffMessageRow);
   previewQc.setQueryData(STAFF_PEOPLE_KEY, [

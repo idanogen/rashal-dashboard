@@ -18,6 +18,11 @@ export interface DuplicateConflict {
   phone?: string;
   /** Existing active stops blocking this schedule */
   existing: CalendarStop[];
+  /**
+   * ⭐ כל השיבוצים הקיימים הם של מסמך **אחר** (למשל איסוף מנוף ואיסוף
+   * כיסא לאותו לקוח). המסד מרשה מ-22/10/2026, והדיאלוג מציע "שבץ גם את זה".
+   */
+  otherDocument?: boolean;
 }
 
 interface DuplicateScheduleWarningDialogProps {
@@ -46,6 +51,11 @@ interface DuplicateScheduleWarningDialogProps {
    * הפעילות מתוארכות לעבר, ו-236 מהן מעל חודש.
    */
   onCloseExisting?: () => void;
+  /**
+   * משבץ את החדש **לצד** הקיים, בלי לגעת בו. מוצג רק כשכל הקונפליקטים
+   * הם מסמכים אחרים (`otherDocument`), אחרת המסד היה דוחה.
+   */
+  onScheduleAlongside?: () => void;
   /** התאריך שנבחר, לניסוח הכפתור. */
   targetDate?: string;
 }
@@ -59,6 +69,7 @@ export function DuplicateScheduleWarningDialog({
   onScheduleOthers,
   onReschedule,
   onCloseExisting,
+  onScheduleAlongside,
   targetDate,
 }: DuplicateScheduleWarningDialogProps) {
   const multiple = conflicts.length > 1;
@@ -76,6 +87,10 @@ export function DuplicateScheduleWarningDialog({
     .flatMap((c) => c.existing)
     .filter((s) => s.deliveryDate < today).length;
   const allStale = staleCount > 0 && staleCount === conflicts.flatMap((c) => c.existing).length;
+  // 🔴 רק כשכל הקונפליקטים הם מסמכים אחרים. אם אחד מהם הוא אותו מסמך,
+  // שיבוץ לצדו נדחה במסד, ולכן הכפתור לא מוצג בכלל.
+  const alongside =
+    !!onScheduleAlongside && conflicts.length > 0 && conflicts.every((c) => c.otherDocument);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -89,7 +104,11 @@ export function DuplicateScheduleWarningDialog({
             {multiple ? 'כמה מהלקוחות כבר משובצים' : 'הלקוח כבר משובץ ביומן'}
           </DialogTitle>
           <DialogDescription>
-            {multiple
+            {alongside
+              ? multiple
+                ? `ל-${conflicts.length} מהלקוחות כבר משובץ מסמך אחר ביומן. אם אלה עבודות נוספות (למשל מנוף וכיסא), אפשר לשבץ אותן לצד הקיים.`
+                : 'ללקוח הזה כבר משובץ מסמך אחר ביומן. אם זו עבודה נוספת (למשל מנוף וכיסא), אפשר לשבץ אותה לצד הקיים.'
+              : multiple
               ? `${conflicts.length} מהלקוחות שניסית לשבץ מחזיקים כבר שיבוץ פתוח ביומן. שיבוץ נוסף היה שולח עובד פעמיים לאותו לקוח.`
               : 'ללקוח הזה כבר יש שיבוץ פתוח ביומן. שיבוץ נוסף היה שולח עובד פעמיים לאותו לקוח.'}
           </DialogDescription>
@@ -150,6 +169,17 @@ export function DuplicateScheduleWarningDialog({
         <DialogFooter className="gap-2 sm:gap-2">
           {/* 🔴 סדר הכפתורים נגזר מהוותק ולא קבוע: כשכל השיבוצים בעבר,
               "כבר בוצע" הוא הפעולה הראשית, וההעברה יורדת למשנית. */}
+          {alongside && (
+            <Button
+              variant={allStale ? 'outline' : 'default'}
+              onClick={() => {
+                onScheduleAlongside!();
+                onOpenChange(false);
+              }}
+            >
+              {multiple ? `שבץ גם אותם (${conflicts.length})` : 'שבץ גם את זה'}
+            </Button>
+          )}
           {onCloseExisting && (
             <Button
               variant={allStale ? 'default' : 'outline'}
@@ -163,7 +193,7 @@ export function DuplicateScheduleWarningDialog({
           )}
           {onReschedule && (
             <Button
-              variant={allStale ? 'outline' : 'default'}
+              variant={allStale || alongside ? 'outline' : 'default'}
               onClick={() => {
                 onReschedule();
                 onOpenChange(false);
