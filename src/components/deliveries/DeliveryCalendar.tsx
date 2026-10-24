@@ -512,8 +512,6 @@ function DayDropZone({
 
 // ─── Calendar Component ─────────────────────────────────────
 
-const MIN_VISIBLE_DAYS = 3;
-
 export function DeliveryCalendar({
   deliveries,
   onRemoveOrder,
@@ -532,7 +530,8 @@ export function DeliveryCalendar({
   const togglePastDay = (dateStr: string) =>
     setExpandedPastDays((prev) => {
       const next = new Set(prev);
-      next.has(dateStr) ? next.delete(dateStr) : next.add(dateStr);
+      if (next.has(dateStr)) next.delete(dateStr);
+      else next.add(dateStr);
       return next;
     });
   const [coordinationStop, setCoordinationStop] = useState<CalendarStop | null>(null);
@@ -549,7 +548,8 @@ export function DeliveryCalendar({
   const toggleGroup = (id: string) =>
     setGroupOverrides((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   const toggleAllGroups = () => { setGroupOverrides(new Set()); toggleGroupsAll(); };

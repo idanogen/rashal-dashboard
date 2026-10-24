@@ -1180,25 +1180,6 @@ export function DispatchPage() {
     [scheduleStop]
   );
 
-  /**
-   * מזהה הזמנה/קריאה ⟵ "משובץ ל-01/09 · רודי". מזין את רשימת "כבר
-   * טופלו" בחיפוש, כדי ש"טופלו" יפסיק להיות מילה סתומה: רואים מתי ומי.
-   */
-  const activeStopLines = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const s of calendarStops) {
-      if (s.status !== 'planned' && s.status !== 'in_progress') continue;
-      const key = s.orderId ?? s.serviceCallId;
-      if (!key) continue;
-      const d = new Date(s.deliveryDate + 'T00:00:00').toLocaleDateString('he-IL', {
-        day: 'numeric',
-        month: 'numeric',
-      });
-      m.set(key, `משובץ ביומן ל-${d} · ${s.driver}`);
-    }
-    return m;
-  }, [calendarStops]);
-
   // ─── מצב טעינה/שגיאה של הטאב הפעיל בלבד (היומן לא מחכה לאף אחד) ───
   // ⭐ בטאב "הכל" אין "מצב של הטאב", כי יש בו ארבע רשימות עם ארבעה מצבים
   // נפרדים. הן משתמשות ב-`panelState` לכל אחת. 🔴 הגזירה כאן נפלה קודם
