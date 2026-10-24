@@ -67,6 +67,10 @@ language sql stable security definer set search_path = public as $$
     (select 'survey_invite' from public.survey_settings v where v.template_id = p_template_id limit 1));
 $$;
 
+-- ההרשאות עברו לכאן יחד עם ההגדרה (היו ב-20260908_wa_language.sql).
+revoke all on function public.wa_template_key(text) from public, anon;
+grant execute on function public.wa_template_key(text) to service_role;
+
 -- 08/09/2026 20:10: מטא אישרה גם את שתי האחרונות (עידן: "כל התבניות אושרו").
 insert into public.wa_template_langs (key, lang, heyy_template_id) values
   ('media_reminder', 'he', '3c987206-48b8-4778-b408-fe7d6b34a9b5'),

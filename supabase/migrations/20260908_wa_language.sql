@@ -164,31 +164,15 @@ begin
   return v_customer;
 end $$;
 
--- מזהה תבנית של heyy → המפתח של הנוסח אצלנו. התבניות של המנועים
--- (בדרך אליך, תמונה, סקר) רשומות בטבלאות ההגדרות שלהם ולא ב-wa_templates.
-create or replace function public.wa_template_key(p_template_id text)
-returns text
-language sql stable security definer set search_path = public as $$
-  select coalesce(
-    (select case t.key when 'survey_invite' then 'survey_invite' else t.key end
-       from public.wa_templates t where t.heyy_template_id = p_template_id limit 1),
-    (select case when s.template_v2_id = p_template_id then 'on_the_way'
-                 when s.template_id = p_template_id then 'on_the_way_v1' end
-       from public.on_way_settings s
-      where p_template_id in (s.template_id, s.template_v2_id) limit 1),
-    (select case when m.template_first_id = p_template_id then 'media_first'
-                 when m.template_reminder_id = p_template_id then 'media_reminder' end
-       from public.media_request_settings m
-      where p_template_id in (m.template_first_id, m.template_reminder_id) limit 1),
-    (select 'survey_invite' from public.survey_settings v where v.template_id = p_template_id limit 1));
-$$;
+-- ── wa_template_key: ההגדרה **אינה כאן** ────────────────────────────────
+-- מזהה תבנית של heyy → מפתח הנוסח אצלנו. נולדה כאן, וההגדרה החיה עברה
+-- עוד באותו יום ל-`20260908_wa_language_templates.sql` (קודם טבלת
+-- wa_template_langs). העותק הישן וההרשאות שלו הוסרו מכאן ב-24/10/2026.
 
 revoke all on function public.wa_language_for(text, text) from public, anon;
 revoke all on function public.wa_set_language(text, text, text) from public, anon;
-revoke all on function public.wa_template_key(text) from public, anon;
 grant execute on function public.wa_language_for(text, text) to authenticated, service_role;
 grant execute on function public.wa_set_language(text, text, text) to authenticated, service_role;
-grant execute on function public.wa_template_key(text) to service_role;
 
 -- מי שקורא את השיחות דרך RPC/API רואה את השפה. ה-API (inbox.ts) בוחר עמודות
 -- מפורשות, ולכן שם נוספת lang בקוד.

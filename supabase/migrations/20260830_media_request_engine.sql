@@ -299,55 +299,20 @@ begin
     from r;
 end; $function$;
 
--- ── תשובת הלקוח מהוובהוק ─────────────────────────────────────────────────
--- תמונה/סרטון: הבקשה נסגרת כ"תמונה התקבלה", גם אם עוד לא שלחנו (הלקוח
--- הקדים אותנו, המטרה הושגה). טקסט בלי תמונה: רק אחרי שההודעה שלנו יצאה,
--- והמשמעות היא שאדם נכנס לשיחה והתזכורת נעצרת.
-create or replace function public.wa_apply_media_reply(p_phone text, p_has_media boolean)
-returns uuid
-language plpgsql
-security definer
-set search_path = public
-as $fn$
-declare
-  hit uuid;
-begin
-  if p_has_media then
-    update public.media_requests
-       set state = 'media_received', media_received_at = now()
-     where id = (
-       select m.id from public.media_requests m
-        where m.phone_e164 = p_phone
-          and m.state in ('pending','first_sent','reminder_sent')
-        order by m.created_at desc limit 1
-     )
-    returning id into hit;
-  else
-    update public.media_requests
-       set state = 'replied_no_media', replied_at = now()
-     where id = (
-       select m.id from public.media_requests m
-        where m.phone_e164 = p_phone
-          and m.state in ('first_sent','reminder_sent')
-        order by m.created_at desc limit 1
-     )
-    returning id into hit;
-  end if;
-  return hit;
-end;
-$fn$;
+-- ── תשובת הלקוח מהוובהוק: ההגדרה **אינה כאן** ───────────────────────────
+-- `wa_apply_media_reply` הוגדרה כאן במקור. ההגדרה החיה עברה ב-06/09
+-- ל-`20260906_customer_contacts.sql` (גם תמונה מאיש קשר מקושר של הלקוח
+-- סוגרת את הבקשה), והעותק הישן וההרשאות שלו הוסרו מכאן ב-24/10/2026.
 
 -- ── הרשאות: מנוע בלבד. אף אחת אינה נקראת מהדפדפן ─────────────────────────
 revoke all on function public.media_request_enqueue(boolean) from public, anon, authenticated;
 revoke all on function public.media_claim_due(int) from public, anon, authenticated;
-revoke all on function public.wa_apply_media_reply(text, boolean) from public, anon, authenticated;
 revoke all on function public.media_window_open() from public, anon;
 revoke all on function public.media_next_send_time(timestamptz) from public, anon;
 grant execute on function public.media_window_open() to authenticated, service_role;
 grant execute on function public.media_next_send_time(timestamptz) to authenticated, service_role;
 grant execute on function public.media_request_enqueue(boolean) to service_role;
 grant execute on function public.media_claim_due(int) to service_role;
-grant execute on function public.wa_apply_media_reply(text, boolean) to service_role;
 
 -- ── התזמון (מופעל בנפרד, מתועד כאן) ──────────────────────────────────────
 -- pg_cron רץ ב-UTC. 4-16 UTC מכסה 08:00-19:00 שעון ישראל בקיץ ובחורף,

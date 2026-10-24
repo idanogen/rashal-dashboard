@@ -98,102 +98,11 @@ $$;
 
 revoke all on function public.call_customer_inbound(uuid) from public, anon, authenticated;
 
--- ─── תוכן הכרטיס, לפי קריאה ──────────────────────────────────────────────
--- פנימית. מקור אמת אחד לכרטיס של הנהג (stop_call_info) ולמסך הסדרן
--- (service_call_info, 15/09/2026: "אין לי במסך פה גישה לתמונות ולסרטונים").
-create or replace function public.call_info_payload(p_call_id uuid)
-returns jsonb
-language plpgsql stable security definer
-set search_path = public
-as $$
-declare
-  v_call  public.service_calls;
-  v_media jsonb;
-  v_texts jsonb;
-  v_note  jsonb;
-  v_req   jsonb;
-begin
-  select * into v_call from public.service_calls where id = p_call_id;
-  if not found then
-    return null;
-  end if;
-
-  -- תמונות, סרטונים והקלטות שנשמרו אצלנו. 🔴 הנתיב חוזר רק לקורא מורשה,
-  -- והחתימה עצמה עוברת גם את מדיניות האחסון.
-  select coalesce(jsonb_agg(jsonb_build_object(
-           'message_id', x.message_id,
-           'i', x.idx - 1,
-           'at', x.at,
-           'type', x.a->>'type',
-           'path', x.a->>'stored_path',
-           'content_type', x.a->'file'->>'contentType'
-         ) order by x.at, x.idx), '[]'::jsonb)
-    into v_media
-    from (
-      select i.message_id, i.at, t.a, t.idx
-        from public.call_customer_inbound(v_call.id) i,
-             jsonb_array_elements(i.attachments) with ordinality as t(a, idx)
-       where t.a ? 'stored_path'
-         and t.a->>'type' in ('image', 'video', 'audio')
-       order by i.at desc
-       limit 40
-    ) x;
-
-  -- מה שהלקוח כתב, בלי תשובות כפתור. 12 האחרונות, מוצגות לפי הסדר.
-  select coalesce(jsonb_agg(jsonb_build_object('message_id', y.message_id, 'at', y.at, 'body', y.body)
-                            order by y.at), '[]'::jsonb)
-    into v_texts
-    from (
-      select i.message_id, i.at, btrim(i.body) as body
-        from public.call_customer_inbound(v_call.id) i
-       where nullif(btrim(coalesce(i.body, '')), '') is not null
-         and not i.is_button_reply
-       order by i.at desc
-       limit 12
-    ) y;
-
-  -- ההערה האחרונה של המשרד בצ'אט הקריאה (לא של נהג, לא של הלקוח).
-  select jsonb_build_object('user_name', t.user_name, 'content', t.content, 'at', t.created_at)
-    into v_note
-    from public.timeline_events t
-    join public.profiles p on p.id::text = t.user_id
-   where t.service_call_id = v_call.id
-     and t.type = 'comment'
-     and p.role in ('admin', 'management', 'team_manager', 'dispatcher')
-     and nullif(btrim(coalesce(t.content, '')), '') is not null
-   order by t.created_at desc
-   limit 1;
-
-  -- בקשת "תמונה לפני טכנאי", כדי שגיליון ריק יגיד מה חסר ולמה.
-  select jsonb_build_object('state', r.state, 'sent_at', r.first_sent_at, 'received_at', r.media_received_at)
-    into v_req
-    from public.media_requests r
-   where r.service_call_id = v_call.id
-     and r.is_test is not true
-   order by r.created_at desc
-   limit 1;
-
-  return jsonb_build_object(
-    'call', jsonb_build_object(
-      'id', v_call.id,
-      'docno', v_call.priority_call_id,
-      'fault_text', v_call.fault_text,
-      'opened_at', v_call.created_at,
-      'device_name', v_call.device_name,
-      'device_desc', v_call.device_desc,
-      'device_serial', v_call.device_serial,
-      'warranty_until', v_call.warranty_until,
-      'service_type', v_call.service_type
-    ),
-    'media', v_media,
-    'texts', v_texts,
-    'office_note', v_note,
-    'media_request', v_req
-  );
-end;
-$$;
-
-revoke all on function public.call_info_payload(uuid) from public, anon, authenticated;
+-- ─── תוכן הכרטיס, לפי קריאה: ההגדרה **אינה כאן** ────────────────────────
+-- `call_info_payload` נולדה כאן כמקור האמת היחיד לכרטיס (נהג ומשרד).
+-- ההגדרה החיה עברה ב-19/10 ל-`20261019_service_call_docs.sql` (נוסף
+-- מפתח 'doc'). העותק הישן הוסר ב-24/10/2026. העוטפות למטה קוראות לה
+-- בזמן ריצה.
 
 -- ─── הכרטיס של הנהג (לפי עצירה) ───────────────────────────────────────────
 create or replace function public.stop_call_info(p_stop_id uuid)

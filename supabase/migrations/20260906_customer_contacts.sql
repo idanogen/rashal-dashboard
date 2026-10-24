@@ -415,47 +415,14 @@ begin
 end;
 $function$;
 
--- ─── דחיפה לפריוריטי: גם אירוע שמחובר ללקוח ישירות ───────────────────────
-create or replace function public.priority_push_candidates(p_limit integer default 60, p_custname text default null)
-returns table (
-  id text, order_id text, service_call_id text, type text, user_name text, content text,
-  metadata jsonb, created_at timestamptz, cust text, ctx text
-)
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select
-    te.id::text, te.order_id::text, te.service_call_id::text, te.type::text, te.user_name, te.content, te.metadata, te.created_at,
-    coalesce(nullif(trim(o.customer_number), ''), nullif(trim(sc.customer_number), ''),
-             nullif(trim(p.customer_number), ''), nullif(trim(cs.customer_number), ''),
-             nullif(trim(te.customer_number), '')) as cust,
-    case
-      when te.order_id is not null then trim('הזמנה ' || coalesce(o.priority_order_id, ''))
-      when te.service_call_id is not null then trim('קריאה ' || coalesce(sc.priority_call_id, ''))
-      when p.id is not null then trim('איסוף ' || coalesce(p.priority_pickup_id, ''))
-      when te.customer_number is not null then 'וואטסאפ'
-      else 'משימה'
-    end as ctx
-  from public.timeline_events te
-  left join public.orders o on o.id = te.order_id
-  left join public.service_calls sc on sc.id = te.service_call_id
-  left join public.calendar_stops cs on cs.id = te.calendar_stop_id
-  left join public.pickups p on p.id = cs.pickup_id
-  where te.pushed_to_priority_at is null
-    and (te.push_claimed_at is null or te.push_claimed_at < now() - interval '10 minutes')
-    and te.type::text in ('comment', 'file_upload')
-    and coalesce(nullif(trim(o.customer_number), ''), nullif(trim(sc.customer_number), ''),
-                 nullif(trim(p.customer_number), ''), nullif(trim(cs.customer_number), ''),
-                 nullif(trim(te.customer_number), '')) is not null
-    and (te.type::text <> 'file_upload'
-         or jsonb_array_length(coalesce(te.metadata->'imageUrls', '[]'::jsonb)) > 0)
-    and (p_custname is null or o.customer_number = p_custname or sc.customer_number = p_custname or te.customer_number = p_custname)
-  order by te.created_at asc
-  limit greatest(1, least(p_limit, 500));
-$$;
-revoke all on function public.priority_push_candidates(integer, text) from public, anon, authenticated;
+-- ההרשאות עברו לכאן יחד עם ההגדרה (היו ב-20260830_media_request_engine.sql).
+revoke all on function public.wa_apply_media_reply(text, boolean) from public, anon, authenticated;
+grant execute on function public.wa_apply_media_reply(text, boolean) to service_role;
+
+-- ─── דחיפה לפריוריטי: ההגדרה **אינה כאן** ───────────────────────────────
+-- `priority_push_candidates` הורחבה כאן (גם אירוע שמחובר ללקוח ישירות),
+-- וההגדרה החיה עברה ב-23/09 ל-`20260923_card_push_park.sql` (דילוג על
+-- אירוע שנעצר ב-push_failed_at). העותק הישן הוסר ב-24/10/2026.
 
 -- ─── אנשי קשר שממתינים לכתיבה לפריוריטי (CUSTPERSONNEL_SUBFORM) ───────────
 -- מדלגים על מספר שכבר קיים אצל הלקוח בפריוריטי (מסונכרן ל-priority_contacts).

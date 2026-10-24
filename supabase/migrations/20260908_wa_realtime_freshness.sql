@@ -46,3 +46,8 @@ as $function$
     )
   )
 $function$;
+
+-- ההרשאות עברו לכאן יחד עם ההגדרה (היו ב-20260907_sync_freshness.sql).
+revoke all on function public.sync_freshness() from public;
+revoke all on function public.sync_freshness() from anon;
+grant execute on function public.sync_freshness() to authenticated, service_role;

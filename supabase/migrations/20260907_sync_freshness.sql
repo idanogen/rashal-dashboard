@@ -58,29 +58,10 @@ create index if not exists pickups_updated_at_idx on public.pickups (updated_at)
 create index if not exists calendar_stops_updated_at_idx on public.calendar_stops (updated_at);
 create index if not exists routes_updated_at_idx on public.routes (updated_at);
 
--- המפתחות במפה הם מפתחות ה-query בדשבורד. שינוי שם כאן שובר את הרענון בשקט.
-create or replace function public.sync_freshness()
-returns jsonb
-language sql
-security definer
-stable
-set search_path = public
-as $$
-  select jsonb_build_object(
-    'pull_at', (select max(started_at) from public.sync_runs where job = 'pull-core' and status = 'success'),
-    'pull_status', (select status from public.sync_runs where job = 'pull-core' order by started_at desc limit 1),
-    'marks', jsonb_build_object(
-      'orders',        (select max(updated_at) from public.orders),
-      'serviceCalls',  (select max(updated_at) from public.service_calls),
-      'pickups',       (select max(updated_at) from public.pickups),
-      'calendarStops', (select max(updated_at) from public.calendar_stops),
-      'routes',        (select max(updated_at) from public.routes)
-    )
-  )
-$$;
-revoke all on function public.sync_freshness() from public;
-revoke all on function public.sync_freshness() from anon;
-grant execute on function public.sync_freshness() to authenticated, service_role;
+-- ── sync_freshness: ההגדרה **אינה כאן** ─────────────────────────────────
+-- המפתחות במפה הם מפתחות ה-query בדשבורד, ושינוי שם שובר את הרענון בשקט.
+-- ההגדרה החיה עברה ב-08/09 ל-`20260908_wa_realtime_freshness.sql` (נוספו
+-- חותמות wa-inbox ו-wa-thread), יחד עם ההרשאות. העותק הישן הוסר 24/10/2026.
 
 -- ── 3. תיקון השעון בהיסטוריה ───────────────────────────────────────────────
 -- ערך שנשמר מפריוריטי הוא בדיוק על דקה (שניות אפס) ואינו חצות. ערך שנוצר
