@@ -62,7 +62,7 @@ src/hooks       React Query: useOrders · useServiceCalls · usePickups · useNe
 src/lib         supabase · orders · service-calls · calendar-stops · customers · geocoding · directions · perf · heyy/ · קבצים טהורים (בלי ייבוא) לבדיקות
 src/types       order · service-call · calendar-stop · delivery · assignee · zone · crane
 api/            פונקציות Vercel: wa-send · heyy-webhook · conversation · priority-context · priority-sync · priority-push · admin-users · survey · _lib/
-supabase/       functions/ · migrations/ (83)
+supabase/       functions/ · migrations/ (85)
 ```
 
 ## מודל הנתונים בשורה
@@ -130,3 +130,6 @@ supabase/       functions/ · migrations/ (83)
 - Edge Function חיה כ-150 שניות: עבודה ארוכה מפוצלת. Make: כשל שקט כיבה את סנכרון ההזמנות 9 ימים, לכן הסנכרון בקוד עם watchdog במייל (Resend).
 - Realtime: צבירת אירועים 1.5 שניות, `refetchOnWindowFocus:false`, `staleTime` 60 שניות. הרעננות מגיעה מה-realtime ומ-`sync_freshness()`.
 - ווידג'ט המשוב הוסר מהדשבורד (26/08) לבקשת עידן. לא להחזיר בלי לשאול.
+
+## 🧱 חוקי הקוד של הבית (24/10/2026)
+לפני כל מסירה: `node ~/Idan-HQ/company/code-guard/check.mjs` חייב לעבור. החוקים המלאים בבלוק "חוקי כתיבת קוד" ב-CLAUDE.md הגלובלי.
