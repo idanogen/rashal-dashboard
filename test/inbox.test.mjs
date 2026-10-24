@@ -27,6 +27,10 @@ const row = (o) => ({
   last_inbound_at: o.inbound ?? null,
   last_message_at: o.last ?? ago(5),
   last_message_preview: o.preview ?? '',
+  // ⭐ מאז f926dcc התצוגה המקדימה נבנית מההודעה האנושית האחרונה, לא
+  // מההודעה האחרונה. פיקסצ'ר בלי human_count נראה כ"רק הודעות אוטומטיות".
+  last_human_preview: o.preview ?? '',
+  human_count: o.humanCount ?? 1,
   last_message_direction: 'in',
   unanswered_since: o.waiting ?? null,
   message_count: o.count ?? 1,

@@ -15,7 +15,9 @@ export function normalizePhone(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const digits = String(raw).replace(/\D/g, '');
   if (!digits) return null;
-  if (digits.startsWith('972') && digits.length === 12) return '0' + digits.slice(3);
+  // 🔴 E164 נייד הוא 12 ספרות (972523694547) וקווי הוא 11 (97236221100).
+  // בדיקת 12 בלבד החזירה קווי בינלאומי כמות שהוא, בלי אפס מוביל.
+  if (digits.startsWith('972') && (digits.length === 11 || digits.length === 12)) return '0' + digits.slice(3);
   if (digits.startsWith('0') && digits.length === 10) return digits;
   // 🔴 תשע ספרות שמתחילות באפס הן **קו נייח שלם** (03-6221100), לא נייד
   // חסר. הגרסה הקודמת הוסיפה כאן אפס לכל מספר בן תשע ספרות והפכה
