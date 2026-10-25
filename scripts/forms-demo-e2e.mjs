@@ -53,7 +53,9 @@ await page.screenshot({ path: OUT + 'e2e-4-result.png' });
 // אישור הדרכה למנוף
 await page.getByText('אישור קבלת הדרכה').first().click();
 await page.getByRole('button', { name: 'סמן הכל' }).click();
-await page.locator('[role="dialog"] div:has(> label:text-is("שם מלא")) input, [role="dialog"] div:has(> *:text-is("שם מלא")) input').first().fill('ישראלי ישראל');
+const nameField = '[role="dialog"] div:has(> label:text-is("שם מלא")) input, '
+  + '[role="dialog"] div:has(> *:text-is("שם מלא")) input';
+await page.locator(nameField).first().fill('ישראלי ישראל');
 await sign();
 await page.screenshot({ path: OUT + 'e2e-5-crane.png' });
 await page.locator('[role="dialog"] button').filter({ hasText: 'שמור אישור' }).first().click();
