@@ -45,6 +45,7 @@ export function CraneTrainingDialog({
   orderId,
   technicianName,
   onSaved,
+  onDemoSubmit,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
@@ -55,6 +56,11 @@ export function CraneTrainingDialog({
   orderId?: string | null;
   technicianName?: string | null;
   onSaved?: () => void;
+  /**
+   * מסך ההדגמה (`/forms-demo`): מקבל את ה-PDF האמיתי ולא שומר כלום,
+   * לא במסד ולא בפריוריטי.
+   */
+  onDemoSubmit?: (pdf: Blob) => Promise<void> | void;
 }) {
   const [answers, setAnswers] = useState<Record<string, boolean>>({});
   const [recipient, setRecipient] = useState('');
@@ -79,9 +85,51 @@ export function CraneTrainingDialog({
   const markAll = () =>
     setAnswers(Object.fromEntries(TRAINING_TOPICS.map((t) => [t.id, true])));
 
+  const buildPdf = (signedAt: Date) =>
+    renderHtmlToPdf(craneTrainingLayout({
+      title: TRAINING_TITLE,
+      subtitle: TRAINING_SUBTITLE,
+      topics: TRAINING_TOPICS,
+      answers,
+      customerName: customerName ?? '',
+      customerNumber,
+      craneSerial,
+      recipientName: recipient,
+      recipientIdNumber: idNumber,
+      recipientRelation: relation,
+      notes,
+      sling: { manufacturer: slingManufacturer, productionDate: slingDate, serial: slingSerial },
+      signature,
+      meta: { signedAt, driverName: technicianName ?? '' },
+    }));
+
+  const reset = () => {
+    setAnswers({});
+    setRecipient('');
+    setIdNumber('');
+    setRelation('');
+    setNotes('');
+    setSignature(null);
+    setSlingManufacturer('');
+    setSlingDate('');
+    setSlingSerial('');
+  };
+
   const submit = async () => {
     if (!gate.ok || saving) return;
     setSaving(true);
+    if (onDemoSubmit) {
+      try {
+        await onDemoSubmit(await buildPdf(new Date()));
+        onOpenChange(false);
+        reset();
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'הפקת ה-PDF נכשלה');
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
     try {
       const formId = await saveCraneForm({
         formType: 'training',
@@ -106,23 +154,7 @@ export function CraneTrainingDialog({
       if (stopId) {
         try {
           const signedAt = new Date();
-          const html = craneTrainingLayout({
-            title: TRAINING_TITLE,
-            subtitle: TRAINING_SUBTITLE,
-            topics: TRAINING_TOPICS,
-            answers,
-            customerName: customerName ?? '',
-            customerNumber,
-            craneSerial,
-            recipientName: recipient,
-            recipientIdNumber: idNumber,
-            recipientRelation: relation,
-            notes,
-            sling: { manufacturer: slingManufacturer, productionDate: slingDate, serial: slingSerial },
-            signature,
-            meta: { signedAt, driverName: technicianName ?? '' },
-          });
-          const pdf = await renderHtmlToPdf(html);
+          const pdf = await buildPdf(signedAt);
           await attachCraneFormPdf(formId, stopId, pdf, craneTrainingFileDes(customerName ?? '', craneSerial, signedAt));
         } catch (err) {
           // הטופס כבר שמור. על הכשל בצירוף מדווחים, לא מפילים.
@@ -132,15 +164,7 @@ export function CraneTrainingDialog({
       toast.success('אישור ההדרכה נשמר');
       onSaved?.();
       onOpenChange(false);
-      setAnswers({});
-      setRecipient('');
-      setIdNumber('');
-      setRelation('');
-      setNotes('');
-      setSignature(null);
-      setSlingManufacturer('');
-      setSlingDate('');
-      setSlingSerial('');
+      reset();
     } catch (err) {
       // 🔴 הסיבה על המסך: הטכנאי בבית של לקוח ואין לו איך לפתוח קונסולה.
       toast.error(err instanceof Error ? err.message : 'שמירת האישור נכשלה');

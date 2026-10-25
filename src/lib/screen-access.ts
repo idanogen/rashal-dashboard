@@ -61,6 +61,8 @@ export const SCREEN_ACCESS: ScreenAccess[] = [
   // מדדים על אנשים בשמם כמו ביצועי הצוות, ולכן אותה הרשאה בדיוק.
   { path: '/morning',          label: 'דוח בוקר',          group: 'admin', allow: ['admin', 'management', 'team_manager'] },
   { path: '/inspections',      label: 'בדיקות מנופים',     group: 'admin', allow: STAFF },
+  // הדגמה בלבד, שום דבר לא נשמר (25/10/2026, לפני המסירה לעמי).
+  { path: '/forms-demo',       label: 'הדגמת טפסים',       group: 'admin', allow: ['admin', 'management', 'team_manager'] },
   { path: '/whatsapp',         label: 'וואטסאפ (ישן)',     group: 'admin', allow: STAFF },
   { path: '/admin/users',      label: 'משתמשים',          group: 'admin', allow: MANAGERS },
   { path: '/admin/team',       label: 'צוות השטח',         group: 'admin', allow: MANAGERS },

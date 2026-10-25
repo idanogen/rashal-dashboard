@@ -55,7 +55,10 @@ export function SignaturePad({
     const ctx = c.getContext('2d');
     if (!ctx) return;
     ctx.scale(dpr, dpr);
-    ctx.lineWidth = 2;
+    // 🔴 עבה בכוונה (25/10/2026): החתימה מוקטנת פי 3-4 לתוך קו החתימה ב-PDF,
+    // וקו של 2 פיקסלים יצא שם כמעט בלתי נראה (השאלה של עמי על לוזון). זו
+    // תמונה ולא SVG, ולכן `thickenSignature` לא יכול לעבות אותה בדיעבד.
+    ctx.lineWidth = 4.5;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.strokeStyle = '#14223a';

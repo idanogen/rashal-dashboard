@@ -9,6 +9,7 @@ import { SurveysPage } from '@/pages/SurveysPage';
 import { CollectionsPage } from '@/pages/CollectionsPage';
 import { DispatchPage } from '@/pages/DispatchPage';
 import { InspectionsPage } from '@/pages/InspectionsPage';
+import { FormsDemoPage } from '@/pages/FormsDemoPage';
 import { SignStopPage } from '@/pages/SignStopPage';
 import { RouteNavigationPage } from '@/pages/RouteNavigationPage';
 import { WhatsAppPage } from '@/pages/WhatsAppPage';
@@ -106,7 +107,8 @@ function App() {
                         <Route path="/overview" element={<RoleBasedRoute allow={screenAllow('/overview')}><ManagementDashboard /></RoleBasedRoute>} />
                         <Route path="/surveys" element={<RoleBasedRoute allow={screenAllow('/surveys')}><SurveysPage /></RoleBasedRoute>} />
                         <Route path="/performance" element={<RoleBasedRoute allow={screenAllow('/performance')}><TeamPerformancePage /></RoleBasedRoute>} />
-                        {/* דוח בוקר למנהלים (09/09/2026). הקישור מהוואטסאפ של שבע בבוקר נוחת על /morning/<תאריך>. */}
+                        {/* דוח בוקר למנהלים (09/09/2026). הקישור מהוואטסאפ של שבע בבוקר
+                            נוחת על /morning/<תאריך>. */}
                         <Route path="/morning" element={<RoleBasedRoute allow={screenAllow('/morning')}><MorningReportPage /></RoleBasedRoute>} />
                         <Route path="/morning/:date" element={<RoleBasedRoute allow={screenAllow('/morning')}><MorningReportPage /></RoleBasedRoute>} />
                         <Route path="/collections" element={<RoleBasedRoute allow={screenAllow('/collections')}><CollectionsPage /></RoleBasedRoute>} />
@@ -116,6 +118,7 @@ function App() {
                         <Route path="/service-calls" element={<Navigate to="/dispatch?tab=service" replace />} />
                         <Route path="/pickups" element={<Navigate to="/dispatch?tab=pickups" replace />} />
                         <Route path="/inspections" element={<RoleBasedRoute allow={screenAllow('/inspections')}><InspectionsPage /></RoleBasedRoute>} />
+                        <Route path="/forms-demo" element={<RoleBasedRoute allow={screenAllow('/forms-demo')}><FormsDemoPage /></RoleBasedRoute>} />
                         <Route path="/whatsapp" element={<RoleBasedRoute allow={screenAllow('/whatsapp')}><WhatsAppPage /></RoleBasedRoute>} />
                         <Route path="/inbox" element={<RoleBasedRoute allow={screenAllow('/inbox')}><InboxPage /></RoleBasedRoute>} />
                         <Route path="/customer" element={<RoleBasedRoute allow={screenAllow('/customer')}><CustomerPage /></RoleBasedRoute>} />
@@ -161,7 +164,10 @@ function App() {
                             </ProtectedAdminRoute>
                           }
                         />
-                        <Route path="/route-navigation" element={<RoleBasedRoute allow={screenAllow('/route-navigation')}><RouteNavigationPage /></RoleBasedRoute>} />
+                        <Route
+                          path="/route-navigation"
+                          element={<RoleBasedRoute allow={screenAllow('/route-navigation')}><RouteNavigationPage /></RoleBasedRoute>}
+                        />
                       </Routes>
                     </AppShell>
                     </GlobalChatProvider>
