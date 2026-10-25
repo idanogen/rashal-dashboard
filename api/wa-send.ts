@@ -352,8 +352,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  // 🔴 שני מסלולים ושתי גרסאות API. טקסט חופשי נשאר על v2.0 שעובד,
-  // ותבנית עוברת ב-v3 כי רק שם אפשר לצרף מדיה.
+  // שני מסלולים, שניהם על v3 (מ-25/10/2026): טקסט חופשי דרך `heyySendText`,
+  // ותבנית ישירות ב-`sendTemplateV3` כי כאן מצרפים מדיה.
   const result =
     kind === 'text'
       ? await heyySendText(e164, body.bodyText!.trim())

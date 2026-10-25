@@ -7,8 +7,8 @@
  * 🔴 **הלקח: "אין API" נגזר מגרסה אחת שנבדקה, לא מהמוצר.** התיעוד יושב
  * ב-`docs.heyy.io` ומגיעים אליו מקישור "מפתחים" בתחתית ההגדרות.
  *
- * ⚠️ v2.0 נשאר בשימוש ב-`heyy-server.ts` (סקרים, תזכורות). לא נגענו בו
- * כדי לא לשבור מסלול שעובד, ולכן שתי הגרסאות חיות זו לצד זו.
+ * ⭐ מ-25/10/2026 כל השליחה כאן: v2.0 נסגר ב-01/11/2026, ו-`heyy-server.ts`
+ * נשאר רק כעטיפה עם החתימות הישנות כדי שהקוראים לא ישתנו.
  */
 
 import { retryAfterMs, rateLimitInfo, DEFAULT_RETRY, RATE_LIMITED } from './heyy-rate-limit.js';
@@ -242,6 +242,62 @@ export interface SendTemplateResult {
   retryable?: boolean;
 }
 
+/** תשובת שליחה של v3 (תבנית או טקסט) כתוצאה אחידה. */
+async function readSendResponse(res: Response): Promise<SendTemplateResult> {
+  const json = (await res.json().catch(() => ({}))) as {
+    data?: { id?: string; vendorId?: string; status?: string; errors?: unknown[] };
+    message?: string;
+    error?: string;
+  };
+
+  if (!res.ok) {
+    const detail = json.error ?? json.message ?? `HTTP ${res.status}`;
+    // 🔴 מכסה אינה דחייה. הסימן הזה הוא מה שמאפשר לקורא להחזיר את
+    // ההודעה לתור במקום לסמן אותה כנכשלה לתמיד.
+    const prefix = res.status === 429 ? `${RATE_LIMITED}: ` : '';
+    return { ok: false, status: 'failed', retryable: res.status === 429, detail: `${prefix}${String(detail)}`.slice(0, 300) };
+  }
+
+  // 🔴 דחייה אמיתית מגיעה ב-errors[], לא בהיעדר מזהה. אותה מלכודת
+  // שכבר עלתה לנו ב-v2.0.
+  const rejected = json.data?.errors;
+  if (Array.isArray(rejected) && rejected.length) {
+    return { ok: false, status: 'failed', detail: JSON.stringify(rejected).slice(0, 300) };
+  }
+
+  const raw = String(json.data?.status ?? 'pending').toLowerCase();
+  return {
+    ok: true,
+    messageId: json.data?.id,
+    vendorMessageId: json.data?.vendorId,
+    status: (['sent', 'delivered', 'read', 'failed'].includes(raw) ? raw : 'pending') as SendTemplateResult['status'],
+    detail: json.data?.id ? undefined : `אין מזהה בתשובה: ${JSON.stringify(json).slice(0, 200)}`,
+  };
+}
+
+/**
+ * טקסט חופשי. תקף רק בחלון 24 השעות אחרי שהלקוח כתב לנו.
+ *
+ * החוזה מהמפרט הרשמי (`docs/heyy-limits.md` §4): הערוץ בגוף ב-`chat`,
+ * הטקסט ב-`body`. 🔴 heyy מחזירה הצלחה גם כשהחלון סגור, וההודעה נכשלת
+ * אחר כך בוובהוק. זה לא חדש, כך היה גם ב-v2.0.
+ */
+export async function sendText(opts: { phoneE164: string; body: string }): Promise<SendTemplateResult> {
+  if (!KEY || !CHANNEL) {
+    return { ok: false, status: 'failed', detail: 'missing HEYY_API_KEY or HEYY_CHANNEL_ID' };
+  }
+  try {
+    const res = await call('/messages/send', {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ chat: { channelId: CHANNEL, phoneNumber: opts.phoneE164 }, body: opts.body }),
+    }, 20000, { retryServerErrors: false });
+    return await readSendResponse(res);
+  } catch (err) {
+    return { ok: false, status: 'failed', detail: err instanceof Error ? err.message : 'unknown error' };
+  }
+}
+
 /**
  * שולח תבנית, עם מדיה אם יש.
  *
@@ -278,36 +334,7 @@ export async function sendTemplate(opts: {
       // 🔴 מסלול שליחה: אין ניסיון חוזר על 5xx, רק על 429. שגיאת שרת על
       // שליחה עלולה להסתיר הודעה שכבר יצאה ללקוח.
     }, 20000, { retryServerErrors: false });
-
-    const json = (await res.json().catch(() => ({}))) as {
-      data?: { id?: string; vendorId?: string; status?: string; errors?: unknown[] };
-      message?: string;
-      error?: string;
-    };
-
-    if (!res.ok) {
-      const detail = json.error ?? json.message ?? `HTTP ${res.status}`;
-      // 🔴 מכסה אינה דחייה. הסימן הזה הוא מה שמאפשר לקורא להחזיר את
-      // ההודעה לתור במקום לסמן אותה כנכשלה לתמיד.
-      const prefix = res.status === 429 ? `${RATE_LIMITED}: ` : '';
-      return { ok: false, status: 'failed', retryable: res.status === 429, detail: `${prefix}${String(detail)}`.slice(0, 300) };
-    }
-
-    // 🔴 דחייה אמיתית מגיעה ב-errors[], לא בהיעדר מזהה. אותה מלכודת
-    // שכבר עלתה לנו ב-v2.0.
-    const rejected = json.data?.errors;
-    if (Array.isArray(rejected) && rejected.length) {
-      return { ok: false, status: 'failed', detail: JSON.stringify(rejected).slice(0, 300) };
-    }
-
-    const raw = String(json.data?.status ?? 'pending').toLowerCase();
-    return {
-      ok: true,
-      messageId: json.data?.id,
-      vendorMessageId: json.data?.vendorId,
-      status: (['sent', 'delivered', 'read', 'failed'].includes(raw) ? raw : 'pending') as SendTemplateResult['status'],
-      detail: json.data?.id ? undefined : `אין מזהה בתשובה: ${JSON.stringify(json).slice(0, 200)}`,
-    };
+    return await readSendResponse(res);
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'unknown error';
     return { ok: false, status: 'failed', detail: msg };
