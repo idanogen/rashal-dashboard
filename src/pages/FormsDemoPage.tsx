@@ -7,7 +7,7 @@ import { CraneTrainingDialog } from '@/components/crane/CraneTrainingDialog';
 import { FORM_DEFINITIONS, FORM_KIND_LABEL, getFormByKey } from '@/lib/forms/registry';
 import { buildContext } from '@/lib/forms/prefill';
 import { generateFormPdf } from '@/lib/forms/render';
-import { DEMO_CUSTOMER, DEMO_DRIVER, demoEntries, demoSource } from '@/lib/forms-demo';
+import { DEMO_CUSTOMER, DEMO_DRIVER, demoEntries, demoSource } from '@/lib/forms/demo';
 import type { FormKind } from '@/lib/forms/types';
 
 /**

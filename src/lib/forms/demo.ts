@@ -9,8 +9,8 @@
  * למערכת יופיע כאן מעצמו (הבדיקה `forms-demo.test.mjs` שומרת על זה).
  * הקובץ בלי ייבוא של דפדפן, כדי שייבדק ב-node.
  */
-import type { FormDefinition, FormKind, FormLine } from './forms/types.ts';
-import type { FormSource } from './forms/prefill.ts';
+import type { FormDefinition, FormKind, FormLine } from './types.ts';
+import type { FormSource } from './prefill.ts';
 
 export const DEMO_DRIVER = 'נהג הדגמה';
 export const DEMO_CUSTOMER = 'ישראלי ישראל';

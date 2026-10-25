@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FORM_DEFINITIONS, findForm } from '../src/lib/forms/registry.ts';
 import { buildContext, buildInitialValues, missingRequired } from '../src/lib/forms/prefill.ts';
-import { DEMO_DRIVER, demoEntries, demoSource } from '../src/lib/forms-demo.ts';
+import { DEMO_DRIVER, demoEntries, demoSource } from '../src/lib/forms/demo.ts';
 
 /** מסך הדגמת הטפסים (25/10/2026), לפני המסירה לעמי. */
 
