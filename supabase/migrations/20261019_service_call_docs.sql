@@ -86,22 +86,39 @@ begin
 
   -- תמונות, סרטונים והקלטות שנשמרו אצלנו. 🔴 הנתיב חוזר רק לקורא מורשה,
   -- והחתימה עצמה עוברת גם את מדיניות האחסון.
+  -- 🔴 25/10/2026 (עמי, בטאש מעיין): מדיה מ-90 הימים שלפני פתיחת הקריאה נכנסת
+  -- גם היא, מסומנת `earlier`. הלקוחה שלחה את התמונה החשובה על הקריאה הקודמת
+  -- שלא בוצעה, והמשרד ראה 4 תמונות בשיחה בזמן שהטכנאי ראה 3.
   select coalesce(jsonb_agg(jsonb_build_object(
            'message_id', x.message_id,
            'i', x.idx - 1,
            'at', x.at,
            'type', x.a->>'type',
            'path', x.a->>'stored_path',
-           'content_type', x.a->'file'->>'contentType'
+           'content_type', x.a->'file'->>'contentType',
+           'earlier', x.earlier
          ) order by x.at, x.idx), '[]'::jsonb)
     into v_media
     from (
-      select i.message_id, i.at, t.a, t.idx
-        from public.call_customer_inbound(v_call.id) i,
-             jsonb_array_elements(i.attachments) with ordinality as t(a, idx)
+      select u.message_id, u.at, t.a, t.idx, u.earlier
+        from (
+          select i.message_id, i.at, i.attachments, false as earlier
+            from public.call_customer_inbound(v_call.id) i
+          union all
+          select m.id, coalesce(m.sent_at, m.created_at), m.attachments, true
+            from public.wa_conversations c
+            join public.wa_messages m on m.conversation_id = c.id
+           where nullif(btrim(coalesce(v_call.customer_number, '')), '') is not null
+             and c.customer_number = v_call.customer_number
+             and m.direction = 'in'
+             and jsonb_typeof(m.attachments) = 'array'
+             and coalesce(m.sent_at, m.created_at) >= v_call.created_at - interval '90 days'
+             and coalesce(m.sent_at, m.created_at) < v_call.created_at
+        ) u,
+             jsonb_array_elements(u.attachments) with ordinality as t(a, idx)
        where t.a ? 'stored_path'
          and t.a->>'type' in ('image', 'video', 'audio')
-       order by i.at desc
+       order by u.at desc
        limit 40
     ) x;
 
