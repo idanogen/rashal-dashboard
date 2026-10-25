@@ -1,4 +1,5 @@
 import type { Order } from '@/types/order';
+import { geocodeQuery } from './geocode-query';
 
 /**
  * קואורדינטות גיאוגרפיות (latitude, longitude)
@@ -312,7 +313,7 @@ async function fetchGeocode(
 ): Promise<GeocodeResult | null | 'transient'> {
   try {
     const u = new URL(`${BASE}/api/geocode`);
-    u.searchParams.set('address', address);
+    u.searchParams.set('address', geocodeQuery(address, city));
     if (city) u.searchParams.set('city', city);
     const res = await fetch(u.toString());
     if (res.status === 503 || res.status === 502) return 'transient';
