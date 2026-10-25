@@ -37,3 +37,30 @@ test('בלי מסמך: אין חיווי', () => {
   assert.deepEqual(kinds({ sourceType: 'delivery' }), []);
   assert.deepEqual(kinds({ sourceType: 'task', hasCallDoc: true }), []);
 });
+
+/** אספקת מנוף בלי אישור הדרכה (עמי, 25/10/2026: לוזון). */
+
+test('אספקת מנוף שנסגרה בלי טופס הדרכה: חיווי אדום', () => {
+  const s = { sourceType: 'delivery', completed: true, craneKind: 'training', craneSigned: false };
+  assert.deepEqual(kinds(s), ['missingTraining']);
+  assert.match(stopDocChips(s)[0].label, /בלי הדרכה/);
+});
+
+test('החיווי רק אחרי סגירה: עצירה עתידית בלי טופס היא מצב תקין', () => {
+  assert.deepEqual(kinds({ sourceType: 'delivery', completed: false, craneKind: 'training', craneSigned: false }), []);
+});
+
+test('טופס הדרכה שמולא מכבה את החיווי', () => {
+  assert.deepEqual(kinds({ sourceType: 'delivery', completed: true, craneKind: 'training', craneSigned: true }), []);
+});
+
+test('קריאת שירות על מנוף אינה מקבלת את חיווי ההדרכה (לה יש רשימת בדיקה)', () => {
+  assert.deepEqual(kinds({ sourceType: 'service', completed: true, craneKind: 'inspection', craneSigned: false }), []);
+});
+
+test('החיווי מצטרף לחיוויי המסמכים ולא מחליף אותם', () => {
+  assert.deepEqual(
+    kinds({ sourceType: 'delivery', completed: true, craneKind: 'training', craneSigned: false, signedCount: 1 }),
+    ['signed', 'missingTraining'],
+  );
+});

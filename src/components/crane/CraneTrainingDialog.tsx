@@ -19,7 +19,9 @@ import {
   canSubmitTraining,
   trainingProgress,
 } from '@/lib/crane-training';
-import { saveCraneForm } from '@/lib/crane-forms';
+import { attachCraneFormPdf, craneTrainingFileDes, saveCraneForm } from '@/lib/crane-forms';
+import { craneTrainingLayout } from '@/lib/forms/layouts/crane-training';
+import { renderHtmlToPdf } from '@/lib/forms/render';
 import { SignaturePad } from './SignaturePad';
 
 /**
@@ -81,7 +83,7 @@ export function CraneTrainingDialog({
     if (!gate.ok || saving) return;
     setSaving(true);
     try {
-      await saveCraneForm({
+      const formId = await saveCraneForm({
         formType: 'training',
         craneSerial,
         customerName,
@@ -100,6 +102,33 @@ export function CraneTrainingDialog({
         slingProductionDate: slingDate,
         slingSerial,
       });
+      // ⭐ ה-PDF אחרי השמירה ולא בתוכה: כשל בצירוף לא מאבד את החתימה.
+      if (stopId) {
+        try {
+          const signedAt = new Date();
+          const html = craneTrainingLayout({
+            title: TRAINING_TITLE,
+            subtitle: TRAINING_SUBTITLE,
+            topics: TRAINING_TOPICS,
+            answers,
+            customerName: customerName ?? '',
+            customerNumber,
+            craneSerial,
+            recipientName: recipient,
+            recipientIdNumber: idNumber,
+            recipientRelation: relation,
+            notes,
+            sling: { manufacturer: slingManufacturer, productionDate: slingDate, serial: slingSerial },
+            signature,
+            meta: { signedAt, driverName: technicianName ?? '' },
+          });
+          const pdf = await renderHtmlToPdf(html);
+          await attachCraneFormPdf(formId, stopId, pdf, craneTrainingFileDes(customerName ?? '', craneSerial, signedAt));
+        } catch (err) {
+          // הטופס כבר שמור. על הכשל בצירוף מדווחים, לא מפילים.
+          toast.warning(`האישור נשמר, אבל צירוף ה-PDF לכרטיס הלקוח נכשל: ${err instanceof Error ? err.message : err}`);
+        }
+      }
       toast.success('אישור ההדרכה נשמר');
       onSaved?.();
       onOpenChange(false);

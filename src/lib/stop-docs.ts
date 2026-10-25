@@ -9,7 +9,7 @@
  * קובץ טהור, בלי ייבוא, כדי שייבדק ב-node --test.
  */
 
-export type StopDocKind = 'signed' | 'note' | 'callDoc';
+export type StopDocKind = 'signed' | 'note' | 'callDoc' | 'missingTraining';
 
 export interface StopDocChip {
   kind: StopDocKind;
@@ -25,6 +25,12 @@ export interface StopDocInput {
   signedCount?: number;
   /** טופס הקריאה המקורי מפריוריטי (קריאת שירות בלבד). */
   hasCallDoc?: boolean;
+  /** איזה טופס מנוף העצירה דורשת, אם בכלל (`stops_form_status`). */
+  craneKind?: 'training' | 'inspection' | null;
+  /** האם טופס המנוף מולא. */
+  craneSigned?: boolean;
+  /** האם העצירה סומנה בוצע. */
+  completed?: boolean;
 }
 
 /**
@@ -54,6 +60,15 @@ export function stopDocChips(s: StopDocInput): StopDocChip[] {
       kind: 'callDoc',
       label: '📄 טופס קריאה',
       title: 'טופס הקריאה המקורי מפריוריטי נקלט מהמייל. לחיצה פותחת את כרטיס הקריאה',
+    });
+  }
+  // 🔴 אספקת מנוף שנסגרה בלי אישור הדרכה חתום (עמי, 25/10/2026: לוזון).
+  // טופס המנוף בכוונה לא חוסם סגירה, ולכן החוסר חייב להיראות למשרד.
+  if (isDelivery && s.completed && s.craneKind === 'training' && !s.craneSigned) {
+    chips.push({
+      kind: 'missingTraining',
+      label: '⚠️ בלי הדרכה',
+      title: 'מנוף סופק והעצירה נסגרה בלי אישור קבלת הדרכה חתום. להשלים מול הנהג או בביקור הבא',
     });
   }
   return chips;

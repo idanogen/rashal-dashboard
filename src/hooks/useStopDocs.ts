@@ -4,8 +4,12 @@ import { supabase } from '@/lib/supabase';
 export interface StopDocState {
   /** תעודת המשלוח המקורית (SH...), לעצירות אספקה ולקוח חדש. */
   noteDocno?: string;
-  /** הטפסים שנחתמו על העצירה, החדש אחרון. */
+  /** הטפסים שנחתמו על העצירה (קופה ומנוף), החדש אחרון. */
   signed: { pdfPath: string; formKey: string; signedAt: string }[];
+  /** האם העצירה דורשת טופס מנוף, ואיזה (`stops_form_status`). */
+  craneKind?: 'training' | 'inspection' | null;
+  /** האם טופס המנוף מולא (גם בלי PDF, מילוי ישן). */
+  craneSigned?: boolean;
 }
 
 /**
@@ -25,7 +29,7 @@ export function useStopDocs(stopIds: string[]) {
       // מנות של 200: כתובת ה-GET של signed_forms עם `in` ארוך נחתכת.
       for (let i = 0; i < ids.length; i += 200) {
         const chunk = ids.slice(i, i + 200);
-        const [notes, forms] = await Promise.all([
+        const [notes, forms, crane, status] = await Promise.all([
           supabase.rpc('stops_delivery_notes', { p_stop_ids: chunk }),
           supabase
             .from('signed_forms')
@@ -33,16 +37,36 @@ export function useStopDocs(stopIds: string[]) {
             .in('stop_id', chunk)
             .not('pdf_path', 'is', null)
             .order('signed_at', { ascending: true }),
+          // טפסי מנוף עם PDF (25/10/2026): מוצגים ביומן כמו טופס קופה חתום.
+          supabase
+            .from('crane_forms')
+            .select('stop_id, form_type, pdf_path, submitted_at')
+            .in('stop_id', chunk)
+            .not('pdf_path', 'is', null),
+          // מה העצירה דורשת: מזין את חיווי "בלי הדרכה" על אספקת מנוף שנסגרה.
+          supabase.rpc('stops_form_status', { p_stop_ids: chunk }),
         ]);
         if (notes.error) throw new Error(notes.error.message);
         if (forms.error) throw new Error(forms.error.message);
+        if (crane.error) throw new Error(crane.error.message);
+        if (status.error) throw new Error(status.error.message);
         for (const r of (notes.data ?? []) as { stop_id: string; docno: string | null }[]) {
           if (r.stop_id && r.docno) get(r.stop_id).noteDocno = r.docno;
         }
         for (const r of (forms.data ?? []) as { stop_id: string; form_key: string; pdf_path: string; signed_at: string }[]) {
           get(r.stop_id).signed.push({ pdfPath: r.pdf_path, formKey: r.form_key, signedAt: r.signed_at });
         }
+        for (const r of (crane.data ?? []) as { stop_id: string; form_type: string; pdf_path: string; submitted_at: string }[]) {
+          get(r.stop_id).signed.push({ pdfPath: r.pdf_path, formKey: `crane-${r.form_type}`, signedAt: r.submitted_at });
+        }
+        for (const r of (status.data ?? []) as { stop_id: string; crane_kind: 'training' | 'inspection' | null; crane_signed: boolean }[]) {
+          const s = get(r.stop_id);
+          s.craneKind = r.crane_kind;
+          s.craneSigned = r.crane_signed;
+        }
       }
+      // "האחרון" נשאר האחרון גם כשהטפסים מגיעים משתי טבלאות.
+      for (const s of Object.values(out)) s.signed.sort((a, b) => a.signedAt.localeCompare(b.signedAt));
       return out;
     },
   });

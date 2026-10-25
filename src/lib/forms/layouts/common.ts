@@ -49,7 +49,8 @@ export function cell(label: string, value: string, opts: { w?: string; h?: numbe
 /** תיבת סימון מודפסת, מסומנת ב-X בעט כשנבחרה. */
 export function box(checked: boolean, label: string): string {
   return `<span style="display:inline-flex;align-items:center;gap:4px;white-space:nowrap;margin-inline-start:12px">
-    <span style="display:inline-flex;align-items:center;justify-content:center;width:12px;height:12px;border:1px solid ${INK};font-size:11px;line-height:1;color:${PEN};font-weight:700">${checked ? '✕' : ''}</span>
+    <span style="display:inline-flex;align-items:center;justify-content:center;width:12px;height:12px;` +
+    `border:1px solid ${INK};font-size:11px;line-height:1;color:${PEN};font-weight:700">${checked ? '✕' : ''}</span>
     <span style="font-size:11.5px">${label}</span>
   </span>`;
 }
@@ -58,8 +59,23 @@ export function box(checked: boolean, label: string): string {
 export function line(label: string, value: string, minWidth = 150): string {
   return `<span style="display:inline-flex;align-items:flex-end;gap:5px;white-space:nowrap">
     <span style="font-size:11.5px">${label}</span>
-    <span style="display:inline-block;min-width:${minWidth}px;border-bottom:1px dotted ${INK};font-size:13px;color:${PEN};font-weight:600;padding:0 4px;line-height:1.3">${esc(value) || '&nbsp;'}</span>
+    <span style="display:inline-block;min-width:${minWidth}px;border-bottom:1px dotted ${INK};` +
+    `font-size:13px;color:${PEN};font-weight:600;padding:0 4px;line-height:1.3">${esc(value) || '&nbsp;'}</span>
   </span>`;
+}
+
+/**
+ * ⭐ חתימת SVG נחתמת על מסך מלא (כ-345×200) ומוקטנת פה פי 4-5 לתוך קו
+ * החתימה, כך שקו של 2.6 פיקסלים יוצא בהדפסה כחצי פיקסל. עמי (25/10/2026)
+ * צילם טופס ושאל איפה חתימת הלקוח, והיא הייתה שם, רק דקה מכדי להיראות.
+ * העיבוי כאן ולא בחתימה עצמה, כדי שגם חתימות שכבר נשמרו יודפסו קריאות.
+ */
+export function thickenSignature(img: string): string {
+  const prefix = 'data:image/svg+xml;utf8,';
+  if (!img.startsWith(prefix)) return img; // חתימת PNG (פאד הווב) עוברת כמו שהיא.
+  const svg = decodeURIComponent(img.slice(prefix.length));
+  const thick = svg.replace(/stroke-width="([\d.]+)"/g, (_, w) => `stroke-width="${Math.min(Number(w) * 2.5, 12)}"`);
+  return prefix + encodeURIComponent(thick);
 }
 
 /** חתימה על קו: התמונה יושבת על הקו, כמו חתימה בעט. */
@@ -67,7 +83,7 @@ export function signatureLine(label: string, img: string | null | undefined, wid
   return `<span style="display:inline-flex;align-items:flex-end;gap:5px;white-space:nowrap">
     <span style="font-size:11.5px">${label}</span>
     <span style="display:inline-flex;align-items:flex-end;justify-content:center;width:${width}px;height:40px;border-bottom:1px dotted ${INK}">
-      ${img ? `<img src="${img}" style="max-height:44px;max-width:${width}px;object-fit:contain;margin-bottom:-6px" />` : ''}
+      ${img ? `<img src="${thickenSignature(img)}" style="max-height:58px;max-width:${width}px;object-fit:contain;margin-bottom:-6px" />` : ''}
     </span>
   </span>`;
 }
@@ -86,10 +102,12 @@ export function stamp(meta: LayoutInput['meta']): string {
  * `A4_H` פיקסלים, ולכן כל עמוד חייב להיות בדיוק בגובה הזה.
  */
 export function fixedPage(inner: string): string {
-  return `<div dir="rtl" style="width:${A4_W}px;height:${A4_H}px;overflow:hidden;box-sizing:border-box;padding:28px 40px 0;background:#ffffff;font-family:${FONT};color:${INK};position:relative">${inner}</div>`;
+  return `<div dir="rtl" style="width:${A4_W}px;height:${A4_H}px;overflow:hidden;box-sizing:border-box;` +
+    `padding:28px 40px 0;background:#ffffff;font-family:${FONT};color:${INK};position:relative">${inner}</div>`;
 }
 
 /** עטיפת עמוד A4 מימין לשמאל. */
 export function page(inner: string): string {
-  return `<div dir="rtl" style="width:${A4_W}px;min-height:${A4_H}px;box-sizing:border-box;padding:30px 40px 24px;background:#ffffff;font-family:${FONT};color:${INK};position:relative">${inner}</div>`;
+  return `<div dir="rtl" style="width:${A4_W}px;min-height:${A4_H}px;box-sizing:border-box;` +
+    `padding:30px 40px 24px;background:#ffffff;font-family:${FONT};color:${INK};position:relative">${inner}</div>`;
 }

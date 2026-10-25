@@ -63,6 +63,43 @@ export async function saveCraneForm(input: CraneFormInput): Promise<string> {
   return (data as { id: string }).id;
 }
 
+/**
+ * צירוף ה-PDF לטופס מנוף שנשמר: העלאה לדלי `signed-forms` תחת תיקיית
+ * העצירה (המדיניות דוחה כל נתיב אחר), ואז `attach_crane_form_pdf` שרושם
+ * את הנתיב ואת האירוע שהצינור דוחף לכרטיס הלקוח בפריוריטי.
+ * ⭐ צעד נפרד מהשמירה בכוונה: כשל כאן לא מאבד את הטופס החתום.
+ */
+export async function attachCraneFormPdf(
+  formId: string,
+  stopId: string,
+  pdf: Blob,
+  fileDes: string,
+): Promise<void> {
+  const client = formsClient();
+  // 🔴 נתיב באנגלית בלבד: האחסון דוחה מפתח בעברית. השם העברי ב-fileDes.
+  const path = `${stopId}/${crypto.randomUUID()}.pdf`;
+  const { error: upErr } = await client.storage
+    .from('signed-forms')
+    .upload(path, pdf, { contentType: 'application/pdf', upsert: false });
+  if (upErr) throw new Error(`העלאת ה-PDF נכשלה: ${upErr.message}`);
+
+  const { error } = await client.rpc('attach_crane_form_pdf', {
+    p_form_id: formId,
+    p_pdf_path: path,
+    p_file_des: fileDes,
+  });
+  if (error) throw new Error(`רישום ה-PDF נכשל: ${error.message}`);
+}
+
+/** שם הקובץ כפי שיופיע בפריוריטי: בעברית, בלי תווים אסורים. */
+export function craneTrainingFileDes(customerName: string, craneSerial: string | null | undefined, signedAt: Date): string {
+  const date = `${String(signedAt.getDate()).padStart(2, '0')}-${String(signedAt.getMonth() + 1).padStart(2, '0')}-${signedAt.getFullYear()}`;
+  const parts = ['אישור הדרכה מנוף'];
+  if (craneSerial) parts.push(craneSerial);
+  parts.push(customerName, date);
+  return parts.join(' - ').replace(/[/\\?%*:|"<>]/g, '');
+}
+
 /** הטפסים של מנוף מסוים, החדש קודם. */
 export async function fetchCraneForms(serial: string) {
   const { data, error } = await formsClient()

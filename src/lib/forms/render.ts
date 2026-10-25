@@ -9,22 +9,14 @@ import {
 export { buildFormHtml, buildFormFileName } from './html.ts';
 export type { FormMeta, PhotoImages, SignatureImages, SignerNames } from './html.ts';
 
-/** מרסטר את הטופס ומחזיר PDF. */
-export async function generateFormPdf(
-  def: FormDefinition,
-  values: FormValues,
-  signatures: SignatureImages,
-  names: SignerNames,
-  meta: FormMeta,
-  photos: PhotoImages = {},
-): Promise<Blob> {
+/** רסטור של HTML טופס: הדפדפן מצייר, ואנחנו מקבלים תמונה וגובה ביחידות דף. */
+async function rasterize(html: string): Promise<{ imgData: string; renderedHeight: number }> {
   const host = document.createElement('div');
   host.setAttribute('dir', 'rtl');
   // מחוץ למסך אך מרונדר. `display:none` היה מונע מדידה ומחזיר קנבס ריק.
   host.style.cssText = `position:fixed;top:0;left:-${A4_WIDTH_PX + 200}px;width:${A4_WIDTH_PX}px;z-index:-1;background:#ffffff`;
-  host.innerHTML = buildFormHtml(def, values, signatures, names, meta, photos);
+  host.innerHTML = html;
   document.body.appendChild(host);
-
   try {
     // ⭐ כל המארח ולא רק הילד הראשון: טופס רב-עמודי (מאוחדת) הוא כמה עמודים
     // אחים, ולכידת הראשון בלבד הוציאה PDF של עמוד 1 (נתפס 17/10/2026).
@@ -34,39 +26,63 @@ export async function generateFormPdf(
       logging: false,
       useCORS: true,
     });
-
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'px', format: [A4_WIDTH_PX, A4_HEIGHT_PX] });
-    const imgData = canvas.toDataURL('image/jpeg', 0.92);
-
-    // גובה התמונה ביחידות הדף, אחרי התאמה לרוחב A4
-    const renderedHeight = (canvas.height * A4_WIDTH_PX) / canvas.width;
-
-    // ⭐ טופס שהועתק מהמקור הוא עמוד אחד, כמו המקור. אם תוכן שמולא (שם מכשיר
-    // ארוך, הערה) הגביה אותו מעט מעבר ל-A4, מקטינים לעמוד אחד במקום לחתוך
-    // שורה באמצע ולשפוך אותה לעמוד שני.
-    if (LAYOUTS[def.key] && renderedHeight > A4_HEIGHT_PX && renderedHeight <= A4_HEIGHT_PX * 1.3) {
-      const scale = A4_HEIGHT_PX / renderedHeight;
-      const w = A4_WIDTH_PX * scale;
-      pdf.addImage(imgData, 'JPEG', (A4_WIDTH_PX - w) / 2, 0, w, A4_HEIGHT_PX);
-      await appendPhotos(pdf, def, photos);
-      return pdf.output('blob');
-    }
-    let remaining = renderedHeight;
-    let offset = 0;
-
-    while (remaining > 0) {
-      if (offset > 0) pdf.addPage([A4_WIDTH_PX, A4_HEIGHT_PX], 'portrait');
-      // התמונה נדחפת כלפי מעלה, והדף חותך את מה שמעבר לגובה שלו
-      pdf.addImage(imgData, 'JPEG', 0, -offset, A4_WIDTH_PX, renderedHeight);
-      remaining -= A4_HEIGHT_PX;
-      offset += A4_HEIGHT_PX;
-    }
-
-    await appendPhotos(pdf, def, photos);
-    return pdf.output('blob');
+    return {
+      imgData: canvas.toDataURL('image/jpeg', 0.92),
+      // גובה התמונה ביחידות הדף, אחרי התאמה לרוחב A4
+      renderedHeight: (canvas.height * A4_WIDTH_PX) / canvas.width,
+    };
   } finally {
     document.body.removeChild(host);
   }
+}
+
+/** חיתוך הרסטר לעמודי A4: התמונה נדחפת כלפי מעלה וכל דף חותך את שלו. */
+function paginate(pdf: jsPDF, imgData: string, renderedHeight: number): void {
+  let remaining = renderedHeight;
+  let offset = 0;
+  while (remaining > 0) {
+    if (offset > 0) pdf.addPage([A4_WIDTH_PX, A4_HEIGHT_PX], 'portrait');
+    pdf.addImage(imgData, 'JPEG', 0, -offset, A4_WIDTH_PX, renderedHeight);
+    remaining -= A4_HEIGHT_PX;
+    offset += A4_HEIGHT_PX;
+  }
+}
+
+/** PDF מ-HTML של עמוד טופס, בלי הגדרת קופה: טופס ההדרכה למנוף וכדומה. */
+export async function renderHtmlToPdf(html: string): Promise<Blob> {
+  const { imgData, renderedHeight } = await rasterize(html);
+  const pdf = new jsPDF({ orientation: 'portrait', unit: 'px', format: [A4_WIDTH_PX, A4_HEIGHT_PX] });
+  paginate(pdf, imgData, renderedHeight);
+  return pdf.output('blob');
+}
+
+/** מרסטר את הטופס ומחזיר PDF. */
+export async function generateFormPdf(
+  def: FormDefinition,
+  values: FormValues,
+  signatures: SignatureImages,
+  names: SignerNames,
+  meta: FormMeta,
+  photos: PhotoImages = {},
+): Promise<Blob> {
+  const { imgData, renderedHeight } = await rasterize(
+    buildFormHtml(def, values, signatures, names, meta, photos),
+  );
+  const pdf = new jsPDF({ orientation: 'portrait', unit: 'px', format: [A4_WIDTH_PX, A4_HEIGHT_PX] });
+
+  // ⭐ טופס שהועתק מהמקור הוא עמוד אחד, כמו המקור. אם תוכן שמולא (שם מכשיר
+  // ארוך, הערה) הגביה אותו מעט מעבר ל-A4, מקטינים לעמוד אחד במקום לחתוך
+  // שורה באמצע ולשפוך אותה לעמוד שני.
+  if (LAYOUTS[def.key] && renderedHeight > A4_HEIGHT_PX && renderedHeight <= A4_HEIGHT_PX * 1.3) {
+    const scale = A4_HEIGHT_PX / renderedHeight;
+    const w = A4_WIDTH_PX * scale;
+    pdf.addImage(imgData, 'JPEG', (A4_WIDTH_PX - w) / 2, 0, w, A4_HEIGHT_PX);
+  } else {
+    paginate(pdf, imgData, renderedHeight);
+  }
+
+  await appendPhotos(pdf, def, photos);
+  return pdf.output('blob');
 }
 
 

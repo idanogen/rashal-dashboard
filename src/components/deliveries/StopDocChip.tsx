@@ -9,6 +9,7 @@ const CHIP_CLASS = {
   signed: 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100',
   note: 'border-indigo-300 bg-indigo-50 text-indigo-800 hover:bg-indigo-100',
   callDoc: 'border-indigo-300 bg-indigo-50 text-indigo-800 hover:bg-indigo-100',
+  missingTraining: 'border-red-300 bg-red-50 text-red-800',
 } as const;
 
 /**
@@ -31,7 +32,8 @@ export function StopDocChip({
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
-  const previewable = chip.kind !== 'callDoc' && !!docs;
+  // "בלי הדרכה" הוא חיווי חוסר: אין לו קובץ לפתוח ואין תצוגה מקדימה.
+  const previewable = (chip.kind === 'signed' || chip.kind === 'note') && !!docs;
   const { data, isLoading, isError } = useStopDocPreview(stopId, docs, open && previewable);
 
   const button = (
@@ -43,7 +45,7 @@ export function StopDocChip({
           onOpenCallInfo?.();
           return;
         }
-        if (docs) openStopDoc(stopId, docs).catch((err) => toast.error(`פתיחת המסמך נכשלה: ${err.message}`));
+        if (previewable && docs) openStopDoc(stopId, docs).catch((err) => toast.error(`פתיחת המסמך נכשלה: ${err.message}`));
       }}
       onPointerDown={(e) => e.stopPropagation()}
       title={previewable ? undefined : chip.title}

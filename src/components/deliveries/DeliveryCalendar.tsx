@@ -202,6 +202,9 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate, onMoveSto
     noteDocno: docs?.noteDocno,
     signedCount: docs?.signed.length,
     hasCallDoc: hasDoc,
+    craneKind: docs?.craneKind,
+    craneSigned: docs?.craneSigned,
+    completed: stop.status === 'completed',
   });
 
   return (
@@ -220,12 +223,14 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate, onMoveSto
     >
       {/* Needs-cancel ribbon — overrides the confirmed ribbon */}
       {needsCancel ? (
-        <div className="absolute top-0 start-0 flex items-center gap-1 rounded-tr-lg rounded-es-lg bg-amber-500 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm">
+        <div className="absolute top-0 start-0 flex items-center gap-1 rounded-tr-lg rounded-es-lg bg-amber-500
+          px-2 py-0.5 text-[10px] font-bold text-white shadow-sm">
           ⚠ יש לבטל תיאום
         </div>
       ) : (
         isCustomerConfirmed && (
-          <div className="absolute top-0 start-0 flex items-center gap-1 rounded-tr-lg rounded-es-lg bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm">
+          <div className="absolute top-0 start-0 flex items-center gap-1 rounded-tr-lg rounded-es-lg bg-emerald-500
+            px-2 py-0.5 text-[10px] font-bold text-white shadow-sm">
             <Check className="h-2.5 w-2.5" />
             הלקוח אישר
           </div>
@@ -399,7 +404,8 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate, onMoveSto
                 onCoordinate(stop);
               }}
               onPointerDown={(e) => e.stopPropagation()}
-              className="flex-1 flex items-center justify-center gap-1 rounded-md bg-emerald-500/10 px-2 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-500/20 transition-colors"
+              className="flex-1 flex items-center justify-center gap-1 rounded-md bg-emerald-500/10 px-2 py-1.5 text-xs font-semibold text-emerald-700
+                hover:bg-emerald-500/20 transition-colors"
               title="שלח תיאום ללקוח"
             >
               <MessageCircle className="h-3.5 w-3.5" />
@@ -414,7 +420,9 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate, onMoveSto
                   onResolve(stop.stopId, 'completed');
                 }}
                 onPointerDown={(e) => e.stopPropagation()}
-                className="flex-1 flex items-center justify-center gap-1 rounded-md bg-emerald-500/10 px-2 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-500/20 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50 transition-colors"
+                className="flex-1 flex items-center justify-center gap-1 rounded-md bg-emerald-500/10 px-2 py-1.5 text-xs font-semibold text-emerald-700
+                  hover:bg-emerald-500/20
+                  dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50 transition-colors"
                 title="סמן כבוצע"
               >
                 <Check className="h-3.5 w-3.5" />
@@ -426,7 +434,9 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate, onMoveSto
                   onResolve(stop.stopId, 'not_completed');
                 }}
                 onPointerDown={(e) => e.stopPropagation()}
-                className="flex-1 flex items-center justify-center gap-1 rounded-md bg-red-500/10 px-2 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-500/20 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 transition-colors"
+                className="flex-1 flex items-center justify-center gap-1 rounded-md bg-red-500/10 px-2 py-1.5 text-xs font-semibold text-red-700
+                  hover:bg-red-500/20
+                  dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50 transition-colors"
                 title="סמן כלא בוצע"
               >
                 <X className="h-3.5 w-3.5" />
@@ -460,7 +470,9 @@ function StopCard({ stop, delivery, onRemove, onResolve, onCoordinate, onMoveSto
               onMoveStop(stop.stopId);
             }}
             onPointerDown={(e) => e.stopPropagation()}
-            className="w-full flex items-center justify-center gap-1 rounded-md bg-blue-500/10 px-2 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-500/20 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 transition-colors"
+            className="w-full flex items-center justify-center gap-1 rounded-md bg-blue-500/10 px-2 py-1.5 text-xs font-semibold text-blue-700
+              hover:bg-blue-500/20
+              dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50 transition-colors"
             title="העבר את הקריאה ליום אחר"
           >
             <Calendar className="h-3.5 w-3.5" />
@@ -790,7 +802,9 @@ export function DeliveryCalendar({
                 type="button"
                 onClick={() => togglePastDay(dateStr)}
                 title={`הצג את ${dayNames[day.getDay()]} ${day.getDate()}`}
-                className="flex w-full flex-row items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-500/5 px-3 py-2 text-amber-800 transition-colors hover:bg-amber-500/10 md:w-[92px] md:flex-none md:flex-col md:justify-start md:py-3"
+                className="flex w-full flex-row items-center justify-between gap-2 rounded-xl border border-amber-200 bg-amber-500/5 px-3 py-2
+                  text-amber-800 transition-colors hover:bg-amber-500/10
+                  md:w-[92px] md:flex-none md:flex-col md:justify-start md:py-3"
               >
                 <span className="text-xs font-semibold">{dayNames[day.getDay()]}</span>
                 <span className="text-lg font-bold leading-none">{day.getDate()}</span>
