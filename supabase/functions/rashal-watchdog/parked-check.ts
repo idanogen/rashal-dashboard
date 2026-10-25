@@ -118,9 +118,19 @@ export function parkedDigest(groups: ParkedGroup[], cardLines: string[]): { subj
   return { subject, inner: head + [...groups.map(groupLine), ...cardLines].join("<br><br>") + foot + cardFoot };
 }
 
+type Row = Record<string, unknown>;
+// המשטח המינימלי של supabase-js שמוזרק מ-index.ts.
+interface Query extends PromiseLike<{ data: Row[] | null; error: { message: string } | null }> {
+  select(cols: string): Query;
+  gt(col: string, v: string): Query;
+  or(filter: string): Query;
+  in(col: string, v: string[]): Query;
+  order(col: string, o: { ascending: boolean }): Query;
+  limit(n: number): Query;
+}
+
 interface Deps {
-  // deno-lint-ignore no-explicit-any -- אותו לקוח של supabase-js שמוזרק מ-index.ts.
-  sb: any;
+  sb: { from(table: string): Query & { upsert(row: Row): PromiseLike<unknown> } };
   sendEmail: (subject: string, html: string) => Promise<boolean>;
   wrap: (inner: string, color: string) => string;
 }
@@ -142,7 +152,7 @@ export async function checkParkedPushes(
     .order("failed_at", { ascending: false })
     .limit(50);
   if (error) return `query failed: ${error.message}`;
-  const rows = (data ?? []) as ParkedRow[];
+  const rows = (data ?? []) as unknown as ParkedRow[];
   // כרטיס הלקוח (23/09/2026): תמונה או הערה שפריוריטי דחה נעצרת על השורה שלה.
   const { data: card, error: cardErr } = await sb.from("timeline_events")
     .select("id,customer_number,push_fail_reason,push_failed_at")
@@ -150,32 +160,38 @@ export async function checkParkedPushes(
     .order("push_failed_at", { ascending: false })
     .limit(50);
   if (cardErr) return `card query failed: ${cardErr.message}`;
-  const cardRows = (card ?? []) as { id: string; customer_number: string | null; push_fail_reason: string | null }[];
+  const cardRows = (card ?? []) as unknown as { id: string; customer_number: string | null; push_fail_reason: string | null }[];
   if (!rows.length && !cardRows.length) return "ok";
 
   // ההקשר: הלקוח והסטטוס, מה נכתב ומי, והאם זה נכנס לכרטיס הלקוח.
   const docnos = [...new Set(rows.map((r) => r.docno).filter(Boolean))] as string[];
   const eventIds = rows.filter((r) => r.key.startsWith("event:")).map((r) => r.key.split(":")[1]);
   const stopIds = rows.filter((r) => r.key.startsWith("note:")).map((r) => r.key.split(":")[1]);
+  const none = { data: [] as Row[] };
   const [c, e, s] = await Promise.all([
     docnos.length
       ? sb.from("service_calls").select("priority_call_id,customer_name,priority_status").in("priority_call_id", docnos)
-      : { data: [] },
+      : none,
     eventIds.length
       ? sb.from("timeline_events").select("id,type,user_name,content,pushed_to_priority_at").in("id", eventIds)
-      : { data: [] },
+      : none,
     stopIds.length
       ? sb.from("calendar_stops").select("id,driver,resolution_note").in("id", stopIds)
-      : { data: [] },
+      : none,
   ]);
+  const str = (v: unknown) => (typeof v === "string" ? v : null);
   const calls = new Map<string, CallFacts>();
-  for (const x of c.data ?? []) calls.set(x.priority_call_id, { customer_name: x.customer_name, priority_status: x.priority_status });
+  for (const x of c.data ?? []) {
+    calls.set(String(x.priority_call_id), { customer_name: str(x.customer_name), priority_status: str(x.priority_status) });
+  }
   const events = new Map<string, EventFacts>();
   for (const x of e.data ?? []) {
-    events.set(x.id, { type: x.type, user_name: x.user_name, content: x.content, on_card: !!x.pushed_to_priority_at });
+    events.set(String(x.id), {
+      type: str(x.type), user_name: str(x.user_name), content: str(x.content), on_card: !!x.pushed_to_priority_at,
+    });
   }
   const notes = new Map<string, NoteFacts>();
-  for (const x of s.data ?? []) notes.set(x.id, { driver: x.driver, note: x.resolution_note });
+  for (const x of s.data ?? []) notes.set(String(x.id), { driver: str(x.driver), note: str(x.resolution_note) });
 
   const groups = groupParked(rows, calls, events, notes);
   const cardLines = cardRows.map((r) =>
