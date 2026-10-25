@@ -8,6 +8,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { assessHeyy, type HeyyHealth } from "./heyy-health.ts";
 import { CRANE_JOB, checkCraneTraining } from "./crane-training-check.ts";
+import { PARKED_JOB, checkParkedPushes } from "./parked-check.ts";
 import { SCREEN_JOB, checkScreenLoads } from "./screen-loads-check.ts";
 import { requireSecret } from "../_shared/require-secret.ts";
 
@@ -19,6 +20,8 @@ const RESEND_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const ALERT_EMAIL = Deno.env.get("ALERT_EMAIL") ?? "idan@ogensolutions.biz";
 const ALERT_FROM = Deno.env.get("ALERT_FROM") ?? "Ogen Sync <onboarding@resend.dev>";
 const REALERT_HOURS = 6;
+// נמענים נוספים לסיכום המנופים (פסיקים). ריק = עידן בלבד, עד הכרעה על עמי.
+const CRANE_ALERT_EMAIL = (Deno.env.get("CRANE_ALERT_EMAIL") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 
 interface Mon { job: string; label: string; thresholdMin: number; activeDowUtc?: number[]; activeHourUtc?: [number, number] }
 const MONITORS: Mon[] = [
@@ -42,12 +45,13 @@ function minutesSinceWindowOpen(m: Mon, now: Date): number | null {
   return (now.getTime() - open.getTime()) / 60000;
 }
 
-async function sendEmail(subject: string, html: string) {
+async function sendEmail(subject: string, html: string, extraTo: string[] = []) {
   if (!RESEND_KEY) { console.error("no RESEND_API_KEY"); return false; }
+  const to = [...new Set([ALERT_EMAIL, ...extraTo])];
   const r = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: ALERT_FROM, to: [ALERT_EMAIL], subject, html }),
+    body: JSON.stringify({ from: ALERT_FROM, to, subject, html }),
   });
   if (!r.ok) console.error("resend failed:", r.status, (await r.text()).slice(0, 200));
   return r.ok;
@@ -181,88 +185,6 @@ async function checkHeyyChannel(now: Date, prev: Record<string, unknown> | undef
 }
 
 
-// ── כתיבות שנעצרו לצמיתות ───────────────────────────────
-//
-// 🔴🔴 **הפער שזה סוגר (18/09/2026).** הערה של טכנאי על קריאה שכבר "סופית"
-// בפריוריטי נדחית ב-400 בכל ריצה, לנצח. עד היום זה החזיק את `push-chat`
-// באדום יומיים והמייל אמר "הסנכרון לא רץ כצפוי" בזמן שהכל רץ. מהיום
-// הפריט נעצר ביומן, וה-job חוזר לירוק.
-//
-// ⭐ אבל **עצירה היא איבוד מידע**: מה שהטכנאי כתב לא ייכנס לפריוריטי אף
-// פעם. לכן הפעמון עובר לכאן, פעם אחת לכל פריט שנעצר, עם הנוסח שפריוריטי
-// החזיר. בלי זה היינו מחליפים רעש קבוע בשקט מוחלט. [[log_without_a_bell_is_not_monitoring]]
-const PARKED_JOB = "push-parked";
-
-interface ParkedRow { key: string; docno: string | null; fail_reason: string | null; last_error: string | null; failed_at: string }
-
-async function checkParkedPushes(now: Date, prev: Record<string, unknown> | undefined): Promise<string> {
-  // 🔴 18/09/2026, מיד אחרי ההשקה: חלון של 65 דקות מול בדיקה שרצה כל שעה
-  // שלח שלושה מיילים על אותו פריט. הגבול התחתון הוא **ההתראה הקודמת**,
-  // ולכן כל פריט מדווח בדיוק פעם אחת, בלי חנק שמבליע פריט חדש.
-  const alertedAt = prev?.last_alerted_at ? new Date(prev.last_alerted_at as string).getTime() : 0;
-  const since = new Date(Math.max(alertedAt, now.getTime() - 24 * 3600000)).toISOString();
-  const { data, error } = await sb.from("priority_call_push_log")
-    .select("key,docno,fail_reason,last_error,failed_at")
-    .gt("failed_at", since)
-    // test_form נעצר ביד ובכוונה (טופס בדיקה על לקוח אמיתי), אין מה להתריע עליו.
-    // neq לבד מפיל גם שורות עם fail_reason ריק, לכן or.
-    .or("fail_reason.is.null,fail_reason.neq.test_form")
-    .order("failed_at", { ascending: false })
-    .limit(50);
-  if (error) return `query failed: ${error.message}`;
-  const rows = (data ?? []) as ParkedRow[];
-  // כרטיס הלקוח (23/09/2026): תמונה או הערה שפריוריטי דחה נעצרת על השורה שלה.
-  const { data: card, error: cardErr } = await sb.from("timeline_events")
-    .select("id,customer_number,push_fail_reason,push_failed_at")
-    .gt("push_failed_at", since)
-    .order("push_failed_at", { ascending: false })
-    .limit(50);
-  if (cardErr) return `card query failed: ${cardErr.message}`;
-  const cardRows = (card ?? []) as { id: string; customer_number: string | null; push_fail_reason: string | null }[];
-  if (!rows.length && !cardRows.length) return "ok";
-
-  const REASON: Record<string, string> = {
-    call_locked: "הקריאה נעולה לשינויים בפריוריטי",
-    read_only_subform: "תת-הטופס בפריוריטי לקריאה בלבד",
-    priority_rejected: "פריוריטי דחה את התוכן",
-  };
-  const lines = rows.map((r) =>
-    `• <bdi>${r.docno ?? r.key}</bdi>: ${REASON[r.fail_reason ?? ""] ?? r.fail_reason ?? "לא ידוע"}` +
-    (r.last_error ? `<br>&nbsp;&nbsp;<span style="color:#6b7688">${r.last_error.slice(0, 160)}</span>` : "")
-  );
-  const cardLines = cardRows.map((r) =>
-    `• כרטיס לקוח${r.customer_number ? ` <bdi>${r.customer_number}</bdi>` : ""}: פריוריטי דחה את התוכן` +
-    (r.push_fail_reason ? `<br>&nbsp;&nbsp;<span style="color:#6b7688">${r.push_fail_reason.slice(0, 160)}</span>` : "")
-  );
-  const total = rows.length + cardRows.length;
-  const subject = cardRows.length
-    ? (total === 1 ? "פריט אחד לא נכנס לפריוריטי" : `${total} פריטים לא נכנסו לפריוריטי`)
-    : (rows.length === 1 ? "הערה של טכנאי לא נכנסה לפריוריטי" : `${rows.length} רישומי טכנאי לא נכנסו לפריוריטי`);
-  await sendEmail(
-    `🟠 ${subject}`,
-    wrap(
-      `<b style="font-size:16px">מה שנרשם אצלנו לא ייכנס לפריוריטי</b><br><br>` +
-      [...lines, ...cardLines].join("<br>") +
-      `<br><br>המערכת הפסיקה לנסות על אלה, כדי שהן לא יחזיקו את הסנכרון באדום, והכל נשאר רשום בדשבורד.` +
-      (rows.length ? ` הערת צ'אט של נהג נכתבת גם לכרטיס הלקוח בפריוריטי, ` +
-        `אבל סיבת "לא בוצע" או "להמשך טיפול" נשארת אצלנו בלבד. ` +
-        `כדי להכניס אותה לקריאה ידנית צריך לפתוח אותה לשינויים בפריוריטי.` : "") +
-      (cardRows.length ? ` מה שנדחה בכרטיס הלקוח (למשל תמונה בפורמט שפריוריטי לא מקבל) ` +
-        `אפשר לצרף ידנית לכרטיס מתוך הדשבורד.` : ""),
-      "#d98324",
-    ),
-  );
-  await sb.from("sync_alerts").upsert({
-    job: PARKED_JOB, state: "alerting", last_alerted_at: now.toISOString(),
-    detail: [...rows.map((r) => `${r.docno ?? r.key}: ${r.fail_reason}`),
-             ...cardRows.map((r) => `card ${r.customer_number ?? r.id}`)].join(" · ").slice(0, 400),
-    updated_at: now.toISOString(),
-  });
-  return `ALERT sent (${total} parked)`;
-}
-
-
-
 Deno.serve(async (req: Request) => {
   const denied = requireSecret(req);
   if (denied) return denied;
@@ -352,7 +274,7 @@ Deno.serve(async (req: Request) => {
   // 🔴 שאלה רביעית: לא "מתי רץ" אלא "מה ויתרנו עליו". פריט שנעצר לצמיתות
   // נעלם מכל מדד של הצלחה, ולכן הוא צריך פעמון משלו.
   try {
-    report[PARKED_JOB] = await checkParkedPushes(now, alerts.get(PARKED_JOB));
+    report[PARKED_JOB] = await checkParkedPushes(now, alerts.get(PARKED_JOB), { sb, sendEmail, wrap });
   } catch (e) {
     report[PARKED_JOB] = `check crashed: ${e instanceof Error ? e.message : String(e)}`;
     console.error("[watchdog] parked check crashed", e);
@@ -377,7 +299,7 @@ Deno.serve(async (req: Request) => {
   // שאלה נוספת: לא "מה נכשל" אלא "מה חסר". טופס הדרכה שלא מולא אינו כשל
   // של שום תהליך, ולכן אין לו שום סימן חוץ מהבדיקה הזאת.
   try {
-    report[CRANE_JOB] = await checkCraneTraining(now, alerts.get(CRANE_JOB), { sb, sendEmail, wrap });
+    report[CRANE_JOB] = await checkCraneTraining(now, alerts.get(CRANE_JOB), { sb, sendEmail, wrap, extraTo: CRANE_ALERT_EMAIL });
   } catch (e) {
     report[CRANE_JOB] = `check crashed: ${e instanceof Error ? e.message : String(e)}`;
     console.error("[watchdog] crane-training check crashed", e);
