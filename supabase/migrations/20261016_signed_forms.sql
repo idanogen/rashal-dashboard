@@ -226,7 +226,11 @@ begin
                      (select nullif(trim(customer_number), '') from public.orders where id = v_stop.order_id),
                      (select nullif(trim(customer_number), '') from public.service_calls where id = v_stop.service_call_id),
                      (select nullif(trim(customer_number), '') from public.pickups where id = v_stop.pickup_id));
-  v_by := coalesce(public.current_user_driver(), v_stop.driver);
+  -- 26/10/2026: גם מנהל מחתים מהאפליקציה. החותם הוא מי שמחובר (שם הנהג
+  -- המקושר, ואם אין, שם הפרופיל), ורק בלי שניהם שם הנהג של העצירה.
+  v_by := coalesce(public.current_user_driver(),
+                   (select nullif(trim(full_name), '') from public.profiles where id = auth.uid()),
+                   v_stop.driver);
 
   insert into public.signed_forms (
     id, stop_id, order_id, service_call_id, pickup_id, form_key, form_kind, health_fund,
