@@ -17,6 +17,7 @@ import {
   CRANE_CHECKLIST_SUBTITLE,
   CRANE_CHECKLIST_TITLE,
   canSubmit,
+  checkAll,
   progressOf,
   VERDICT_LABELS,
   type CraneVerdict,
@@ -163,6 +164,17 @@ export function CraneChecklistDialog({
               </div>
             </div>
           ))}
+
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full gap-1"
+            disabled={p.missing.length === 0}
+            onClick={() => setAnswers((a) => checkAll(a))}
+          >
+            <Check className="h-4 w-4" />
+            {p.missing.length === 0 ? 'כל הפריטים מסומנים' : 'סימון כל הפריטים'}
+          </Button>
 
           {/* ── סיכום ── */}
           <div className="rounded-xl border-2 p-3" style={{ borderColor: '#e3e8f0' }}>

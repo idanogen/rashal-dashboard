@@ -78,3 +78,10 @@ test('גרסה 2 (15/10/2026): הנוסח של עמי, והישן נשאר קר�
   assert.match(itemTextForVersion('b4', 2), /אי הימצאות קרעים/);
   assert.equal(itemTextForVersion('s1', 1), itemTextForVersion('s1', 2));
 });
+
+test('סימון הכל: כל הפריטים מסומנים והרשימה מוכנה לתקין', async () => {
+  const { checkAll, progressOf, canSubmit } = await import('../src/lib/crane-checklist.ts');
+  const all = checkAll({});
+  assert.equal(progressOf(all).missing.length, 0);
+  assert.deepEqual(canSubmit(all, 'ok', 'רותי'), { ok: true });
+});
