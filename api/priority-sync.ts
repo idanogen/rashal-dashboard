@@ -244,9 +244,15 @@ async function upsertCustomers(rows: Row[], backfill = false) {
       fax: s(r.FAX),
       agent: s(r.AGENTNAME),
       // MCUSTDES הוא הלקוח-האב/המשלם ולא קופת חולים. הוא נשמר תחת השם
-      // ההיסטורי, וקופת החולים האמיתית (CTYPENAME) מתוחזקת בעמודה
-      // `customer_type` על ידי rashal-customer-type.
+      // ההיסטורי. קופת החולים האמיתית היא CTYPENAME ("סוג לקוח"), בעמודה
+      // `customer_type`.
       health_fund: s(r.MCUSTDES),
+      // 🔴🔴 26/10/2026 (עידן: "אנחנו לא ממפים נכון"): עד היום CTYPENAME לא היה
+      // ב-$select של המשיכה השוטפת, ומולא רק בסריקה של rashal-customer-type
+      // ב-1 וב-15 לחודש. לקוח שנפתח באמצע (רבינוביץ רחל, מאוחדת) נשאר בלי
+      // קופה עד שבועיים, ו-82 מ-136 הלקוחות מ-15/10 ישבו ככה. ⭐ רק כשהשדה
+      // הגיע: קורא שלא ביקש אותו לא ימחק קופה קיימת.
+      ...('CTYPENAME' in r ? { customer_type: s(r.CTYPENAME), customer_type_code: s(r.CTYPECODE) } : {}),
       opened_by: s(r.OWNERLOGIN),
       priority_udate: s(r.CREATEDDATE),
       synced_at: new Date().toISOString(),

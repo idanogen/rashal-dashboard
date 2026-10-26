@@ -8,6 +8,11 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 const PRIORITY = "https://p.priority-connect.online/odata/Priority/tabb4ce6.ini/shaal";
+/** השדות של קריאת שירות (DOCUMENTS_Q), אותם בכל המשיכות. */
+const CALL_SELECT = [
+  "DOCNO,CUSTNAME,CDES,STARTDATE,STATUSDATE,PHONENUM,SUSERLOGIN,Y_149_0_ESHB,Y_2578_0_ESHB,Y_2632_5_ESH",
+  "MALFDES,SYMDES,CALLTYPECODE,CALLSTATUSCODE,SERVTDES,SERNUM,PARTNAME,PARTDES,WARDATEFINAL,RSHL_INSTDATE,TECHNICIANLOGIN,EDATE",
+].join(",");
 const INBOX = "https://rashal-dashboard.vercel.app/api/priority-sync";
 const UA = "OgenSync/1.0";
 
@@ -63,7 +68,7 @@ async function fetchRetry(
 // השאילתות — העתק נאמן 1:1 מה-blueprints של Make (נמשכו 04/08/2026)
 const Q = {
   customers: (since: string) =>
-    `/CUSTOMERS?$select=CUSTNAME,CUSTDES,ADDRESS,STATE,PHONE,FAX,AGENTNAME,MCUSTDES,OWNERLOGIN,CREATEDDATE` +
+    `/CUSTOMERS?$select=CUSTNAME,CUSTDES,ADDRESS,STATE,PHONE,FAX,AGENTNAME,MCUSTDES,OWNERLOGIN,CREATEDDATE,CTYPENAME,CTYPECODE` +
     `&$filter=${encodeURIComponent(`CREATEDDATE ge ${since}`)}&$orderby=CREATEDDATE%20asc&$top=4000`,
   orders: (since: string) =>
     `/ORDERS?$select=ORDNAME,CUSTNAME,CDES,CURDATE,STATUSDATE,ORDSTATUSDES,AGENTNAME,TYPEDES,DOERNAME,Y_151_0_ESHB` +
@@ -72,7 +77,7 @@ const Q = {
   // CALLSTATUSCODE added 05/08/2026 — the call's status in Priority. Without it
   // nothing ever closed on our side and 96% of calls sat in "קריאה חדשה".
   service_calls: (since: string) =>
-    `/DOCUMENTS_Q?$select=DOCNO,CUSTNAME,CDES,STARTDATE,STATUSDATE,PHONENUM,SUSERLOGIN,Y_149_0_ESHB,Y_2578_0_ESHB,Y_2632_5_ESH,MALFDES,SYMDES,CALLTYPECODE,CALLSTATUSCODE,SERVTDES,SERNUM,PARTNAME,PARTDES,WARDATEFINAL,RSHL_INSTDATE,TECHNICIANLOGIN,EDATE` +
+    `/DOCUMENTS_Q?$select=${CALL_SELECT}` +
     // ⭐ "תאור התקלה" (15/09/2026, כרטיס הקריאה לנהג). אומת ב-probe-filters:
     // אובייקט `{TEXT}` לכל שורה, גם כשהתאור ריק. מכווץ ב-shrinkFaultText לפני ה-inbox.
     `&$expand=${encodeURIComponent("DOCTEXT_Q_2_SUBFORM($select=TEXT)")}` +
@@ -139,11 +144,11 @@ const Q = {
   // היומית, והרמזור היה משבץ לקוח שמגיע לבד. חלון מתגלגל, לא סימן מים.
   // נבדק: 8 שעות = 173 קריאות לפי UDATE מול 157 לפי STATUSDATE.
   calls_udate: (since: string) =>
-    `/DOCUMENTS_Q?$select=DOCNO,CUSTNAME,CDES,STARTDATE,STATUSDATE,PHONENUM,SUSERLOGIN,Y_149_0_ESHB,Y_2578_0_ESHB,Y_2632_5_ESH,MALFDES,SYMDES,CALLTYPECODE,CALLSTATUSCODE,SERVTDES,SERNUM,PARTNAME,PARTDES,WARDATEFINAL,RSHL_INSTDATE,TECHNICIANLOGIN,EDATE` +
+    `/DOCUMENTS_Q?$select=${CALL_SELECT}` +
     `&$expand=${encodeURIComponent("DOCTEXT_Q_2_SUBFORM($select=TEXT)")}` +
     `&$filter=${encodeURIComponent(`UDATE ge ${since}`)}&$orderby=DOCNO%20asc&$top=1000`,
   calls_recent: (since: string) =>
-    `/DOCUMENTS_Q?$select=DOCNO,CUSTNAME,CDES,STARTDATE,STATUSDATE,PHONENUM,SUSERLOGIN,Y_149_0_ESHB,Y_2578_0_ESHB,Y_2632_5_ESH,MALFDES,SYMDES,CALLTYPECODE,CALLSTATUSCODE,SERVTDES,SERNUM,PARTNAME,PARTDES,WARDATEFINAL,RSHL_INSTDATE,TECHNICIANLOGIN,EDATE` +
+    `/DOCUMENTS_Q?$select=${CALL_SELECT}` +
     `&$expand=${encodeURIComponent("DOCTEXT_Q_2_SUBFORM($select=TEXT)")}` +
     `&$filter=${encodeURIComponent(`STARTDATE ge ${since}`)}&$orderby=DOCNO%20asc&$top=2000`,
 };
@@ -199,7 +204,7 @@ const BACKFILL_Q: Record<string, { kind: string; url: (f: string, t: string) => 
   customers: {
     kind: "customers",
     url: (f, t) =>
-      `/CUSTOMERS?$select=CUSTNAME,CUSTDES,ADDRESS,STATE,PHONE,FAX,AGENTNAME,MCUSTDES,OWNERLOGIN,CREATEDDATE` +
+      `/CUSTOMERS?$select=CUSTNAME,CUSTDES,ADDRESS,STATE,PHONE,FAX,AGENTNAME,MCUSTDES,OWNERLOGIN,CREATEDDATE,CTYPENAME,CTYPECODE` +
       `&$filter=${encodeURIComponent(`CREATEDDATE ge ${f} and CREATEDDATE lt ${t}`)}` +
       // 🔴🔴 **מיון לפי מפתח ייחודי, ולא לפי התאריך שסיננו לפיו.**
       // `$skip` מניח סדר יציב. כשכל הרשומות בחלון נושאות את אותו
@@ -220,7 +225,7 @@ const BACKFILL_Q: Record<string, { kind: string; url: (f: string, t: string) => 
   service_calls: {
     kind: "service_calls",
     url: (f, t) =>
-      `/DOCUMENTS_Q?$select=DOCNO,CUSTNAME,CDES,STARTDATE,STATUSDATE,PHONENUM,SUSERLOGIN,Y_149_0_ESHB,Y_2578_0_ESHB,Y_2632_5_ESH,MALFDES,SYMDES,CALLTYPECODE,CALLSTATUSCODE,SERVTDES,SERNUM,PARTNAME,PARTDES,WARDATEFINAL,RSHL_INSTDATE,TECHNICIANLOGIN,EDATE` +
+      `/DOCUMENTS_Q?$select=${CALL_SELECT}` +
       `&$filter=${encodeURIComponent(`STARTDATE ge ${f} and STARTDATE lt ${t}`)}` +
       `&$orderby=STARTDATE%20asc&$top=1500`,
   },
@@ -284,7 +289,7 @@ const BACKFILL_Q: Record<string, { kind: string; url: (f: string, t: string) => 
   customers_all: {
     kind: "customers",
     url: () =>
-      `/CUSTOMERS?$select=CUSTNAME,CUSTDES,ADDRESS,STATE,PHONE,FAX,AGENTNAME,MCUSTDES,OWNERLOGIN,CREATEDDATE` +
+      `/CUSTOMERS?$select=CUSTNAME,CUSTDES,ADDRESS,STATE,PHONE,FAX,AGENTNAME,MCUSTDES,OWNERLOGIN,CREATEDDATE,CTYPENAME,CTYPECODE` +
       `&$orderby=CUSTNAME%20asc&$top=${PAGE_CAP}`,
   },
   // ⭐ **לקוחות ספציפיים לפי מספר**, ל"תמשוך לי את X עכשיו" ולסגירת
@@ -297,14 +302,14 @@ const BACKFILL_Q: Record<string, { kind: string; url: (f: string, t: string) => 
       const list = String(f ?? "").split(",").map((x) => x.trim())
         .filter((x) => /^[A-Za-z0-9_-]{1,30}$/.test(x)).slice(0, 60);
       const filter = list.map((c) => `CUSTNAME eq '${c}'`).join(" or ");
-      return `/CUSTOMERS?$select=CUSTNAME,CUSTDES,ADDRESS,STATE,PHONE,FAX,AGENTNAME,MCUSTDES,OWNERLOGIN,CREATEDDATE` +
+      return `/CUSTOMERS?$select=CUSTNAME,CUSTDES,ADDRESS,STATE,PHONE,FAX,AGENTNAME,MCUSTDES,OWNERLOGIN,CREATEDDATE,CTYPENAME,CTYPECODE` +
         `&$filter=${encodeURIComponent(filter)}&$orderby=CUSTNAME%20asc&$top=${PAGE_CAP}`;
     },
   },
   customers_nodate: {
     kind: "customers",
     url: () =>
-      `/CUSTOMERS?$select=CUSTNAME,CUSTDES,ADDRESS,STATE,PHONE,FAX,AGENTNAME,MCUSTDES,OWNERLOGIN,CREATEDDATE` +
+      `/CUSTOMERS?$select=CUSTNAME,CUSTDES,ADDRESS,STATE,PHONE,FAX,AGENTNAME,MCUSTDES,OWNERLOGIN,CREATEDDATE,CTYPENAME,CTYPECODE` +
       `&$filter=${encodeURIComponent("CREATEDDATE eq null")}` +
       `&$orderby=CUSTNAME%20asc&$top=4000`,
   },
@@ -315,7 +320,7 @@ const BACKFILL_Q: Record<string, { kind: string; url: (f: string, t: string) => 
   customers_contacts: {
     kind: "customers",
     url: (f, t) =>
-      `/CUSTOMERS?$select=CUSTNAME,CUSTDES,ADDRESS,STATE,PHONE,FAX,AGENTNAME,MCUSTDES,OWNERLOGIN,CREATEDDATE` +
+      `/CUSTOMERS?$select=CUSTNAME,CUSTDES,ADDRESS,STATE,PHONE,FAX,AGENTNAME,MCUSTDES,OWNERLOGIN,CREATEDDATE,CTYPENAME,CTYPECODE` +
       `&$expand=${encodeURIComponent("CUSTPERSONNEL_SUBFORM($select=NAME,POSITIONDES,CELLPHONE,PHONENUM,OFFICEPHONE,EMAIL,STATDES)")}` +
       `&$filter=${encodeURIComponent(`CREATEDDATE ge ${f} and CREATEDDATE lt ${t}`)}` +
       `&$orderby=CREATEDDATE%20asc&$top=4000`,
@@ -711,7 +716,10 @@ async function applyCleanup(which: string): Promise<Record<string, unknown>> {
         if (target) appChanged += chunk.length;
       }
     }
-    out[label] = { priority_rows: pri.length, our_linked_rows: ours.length, status_closed: appChanged, priority_status_written: priChanged, priority_status_only: statusOnly };
+    out[label] = {
+      priority_rows: pri.length, our_linked_rows: ours.length, status_closed: appChanged,
+      priority_status_written: priChanged, priority_status_only: statusOnly,
+    };
   };
 
   if (which === "orders" || which === "both") {
@@ -1353,7 +1361,10 @@ async function reconcileDaily(days: number): Promise<Record<string, unknown>> {
   if (alreadyReported) summary.email = "skipped, same findings as last email";
 
   if ((totalReal > 0 || invisible.length > 0 || visibilityError) && !alreadyReported) {
-    await sb.from("sync_alerts").upsert({ job: "reconcile-email", state: "alerting", detail: fingerprint, last_alerted_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+    const nowIso = new Date().toISOString();
+    await sb.from("sync_alerts").upsert({
+      job: "reconcile-email", state: "alerting", detail: fingerprint, last_alerted_at: nowIso, updated_at: nowIso,
+    });
     const blocks = anomalies.map((a) => {
       const rows = a.rows.slice(0, 25).map((s) =>
         `<tr><td style="padding:4px 10px;font-family:monospace">${s.key}</td>` +
@@ -1394,7 +1405,8 @@ async function reconcileDaily(days: number): Promise<Record<string, unknown>> {
       `רשעל · ${parts.join(" · ")}`,
       `<div dir="rtl" style="font-family:system-ui,sans-serif;color:#14223a">
          <p>ריצת הבוקר בודקת שני דברים: מה קיים בפריוריטי ולא אצלנו, ומה קיים אצלנו ולא יוצג באף מסך.</p>
-         <p style="color:#666;font-size:13px">רשומות שנוצרו היום לא נספרות בחוסר, הן פיגור רגיל בין ריצות. המייל הזה יוצא רק כשהתמונה משתנה, לא כל בוקר מחדש.</p>
+         <p style="color:#666;font-size:13px">רשומות שנוצרו היום לא נספרות בחוסר, הן פיגור רגיל בין ריצות.
+         המייל הזה יוצא רק כשהתמונה משתנה, לא כל בוקר מחדש.</p>
          ${blocks}
          ${invisibleBlock}
          ${visibilityErrorBlock}
@@ -1473,7 +1485,8 @@ Deno.serve(async (req: Request) => {
       return new Response(JSON.stringify({ error: "bad docno" }), { headers: { "Content-Type": "application/json" } });
     }
     const auth = { headers: { Authorization: basicAuth(), "User-Agent": UA, Accept: "application/json" } };
-    const nav = `/DOCUMENTS_N(DOCNO='${docno}',TYPE='N')/TRANSORDER_N_SUBFORM?$select=TRANS,KLINE,PARTNAME,PDES,TQUANT,TUNITNAME,BARCODE,ORDNAME,RETREASONDES&$top=500`;
+    const nav = `/DOCUMENTS_N(DOCNO='${docno}',TYPE='N')/TRANSORDER_N_SUBFORM` +
+      `?$select=TRANS,KLINE,PARTNAME,PDES,TQUANT,TUNITNAME,BARCODE,ORDNAME,RETREASONDES&$top=500`;
     try {
       const r = await fetch(PRIORITY + nav, auth);
       const t = await r.text();
