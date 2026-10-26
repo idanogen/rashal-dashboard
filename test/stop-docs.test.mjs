@@ -42,25 +42,47 @@ test('בלי מסמך: אין חיווי', () => {
 
 test('אספקת מנוף שנסגרה בלי טופס הדרכה: חיווי אדום', () => {
   const s = { sourceType: 'delivery', completed: true, craneKind: 'training', craneSigned: false };
-  assert.deepEqual(kinds(s), ['missingTraining']);
-  assert.match(stopDocChips(s)[0].label, /בלי הדרכה/);
+  assert.deepEqual(kinds(s), ['crane', 'missingTraining']);
+  assert.match(stopDocChips(s)[1].label, /בלי הדרכה/);
 });
 
 test('החיווי רק אחרי סגירה: עצירה עתידית בלי טופס היא מצב תקין', () => {
-  assert.deepEqual(kinds({ sourceType: 'delivery', completed: false, craneKind: 'training', craneSigned: false }), []);
+  assert.deepEqual(kinds({ sourceType: 'delivery', completed: false, craneKind: 'training', craneSigned: false }), ['crane']);
 });
 
 test('טופס הדרכה שמולא מכבה את החיווי', () => {
-  assert.deepEqual(kinds({ sourceType: 'delivery', completed: true, craneKind: 'training', craneSigned: true }), []);
+  assert.deepEqual(kinds({ sourceType: 'delivery', completed: true, craneKind: 'training', craneSigned: true }), ['crane']);
 });
 
 test('קריאת שירות על מנוף אינה מקבלת את חיווי ההדרכה (לה יש רשימת בדיקה)', () => {
-  assert.deepEqual(kinds({ sourceType: 'service', completed: true, craneKind: 'inspection', craneSigned: false }), []);
+  assert.deepEqual(kinds({ sourceType: 'service', completed: true, craneKind: 'inspection', craneSigned: false }), ['crane']);
 });
 
 test('החיווי מצטרף לחיוויי המסמכים ולא מחליף אותם', () => {
   assert.deepEqual(
     kinds({ sourceType: 'delivery', completed: true, craneKind: 'training', craneSigned: false, signedCount: 1 }),
-    ['signed', 'missingTraining'],
+    ['crane', 'signed', 'missingTraining'],
   );
+});
+
+/** 🏗️ מנוף כבר בשיבוץ (עידן, 26/10/2026). */
+
+test('אספקת מנוף מקבלת 🏗️ ראשון, עוד לפני שנסגרה', () => {
+  const chips = stopDocChips({ sourceType: 'delivery', craneKind: 'training', craneSigned: false });
+  assert.deepEqual(chips.map((c) => c.kind), ['crane']);
+  assert.equal(chips[0].label, '🏗️ מנוף');
+  assert.match(chips[0].title, /אישור הדרכה/);
+});
+
+test('קריאה אצל מנוף מקבלת 🏗️ עם רשימת הבדיקה', () => {
+  assert.match(stopDocChips({ sourceType: 'service', craneKind: 'inspection' })[0].title, /רשימת הבדיקה/);
+});
+
+test('טופס מנוף שנחתם: 🏗️ מנוף ✓ ובלי "בלי הדרכה"', () => {
+  const chips = stopDocChips({ sourceType: 'delivery', completed: true, craneKind: 'training', craneSigned: true });
+  assert.deepEqual(chips.map((c) => c.label), ['🏗️ מנוף ✓']);
+});
+
+test('בלי מנוף אין 🏗️', () => {
+  assert.deepEqual(kinds({ sourceType: 'delivery', craneKind: null }), []);
 });

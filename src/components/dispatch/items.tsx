@@ -9,6 +9,7 @@ import type { Pickup } from '@/types/pickup';
 import type { ServiceCall } from '@/types/service-call';
 import { getZoneForCity } from '@/types/zone';
 import { mediaBadge, MEDIA_BADGE_CLASS } from '@/lib/media-request-badge';
+import { OrderItemsMeta } from '@/components/dispatch/OrderItemsMeta';
 import type { MediaRequestState } from '@/hooks/useMediaRequests';
 import {
   manualReasonLabel,
@@ -48,6 +49,14 @@ function joinAddress(address?: string, city?: string): string | undefined {
   return line || undefined;
 }
 
+/** תג קטן ברשימת הממתינים. */
+const PILL = 'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold';
+const MARK_GREEN_BTN =
+  'inline-flex items-center rounded-md border border-green-300 bg-green-50 px-2 py-0.5 text-[11px] font-bold text-green-800 hover:bg-green-100';
+const IL_SHORT: Intl.DateTimeFormatOptions = {
+  day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem',
+};
+
 // ─── הזמנות ────────────────────────────────────────────────
 export function buildOrderItems(
   orders: Order[],
@@ -81,21 +90,7 @@ export function buildOrderItems(
       order.customerRequestedTime,
       ...(order.items ?? []).flatMap((it) => [it.part, it.desc, it.serial])
     ),
-    meta:
-      order.items && order.items.length > 0 ? (
-        <p
-          className="mt-0.5 text-[11px] text-muted-foreground"
-          title={order.items
-            .map((it) => `${it.desc ?? it.part ?? ''}${it.qty && it.qty !== 1 ? ` ×${it.qty}` : ''}`)
-            .join('\n')}
-        >
-          ציוד: <bdi>{order.items[0].desc ?? order.items[0].part}</bdi>
-          {order.items[0].qty && order.items[0].qty !== 1 ? ` ×${order.items[0].qty}` : ''}
-          {order.items.length > 1 && (
-            <span className="font-medium"> (+{order.items.length - 1} פריטים)</span>
-          )}
-        </p>
-      ) : undefined,
+    meta: order.items?.length ? <OrderItemsMeta items={order.items} /> : undefined,
     renderDetail: (open, onClose) => (
       <OrderDetailDialog order={order} open={open} onClose={onClose} />
     ),
@@ -190,7 +185,7 @@ export function buildServiceCallItems(
                 }}
                 onPointerDown={(e) => e.stopPropagation()}
                 title="לצפייה במה שהלקוח שלח"
-                className="inline-flex items-center rounded-full bg-green-50 px-2 py-0.5 text-[11px] font-bold text-green-800 underline-offset-2 hover:bg-green-100 hover:underline"
+                className={`${PILL} bg-green-50 text-green-800 underline-offset-2 hover:bg-green-100 hover:underline`}
               >
                 {media} ‹
               </button>
@@ -200,7 +195,7 @@ export function buildServiceCallItems(
                 className="inline-flex items-center rounded-md border border-dashed border-green-300 bg-green-50 px-2 py-0.5 text-[11px] text-green-800"
                 title={light.manual.note ? `${manualReasonLabel(light.manual.reason)} · ${light.manual.note}` : manualReasonLabel(light.manual.reason)}
               >
-                ✍ ירוק ידני · {light.manual.by} · <bdi>{new Date(light.manual.at).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' })}</bdi>
+                ✍ ירוק ידני · {light.manual.by} · <bdi>{new Date(light.manual.at).toLocaleString('he-IL', IL_SHORT)}</bdi>
               </span>
             )}
           </p>
@@ -214,7 +209,7 @@ export function buildServiceCallItems(
                 onMarkGreen(call);
               }}
               onPointerDown={(e) => e.stopPropagation()}
-              className="inline-flex items-center rounded-md border border-green-300 bg-green-50 px-2 py-0.5 text-[11px] font-bold text-green-800 hover:bg-green-100"
+              className={MARK_GREEN_BTN}
             >
               ✓ סמן ירוק
             </button>
@@ -231,7 +226,7 @@ export function buildServiceCallItems(
               }}
               onPointerDown={(e) => e.stopPropagation()}
               title="טופס הקריאה המקורי מפריוריטי נקלט מהמייל. לחיצה לצפייה."
-              className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-bold text-indigo-700 underline-offset-2 hover:bg-indigo-100 hover:underline"
+              className={`${PILL} bg-indigo-50 text-indigo-700 underline-offset-2 hover:bg-indigo-100 hover:underline`}
             >
               📄 טופס הקריאה ‹
             </button>

@@ -305,6 +305,33 @@ create policy signed_forms_office_read on storage.objects
 -- קל במכוון: שורה לעצירה, בלי שורות הזמנה ובלי פרטי לקוח. האפליקציה שואלת
 -- על כל היום בבת אחת ומחליטה אם להציג "טופס ✓" ואם לחסום "בוצע".
 -- `crane_kind` לפי אותו כלל כמו `stop_form_context`.
+--
+-- ⭐ 26/10/2026: הזיהוי "זו עצירת מנוף" יצא לפונקציה משלו, `stop_crane_kind`,
+-- כי מאותו יום גם המסד אוכף אותו (`trg_crane_form_gate`,
+-- `20261026_crane_form_gate.sql`) והאפליקציה והמסד חייבים להסכים על אותה
+-- עצירה. המק"ט קובע, לא התיאור: ראה `src/lib/crane-identity.ts`.
+-- (אותו כלל עדיין כתוב גם ב-`stop_form_context` למעלה וב-`crane_training_missing`;
+-- לאחד בהזדמנות.)
+create or replace function public.stop_crane_kind(s public.calendar_stops)
+returns text
+language sql stable security definer
+set search_path = public
+as $$
+  -- קריאת שירות על מנוף: 'inspection' (רשימת בדיקה). אספקה עם מנוף בשורות
+  -- ההזמנה: 'training' (אישור הדרכה). אחרת null.
+  select case
+           when c.device_name ~* '^G[0-9]{3}E?$' then 'inspection'
+           when s.service_call_id is null and exists (
+             select 1 from jsonb_array_elements(coalesce(o.items, '[]'::jsonb)) i
+              where coalesce(i->>'part', '') ~* '^G[0-9]{3}E?$') then 'training'
+         end
+    from (select 1) x
+    left join public.service_calls c on c.id = s.service_call_id
+    left join public.orders o on o.id = s.order_id;
+$$;
+revoke all on function public.stop_crane_kind(public.calendar_stops) from public, anon;
+grant execute on function public.stop_crane_kind(public.calendar_stops) to authenticated;
+
 create or replace function public.stops_form_status(p_stop_ids uuid[])
 returns table (stop_id uuid, form_signed boolean, crane_kind text, crane_signed boolean)
 language sql stable security definer
@@ -315,16 +342,9 @@ as $$
   select s.id,
          exists (select 1 from public.signed_forms f
                   where f.stop_id = s.id and f.form_key <> 'delivery_note'),
-         case
-           when c.device_name ~* '^G[0-9]{3}E?$' then 'inspection'
-           when s.service_call_id is null and exists (
-             select 1 from jsonb_array_elements(coalesce(o.items, '[]'::jsonb)) i
-              where coalesce(i->>'part', '') ~* '^G[0-9]{3}E?$') then 'training'
-         end,
+         public.stop_crane_kind(s),
          exists (select 1 from public.crane_forms cf where cf.stop_id = s.id)
     from public.calendar_stops s
-    left join public.service_calls c on c.id = s.service_call_id
-    left join public.orders o on o.id = s.order_id
    where s.id = any(p_stop_ids)
      and public.stop_form_access(s) is true;
 $$;

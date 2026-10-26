@@ -7,6 +7,7 @@ import type { StopDocChip as Chip } from '@/lib/stop-docs';
 import { signedDocRows } from '@/lib/signed-docs';
 
 const CHIP_CLASS = {
+  crane: 'border-amber-300 bg-amber-50 text-amber-900',
   signed: 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100',
   note: 'border-indigo-300 bg-indigo-50 text-indigo-800 hover:bg-indigo-100',
   callDoc: 'border-indigo-300 bg-indigo-50 text-indigo-800 hover:bg-indigo-100',

@@ -9,7 +9,7 @@
  * קובץ טהור, בלי ייבוא, כדי שייבדק ב-node --test.
  */
 
-export type StopDocKind = 'signed' | 'note' | 'callDoc' | 'missingTraining';
+export type StopDocKind = 'crane' | 'signed' | 'note' | 'callDoc' | 'missingTraining';
 
 export interface StopDocChip {
   kind: StopDocKind;
@@ -41,6 +41,19 @@ export function stopDocChips(s: StopDocInput): StopDocChip[] {
   const chips: StopDocChip[] = [];
   const signed = s.signedCount ?? 0;
   const isDelivery = s.sourceType === 'delivery' || s.sourceType === 'customer';
+  // ⭐ עידן, 26/10/2026: "אני רוצה להציג את האימוג'י של המנוף". ראשון, כבר
+  // בשיבוץ, כי זה אומר לסדרן ביקור ארוך יותר וטופס חובה לנהג.
+  if (s.craneKind) {
+    chips.push({
+      kind: 'crane',
+      label: s.craneSigned ? '🏗️ מנוף ✓' : '🏗️ מנוף',
+      title: s.craneSigned
+        ? 'טופס המנוף נחתם'
+        : s.craneKind === 'training'
+          ? 'אספקת מנוף: הנהג חייב להחתים על אישור הדרכה לפני שמסמן סופק'
+          : 'ביקור אצל מנוף: רשימת הבדיקה חובה לפני שמסמנים בוצע',
+    });
+  }
   if (signed > 0) {
     chips.push({
       kind: 'signed',
@@ -63,7 +76,8 @@ export function stopDocChips(s: StopDocInput): StopDocChip[] {
     });
   }
   // 🔴 אספקת מנוף שנסגרה בלי אישור הדרכה חתום (עמי, 25/10/2026: לוזון).
-  // טופס המנוף בכוונה לא חוסם סגירה, ולכן החוסר חייב להיראות למשרד.
+  // מ-26/10 המסד חוסם את הנהג (`trg_crane_form_gate`), אבל המשרד עדיין יכול
+  // לסגור, ועצירות שנסגרו לפני כן קיימות. לכן החוסר חייב להיראות.
   if (isDelivery && s.completed && s.craneKind === 'training' && !s.craneSigned) {
     chips.push({
       kind: 'missingTraining',
