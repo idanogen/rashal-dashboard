@@ -79,9 +79,12 @@ export interface StopDocPreview {
   signed: boolean;
 }
 
-/** הקובץ שהתג מייצג: החתום האחרון, ואם אין, תעודת המקור. */
-async function resolveStopDoc(stopId: string, state: StopDocState): Promise<StopDocPreview> {
-  const last = state.signed.at(-1);
+/**
+ * הקובץ שהתג מייצג: הטופס החתום שנבחר (ברירת מחדל האחרון), ואם אין חתום,
+ * תעודת המקור. 26/10/2026 (עידן): עם יותר מטופס אחד, `pdfPath` בוחר איזה.
+ */
+async function resolveStopDoc(stopId: string, state: StopDocState, pdfPath?: string): Promise<StopDocPreview> {
+  const last = pdfPath ? state.signed.find((s) => s.pdfPath === pdfPath) : state.signed.at(-1);
   if (last) {
     const { data, error } = await supabase.storage.from('signed-forms').createSignedUrl(last.pdfPath, 600);
     if (error || !data?.signedUrl) throw new Error(error?.message ?? 'לא ניתן לפתוח את הקובץ');
@@ -104,12 +107,13 @@ async function resolveStopDoc(stopId: string, state: StopDocState): Promise<Stop
  * תצוגה מקדימה במעבר עכבר (עידן, 21/10/2026: "במעבר על התעודה היא יכולה
  * להיפתח לי בפופאפ?"). נטען רק כשהחלונית נפתחת; הכתובות חיות 10 דקות.
  */
-export function useStopDocPreview(stopId: string, state: StopDocState | undefined, enabled: boolean) {
+export function useStopDocPreview(stopId: string, state: StopDocState | undefined, enabled: boolean, pdfPath?: string) {
+  const chosen = pdfPath ?? state?.signed.at(-1)?.pdfPath ?? '';
   return useQuery({
-    queryKey: ['stopDocPreview', stopId, state?.noteDocno ?? '', state?.signed.at(-1)?.pdfPath ?? ''],
+    queryKey: ['stopDocPreview', stopId, state?.noteDocno ?? '', chosen],
     enabled: enabled && !!state,
     staleTime: 5 * 60_000,
-    queryFn: () => resolveStopDoc(stopId, state!),
+    queryFn: () => resolveStopDoc(stopId, state!, pdfPath),
   });
 }
 
@@ -117,10 +121,10 @@ export function useStopDocPreview(stopId: string, state: StopDocState | undefine
  * פותח את המסמך בלשונית חדשה. החלון נפתח לפני הקריאה למסד, אחרת הדפדפן
  * חוסם אותו כחלון קופץ (הלחיצה כבר לא "של המשתמש" אחרי await).
  */
-export async function openStopDoc(stopId: string, state: StopDocState): Promise<void> {
+export async function openStopDoc(stopId: string, state: StopDocState, pdfPath?: string): Promise<void> {
   const win = window.open('', '_blank');
   try {
-    const { pdfUrl } = await resolveStopDoc(stopId, state);
+    const { pdfUrl } = await resolveStopDoc(stopId, state, pdfPath);
     if (win) win.location.href = pdfUrl;
     else window.open(pdfUrl, '_blank');
   } catch (e) {

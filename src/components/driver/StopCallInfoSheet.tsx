@@ -1,42 +1,20 @@
-import { useRef, useState } from 'react';
-import {
-  ChevronLeft,
-  ChevronRight,
-  ClipboardList,
-  Contact,
-  FileText,
-  PackageOpen,
-  Truck,
-  Image as ImageIcon,
-  Loader2,
-  MessageCircle,
-  Mic,
-  Navigation,
-  Play,
-  X,
-} from 'lucide-react';
+import { useState } from 'react';
+import { ClipboardList, Contact, FileText, Image as ImageIcon, Loader2, MessageCircle, Navigation } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useServiceCallInfo, useStopCallInfo, type SignedCallInfo } from '@/hooks/useStopCallInfo';
 import type { ServiceCall } from '@/types/service-call';
-import { emptyMediaLine, infoDocno, infoKindLabel, itemLine, splitPhones, type CallDocInfo, type CallMedia, type OrderInfo, type PickupInfo } from '@/lib/call-info';
+import { emptyMediaLine, infoDocno, infoKindLabel, splitPhones, type CallDocInfo, type CallMedia } from '@/lib/call-info';
 import { buildWazeUrl } from '@/lib/navigation';
+import { ddmm, friendlyError, hhmm } from '@/lib/stop-info-text';
 import type { CalendarStop } from '@/types/calendar-stop';
 import type { CalendarStop as CalendarViewStop } from '@/types/delivery';
 import { CustomerPhoneBook } from '@/components/customer/CustomerPhoneBook';
-
-const TZ = 'Asia/Jerusalem';
-const hhmm = (iso: string) =>
-  iso ? new Date(iso).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: TZ }) : '';
-const ddmm = (iso: string) =>
-  iso ? new Date(iso).toLocaleDateString('he-IL', { day: '2-digit', month: '2-digit', timeZone: TZ }) : '';
-
-function friendlyError(message: string): string {
-  return /not authorized/i.test(message)
-    ? 'הפרטים של העצירה הזאת פתוחים רק למי שהיא משובצת אצלו.'
-    : 'לא הצלחנו לטעון את הפרטים. נסו שוב בעוד רגע.';
-}
+import { SignedFormsSection } from '@/components/driver/SignedFormsSection';
+import { Empty, Section } from '@/components/driver/StopInfoSection';
+import { OrderBody, PickupBody } from '@/components/driver/StopInfoBodies';
+import { MediaTile, MediaViewer } from '@/components/driver/StopMediaViewer';
+// 26/10/2026: גופי האספקה והאיסוף, אבני הבניין והמציג הועברו לקבצים משלהם (תקרת 400 שורות).
 
 interface StopCallInfoSheetProps {
   /** עצירה בסידור (עמוד הנהג). */
@@ -146,6 +124,8 @@ export function StopCallInfoSheet({ stop, call: serviceCall, calendarStop, open,
                 <InfoBody info={data} onOpenMedia={setViewerIndex} onOpenDoc={setDocViewerIndex} />
               )
             ) : null}
+            {/* 26/10/2026 (עידן): הטפסים החתומים גם בווב, כמו באפליקציה. */}
+            {!isLoading && !error && stopId && <SignedFormsSection stopId={stopId} />}
             {!isLoading && !error && (
               <Section icon={<Contact className="h-4 w-4 text-blue-600" />} title="טלפונים" meta="גם להודעות האוטומטיות">
                 <CustomerPhoneBook customerNumber={customerNumber} mainPhone={mainPhone} compact />
@@ -196,104 +176,6 @@ const KIND_BADGE: Record<string, string> = {
   pickup: 'bg-teal-100 text-teal-700',
   none: 'bg-slate-100 text-slate-600',
 };
-
-function OfficeNoteSection({ note }: { note: { userName: string; content: string; at: string } | null }) {
-  if (!note) return null;
-  return (
-    <Section icon={<MessageCircle className="h-4 w-4 text-primary" />} title="מהמשרד" meta="צ'אט">
-      <div className="rounded-lg border bg-slate-50 p-2.5 text-[13px]">
-        <div className="mb-0.5 text-[11px] font-bold text-slate-700">
-          {note.userName} · <bdi>{ddmm(note.at)} {hhmm(note.at)}</bdi>
-        </div>
-        <div className="whitespace-pre-line">{note.content}</div>
-      </div>
-    </Section>
-  );
-}
-
-/** אספקה: מה לספק (עמי, 06/10/2026). הפריטים מ-ORDERITEMS בפריוריטי. */
-function OrderBody({ order, officeNote }: { order: OrderInfo; officeNote: { userName: string; content: string; at: string } | null }) {
-  const meta = [order.orderType, order.healthFund].filter(Boolean).join(' · ');
-  return (
-    <>
-      <Section icon={<Truck className="h-4 w-4 text-blue-600" />} title="מה לספק" meta={meta || 'מפריוריטי'}>
-        {order.items.length ? (
-          <ul className="divide-y rounded-lg border border-blue-200 bg-blue-50/60">
-            {order.items.map((i, idx) => (
-              <li key={`${i.part ?? ''}-${idx}`} className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-2.5 py-1.5 text-sm">
-                <span className="font-semibold text-slate-900">{itemLine(i)}</span>
-                {i.part && i.desc && <bdi className="font-mono text-[11px] text-slate-500">{i.part}</bdi>}
-                {i.serial && (
-                  <bdi className="select-all rounded bg-white px-1.5 py-0.5 font-mono text-[10.5px] text-slate-600 ring-1 ring-slate-200">
-                    {i.serial}
-                  </bdi>
-                )}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <Empty>בהזמנה בפריוריטי לא רשומים פריטים.</Empty>
-        )}
-      </Section>
-      <OfficeNoteSection note={officeNote} />
-    </>
-  );
-}
-
-/** איסוף: מה לאסוף, מאיזו הזמנה, ולאן. */
-function PickupBody({ pickup, officeNote }: { pickup: PickupInfo; officeNote: { userName: string; content: string; at: string } | null }) {
-  const where = [pickup.toWarehouse ? `ליעד: ${pickup.toWarehouse}` : '', pickup.sourceOrder ? `מהזמנה ${pickup.sourceOrder}` : '']
-    .filter(Boolean).join(' · ');
-  return (
-    <>
-      <Section icon={<PackageOpen className="h-4 w-4 text-teal-600" />} title="מה לאסוף" meta={pickup.totalQty != null ? `${pickup.totalQty} פריטים` : undefined}>
-        {pickup.lines.length ? (
-          <ul className="divide-y rounded-lg border border-teal-200 bg-teal-50/60">
-            {pickup.lines.map((l, idx) => (
-              <li key={`${l.part ?? ''}-${idx}`} className="px-2.5 py-1.5 text-sm">
-                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                  <span className="font-semibold text-slate-900">{itemLine(l)}</span>
-                  {l.part && l.desc && <bdi className="font-mono text-[11px] text-slate-500">{l.part}</bdi>}
-                  {l.sourceOrder && <bdi className="text-[11px] text-slate-500">מהזמנה {l.sourceOrder}</bdi>}
-                </div>
-                {l.returnReason && <div className="text-[12px] text-amber-800">סיבת ההחזרה: {l.returnReason}</div>}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <Empty>במסמך האיסוף בפריוריטי לא רשומים פריטים.</Empty>
-        )}
-        {(where || pickup.deliveryNote || pickup.reference) && (
-          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11.5px] text-slate-600">
-            {where && <span>{where}</span>}
-            {pickup.deliveryNote && <span>תעודת משלוח <bdi>{pickup.deliveryNote}</bdi></span>}
-            {pickup.reference && <span>אסמכתה <bdi>{pickup.reference}</bdi></span>}
-          </div>
-        )}
-      </Section>
-      <OfficeNoteSection note={officeNote} />
-    </>
-  );
-}
-
-function Section({ icon, title, meta, children }: { icon: React.ReactNode; title: string; meta?: string; children: React.ReactNode }) {
-  return (
-    <section>
-      <div className="mb-1.5 flex items-center gap-1.5 text-[13px] font-bold text-slate-900">
-        {icon}
-        {title}
-        {meta && (
-          <span className="ms-auto rounded-full bg-slate-100 px-2 text-[10.5px] font-medium text-slate-500">{meta}</span>
-        )}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function Empty({ children }: { children: React.ReactNode }) {
-  return <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50/60 p-2.5 text-xs text-muted-foreground">{children}</div>;
-}
 
 function InfoBody({ info, onOpenMedia, onOpenDoc }: { info: SignedCallInfo; onOpenMedia: (i: number) => void; onOpenDoc: (i: number) => void }) {
   const faultText = info.call?.faultText;
@@ -400,100 +282,3 @@ function CallDocSection({ doc, urls, onOpen }: { doc: CallDocInfo; urls: Record<
   );
 }
 
-function MediaTile({ media, url, onClick }: { media: CallMedia; url?: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="relative flex aspect-square items-center justify-center overflow-hidden rounded-md bg-slate-200 text-slate-500"
-    >
-      {media.type === 'image' && url ? (
-        <img src={url} alt="תמונה מהלקוח" loading="lazy" className="h-full w-full object-cover" />
-      ) : media.type === 'video' ? (
-        <span className="flex h-full w-full items-center justify-center bg-slate-800 text-white">
-          <Play className="h-5 w-5" />
-        </span>
-      ) : media.type === 'audio' ? (
-        <Mic className="h-5 w-5" />
-      ) : (
-        <ImageIcon className="h-5 w-5" />
-      )}
-    </button>
-  );
-}
-
-/** צפייה במסך מלא עם דפדוף (כפתורים או החלקה). */
-function MediaViewer({
-  items,
-  urls,
-  index,
-  onIndex,
-}: {
-  items: CallMedia[];
-  urls: Record<string, string>;
-  index: number | null;
-  onIndex: (i: number | null) => void;
-}) {
-  const touchX = useRef<number | null>(null);
-  const open = index != null && index >= 0 && index < items.length;
-  const media = open ? items[index] : null;
-  const url = media ? urls[media.path] : undefined;
-  const go = (delta: number) => {
-    if (index == null || !items.length) return;
-    onIndex((index + delta + items.length) % items.length);
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={(o) => !o && onIndex(null)}>
-      <DialogContent
-        showCloseButton={false}
-        aria-describedby={undefined}
-        dir="rtl"
-        className="flex h-[100dvh] w-screen max-w-none flex-col gap-0 rounded-none border-0 bg-black p-0 text-white sm:max-w-none"
-        onTouchStart={(e) => { touchX.current = e.touches[0]?.clientX ?? null; }}
-        onTouchEnd={(e) => {
-          const start = touchX.current;
-          const end = e.changedTouches[0]?.clientX;
-          touchX.current = null;
-          if (start == null || end == null || Math.abs(end - start) < 50) return;
-          // RTL: הפריט הבא נמצא משמאל, ולכן החלקה ימינה מביאה אותו.
-          go(end > start ? 1 : -1);
-        }}
-      >
-        <DialogTitle className="sr-only">קובץ מהלקוח</DialogTitle>
-        <div className="flex items-center justify-between px-4 pb-2 pt-[max(0.75rem,env(safe-area-inset-top))]">
-          <span className="text-sm text-white/80">
-            <bdi dir="ltr">{(index ?? 0) + 1} / {items.length}</bdi>
-            {media?.at && <> · <bdi>{ddmm(media.at)} {hhmm(media.at)}</bdi></>}
-          </span>
-          <button type="button" onClick={() => onIndex(null)} className="rounded-full bg-white/10 p-2" aria-label="סגירה">
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-        <div className="flex min-h-0 flex-1 items-center justify-center px-2">
-          {!url ? (
-            <span className="text-sm text-white/70">הקובץ לא זמין כרגע</span>
-          ) : media?.type === 'image' ? (
-            <img src={url} alt="תמונה מהלקוח" className="max-h-full max-w-full object-contain" />
-          ) : media?.type === 'video' ? (
-            <video key={url} src={url} controls autoPlay playsInline className="max-h-full max-w-full" />
-          ) : (
-            <audio key={url} src={url} controls autoPlay className="w-full max-w-sm" />
-          )}
-        </div>
-        {items.length > 1 && (
-          <div className="grid grid-cols-2 gap-3 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
-            <button type="button" onClick={() => go(-1)} className="flex h-11 items-center justify-center gap-1 rounded-lg bg-white/10 text-sm">
-              <ChevronRight className="h-4 w-4" />
-              הקודם
-            </button>
-            <button type="button" onClick={() => go(1)} className="flex h-11 items-center justify-center gap-1 rounded-lg bg-white/10 text-sm">
-              הבא
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}

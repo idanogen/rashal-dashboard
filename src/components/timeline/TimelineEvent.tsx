@@ -1,7 +1,9 @@
-import { FileText, Package, Upload, Plus, Check, CalendarClock } from 'lucide-react';
+import { FileText, Package, Upload, Plus, Check, CalendarClock, ExternalLink } from 'lucide-react';
+import { toast } from 'sonner';
 import type { TimelineEvent as TimelineEventModel } from '@/types/timeline';
 import { useAuth } from '@/lib/auth-context';
 import { splitByMentions } from '@/lib/mentions';
+import { openFileUrl } from '@/lib/sb-open';
 
 // Adapted from parcel-story `src/components/timeline/TimelineEvent.tsx`.
 // rashal event types: comment | file_upload | status_change | created.
@@ -182,24 +184,43 @@ export function TimelineEvent({ event }: TimelineEventProps) {
             </div>
           )}
 
-          {/* Non-image files */}
+          {/* Non-image files. 26/10/2026 (עידן): טופס חתום בצ'אט נפתח בלחיצה.
+              הכתובת ב-metadata.fileUrls היא sb://bucket/path (דלי פרטי, כתובת
+              חתומה בלחיצה) או כתובת רגילה; בלי כתובת השורה נשארת טקסט. */}
           {event.files &&
             event.files.length > 0 &&
             (!event.metadata?.imageUrls || event.metadata.imageUrls.length === 0) && (
               <div className={`space-y-1.5 ${event.content ? 'mt-2' : ''}`}>
-                {event.files.map((fileName, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center gap-2 p-2 bg-background/60 border border-border/40 rounded-lg text-sm"
-                  >
-                    {isFileUpload ? (
-                      <Upload className="h-3.5 w-3.5 text-primary flex-shrink-0" />
-                    ) : (
-                      <FileText className="h-3.5 w-3.5 text-primary flex-shrink-0" />
-                    )}
-                    <span className="text-xs font-medium truncate">{fileName}</span>
-                  </div>
-                ))}
+                {event.files.map((fileName, index) => {
+                  const url: string | undefined = event.metadata?.fileUrls?.[index];
+                  const rowClass = 'flex w-full items-center gap-2 p-2 bg-background/60 border border-border/40 rounded-lg text-sm text-start';
+                  const icon = isFileUpload ? (
+                    <Upload className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+                  ) : (
+                    <FileText className="h-3.5 w-3.5 text-primary flex-shrink-0" />
+                  );
+                  if (!url) {
+                    return (
+                      <div key={index} className={rowClass}>
+                        {icon}
+                        <span className="text-xs font-medium truncate">{fileName}</span>
+                      </div>
+                    );
+                  }
+                  return (
+                    <button
+                      key={index}
+                      type="button"
+                      onClick={() => openFileUrl(url).catch((e: Error) => toast.error(`פתיחת הקובץ נכשלה: ${e.message}`))}
+                      title="פתיחת הקובץ"
+                      className={`${rowClass} hover:bg-background hover:border-primary/40`}
+                    >
+                      {icon}
+                      <span className="text-xs font-medium truncate underline-offset-2 hover:underline">{fileName}</span>
+                      <ExternalLink className="ms-auto h-3 w-3 shrink-0 text-muted-foreground" />
+                    </button>
+                  );
+                })}
               </div>
             )}
 
