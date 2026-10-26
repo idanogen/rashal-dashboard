@@ -17,7 +17,7 @@
  * הודעה יוצאת ולא מסך, והיא ממתינה לאישור של עידן.
  */
 import { useMemo, useState } from 'react';
-import { Smile, Frown, Users, Star, MessageSquareQuote, Search } from 'lucide-react';
+import { Smile, Frown, Users, Star, MessageSquareQuote, Search, Wrench } from 'lucide-react';
 import { useAllAnsweredSurveys, useSurveys } from '@/hooks/useSurveys';
 import { computeSurveyMetrics, formatScore, type NamedScore, type Survey } from '@/lib/surveys';
 import { matchesSearch } from '@/lib/search-match';
@@ -229,6 +229,9 @@ export function SurveysPage() {
             </Panel>
           ) : (
             <>
+              {/* 26/10/2026: "לפי סוג ביקור" נוסף לצד נהג וקופה, והדירוגים
+                  הנמוכים עברו לרוחב מלא, כי כל כרטיס נושא עכשיו את הביקור,
+                  מהותו ומה המצב עכשיו, ובשליש רוחב זה נשבר לעמודה צרה. */}
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
                 <Panel icon={<Smile className="h-4 w-4" />} title="לפי נהג" hint="הנמוך קודם">
                   <ScoreList rows={sv.byDriver} />
@@ -236,6 +239,12 @@ export function SurveysPage() {
                 <Panel icon={<Users className="h-4 w-4" />} title="לפי קופה" hint="הנמוך קודם">
                   <ScoreList rows={sv.byFund} />
                 </Panel>
+                <Panel icon={<Wrench className="h-4 w-4" />} title="לפי סוג ביקור" hint="הנמוך קודם">
+                  <ScoreList rows={sv.byVisitType} />
+                </Panel>
+              </div>
+
+              <div className="mt-4">
                 <Panel
                   icon={<Frown className="h-4 w-4" />}
                   title="לקוחות בדירוג נמוך"

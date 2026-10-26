@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { fetchSurveys, searchAnsweredSurveys, setSurveyHandled } from '@/lib/surveys';
+import { fetchSurveys, fetchSurveyVisits, searchAnsweredSurveys, setSurveyHandled } from '@/lib/surveys';
 
 export function useSurveys(days = 30) {
   return useQuery({
@@ -49,5 +49,19 @@ export function useSetSurveyHandled() {
       );
     },
     onError: (err: Error) => toast.error(`לא נשמר: ${err.message}`),
+  });
+}
+
+/**
+ * ההקשר של הדירוגים הנמוכים: הביקור, מהותו, ומה המצב עכשיו (26/10/2026).
+ * 🔴 נכשל בנפרד מהרשימה: הרשימה עצמה ממשיכה להופיע, והכרטיס מסביר.
+ */
+export function useSurveyVisits(ids: string[]) {
+  const key = [...ids].sort().join(',');
+  return useQuery({
+    queryKey: ['surveys', 'visits', key],
+    queryFn: () => fetchSurveyVisits(ids),
+    enabled: ids.length > 0,
+    staleTime: 60 * 1000,
   });
 }

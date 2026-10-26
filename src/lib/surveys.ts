@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { isLowRated, openLowRated, orderLowRated } from './low-rated';
+import { toSurveyVisit, visitTypeLabel, type SurveyVisit } from './survey-visit';
 
 /**
  * סקרי שביעות רצון: שליפה ואגרגציה לדשבורד ההנהלה.
@@ -27,6 +28,8 @@ export interface Survey {
   recommend: number | null;
   comment: string | null;
   status: 'pending' | 'sent' | 'answered' | 'skipped' | 'failed';
+  /** סוג הביקור שעליו נשאל הסקר (`calendar_stops.source_type`). */
+  visitType: string | null;
   /** מתי מישהו סימן שהדירוג הנמוך טופל. null = פתוח */
   handledAt: string | null;
   /** מי סימן. נגזר בשרת מהפרופיל, לא נשלח מהדפדפן */
@@ -58,6 +61,7 @@ interface SurveyRow {
   handled_at: string | null;
   handled_by: string | null;
   handled_note: string | null;
+  stop?: { source_type: string | null } | null;
 }
 
 function toSurvey(r: SurveyRow): Survey {
@@ -81,13 +85,14 @@ function toSurvey(r: SurveyRow): Survey {
     handledAt: r.handled_at,
     handledBy: r.handled_by,
     handledNote: r.handled_note,
+    visitType: r.stop?.source_type ?? null,
   };
 }
 
 const COLUMNS =
   'id, stop_id, order_id, customer_number, customer_name, phone_e164, driver, health_fund,' +
   ' delivered_at, sent_at, opened_at, answered_at, q1_satisfaction, q2_recommend, comment, status,' +
-  ' handled_at, handled_by, handled_note';
+  ' handled_at, handled_by, handled_note, stop:calendar_stops(source_type)';
 
 /**
  * כל הסקרים מ-N הימים האחרונים.
@@ -148,6 +153,11 @@ export interface SurveyMetrics {
   lowOpen: Survey[];
   byDriver: NamedScore[];
   byFund: NamedScore[];
+  /**
+   * לפי סוג ביקור (עידן, 26/10/2026). נמדד באותו יום: 15% מביקורי השירות
+   * דורגו נמוך מול 7% מהאספקות, וזה מכוון את המנהלים למקום הנכון.
+   */
+  byVisitType: NamedScore[];
   /** התשובות שיש בהן מלל חופשי, החדשות קודם */
   withComments: Survey[];
 }
@@ -199,6 +209,7 @@ export function computeSurveyMetrics(surveys: Survey[]): SurveyMetrics {
     lowOpen: openLowRated(low),
     byDriver: groupAverage(answered, (s) => s.driver),
     byFund: groupAverage(answered, (s) => s.healthFund),
+    byVisitType: groupAverage(answered, (s) => visitTypeLabel(s.visitType)),
     withComments: answered
       .filter((s) => (s.comment ?? '').trim().length > 0)
       .sort((a, b) => (b.answeredAt ?? '').localeCompare(a.answeredAt ?? '')),
@@ -270,4 +281,19 @@ export async function searchAnsweredSurveys(): Promise<Survey[]> {
 
   if (error) throw error;
   return ((data ?? []) as unknown as SurveyRow[]).map(toSurvey);
+}
+
+/* ─────────────────────────── ההקשר של דירוג נמוך ─────────────────────────── */
+
+/**
+ * על איזה ביקור הלקוח דירג ומה המצב עכשיו, לכל סקר ברשימה (עידן,
+ * 26/10/2026: "חסר לי פה תאריך הביקור ומהות הביקור"). נשלף רק לדירוגים
+ * הנמוכים, עשרות שורות, ב-RPC אחד.
+ */
+export async function fetchSurveyVisits(ids: string[]): Promise<Map<string, SurveyVisit>> {
+  if (ids.length === 0) return new Map();
+  const { data, error } = await supabase.rpc('survey_visit_context' as never, { p_ids: ids } as never);
+  if (error) throw error;
+  const rows = (data ?? []) as unknown as Parameters<typeof toSurveyVisit>[0][];
+  return new Map(rows.map((r) => [r.survey_id, toSurveyVisit(r)]));
 }

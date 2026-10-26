@@ -4,9 +4,11 @@ import type { Survey } from '@/lib/surveys';
 import { surveyMark, SURVEY_TONE } from '@/lib/survey-badge';
 import { surveyWhen } from '@/lib/survey-when';
 import { waLocalPhone } from '@/lib/wa-chat-link';
-import { useSetSurveyHandled } from '@/hooks/useSurveys';
+import { useSetSurveyHandled, useSurveyVisits } from '@/hooks/useSurveys';
 import { SurveyDetailSheet } from '@/components/surveys/SurveyDetailSheet';
 import { SurveyHandledNote } from '@/components/surveys/SurveyHandledNote';
+import { SurveyVisitDetails } from '@/components/surveys/SurveyVisitDetails';
+import { CustomerCardButton } from '@/components/customer/CustomerCardSheet';
 
 /**
  * "לקוחות בדירוג נמוך" כרשימת עבודה (בקשת עידן, <bdi>02/09/2026</bdi>).
@@ -44,6 +46,9 @@ export function LowRatedList({ rows }: { rows: Survey[] }) {
   // 🔴 השורה נשלפת מהרשימה הטרייה ולא נשמרת ב-state, אחרת סימון "טופל"
   // מתוך המגירה לא היה מתעדכן במגירה עצמה.
   const openRow = rows.find((r) => r.id === openId) ?? null;
+  // ⭐ 26/10/2026: הביקור שעליו הלקוח דירג, ומה המצב עכשיו. ראה `SurveyVisitDetails`.
+  const visits = useSurveyVisits(rows.map((r) => r.id));
+  const visitState = visits.isLoading ? 'loading' : visits.isError ? 'error' : 'ready';
 
   if (rows.length === 0) {
     return <p className="py-8 text-center text-xs text-slate-400">אף לקוח לא נתן ציון נמוך</p>;
@@ -60,7 +65,7 @@ export function LowRatedList({ rows }: { rows: Survey[] }) {
         return (
           <div
             key={s.id}
-            className={`flex items-start gap-2 py-2.5 text-xs first:pt-1 last:pb-1 ${done ? 'opacity-60' : ''}`}
+            className={`flex flex-wrap items-start gap-2 py-2.5 text-xs sm:flex-nowrap first:pt-1 last:pb-1 ${done ? 'opacity-60' : ''}`}
           >
             {mark && (
               <span
@@ -71,34 +76,59 @@ export function LowRatedList({ rows }: { rows: Survey[] }) {
               </span>
             )}
 
-            <div className="min-w-0 flex-1">
-              <button
-                type="button"
-                onClick={() => setOpenId(s.id)}
-                className="text-start font-semibold text-slate-800 hover:text-slate-950 hover:underline"
-                title="פתיחת חוות הדעת המלאה"
-              >
-                {s.customerName ?? 'לקוח'}
-              </button>
-              {!hasPhone && (
-                <span className="ms-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10.5px] text-slate-400">
-                  אין נייד
-                </span>
-              )}
+            {/* בטלפון הכפתור יורד לשורה משלו, אחרת הוא לוקח כמעט חצי רוחב מהכרטיס. */}
+            <div className="min-w-0 flex-1 max-sm:basis-[calc(100%-3.5rem)]">
+              {/* ⭐ 26/10/2026: שתי עמודות במסך רחב. בימין הלקוח ומה שהוא כתב
+                  (זה הדבר הראשון שמנהל צריך), בשמאל הביקור ומה המצב עכשיו.
+                  בטלפון הן נערמות באותו סדר. */}
+              <div className="grid gap-x-6 gap-y-1 md:grid-cols-2">
+                <div className="min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => setOpenId(s.id)}
+                    className="text-start font-semibold text-slate-800 hover:text-slate-950 hover:underline"
+                    title="פתיחת חוות הדעת המלאה"
+                  >
+                    {s.customerName ?? 'לקוח'}
+                  </button>
+                  {!hasPhone && (
+                    <span className="ms-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10.5px] text-slate-400">
+                      אין נייד
+                    </span>
+                  )}
+                  {s.customerNumber || s.phoneE164 ? (
+                    <CustomerCardButton
+                      compact
+                      className="ms-1.5 align-middle"
+                      customerNumber={s.customerNumber}
+                      phone={s.phoneE164}
+                      name={s.customerName}
+                    />
+                  ) : null}
 
-              {s.comment && <span className="block text-slate-500">{s.comment}</span>}
+                  {s.comment ? (
+                    <span className="mt-1 block border-s-2 border-rose-200 ps-2 text-slate-600">{s.comment}</span>
+                  ) : (
+                    <span className="mt-1 block text-[11px] text-slate-400">הלקוח לא הוסיף הערה</span>
+                  )}
 
-              {done && (
-                <span className="mt-0.5 block text-[11px] font-semibold text-emerald-700">
-                  ✓ טופל{s.handledBy ? ` · ${s.handledBy}` : ''} · <bdi>{surveyWhen(s.handledAt)}</bdi>
-                </span>
-              )}
+                  {done && (
+                    <span className="mt-0.5 block text-[11px] font-semibold text-emerald-700">
+                      ✓ טופל{s.handledBy ? ` · ${s.handledBy}` : ''} · <bdi>{surveyWhen(s.handledAt)}</bdi>
+                    </span>
+                  )}
 
-              <SurveyHandledNote
-                survey={s}
-                editing={notingId === s.id}
-                onEditingChange={(v) => setNotingId(v ? s.id : null)}
-              />
+                  <SurveyHandledNote
+                    survey={s}
+                    editing={notingId === s.id}
+                    onEditingChange={(v) => setNotingId(v ? s.id : null)}
+                  />
+                </div>
+
+                <div className="min-w-0">
+                  <SurveyVisitDetails visit={visits.data?.get(s.id)} driver={s.driver} state={visitState} />
+                </div>
+              </div>
             </div>
 
             {/* 🔴 סימון פותח את תיבת התיאור ולא מסמן מיד. ביטול סימון
@@ -111,8 +141,15 @@ export function LowRatedList({ rows }: { rows: Survey[] }) {
               }
               className={
                 done
-                  ? 'inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50'
-                  : 'inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 disabled:opacity-50'
+                  ? [
+                    'inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-slate-400',
+                    'hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50',
+                  ].join(' ')
+                  : [
+                    'inline-flex shrink-0 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white',
+                    'px-2.5 py-1 text-[11px] font-bold text-slate-600 max-sm:w-full max-sm:py-1.5',
+                    'hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-800 disabled:opacity-50',
+                  ].join(' ')
               }
               title={done ? 'ביטול הסימון' : 'סימון שדיברנו עם הלקוח או שנשלחה לו הודעה'}
             >
