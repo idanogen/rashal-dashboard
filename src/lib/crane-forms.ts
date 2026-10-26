@@ -1,5 +1,6 @@
 import { formsClient } from './forms/client';
 import { CRANE_CHECKLIST_VERSION, type CraneVerdict } from './crane-checklist';
+import { TRAINING_VERSION } from './crane-training';
 
 /**
  * שמירת טופס מנוף חתום.
@@ -37,7 +38,8 @@ export async function saveCraneForm(input: CraneFormInput): Promise<string> {
       form_type: input.formType,
       // ⭐ הגרסה נשמרת עם המילוי, ולכן טופס שנחתם לפני שנה נשאר קריא
       // בדיוק כפי שנחתם גם אחרי שהנוסח יתעדכן.
-      checklist_version: CRANE_CHECKLIST_VERSION,
+      // 🔴 26/10/2026: עד היום נשמרה כאן גרסת רשימת הבדיקה גם לאישור הדרכה.
+      checklist_version: input.formType === 'training' ? TRAINING_VERSION : CRANE_CHECKLIST_VERSION,
       crane_serial: input.craneSerial ?? null,
       customer_name: input.customerName ?? null,
       customer_number: input.customerNumber ?? null,

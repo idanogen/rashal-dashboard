@@ -1,44 +1,102 @@
 /**
- * אישור קבלת הדרכה: הטופס שהלקוח חותם עליו כשמנוף מגיע אליו הביתה.
+ * אישור קבלת הדרכה על מנוף חשמלי: הטופס שהלקוח חותם עליו כשמנוף מגיע אליו.
  *
- * שלומי, <bdi>20/08/2026</bdi>: "באספקת מנוף הלקוח צריך לקבל מדריך
- * למשתמש ולחתום על טופס".
+ * ⭐⭐ גרסה 2 (עידן, 26/10/2026): הטופס הוא העתק של טופס הנייר של ר.שעל
+ * (`~/Idan-HQ/meetings/rashal/2026-10-26-טופס-אישור-הדרכה-מנוף-מקור.pdf`),
+ * "זה הטופס בכל פעם שמספקים מנוף חדש". סעיפים 1 עד 3 הם טקסט קבוע שהלקוח
+ * מאשר בחתימה; הוא לא מסמן בהם כלום. עד גרסה 1 הטופס היה שמונה נושאי בטיחות
+ * לסימון מתוך רשימת הבדיקה של הטכנאי.
  *
- * ⭐⭐ **הנושאים אינם נכתבים כאן מחדש אלא נגזרים מפרק הבטיחות של רשימת
- * הבדיקה** (`CRANE_CHECKLIST`, פרק `safety`). זה אותו נוסח בדיוק, כי זה
- * אותו דבר בדיוק: מה שהטכנאי מסמן שהסביר הוא מה שהלקוח חותם שקיבל.
- * שני עותקים של אותם שמונה משפטים היו נפרדים בשקט ברגע שמישהו יתקן
- * ניסוח באחד מהם. [[label_and_math_from_two_mechanisms]]
+ * מה ממלאים (עידן):
+ *   4. פרטי מקבל ההדרכה: שם ומשפחה, תעודת זהות, יחס קרבה לזכאי, חתימה. חובה.
+ *   5. פרטי מבצע ההדרכה: השם של הנהג המחובר, לבד. "מספיק השם שלו", בלי חתימה.
+ *   6. פרטי הערסל שסופק: יצרן, תאריך ייצור, מס"ד. חובה.
  *
- * 🔴🔴 **ואין כאן דלת אחורית כמו ב"הוצא משימוש".** בטופס הטכנאי מותר
- * להגיש מילוי חלקי כשהמנוף פגום, כי אז חלק מהבדיקות באמת לא בוצעו.
- * כאן ההפך: אם נושא לא הוסבר, אסור שהלקוח יחתום שהוא קיבל הדרכה עליו.
- * הטופס נחתם במלואו או שאינו נחתם.
+ * 🔴 הנוסח כאן הוא הצהרה משפטית שהלקוח חותם עליה. שינוי בו = גרסה חדשה
+ * (`TRAINING_VERSION`), כדי שטופס ישן יישאר קריא כפי שנחתם.
+ *
+ * ⭐ קובץ בלי ייבוא: נבדק ב-node ומועתק לאפליקציה ב-`sync-forms.mjs`.
  */
-// 🔴 עם סיומת `.ts` במפורש. הפרויקט מריץ את הקובץ הזה גם ב-node
-// (`node --test`), ושם ייבוא יחסי בלי סיומת אינו נפתר. `allowImportingTsExtensions`
-// כבר דלוק ב-tsconfig, ולכן Vite ו-node מסתדרים עם אותה שורה.
-import { CRANE_CHECKLIST, type ChecklistItem } from './crane-checklist.ts';
 
-export const TRAINING_TITLE = 'אישור קבלת הדרכה, מנוף SUNLIFT (175/150)';
-export const TRAINING_SUBTITLE =
-  'המשתמש/ת או המטפל/ת מאשר/ת שקיבל/ה הדרכה מלאה ומדריך למשתמש';
+export const TRAINING_TITLE = 'אישור קבלת הדרכה על מנוף חשמלי';
 
-/** גרסת הטופס. 🔴 נשמרת עם כל מילוי, כדי שטופס ישן יישאר קריא כפי שנחתם. */
-export const TRAINING_VERSION = 1;
+/** גרסת הטופס. 🔴 נשמרת עם כל מילוי. 1 = נושאי בטיחות לסימון, 2 = טופס הנייר. */
+export const TRAINING_VERSION = 2;
 
-/**
- * נושאי ההדרכה, מפרק הבטיחות של רשימת הבדיקה.
- * 🔴 אם הפרק הזה ישונה או ישנה שם, הבדיקה `crane-training.test.mjs`
- * תיפול מיד, ולא נגלה בשטח שהטופס נחתם על רשימה ריקה.
- */
-export const TRAINING_TOPICS: ChecklistItem[] =
-  CRANE_CHECKLIST.find((s) => s.id === 'safety')?.items ?? [];
+export interface TrainingClause {
+  /** האות או המספר כפי שמודפס בטופס: א, ב, 1. */
+  mark: string;
+  text: string;
+  /** קטע בהדגשה בתוך הטקסט, כמו בטופס המקורי. */
+  bold?: string;
+  sub?: TrainingClause[];
+}
 
-export interface SlingDetails {
-  manufacturer: string;
-  productionDate: string;
-  serial: string;
+export interface TrainingSection {
+  no: number;
+  title: string;
+  clauses: TrainingClause[];
+}
+
+/** סעיפים 1 ו-2, מילה במילה מטופס הנייר. */
+export const TRAINING_SECTIONS: TrainingSection[] = [
+  {
+    no: 1,
+    title: 'ההדרכה כללה',
+    clauses: [
+      { mark: 'א', text: 'הסבר על אחריות המשתמש ובדיקות תקופתיות.' },
+      { mark: 'ב', text: 'הסבר טכני על השימוש במנוף.' },
+      { mark: 'ג', text: 'הסבר על הסיכונים הכרוכים וכללי זהירות בעת השימוש במנוף חשמלי.' },
+      {
+        mark: 'ד',
+        text: 'הסבר על צורת הטעינה של המצבר ואף על חשיבות הטעינה לא יותר ממה שהומלץ.',
+        bold: 'לא יותר ממה שהומלץ',
+      },
+      {
+        mark: 'ה',
+        text: 'ערסל',
+        sub: [
+          {
+            mark: '1',
+            text: 'חובת בדיקת תקינות ושלמות הערסל ורצועות ההנפה לפני כל הרמה, בהינתן ונמצאים פגמים ' +
+              'חל איסור על המשך שימוש ופניה לקופת החולים / ר.שעל.',
+            bold: 'חל איסור על המשך שימוש ופניה לקופת החולים / ר.שעל.',
+          },
+          { mark: '2', text: 'הסבר על תהליך הלבשת הערסל בעת ישיבה על כיסא גלגלים.' },
+        ],
+      },
+      { mark: 'ו', text: 'הוסבר כיצד נכון להעביר הזכאי מכ"ג לכיסא / מכ"ג למיטה או ההיפך.' },
+    ],
+  },
+  {
+    no: 2,
+    title: 'הצהרת מקבל המנוף',
+    clauses: [
+      { mark: 'א', text: 'הנני מצהיר בזאת שקיבלתי ההדרכה על המנוף החשמלי תוצרת "sunrise medical".' },
+      { mark: 'ב', text: 'הנני מתחייב לשמור על כללי הבטיחות בעת השימוש, כפי שהוסבר לי.' },
+      {
+        mark: 'ג',
+        text: 'הנני מבין שהשימוש במנוף חשמלי הוא אך ורק לנשיאת אדם ולא לצרכים אחרים.',
+        bold: 'לנשיאת אדם',
+      },
+      { mark: 'ד', text: 'הנני מתחייב לא להיכנס עם המנוף אל חדר הרחצה.' },
+      { mark: 'ה', text: 'הריני מאשר כי הבנתי את הדרכה וההנחיות שניתנו לי או לכל נציג מטעמי.' },
+    ],
+  },
+];
+
+/** סעיף 3: שורה אחת, בלי תתי סעיפים. */
+export const TRAINING_SATISFACTION = 'ההדרכה בוצעה לשביעות רצוני באופן ברור ומובן.';
+
+/** יחס קרבה לזכאי: רשימה, כי היא מהירה לנהג בשטח (עידן, 26/10/2026). */
+export const TRAINING_RELATIONS = ['הזכאי עצמו', 'בן/בת', 'בן/בת זוג', 'מטפל/ת', 'אחר'] as const;
+
+export interface TrainingInput {
+  recipientName: string;
+  recipientIdNumber: string;
+  recipientRelation: string;
+  signature: string | null;
+  sling: { manufacturer: string; productionDate: string; serial: string };
 }
 
 export interface TrainingGate {
@@ -48,44 +106,30 @@ export interface TrainingGate {
 }
 
 /**
- * האם מותר להחתים.
- *
- * הסדר של הבדיקות הוא סדר התיקון: קודם מה שדורש עוד עבודה בשטח, ואחר
- * כך מה שדורש רק להקליד. ⭐ הודעה אחת בכל רגע, כי שלוש הודעות במקביל
- * הן רעש והמשתמש בוחר אחת מהן.
+ * 🔴 תעודת זהות: לפחות 5 תווים, ובלי בדיקת ספרת ביקורת. מקבל ההדרכה הוא
+ * הרבה פעמים מטפל/ת זר/ה עם דרכון, ובדיקת ספרת ביקורת הייתה תוקעת את הנהג.
  */
-export function canSubmitTraining(
-  answers: Record<string, boolean>,
-  recipientName: string,
-  signature: string | null
-): TrainingGate {
-  if (TRAINING_TOPICS.length === 0) {
-    // 🔴 בקרה על עצמנו: רשימה ריקה פירושה שהפרק ב-`CRANE_CHECKLIST`
-    // שינה מזהה. טופס בלי נושאים היה נחתם בקלות ולא היה אומר כלום.
-    return { ok: false, reason: 'רשימת נושאי ההדרכה ריקה, יש לפנות לתמיכה' };
-  }
-  const missing = TRAINING_TOPICS.filter((t) => !answers[t.id]);
-  if (missing.length > 0) {
-    return {
-      ok: false,
-      reason:
-        missing.length === 1
-          ? 'נותר נושא אחד שלא סומן'
-          : `נותרו ${missing.length} נושאים שלא סומנו`,
-    };
-  }
-  if (!recipientName.trim()) return { ok: false, reason: 'חסר שם מקבל/ת ההדרכה' };
-  if (!signature) return { ok: false, reason: 'חסרה חתימה' };
+export function idLooksValid(v: string): boolean {
+  return v.replace(/[\s-]/g, '').length >= 5;
+}
+
+/**
+ * האם מותר להחתים. ⭐ הודעה אחת בכל רגע, לפי סדר הטופס: קודם סעיף 4
+ * (מה שהלקוח ממלא), אחר כך סעיף 6 (מה שהנהג ממלא), והחתימה אחרונה.
+ */
+export function canSubmitTraining(i: TrainingInput): TrainingGate {
+  if (!i.recipientName.trim()) return { ok: false, reason: 'חסר שם ושם משפחה של מקבל ההדרכה' };
+  if (!idLooksValid(i.recipientIdNumber)) return { ok: false, reason: 'חסרה תעודת זהות של מקבל ההדרכה' };
+  if (!i.recipientRelation.trim()) return { ok: false, reason: 'חסר יחס קרבה לזכאי' };
+  if (!i.sling.manufacturer.trim()) return { ok: false, reason: 'חסר יצרן הערסל' };
+  if (!i.sling.productionDate.trim()) return { ok: false, reason: 'חסר תאריך ייצור של הערסל' };
+  if (!i.sling.serial.trim()) return { ok: false, reason: 'חסר מס"ד של הערסל' };
+  if (!i.signature) return { ok: false, reason: 'חסרה חתימה של מקבל ההדרכה' };
   return { ok: true };
 }
 
-export interface TrainingProgress {
-  checked: number;
-  total: number;
-  missing: ChecklistItem[];
-}
-
-export function trainingProgress(answers: Record<string, boolean>): TrainingProgress {
-  const missing = TRAINING_TOPICS.filter((t) => !answers[t.id]);
-  return { checked: TRAINING_TOPICS.length - missing.length, total: TRAINING_TOPICS.length, missing };
-}
+/**
+ * מה נשמר בעמודת `answers` של `crane_forms`. אין סימונים בגרסה 2, ולכן
+ * נשמר שהלקוח אישר את שלושת הסעיפים בחתימה.
+ */
+export const TRAINING_ANSWERS: Record<string, boolean> = { general: true, declaration: true, satisfaction: true };

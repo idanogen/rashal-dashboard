@@ -1,92 +1,114 @@
-import { INK, PEN, cell, esc, line, page, signatureLine, stamp } from './common.ts';
+import { INK, PEN, cell, esc, page, stamp, thickenSignature } from './common.ts';
 
 /**
- * תבנית ה-PDF של אישור קבלת ההדרכה למנוף (25/10/2026).
+ * תבנית ה-PDF של אישור קבלת ההדרכה על מנוף חשמלי.
  *
- * עמי שאל "איפה אני רואה את הטפסים האלה": עד היום הטופס נשמר רק כשורה
- * בטבלה, בלי PDF ובלי צירוף לפריוריטי. מהיום הוא מקבל PDF כמו טפסי
- * הקופות, ונכנס לכרטיס הלקוח באותו צינור בדיוק.
+ * ⭐⭐ גרסה 2 (26/10/2026): העתק של טופס הנייר של ר.שעל, באותו סדר ובאותו
+ * נוסח: כותרת מכתב, תאריך, סעיפים 1 עד 3 כטקסט, וטבלאות 4, 5 ו-6. מתחת
+ * לכותרת שורת זיהוי קטנה (לקוח ומנוף), שאינה בטופס המקורי ולכן אפורה.
+ * 25/10 נולד ה-PDF כדי שהטופס ייכנס לכרטיס הלקוח בפריוריטי (עמי).
  *
- * ⭐ הנושאים, הכותרת והשער אינם מיובאים מ-`crane-training.ts` אלא מגיעים
- * כקלט: הקובץ הזה מועתק לאפליקציית הנהג על ידי `sync-forms.mjs`, ושם
- * `crane-training.ts` יושב בתיקייה אחרת. ייבוא יחסי מחוץ לתיקיית הטפסים
- * היה נשבר בהעתקה. הקוראים (הדיאלוג בווב, מסך החתימה באפליקציה) כבר
- * מחזיקים את שניהם.
+ * ⭐ הנוסח, הכותרת והסעיפים מגיעים כקלט ולא בייבוא מ-`crane-training.ts`:
+ * הקובץ הזה מועתק לאפליקציה ב-`sync-forms.mjs`, ושם `crane-training.ts`
+ * יושב בתיקייה אחרת. ייבוא יחסי מחוץ לתיקיית הטפסים היה נשבר בהעתקה.
  */
+
+interface Clause {
+  mark: string;
+  text: string;
+  bold?: string;
+  sub?: Clause[];
+}
 
 export interface CraneTrainingPdfInput {
   title: string;
-  subtitle: string;
-  topics: { id: string; text: string }[];
-  answers: Record<string, boolean>;
+  sections: { no: number; title: string; clauses: Clause[] }[];
+  satisfaction: string;
   customerName: string;
   customerNumber?: string | null;
   craneModel?: string | null;
   craneSerial?: string | null;
   recipientName: string;
-  recipientIdNumber?: string;
-  recipientRelation?: string;
-  notes?: string;
-  sling?: { manufacturer?: string; productionDate?: string; serial?: string };
+  recipientIdNumber: string;
+  recipientRelation: string;
+  sling: { manufacturer: string; productionDate: string; serial: string };
   signature: string | null;
   meta: { signedAt: Date; driverName: string; location?: { lat: number; lng: number } | null };
+}
+
+/** טקסט סעיף, עם הקטע המודגש כמו בטופס. */
+function clauseText(c: Clause): string {
+  const safe = esc(c.text);
+  if (!c.bold || !c.text.includes(c.bold)) return safe;
+  return safe.replace(esc(c.bold), `<b>${esc(c.bold)}</b>`);
+}
+
+function clauses(list: Clause[], indent: number): string {
+  return list
+    .map((c) => `<div style="display:flex;gap:8px;padding:2px 0;padding-inline-start:${indent}px;font-size:13px;line-height:1.55">
+      <span style="flex:none;min-width:16px">${esc(c.mark)}.</span>
+      <span>${clauseText(c)}</span>
+    </div>${c.sub ? clauses(c.sub, indent + 26) : ''}`)
+    .join('');
+}
+
+function heading(no: number, title: string): string {
+  return `<div style="font-size:14px;font-weight:700;margin:14px 0 4px">${no}. ` +
+    `<span style="text-decoration:underline">${esc(title)} :</span></div>`;
 }
 
 export function craneTrainingLayout(i: CraneTrainingPdfInput): string {
   const d = i.meta.signedAt;
   const two = (n: number) => String(n).padStart(2, '0');
   const date = `${two(d.getDate())}/${two(d.getMonth() + 1)}/${d.getFullYear()}`;
-  const mark = (on: boolean) =>
-    `<span style="display:inline-flex;align-items:center;justify-content:center;flex:none;` +
-    `width:13px;height:13px;margin-top:2px;border:1px solid ${INK};font-size:11px;` +
-    `line-height:1;color:${PEN};font-weight:700">${on ? '✕' : ''}</span>`;
-  const topics = i.topics
-    .map((t) => `<div style="display:flex;align-items:flex-start;gap:7px;padding:5px 0;border-bottom:1px solid #e3e3e3">
-      ${mark(!!i.answers[t.id])}
-      <span style="font-size:12px;line-height:1.5">${esc(t.text)}</span>
-    </div>`)
-    .join('');
-  const s = i.sling;
-  const sling = s && (s.manufacturer || s.productionDate || s.serial)
-    ? `<div style="font-size:13.5px;font-weight:700;margin:18px 0 6px">פרטי הערסל שסופק</div>
-       <table style="width:100%;border-collapse:collapse;table-layout:fixed">
-         <tr>${cell('יצרן', s.manufacturer ?? '')}${cell('תאריך ייצור', s.productionDate ?? '')}
-             ${cell('מספר סידורי', s.serial ?? '')}</tr>
-       </table>`
+  const ident = [
+    i.customerName && `לקוח: ${i.customerName}`,
+    i.customerNumber && `מס' לקוח ${i.customerNumber}`,
+    i.craneModel && `מנוף ${i.craneModel}`,
+    i.craneSerial && `מס' סידורי ${i.craneSerial}`,
+  ].filter(Boolean).join(' · ');
+  const sig = i.signature
+    ? `<img src="${thickenSignature(i.signature)}" style="max-height:52px;max-width:100%;object-fit:contain" />`
     : '';
-  const notes = i.notes?.trim()
-    ? `<div style="font-size:12px;margin-top:12px"><b>הערות:</b> ` +
-      `<span style="color:${PEN};font-weight:600">${esc(i.notes)}</span></div>`
-    : '';
+  const table = (heads: string[], cells: string) =>
+    `<table style="width:100%;border-collapse:collapse;table-layout:fixed;margin-top:4px">
+      <tr>${heads.map((h) => `<th style="border:1px solid ${INK};background:#f1f1f1;font-size:12px;padding:4px">${h}</th>`).join('')}</tr>
+      <tr>${cells}</tr>
+    </table>`;
+  const v = (s: string) => cell('', s, { h: 44 });
+  const lastNo = i.sections.length + 1;
+
   return page(`
-    <div style="text-align:center;border-bottom:2px solid ${INK};padding-bottom:10px;margin-bottom:14px">
-      <div style="font-size:17px;font-weight:800;text-decoration:underline">${esc(i.title)}</div>
-      <div style="font-size:12px;margin-top:4px">${esc(i.subtitle)}</div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid ${INK};padding-bottom:8px">
+      <div style="font-size:11px;line-height:1.45">
+        <div style="font-size:19px;font-weight:800">ר.שעל <span style="font-size:13px;font-weight:600">שרותי עזר לנכים</span></div>
+        <div>אזור התעשייה החדש, רח' משה שרת 15, ראשון לציון</div>
+        <div>טל. 03-9611891 · פקס 03-9618837 · עוסק מורשה 512582965</div>
+      </div>
+      <div style="font-size:12px;padding-top:4px">בס"ד</div>
     </div>
 
-    <table style="width:100%;border-collapse:collapse;table-layout:fixed">
-      <tr>${cell('שם הלקוח', i.customerName)}${cell('מספר לקוח', i.customerNumber ?? '')}
-          ${cell('תאריך', date)}</tr>
-      <tr>${cell('דגם המנוף', i.craneModel ?? '')}${cell('מספר סידורי של המנוף', i.craneSerial ?? '')}
-          ${cell('שם המדריך', i.meta.driverName)}</tr>
-    </table>
-
-    <div style="font-size:13.5px;font-weight:700;margin:18px 0 4px">נושאי ההדרכה שהועברו</div>
-    <div style="border:1px solid ${INK};padding:4px 10px">${topics}</div>
-    ${sling}
-    ${notes}
-
-    <div style="font-size:12.5px;margin-top:22px;line-height:1.6">
-      אני החתום/ה מטה מאשר/ת שקיבלתי הדרכה מלאה על כל הנושאים המסומנים מעלה, וכן מדריך למשתמש.
+    <div style="display:flex;justify-content:flex-end;margin-top:10px;font-size:13px">
+      תאריך: <span style="color:${PEN};font-weight:600;margin-inline-start:6px">${date}</span>
     </div>
-    <table style="width:100%;border-collapse:collapse;table-layout:fixed;margin-top:14px">
-      <tr>${cell('שם מקבל/ת ההדרכה', i.recipientName)}${cell('תעודת זהות', i.recipientIdNumber ?? '')}
-          ${cell('קרבה למטופל/ת', i.recipientRelation ?? '')}</tr>
-    </table>
-    <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:28px;font-weight:700">
-      ${line('<b style="font-size:14px">שם החותם/ת</b>', i.recipientName, 200)}
-      ${signatureLine('<b style="font-size:14px">חתימה</b> <b style="font-size:20px">X</b>', i.signature, 220)}
-    </div>
+    <div style="text-align:center;font-size:17px;font-weight:800;text-decoration:underline;margin-top:6px">${esc(i.title)}</div>
+    ${ident ? `<div style="text-align:center;font-size:10.5px;color:#777;margin-top:4px">${esc(ident)}</div>` : ''}
+
+    ${i.sections.map((s) => heading(s.no, s.title) + clauses(s.clauses, 18)).join('')}
+    <div style="font-size:14px;font-weight:700;margin:14px 0 4px">${lastNo}. ` +
+      `<span style="font-weight:400;font-size:13px">${esc(i.satisfaction)}</span></div>
+
+    ${heading(lastNo + 1, 'פרטי מקבל ההדרכה')}
+    ${table(['שם ומשפחה', 'תעודת זהות', 'יחס קרבה לזכאי', 'חתימה'],
+      v(i.recipientName) + v(i.recipientIdNumber) + v(i.recipientRelation) +
+      `<td style="border:1px solid ${INK};height:56px;text-align:center;vertical-align:middle">${sig}</td>`)}
+
+    ${heading(lastNo + 2, 'פרטי מבצע ההדרכה')}
+    ${table(['שם ומשפחה'], v(i.meta.driverName))}
+
+    ${heading(lastNo + 3, 'פרטי הערסל שסופק')}
+    ${table(['יצרן הערסל', 'תאריך ייצור', 'מס"ד'], v(i.sling.manufacturer) + v(i.sling.productionDate) + v(i.sling.serial))}
+
     ${stamp(i.meta)}
   `);
 }

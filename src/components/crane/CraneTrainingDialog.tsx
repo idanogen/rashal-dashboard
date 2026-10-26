@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -9,15 +9,16 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { AlertTriangle, BookOpenCheck, Check, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
-  TRAINING_SUBTITLE,
+  TRAINING_ANSWERS,
+  TRAINING_RELATIONS,
+  TRAINING_SATISFACTION,
+  TRAINING_SECTIONS,
   TRAINING_TITLE,
-  TRAINING_TOPICS,
   canSubmitTraining,
-  trainingProgress,
+  type TrainingClause,
 } from '@/lib/crane-training';
 import { attachCraneFormPdf, craneTrainingFileDes, saveCraneForm } from '@/lib/crane-forms';
 import { craneTrainingLayout } from '@/lib/forms/layouts/crane-training';
@@ -25,15 +26,11 @@ import { renderHtmlToPdf } from '@/lib/forms/render';
 import { SignaturePad } from './SignaturePad';
 
 /**
- * אישור קבלת הדרכה, כטופס דיגיטלי שהלקוח חותם עליו במקום.
+ * אישור קבלת הדרכה על מנוף חשמלי, כטופס דיגיטלי שהלקוח חותם עליו במקום.
  *
- * ⭐ **אותו מבנה בדיוק כמו רשימת הבדיקה לטכנאי**, בכוונה: אותו אדם ממלא
- * את שניהם באותו ביקור, ושני טפסים שנראים אחרת מכריחים אותו ללמוד
- * מסך פעמיים.
- *
- * 🔴🔴 **וההבדל היחיד הוא זה שחשוב: אין כאן שום דרך להגיש חלקית.**
- * הנוסח, השער והנושאים מגיעים כולם מ-`crane-training.ts`, ואי אפשר
- * להחתים לקוח על הדרכה בנושא שלא סומן.
+ * ⭐⭐ גרסה 2 (26/10/2026): טופס הנייר של ר.שעל. סעיפים 1 עד 3 מוצגים
+ * לקריאה, וממלאים את 4 (מקבל ההדרכה) ואת 6 (הערסל). 5 (מבצע ההדרכה) הוא
+ * הנהג המחובר. השער והנוסח ב-`crane-training.ts`.
  */
 export function CraneTrainingDialog({
   open,
@@ -62,53 +59,40 @@ export function CraneTrainingDialog({
    */
   onDemoSubmit?: (pdf: Blob) => Promise<void> | void;
 }) {
-  const [answers, setAnswers] = useState<Record<string, boolean>>({});
   const [recipient, setRecipient] = useState('');
   const [idNumber, setIdNumber] = useState('');
   const [relation, setRelation] = useState('');
-  const [notes, setNotes] = useState('');
   const [signature, setSignature] = useState<string | null>(null);
   const [slingManufacturer, setSlingManufacturer] = useState('');
   const [slingDate, setSlingDate] = useState('');
   const [slingSerial, setSlingSerial] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const p = useMemo(() => trainingProgress(answers), [answers]);
-  const gate = useMemo(
-    () => canSubmitTraining(answers, recipient, signature),
-    [answers, recipient, signature]
-  );
-
-  const toggle = (id: string) => setAnswers((a) => ({ ...a, [id]: !a[id] }));
-
-  /** ⭐ סימון הכל בלחיצה, כי בפועל הטכנאי מסביר את כולם ברצף אחד. */
-  const markAll = () =>
-    setAnswers(Object.fromEntries(TRAINING_TOPICS.map((t) => [t.id, true])));
+  const sling = { manufacturer: slingManufacturer, productionDate: slingDate, serial: slingSerial };
+  const gate = canSubmitTraining({
+    recipientName: recipient, recipientIdNumber: idNumber, recipientRelation: relation, signature, sling,
+  });
 
   const buildPdf = (signedAt: Date) =>
     renderHtmlToPdf(craneTrainingLayout({
       title: TRAINING_TITLE,
-      subtitle: TRAINING_SUBTITLE,
-      topics: TRAINING_TOPICS,
-      answers,
+      sections: TRAINING_SECTIONS,
+      satisfaction: TRAINING_SATISFACTION,
       customerName: customerName ?? '',
       customerNumber,
       craneSerial,
       recipientName: recipient,
       recipientIdNumber: idNumber,
       recipientRelation: relation,
-      notes,
-      sling: { manufacturer: slingManufacturer, productionDate: slingDate, serial: slingSerial },
+      sling,
       signature,
       meta: { signedAt, driverName: technicianName ?? '' },
     }));
 
   const reset = () => {
-    setAnswers({});
     setRecipient('');
     setIdNumber('');
     setRelation('');
-    setNotes('');
     setSignature(null);
     setSlingManufacturer('');
     setSlingDate('');
@@ -138,9 +122,9 @@ export function CraneTrainingDialog({
         customerNumber,
         stopId,
         orderId,
-        answers,
+        answers: TRAINING_ANSWERS,
         verdict: null,
-        notes,
+        notes: '',
         technicianName,
         recipientName: recipient,
         recipientIdNumber: idNumber,
@@ -157,7 +141,6 @@ export function CraneTrainingDialog({
           const pdf = await buildPdf(signedAt);
           await attachCraneFormPdf(formId, stopId, pdf, craneTrainingFileDes(customerName ?? '', craneSerial, signedAt));
         } catch (err) {
-          // הטופס כבר שמור. על הכשל בצירוף מדווחים, לא מפילים.
           toast.warning(`האישור נשמר, אבל צירוף ה-PDF לכרטיס הלקוח נכשל: ${err instanceof Error ? err.message : err}`);
         }
       }
@@ -182,98 +165,66 @@ export function CraneTrainingDialog({
             {TRAINING_TITLE}
           </DialogTitle>
           <DialogDescription>
-            {TRAINING_SUBTITLE}
+            {customerName}
             {craneSerial && (
               <>
                 {' · מס׳ סידורי '}
                 <bdi className="font-mono font-semibold">{craneSerial}</bdi>
               </>
             )}
-            {customerName && ` · ${customerName}`}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          <div>
-            <div className="mb-1.5 flex items-center justify-between">
-              <h4 className="text-sm font-bold text-blue-800">נושאים שהועברו בהדרכה</h4>
-              <button
-                type="button"
-                onClick={markAll}
-                className="text-[11px] font-semibold text-blue-700 hover:underline"
-              >
-                סמן הכל
-              </button>
-            </div>
-            <div className="space-y-1">
-              {TRAINING_TOPICS.map((item) => {
-                const on = !!answers[item.id];
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => toggle(item.id)}
-                    className={`flex w-full items-start gap-2.5 rounded-lg border p-2.5 text-start transition-colors ${
-                      on ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-white'
-                    }`}
-                  >
-                    <span
-                      className={`mt-px flex h-5 w-5 flex-none items-center justify-center rounded border-2 ${
-                        on ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-300'
-                      }`}
-                    >
-                      {on && <Check className="h-3.5 w-3.5" />}
-                    </span>
-                    <span className="text-[13px] leading-snug text-slate-700">{item.text}</span>
-                  </button>
-                );
-              })}
-            </div>
+          <div className="space-y-3 rounded-xl border bg-slate-50 p-3 text-[13px] leading-relaxed text-slate-700">
+            {TRAINING_SECTIONS.map((s) => (
+              <div key={s.no}>
+                <h4 className="font-bold text-slate-900">{s.no}. {s.title}</h4>
+                <ClauseList items={s.clauses} />
+              </div>
+            ))}
+            <p className="font-bold text-slate-900">{TRAINING_SECTIONS.length + 1}. {TRAINING_SATISFACTION}</p>
           </div>
 
-          {/* ── פרטי הערסל שסופק ── */}
-          <div className="rounded-xl border p-3" style={{ borderColor: '#e3e8f0' }}>
-            <h4 className="mb-2 text-sm font-bold" style={{ color: '#14223a' }}>
-              הערסל שסופק
-            </h4>
-            {/* ⭐ שלושת השדות אינם חובה: לא בכל אספקה יוצא ערסל, וחסימה
-                עליהם הייתה מכריחה את הטכנאי להמציא ערכים. */}
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-              <Field label="יצרן" value={slingManufacturer} onChange={setSlingManufacturer} />
-              <Field label="תאריך ייצור" value={slingDate} onChange={setSlingDate} />
-              <Field label="מס׳ סידורי" value={slingSerial} onChange={setSlingSerial} />
-            </div>
-          </div>
-
-          {/* ── מקבל/ת ההדרכה ── */}
           <div className="rounded-xl border-2 p-3" style={{ borderColor: '#e3e8f0' }}>
-            <h4 className="mb-2 text-sm font-bold" style={{ color: '#14223a' }}>
-              מקבל/ת ההדרכה
-            </h4>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-              <Field label="שם מלא" value={recipient} onChange={setRecipient} />
-              <Field label="תעודת זהות" value={idNumber} onChange={setIdNumber} />
-              <Field label="קרבה למטופל/ת" value={relation} onChange={setRelation} />
+            <h4 className="mb-2 text-sm font-bold" style={{ color: '#14223a' }}>4. פרטי מקבל ההדרכה</h4>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <Field label="שם ומשפחה *" value={recipient} onChange={setRecipient} />
+              <Field label="תעודת זהות *" value={idNumber} onChange={setIdNumber} />
             </div>
-
-            <Textarea
-              dir="rtl"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="הערות…"
-              className="mt-2 min-h-16"
-            />
-
+            <label className="mt-2 block text-xs font-semibold text-slate-600">יחס קרבה לזכאי *</label>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {TRAINING_RELATIONS.map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => setRelation(r)}
+                  className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                    relation === r ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 bg-white text-slate-700'
+                  }`}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
             <div className="mt-3 space-y-1">
-              <label className="text-xs font-semibold text-slate-600">חתימת מקבל/ת ההדרכה</label>
+              <label className="text-xs font-semibold text-slate-600">חתימה *</label>
               <SignaturePad onChange={setSignature} />
             </div>
+          </div>
 
-            {technicianName && (
-              <p className="mt-2 text-[11px] text-slate-400">
-                מסר את ההדרכה: <span className="font-semibold">{technicianName}</span>
-              </p>
-            )}
+          <div className="rounded-xl border p-3" style={{ borderColor: '#e3e8f0' }}>
+            <h4 className="mb-1 text-sm font-bold" style={{ color: '#14223a' }}>5. פרטי מבצע ההדרכה</h4>
+            <p className="text-[13px] text-slate-700">{technicianName || 'המשתמש המחובר'}</p>
+          </div>
+
+          <div className="rounded-xl border p-3" style={{ borderColor: '#e3e8f0' }}>
+            <h4 className="mb-2 text-sm font-bold" style={{ color: '#14223a' }}>6. פרטי הערסל שסופק</h4>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <Field label="יצרן הערסל *" value={slingManufacturer} onChange={setSlingManufacturer} />
+              <Field label="תאריך ייצור *" value={slingDate} onChange={setSlingDate} />
+              <Field label='מס"ד *' value={slingSerial} onChange={setSlingSerial} />
+            </div>
           </div>
         </div>
 
@@ -282,7 +233,7 @@ export function CraneTrainingDialog({
             {gate.ok ? (
               <span className="flex items-center gap-1 font-semibold text-emerald-700">
                 <Check className="h-4 w-4" />
-                מוכן להחתמה
+                מוכן לשמירה
               </span>
             ) : (
               <span className="flex items-center gap-1 text-amber-700">
@@ -290,11 +241,6 @@ export function CraneTrainingDialog({
                 {gate.reason}
               </span>
             )}
-            <span className="text-slate-400">
-              <bdi>
-                {p.checked}/{p.total}
-              </bdi>
-            </span>
           </div>
           <Button onClick={submit} disabled={!gate.ok || saving} className="gap-1">
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -306,6 +252,20 @@ export function CraneTrainingDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ClauseList({ items }: { items: TrainingClause[] }) {
+  return (
+    <ul className="mt-1 space-y-0.5 ps-3">
+      {items.map((c) => (
+        <li key={c.mark}>
+          <span className="me-1 font-semibold">{c.mark}.</span>
+          {c.text}
+          {c.sub && <ClauseList items={c.sub} />}
+        </li>
+      ))}
+    </ul>
   );
 }
 

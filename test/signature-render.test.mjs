@@ -40,40 +40,42 @@ test('קו חתימה בלי חתימה נשאר קו ריק', () => {
   assert.ok(!signatureLine('חתימה', null).includes('<img'));
 });
 
-/** תבנית אישור ההדרכה: PDF חדש (25/10/2026), נבדק שהתוכן באמת נכנס. */
+/** תבנית אישור ההדרכה: גרסה 2, טופס הנייר של ר.שעל (26/10/2026). */
+
+import { TRAINING_SATISFACTION, TRAINING_SECTIONS, TRAINING_TITLE } from '../src/lib/crane-training.ts';
 
 const TRAINING = {
-  title: 'אישור קבלת הדרכה, מנוף SUNLIFT (175/150)',
-  subtitle: 'המשתמש/ת מאשר/ת שקיבל/ה הדרכה',
-  topics: [{ id: 'b1', text: 'הוסבר לחצן החירום' }, { id: 'b2', text: 'הוסברה הורדת חירום' }],
-  answers: { b1: true, b2: true },
+  title: TRAINING_TITLE,
+  sections: TRAINING_SECTIONS,
+  satisfaction: TRAINING_SATISFACTION,
   customerName: 'אוגוסט נ לוזון',
   customerNumber: '12345',
+  craneModel: 'G175',
   craneSerial: '208240305354',
   recipientName: 'נ לוזון',
   recipientIdNumber: '012345678',
-  recipientRelation: 'מטופל',
-  notes: '',
+  recipientRelation: 'בן/בת',
   sling: { manufacturer: 'sunrise', productionDate: '01/2026', serial: 'SL1' },
   signature: SIG,
   meta: { signedAt: new Date('2026-10-22T10:30:00'), driverName: 'רודי' },
 };
 
-test('תבנית ההדרכה: כל הפרטים על העמוד', () => {
+test('תבנית ההדרכה: כל הפרטים והנוסח על העמוד', () => {
   const html = craneTrainingLayout(TRAINING);
-  for (const s of ['אוגוסט נ לוזון', '208240305354', 'הוסבר לחצן החירום', 'נ לוזון', 'רודי', '22/10/2026', 'sunrise']) {
+  for (const s of ['אוגוסט נ לוזון', '208240305354', 'נ לוזון', '012345678', 'בן/בת', 'רודי', '22/10/2026', 'sunrise', 'SL1',
+    'sunrise medical', 'לשביעות רצוני', 'פרטי מקבל ההדרכה', 'פרטי מבצע ההדרכה', 'פרטי הערסל שסופק', 'ר.שעל']) {
     assert.ok(html.includes(s), `חסר: ${s}`);
   }
-  // שני נושאים מסומנים = שתי תיבות עם ✕.
-  assert.equal((html.match(/✕/g) ?? []).length, 2);
+  assert.ok(html.includes('<b>לא יותר ממה שהומלץ</b>'), 'ההדגשה מהטופס המקורי');
+  assert.ok(html.includes('stroke-width%3D%226.5%22'), 'החתימה מוטמעת מעובה');
 });
 
-test('תבנית ההדרכה: נושא שלא סומן אינו מקבל ✕, וטקסט לקוח עובר escaping', () => {
-  const html = craneTrainingLayout({
-    ...TRAINING,
-    answers: { b1: true },
-    notes: '<script>alert(1)</script>',
-  });
-  assert.equal((html.match(/✕/g) ?? []).length, 1);
+test('תבנית ההדרכה: סעיפים 4, 5, 6 ממוספרים אחרי שלושת סעיפי הנוסח', () => {
+  const html = craneTrainingLayout(TRAINING);
+  assert.ok(html.indexOf('4. ') < html.indexOf('5. ') && html.indexOf('5. ') < html.indexOf('6. '));
+});
+
+test('תבנית ההדרכה: טקסט לקוח עובר escaping', () => {
+  const html = craneTrainingLayout({ ...TRAINING, recipientName: '<script>alert(1)</script>' });
   assert.ok(!html.includes('<script>'));
 });

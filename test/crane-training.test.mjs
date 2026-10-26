@@ -1,72 +1,72 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CRANE_CHECKLIST } from '../src/lib/crane-checklist.ts';
 import {
-  TRAINING_TOPICS,
+  TRAINING_RELATIONS,
+  TRAINING_SATISFACTION,
+  TRAINING_SECTIONS,
+  TRAINING_VERSION,
   canSubmitTraining,
-  trainingProgress,
+  idLooksValid,
 } from '../src/lib/crane-training.ts';
 
 /**
- * 🔴 **הטופס הזה נחתם על ידי לקוח, ולכן הוא נבדק בקוד ולא בעיניים.**
- * מה שנחתם עליו הוא הצהרה משפטית שהמשתמש קיבל הדרכה על ציוד הרמה רפואי.
+ * 🔴 הטופס הזה נחתם על ידי לקוח, ולכן הוא נבדק בקוד ולא בעיניים.
+ * גרסה 2 (26/10/2026): טופס הנייר של ר.שעל. סעיף 4 וסעיף 6 חובה.
  */
 
-const allChecked = () =>
-  Object.fromEntries(TRAINING_TOPICS.map((t) => [t.id, true]));
-
-test('⭐ נושאי ההדרכה נגזרים מפרק הבטיחות ואינם עותק שני', () => {
-  const safety = CRANE_CHECKLIST.find((s) => s.id === 'safety');
-  assert.ok(safety, 'פרק הבטיחות נעלם מרשימת הבדיקה');
-  assert.deepEqual(
-    TRAINING_TOPICS.map((t) => t.text),
-    safety.items.map((i) => i.text)
-  );
+const full = () => ({
+  recipientName: 'רותי כהן',
+  recipientIdNumber: '012345678',
+  recipientRelation: 'בן/בת',
+  signature: 'data:image/png;base64,x',
+  sling: { manufacturer: 'sunrise', productionDate: '01/2026', serial: 'SL1003' },
 });
 
-test('🔴 הרשימה אינה ריקה, ואם היא ריקה אי אפשר להחתים', () => {
-  // בקרה חיובית: בדיקה שעוברת על רשימה ריקה נראית בדיוק כמו בדיקה
-  // שעברה. [[silence_needs_a_positive_control]]
-  assert.ok(TRAINING_TOPICS.length >= 8, `רק ${TRAINING_TOPICS.length} נושאים`);
+test('הכל מלא: מותר לשמור', () => {
+  assert.deepEqual(canSubmitTraining(full()), { ok: true });
 });
 
-test('🔴🔴 אי אפשר להחתים כשנושא אחד לא סומן', () => {
-  const a = allChecked();
-  const first = TRAINING_TOPICS[0].id;
-  delete a[first];
-  const gate = canSubmitTraining(a, 'רותי כהן', 'data:image/png;base64,x');
-  assert.equal(gate.ok, false);
-  assert.match(gate.reason, /נושא אחד/);
+test('🔴 סעיף 4: כל אחד מארבעת השדות חוסם לבד', () => {
+  for (const [k, re] of [['recipientName', /שם/], ['recipientIdNumber', /זהות/], ['recipientRelation', /קרבה/]]) {
+    const g = canSubmitTraining({ ...full(), [k]: '  ' });
+    assert.equal(g.ok, false, k);
+    assert.match(g.reason, re);
+  }
+  const noSig = canSubmitTraining({ ...full(), signature: null });
+  assert.equal(noSig.ok, false);
+  assert.match(noSig.reason, /חתימה/);
 });
 
-test('🔴 ואין כאן "הוצא משימוש": שום ערך אינו פותח מילוי חלקי', () => {
-  // בטופס הטכנאי מותר להגיש חלקית כשהמנוף פגום. כאן ההפך המדויק:
-  // נושא שלא הוסבר פירושו שהלקוח לא יכול לחתום שקיבל עליו הדרכה.
-  const a = { [TRAINING_TOPICS[0].id]: true };
-  assert.equal(canSubmitTraining(a, 'רותי כהן', 'sig').ok, false);
+test('🔴 סעיף 6: יצרן, תאריך ייצור ומס"ד חובה (עידן: "סעיף 6 לחייב")', () => {
+  for (const k of ['manufacturer', 'productionDate', 'serial']) {
+    const g = canSubmitTraining({ ...full(), sling: { ...full().sling, [k]: '' } });
+    assert.equal(g.ok, false, k);
+    assert.match(g.reason, /ערסל/);
+  }
 });
 
-test('חסר שם חוסם, וחסרה חתימה חוסמת', () => {
-  assert.equal(canSubmitTraining(allChecked(), '  ', 'sig').ok, false);
-  assert.match(canSubmitTraining(allChecked(), '  ', 'sig').reason, /שם/);
-  assert.equal(canSubmitTraining(allChecked(), 'רותי', null).ok, false);
-  assert.match(canSubmitTraining(allChecked(), 'רותי', null).reason, /חתימה/);
+test('תעודת זהות: לפחות 5 תווים, ודרכון עם אותיות עובר', () => {
+  assert.equal(idLooksValid('1234'), false);
+  assert.equal(idLooksValid('12-34'), false);
+  assert.equal(idLooksValid('012345678'), true);
+  assert.equal(idLooksValid('AB123456'), true);
 });
 
-test('הכל מסומן, שם וחתימה: מותר להחתים', () => {
-  assert.deepEqual(canSubmitTraining(allChecked(), 'רותי כהן', 'sig'), { ok: true });
+test('⭐ הנוסח: שני סעיפים עם תתי הסעיפים של הטופס, וסעיף 3 בשורה אחת', () => {
+  assert.equal(TRAINING_VERSION, 2);
+  assert.deepEqual(TRAINING_SECTIONS.map((s) => s.no), [1, 2]);
+  assert.deepEqual(TRAINING_SECTIONS[0].clauses.map((c) => c.mark), ['א', 'ב', 'ג', 'ד', 'ה', 'ו']);
+  assert.equal(TRAINING_SECTIONS[0].clauses.find((c) => c.mark === 'ה').sub.length, 2);
+  assert.deepEqual(TRAINING_SECTIONS[1].clauses.map((c) => c.mark), ['א', 'ב', 'ג', 'ד', 'ה']);
+  assert.match(TRAINING_SATISFACTION, /לשביעות רצוני/);
 });
 
-test('ההתקדמות סופרת נכון', () => {
-  const a = { [TRAINING_TOPICS[0].id]: true, [TRAINING_TOPICS[1].id]: true };
-  const p = trainingProgress(a);
-  assert.equal(p.checked, 2);
-  assert.equal(p.total, TRAINING_TOPICS.length);
-  assert.equal(p.missing.length, TRAINING_TOPICS.length - 2);
+test('🔴 כל קטע מודגש באמת מופיע בתוך הטקסט שלו', () => {
+  const all = TRAINING_SECTIONS.flatMap((s) => s.clauses.flatMap((c) => [c, ...(c.sub ?? [])]));
+  for (const c of all.filter((x) => x.bold)) assert.ok(c.text.includes(c.bold), c.text);
 });
 
-test('🔴 סימון פריט שאינו ברשימה אינו נחשב התקדמות', () => {
-  // ⭐ מגן על המקרה שבו מזהה בפרק הבטיחות ישתנה: הדיאלוג ימשיך לכתוב
-  // מזהים ישנים, והשער יחסום במקום להחתים על רשימה שלא סומנה.
-  assert.equal(trainingProgress({ 'לא-קיים': true }).checked, 0);
+test('יחס קרבה: רשימה שמתחילה בזכאי עצמו ונגמרת ב"אחר"', () => {
+  assert.equal(TRAINING_RELATIONS[0], 'הזכאי עצמו');
+  assert.equal(TRAINING_RELATIONS.at(-1), 'אחר');
 });
