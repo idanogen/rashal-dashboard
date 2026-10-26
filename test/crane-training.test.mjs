@@ -37,12 +37,17 @@ test('🔴 סעיף 4: כל אחד מארבעת השדות חוסם לבד', () 
   assert.match(noSig.reason, /חתימה/);
 });
 
-test('🔴 סעיף 6: יצרן, תאריך ייצור ומס"ד חובה (עידן: "סעיף 6 לחייב")', () => {
+test('🔴 סעיף 6: שלושת השדות, או צילום. אחד מהשניים חובה (עידן, 26/10)', () => {
   for (const k of ['manufacturer', 'productionDate', 'serial']) {
     const g = canSubmitTraining({ ...full(), sling: { ...full().sling, [k]: '' } });
     assert.equal(g.ok, false, k);
     assert.match(g.reason, /ערסל/);
   }
+  const empty = { manufacturer: '', productionDate: '', serial: '' };
+  assert.equal(canSubmitTraining({ ...full(), sling: empty }).ok, false);
+  assert.deepEqual(canSubmitTraining({ ...full(), sling: empty, slingPhoto: 'data:image/jpeg;base64,x' }), { ok: true });
+  // צילום לצד שדות חלקיים: הצילום מספיק.
+  assert.equal(canSubmitTraining({ ...full(), sling: { ...empty, serial: 'S1' }, slingPhoto: 'data:x' }).ok, true);
 });
 
 test('תעודת זהות: לפחות 5 תווים, ודרכון עם אותיות עובר', () => {
@@ -53,7 +58,7 @@ test('תעודת זהות: לפחות 5 תווים, ודרכון עם אותיו
 });
 
 test('⭐ הנוסח: שני סעיפים עם תתי הסעיפים של הטופס, וסעיף 3 בשורה אחת', () => {
-  assert.equal(TRAINING_VERSION, 2);
+  assert.equal(TRAINING_VERSION, 3);
   assert.deepEqual(TRAINING_SECTIONS.map((s) => s.no), [1, 2]);
   assert.deepEqual(TRAINING_SECTIONS[0].clauses.map((c) => c.mark), ['א', 'ב', 'ג', 'ד', 'ה', 'ו']);
   assert.equal(TRAINING_SECTIONS[0].clauses.find((c) => c.mark === 'ה').sub.length, 2);

@@ -28,6 +28,8 @@ export interface CraneFormInput {
   slingManufacturer?: string;
   slingProductionDate?: string;
   slingSerial?: string;
+  /** נתיב צילום הערסל בדלי `signed-forms` (`uploadSlingPhoto`). */
+  slingPhotoPath?: string | null;
 }
 
 export async function saveCraneForm(input: CraneFormInput): Promise<string> {
@@ -57,6 +59,7 @@ export async function saveCraneForm(input: CraneFormInput): Promise<string> {
       sling_manufacturer: input.slingManufacturer?.trim() || null,
       sling_production_date: input.slingProductionDate?.trim() || null,
       sling_serial: input.slingSerial?.trim() || null,
+      sling_photo_path: input.slingPhotoPath ?? null,
     })
     .select('id')
     .single();
@@ -91,6 +94,20 @@ export async function attachCraneFormPdf(
     p_file_des: fileDes,
   });
   if (error) throw new Error(`רישום ה-PDF נכשל: ${error.message}`);
+}
+
+/**
+ * צילום הערסל (26/10/2026, סעיף 6 של אישור ההדרכה): עולה לפני שמירת הטופס,
+ * כי המסד דוחה אישור בלי פרטי ערסל ובלי נתיב צילום (`crane_forms_training_v2_sling`).
+ */
+export async function uploadSlingPhoto(stopId: string, dataUrl: string): Promise<string> {
+  const blob = await (await fetch(dataUrl)).blob();
+  const path = `${stopId}/sling-${crypto.randomUUID()}.jpg`;
+  const { error } = await formsClient().storage
+    .from('signed-forms')
+    .upload(path, blob, { contentType: 'image/jpeg', upsert: false });
+  if (error) throw new Error(`העלאת צילום הערסל נכשלה: ${error.message}`);
+  return path;
 }
 
 /** שם הקובץ כפי שיופיע בפריוריטי: בעברית, בלי תווים אסורים. */

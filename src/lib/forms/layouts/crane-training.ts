@@ -3,7 +3,7 @@ import { INK, PEN, cell, esc, page, stamp, thickenSignature } from './common.ts'
 /**
  * תבנית ה-PDF של אישור קבלת ההדרכה על מנוף חשמלי.
  *
- * ⭐⭐ גרסה 2 (26/10/2026): העתק של טופס הנייר של ר.שעל, באותו סדר ובאותו
+ * ⭐⭐ גרסה 3 (26/10/2026): העתק של טופס הנייר של ר.שעל, באותו סדר ובאותו
  * נוסח: כותרת מכתב, תאריך, סעיפים 1 עד 3 כטקסט, וטבלאות 4, 5 ו-6. מתחת
  * לכותרת שורת זיהוי קטנה (לקוח ומנוף), שאינה בטופס המקורי ולכן אפורה.
  * 25/10 נולד ה-PDF כדי שהטופס ייכנס לכרטיס הלקוח בפריוריטי (עמי).
@@ -32,6 +32,8 @@ export interface CraneTrainingPdfInput {
   recipientIdNumber: string;
   recipientRelation: string;
   sling: { manufacturer: string; productionDate: string; serial: string };
+  /** צילום הערסל או התווית (26/10/2026): נכנס כעמוד שני של ה-PDF. */
+  slingPhoto?: string | null;
   signature: string | null;
   meta: { signedAt: Date; driverName: string; location?: { lat: number; lng: number } | null };
 }
@@ -108,7 +110,20 @@ export function craneTrainingLayout(i: CraneTrainingPdfInput): string {
 
     ${heading(lastNo + 3, 'פרטי הערסל שסופק')}
     ${table(['יצרן הערסל', 'תאריך ייצור', 'מס"ד'], v(i.sling.manufacturer) + v(i.sling.productionDate) + v(i.sling.serial))}
+    ${i.slingPhoto ? `<div style="font-size:12px;margin-top:6px">צורף צילום של הערסל, בעמוד הבא.</div>` : ''}
 
     ${stamp(i.meta)}
-  `);
+  `) + (i.slingPhoto ? photoPage(i.slingPhoto) : '');
+}
+
+/**
+ * ⭐ עמוד נפרד ולא בתוך העמוד הראשון: בווב ה-PDF נחתך כל A4 (`render.ts`) ובאפליקציה
+ * כל div בגוף הוא עמוד (`printableHtml`). בשני המקרים div שני = עמוד שני נקי.
+ */
+function photoPage(src: string): string {
+  return `<div dir="rtl" style="width:794px;height:1123px;box-sizing:border-box;padding:30px 40px;background:#fff;` +
+    `font-family:Arial,sans-serif;display:flex;flex-direction:column;align-items:center;gap:14px">
+    <div style="font-size:14px;font-weight:700;align-self:flex-start">6. פרטי הערסל שסופק: צילום</div>
+    <img src="${src}" style="max-width:714px;max-height:1000px;object-fit:contain" />
+  </div>`;
 }

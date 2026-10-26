@@ -1,7 +1,7 @@
 /**
  * אישור קבלת הדרכה על מנוף חשמלי: הטופס שהלקוח חותם עליו כשמנוף מגיע אליו.
  *
- * ⭐⭐ גרסה 2 (עידן, 26/10/2026): הטופס הוא העתק של טופס הנייר של ר.שעל
+ * ⭐⭐ גרסה 3 (עידן, 26/10/2026): הטופס הוא העתק של טופס הנייר של ר.שעל
  * (`~/Idan-HQ/meetings/rashal/2026-10-26-טופס-אישור-הדרכה-מנוף-מקור.pdf`),
  * "זה הטופס בכל פעם שמספקים מנוף חדש". סעיפים 1 עד 3 הם טקסט קבוע שהלקוח
  * מאשר בחתימה; הוא לא מסמן בהם כלום. עד גרסה 1 הטופס היה שמונה נושאי בטיחות
@@ -10,7 +10,8 @@
  * מה ממלאים (עידן):
  *   4. פרטי מקבל ההדרכה: שם ומשפחה, תעודת זהות, יחס קרבה לזכאי, חתימה. חובה.
  *   5. פרטי מבצע ההדרכה: השם של הנהג המחובר, לבד. "מספיק השם שלו", בלי חתימה.
- *   6. פרטי הערסל שסופק: יצרן, תאריך ייצור, מס"ד. חובה.
+ *   6. פרטי הערסל שסופק: יצרן, תאריך ייצור ומס"ד, או צילום (תווית הערסל).
+ *      "או שממלאים את כל הפרטים של 6 או שמצרפים תמונה, אחד מהם תנאי" (עידן, 26/10).
  *
  * 🔴 הנוסח כאן הוא הצהרה משפטית שהלקוח חותם עליה. שינוי בו = גרסה חדשה
  * (`TRAINING_VERSION`), כדי שטופס ישן יישאר קריא כפי שנחתם.
@@ -20,8 +21,12 @@
 
 export const TRAINING_TITLE = 'אישור קבלת הדרכה על מנוף חשמלי';
 
-/** גרסת הטופס. 🔴 נשמרת עם כל מילוי. 1 = נושאי בטיחות לסימון, 2 = טופס הנייר. */
-export const TRAINING_VERSION = 2;
+/**
+ * גרסת הטופס. 🔴 נשמרת עם כל מילוי. 1 = נושאי בטיחות לסימון, 3 = טופס הנייר.
+ * 🔴 אין 2 בכוונה: עד 26/10 הווב שמר על אישור הדרכה את גרסת רשימת הבדיקה (2),
+ * ושתי שורות כאלה קיימות. 3 מבדיל בלי ספק את טופס הנייר מכל מה שלפניו.
+ */
+export const TRAINING_VERSION = 3;
 
 export interface TrainingClause {
   /** האות או המספר כפי שמודפס בטופס: א, ב, 1. */
@@ -97,6 +102,8 @@ export interface TrainingInput {
   recipientRelation: string;
   signature: string | null;
   sling: { manufacturer: string; productionDate: string; serial: string };
+  /** צילום של הערסל או של התווית שלו, data URL. מחליף את שלושת השדות. */
+  slingPhoto?: string | null;
 }
 
 export interface TrainingGate {
@@ -113,6 +120,11 @@ export function idLooksValid(v: string): boolean {
   return v.replace(/[\s-]/g, '').length >= 5;
 }
 
+/** סעיף 6 מלא: שלושת השדות. */
+export function slingComplete(sl: TrainingInput['sling']): boolean {
+  return !!(sl.manufacturer.trim() && sl.productionDate.trim() && sl.serial.trim());
+}
+
 /**
  * האם מותר להחתים. ⭐ הודעה אחת בכל רגע, לפי סדר הטופס: קודם סעיף 4
  * (מה שהלקוח ממלא), אחר כך סעיף 6 (מה שהנהג ממלא), והחתימה אחרונה.
@@ -121,15 +133,15 @@ export function canSubmitTraining(i: TrainingInput): TrainingGate {
   if (!i.recipientName.trim()) return { ok: false, reason: 'חסר שם ושם משפחה של מקבל ההדרכה' };
   if (!idLooksValid(i.recipientIdNumber)) return { ok: false, reason: 'חסרה תעודת זהות של מקבל ההדרכה' };
   if (!i.recipientRelation.trim()) return { ok: false, reason: 'חסר יחס קרבה לזכאי' };
-  if (!i.sling.manufacturer.trim()) return { ok: false, reason: 'חסר יצרן הערסל' };
-  if (!i.sling.productionDate.trim()) return { ok: false, reason: 'חסר תאריך ייצור של הערסל' };
-  if (!i.sling.serial.trim()) return { ok: false, reason: 'חסר מס"ד של הערסל' };
+  if (!slingComplete(i.sling) && !i.slingPhoto) {
+    return { ok: false, reason: 'פרטי הערסל: למלא יצרן, תאריך ייצור ומס"ד, או לצרף צילום' };
+  }
   if (!i.signature) return { ok: false, reason: 'חסרה חתימה של מקבל ההדרכה' };
   return { ok: true };
 }
 
 /**
- * מה נשמר בעמודת `answers` של `crane_forms`. אין סימונים בגרסה 2, ולכן
+ * מה נשמר בעמודת `answers` של `crane_forms`. אין סימונים בגרסה 3, ולכן
  * נשמר שהלקוח אישר את שלושת הסעיפים בחתימה.
  */
 export const TRAINING_ANSWERS: Record<string, boolean> = { general: true, declaration: true, satisfaction: true };

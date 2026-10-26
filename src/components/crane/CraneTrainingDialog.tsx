@@ -20,7 +20,8 @@ import {
   canSubmitTraining,
   type TrainingClause,
 } from '@/lib/crane-training';
-import { attachCraneFormPdf, craneTrainingFileDes, saveCraneForm } from '@/lib/crane-forms';
+import { attachCraneFormPdf, craneTrainingFileDes, saveCraneForm, uploadSlingPhoto } from '@/lib/crane-forms';
+import { PhotoSlotInput } from '@/components/forms/PhotoSlotInput';
 import { craneTrainingLayout } from '@/lib/forms/layouts/crane-training';
 import { renderHtmlToPdf } from '@/lib/forms/render';
 import { SignaturePad } from './SignaturePad';
@@ -28,7 +29,7 @@ import { SignaturePad } from './SignaturePad';
 /**
  * אישור קבלת הדרכה על מנוף חשמלי, כטופס דיגיטלי שהלקוח חותם עליו במקום.
  *
- * ⭐⭐ גרסה 2 (26/10/2026): טופס הנייר של ר.שעל. סעיפים 1 עד 3 מוצגים
+ * ⭐⭐ גרסה 3 (26/10/2026): טופס הנייר של ר.שעל. סעיפים 1 עד 3 מוצגים
  * לקריאה, וממלאים את 4 (מקבל ההדרכה) ואת 6 (הערסל). 5 (מבצע ההדרכה) הוא
  * הנהג המחובר. השער והנוסח ב-`crane-training.ts`.
  */
@@ -66,11 +67,12 @@ export function CraneTrainingDialog({
   const [slingManufacturer, setSlingManufacturer] = useState('');
   const [slingDate, setSlingDate] = useState('');
   const [slingSerial, setSlingSerial] = useState('');
+  const [slingPhoto, setSlingPhoto] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const sling = { manufacturer: slingManufacturer, productionDate: slingDate, serial: slingSerial };
   const gate = canSubmitTraining({
-    recipientName: recipient, recipientIdNumber: idNumber, recipientRelation: relation, signature, sling,
+    recipientName: recipient, recipientIdNumber: idNumber, recipientRelation: relation, signature, sling, slingPhoto,
   });
 
   const buildPdf = (signedAt: Date) =>
@@ -85,6 +87,7 @@ export function CraneTrainingDialog({
       recipientIdNumber: idNumber,
       recipientRelation: relation,
       sling,
+      slingPhoto,
       signature,
       meta: { signedAt, driverName: technicianName ?? '' },
     }));
@@ -97,6 +100,7 @@ export function CraneTrainingDialog({
     setSlingManufacturer('');
     setSlingDate('');
     setSlingSerial('');
+    setSlingPhoto(null);
   };
 
   const submit = async () => {
@@ -115,6 +119,9 @@ export function CraneTrainingDialog({
       return;
     }
     try {
+      // 🔴 הצילום קודם: המסד דוחה אישור בלי ערסל ובלי צילום.
+      if (slingPhoto && !stopId) throw new Error('אי אפשר לצרף צילום בלי עצירה');
+      const slingPhotoPath = slingPhoto && stopId ? await uploadSlingPhoto(stopId, slingPhoto) : null;
       const formId = await saveCraneForm({
         formType: 'training',
         craneSerial,
@@ -133,6 +140,7 @@ export function CraneTrainingDialog({
         slingManufacturer,
         slingProductionDate: slingDate,
         slingSerial,
+        slingPhotoPath,
       });
       // ⭐ ה-PDF אחרי השמירה ולא בתוכה: כשל בצירוף לא מאבד את החתימה.
       if (stopId) {
@@ -219,11 +227,19 @@ export function CraneTrainingDialog({
           </div>
 
           <div className="rounded-xl border p-3" style={{ borderColor: '#e3e8f0' }}>
-            <h4 className="mb-2 text-sm font-bold" style={{ color: '#14223a' }}>6. פרטי הערסל שסופק</h4>
+            <h4 className="mb-1 text-sm font-bold" style={{ color: '#14223a' }}>6. פרטי הערסל שסופק</h4>
+            <p className="mb-2 text-xs text-slate-500">למלא את שלושת השדות, או לצרף צילום של הערסל או של התווית.</p>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-              <Field label="יצרן הערסל *" value={slingManufacturer} onChange={setSlingManufacturer} />
-              <Field label="תאריך ייצור *" value={slingDate} onChange={setSlingDate} />
-              <Field label='מס"ד *' value={slingSerial} onChange={setSlingSerial} />
+              <Field label="יצרן הערסל" value={slingManufacturer} onChange={setSlingManufacturer} />
+              <Field label="תאריך ייצור" value={slingDate} onChange={setSlingDate} />
+              <Field label='מס"ד' value={slingSerial} onChange={setSlingSerial} />
+            </div>
+            <div className="mt-2">
+              <PhotoSlotInput
+                slot={{ key: 'sling', label: 'או צילום הערסל', required: false, hint: 'התווית עם היצרן, תאריך הייצור והמס"ד' }}
+                value={slingPhoto}
+                onChange={setSlingPhoto}
+              />
             </div>
           </div>
         </div>
