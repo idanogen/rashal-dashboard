@@ -68,3 +68,14 @@ drop trigger if exists trg_customer_type_to_open_orders on public.priority_custo
 create trigger trg_customer_type_to_open_orders
   after update of customer_type on public.priority_customers
   for each row execute function public.customer_type_to_open_orders();
+
+-- השלמה חד פעמית (הורצה 26/10/2026, 69 הזמנות, 29 מהן מ-30 הימים האחרונים):
+-- הזמנות פתוחות שהכרטיס שלהן כבר קיבל סוג לפני שהטריגר למעלה היה קיים.
+-- בטוח להריץ שוב: מעדכן רק מה שעדיין שונה מהכרטיס.
+update public.orders o
+   set health_fund = pc.customer_type
+  from public.priority_customers pc
+ where pc.custname = o.customer_number
+   and pc.customer_type is not null
+   and o.order_status::text in ('ממתין לתאום', 'תואם')
+   and o.health_fund is distinct from pc.customer_type;
