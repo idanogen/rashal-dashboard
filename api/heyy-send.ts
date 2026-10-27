@@ -4,6 +4,7 @@ import { heyySendTemplate, heyySendText, isHeyyDemo } from './_lib/heyy-server.j
 import { normalizePhone, toE164 } from './_lib/phone.js';
 import { checkSuppressed } from './_lib/suppression.js';
 import { requireCaller, warnIfSecretMissing } from './_lib/require-caller.js';
+import { signedFormAttachment } from './_lib/signed-form-doc.js';
 
 /**
  * שליחה מהדשבורד וממנוע הסקרים. עוטף `heyySendText` / `heyySendTemplate`,
@@ -30,6 +31,9 @@ interface SendBody {
   orderId?: string;
   reminderKind?: 'delivery_reminder' | 'schedule_request' | 'team_notification' | 'custom';
   triggeredBy?: string;
+  /** העתק טופס חתום (27/10/2026): נתיב ה-PDF בדלי `signed-forms`. קורא מכונתי בלבד. */
+  documentPath?: string;
+  documentName?: string;
 }
 
 /**
@@ -107,11 +111,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
+  // ── מסמך מצורף: רק לקורא מכונתי, ורק לתבנית ───────────────
+  // 🔴 תבנית שמבטיחה מסמך לא יוצאת בלעדיו: כשל כאן עוצר את השליחה.
+  let attachments: Array<{ id: string; fileId: string }> | undefined;
+  if (body.documentPath) {
+    if (caller.kind !== 'service' || body.kind !== 'template') {
+      return res.status(403).json({ ok: false, error: 'document_not_allowed' });
+    }
+    if (!isHeyyDemo) {
+      try {
+        attachments = await signedFormAttachment(body.documentPath, body.templateId ?? '', body.documentName || 'טופס.pdf');
+      } catch (e) {
+        const detail = e instanceof Error ? e.message : String(e);
+        console.error('[heyy-send] document attach failed', { detail, path: body.documentPath });
+        return res.status(502).json({ ok: false, error: 'document_upload_failed', statusDetail: detail.slice(0, 300) });
+      }
+    }
+  }
+
   // Call heyy
   const result =
     body.kind === 'text'
       ? await heyySendText(e164, body.bodyText ?? '')
-      : await heyySendTemplate(e164, body.templateId ?? '', normalizeVariables(body));
+      : await heyySendTemplate(e164, body.templateId ?? '', normalizeVariables(body), attachments);
 
   // Log to whatsapp_outbound regardless of success
   const { data: outboundRow, error: outboundErr } = await supabaseAdmin

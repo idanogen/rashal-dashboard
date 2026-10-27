@@ -64,7 +64,9 @@ export async function heyySendText(phoneE164: string, body: string): Promise<Hey
 export async function heyySendTemplate(
   phoneE164: string,
   templateId: string,
-  variables: Array<{ name: string; value: string }> = []
+  variables: Array<{ name: string; value: string }> = [],
+  /** מסמך מצורף (העתק טופס חתום ללקוח, 27/10/2026). ראה `_lib/signed-form-doc.ts`. */
+  attachments?: Array<{ id: string; fileId: string }>,
 ): Promise<HeyyApiResult> {
   if (isHeyyDemo) {
     return { ok: true, waMessageId: `demo-tpl-${Date.now()}`, status: 'sent', statusDetail: '[DEMO] not sent to heyy' };
@@ -79,5 +81,5 @@ export async function heyySendTemplate(
       statusDetail: `Template ${templateId} is a placeholder: register the real template in heyy and update src/lib/heyy/templates.ts`,
     };
   }
-  return toApiResult(await sendTemplate({ phoneE164, templateId, variables: variablesToV3(variables) }));
+  return toApiResult(await sendTemplate({ phoneE164, templateId, variables: variablesToV3(variables), attachments }));
 }
