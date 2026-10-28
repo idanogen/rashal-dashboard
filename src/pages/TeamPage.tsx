@@ -33,6 +33,7 @@ import {
   type AssigneeKind,
 } from '@/types/assignee';
 import { cn } from '@/lib/utils';
+import { describeSyncReport, useDriverSyncReports } from '@/hooks/useDriverSyncReports';
 
 /**
  * מסך צוות השטח.
@@ -121,6 +122,8 @@ interface TableProps {
 }
 
 function TeamTable({ rows, onPatch, busy }: TableProps) {
+  // האפליקציה בלי קליטה (28/10/2026): מתי הטלפון של כל נהג דיווח, וכמה ממתין בתור.
+  const { data: syncReports } = useDriverSyncReports();
   if (rows.length === 0) {
     return <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">אין רשומות</p>;
   }
@@ -133,6 +136,7 @@ function TeamTable({ rows, onPatch, busy }: TableProps) {
             <TableHead>תפקיד בשטח</TableHead>
             <TableHead>טלפון</TableHead>
             <TableHead>צבע ביומן</TableHead>
+            <TableHead>האפליקציה</TableHead>
             <TableHead className="text-end">פעיל</TableHead>
           </TableRow>
         </TableHeader>
@@ -168,6 +172,9 @@ function TeamTable({ rows, onPatch, busy }: TableProps) {
                 </TableCell>
                 <TableCell>
                   <ColorPicker value={a.color} busy={busy} onChange={(color) => onPatch({ name: a.name, fields: { color } })} />
+                </TableCell>
+                <TableCell>
+                  <SyncCell report={syncReports?.[a.name]} />
                 </TableCell>
                 <TableCell className="text-end">
                   <Button
@@ -333,4 +340,13 @@ function CreateAssigneeDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+const SYNC_TONE = {
+  ok: 'text-emerald-700', warn: 'text-amber-700', bad: 'text-red-700 font-semibold', none: 'text-muted-foreground',
+} as const;
+
+function SyncCell({ report }: { report: Parameters<typeof describeSyncReport>[0] }) {
+  const d = describeSyncReport(report);
+  return <span className={cn('text-xs', SYNC_TONE[d.tone])} title="דיווח הטלפון: מתי סנכרן לאחרונה וכמה פעולות ממתינות לשליחה">{d.text}</span>;
 }

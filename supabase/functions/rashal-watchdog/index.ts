@@ -10,6 +10,7 @@ import { assessHeyy, type HeyyHealth } from "./heyy-health.ts";
 import { CRANE_JOB, checkCraneTraining } from "./crane-training-check.ts";
 import { PARKED_JOB, checkParkedPushes } from "./parked-check.ts";
 import { SCREEN_JOB, checkScreenLoads } from "./screen-loads-check.ts";
+import { STUCK_JOB, checkStuckActions } from "./stuck-actions-check.ts";
 import { requireSecret } from "../_shared/require-secret.ts";
 
 const sb = createClient(
@@ -303,6 +304,16 @@ Deno.serve(async (req: Request) => {
   } catch (e) {
     report[CRANE_JOB] = `check crashed: ${e instanceof Error ? e.message : String(e)}`;
     console.error("[watchdog] crane-training check crashed", e);
+  }
+
+  // שאלה נוספת (28/10/2026, אפליקציה בלי קליטה): פעולה שהטכנאי עשה בטלפון
+  // ולא הגיעה לשרת למרות שהמכשיר מסנכרן. בלי קליטה הוא לא מדווח וזה בסדר;
+  // מדווח ועדיין תקוע זו תקלה.
+  try {
+    report[STUCK_JOB] = await checkStuckActions(now, alerts.get(STUCK_JOB), { sb, sendEmail, wrap, realertHours: REALERT_HOURS });
+  } catch (e) {
+    report[STUCK_JOB] = `check crashed: ${e instanceof Error ? e.message : String(e)}`;
+    console.error("[watchdog] stuck-actions check crashed", e);
   }
 
   return new Response(JSON.stringify({ checked_at: now.toISOString(), report }), { headers: { "Content-Type": "application/json" } });
