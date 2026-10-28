@@ -21,19 +21,19 @@ export const mohReturn: FormDefinition = {
       title: 'פרטי הספק',
       fields: [
         { key: 'supplierName', label: 'שם הספק', type: 'text', prefill: 'supplierName', readOnly: true },
-        { key: 'formDate', label: 'תאריך', type: 'date', prefill: 'today', required: true },
+        { key: 'formDate', label: 'תאריך', type: 'date', prefill: 'today' },
       ],
     },
     {
       title: 'פרטי התושב הזכאי למכשיר המוחזר',
       fields: [
-        { key: 'lastName', label: 'שם המשפחה', type: 'text', prefill: 'lastName', required: true },
-        { key: 'firstName', label: 'השם הפרטי', type: 'text', prefill: 'firstName', required: true },
-        { key: 'idNumber', label: 'מספר הזהות', type: 'id', prefill: 'idNumber', required: true },
-        { key: 'phone', label: 'מספר הטלפון', type: 'tel', prefill: 'phone', required: true },
+        { key: 'lastName', label: 'שם המשפחה', type: 'text', prefill: 'lastName' },
+        { key: 'firstName', label: 'השם הפרטי', type: 'text', prefill: 'firstName' },
+        { key: 'idNumber', label: 'מספר הזהות', type: 'id', prefill: 'idNumber' },
+        { key: 'phone', label: 'מספר הטלפון', type: 'tel', prefill: 'phone' },
         { key: 'mobile', label: 'מספר הטלפון הנייד', type: 'tel' },
         { key: 'phoneAlt', label: 'מספר טלפון נוסף', type: 'tel', prefill: 'phoneAlt' },
-        { key: 'returnerName', label: 'שם מחזיר המכשיר', type: 'text', prefill: 'customerName', required: true },
+        { key: 'returnerName', label: 'שם מחזיר המכשיר', type: 'text', prefill: 'customerName' },
         { key: 'returnerPhone', label: 'מספר הטלפון', type: 'tel' },
         { key: 'returnerMobile', label: 'מספר הטלפון הנייד', type: 'tel' },
       ],
@@ -57,7 +57,7 @@ export const mohReturn: FormDefinition = {
       fields: [
         { key: 'notes', label: 'הערה', type: 'textarea', span: 3 },
         {
-          key: 'noteFate', label: 'שטר/י החוב', type: 'radio', required: true, span: 3,
+          key: 'noteFate', label: 'שטר/י החוב', type: 'radio', span: 3,
           options: [
             { value: 'kept', label: 'נשאר/ו בלשכת הבריאות. לא יעשה בהם כל שימוש אם המכשירים הוחזרו בשלמותם' },
             { value: 'handed', label: 'נמסרו לידי עושה השטר' },

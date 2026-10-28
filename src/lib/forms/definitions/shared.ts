@@ -24,16 +24,15 @@ export function returnDeviceRows(opts: {
   const out: FormField[] = [];
   for (let i = 0; i < opts.rows; i++) {
     const n = i + 1;
-    const first = i === 0;
     out.push(
-      { key: `dev${n}Name`, label: `${n}. ${opts.nameLabel}`, type: 'text', required: first, fromLine: { index: i, prop: 'name' } },
-      { key: `dev${n}Serial`, label: opts.serialLabel, type: 'text', required: first, fromLine: { index: i, prop: 'serial' } },
+      { key: `dev${n}Name`, label: `${n}. ${opts.nameLabel}`, type: 'text', fromLine: { index: i, prop: 'name' } },
+      { key: `dev${n}Serial`, label: opts.serialLabel, type: 'text', fromLine: { index: i, prop: 'serial' } },
     );
     if (opts.requestNumber) out.push({ key: `dev${n}Request`, label: 'מספר בקשה', type: 'text' });
     if (opts.purchaseDate) out.push({ key: `dev${n}Purchase`, label: 'תאריך רכישה', type: 'date' });
     out.push(
       {
-        key: `dev${n}Condition`, label: 'מצב המכשיר', type: 'radio', required: first,
+        key: `dev${n}Condition`, label: 'מצב המכשיר', type: 'radio',
         options: [
           { value: 'ok', label: opts.conditionLabels[0] },
           { value: 'missing', label: opts.conditionLabels[1] },
@@ -50,7 +49,7 @@ export function returnDeviceRows(opts: {
 export function returnReason(options: string[]): FormField[] {
   return [
     {
-      key: 'returnReason', label: 'סיבת ההחזרה', type: 'radio', required: true, span: 3,
+      key: 'returnReason', label: 'סיבת ההחזרה', type: 'radio', span: 3,
       options: options.map((o) => ({ value: o, label: o })),
     },
     { key: 'returnReasonDetail', label: 'פרט', type: 'text', span: 3 },

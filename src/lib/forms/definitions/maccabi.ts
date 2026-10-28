@@ -21,7 +21,7 @@ export const maccabiDelivery: FormDefinition = {
       title: 'פרטי הספק',
       fields: [
         { key: 'supplierName', label: 'שם הספק', type: 'text', prefill: 'supplierName', readOnly: true },
-        { key: 'formDate', label: 'תאריך', type: 'date', prefill: 'today', required: true },
+        { key: 'formDate', label: 'תאריך', type: 'date', prefill: 'today' },
         { key: 'district', label: 'שייך למחוז', type: 'text' },
         { key: 'pickupAddress', label: 'כתובת לאיסוף', type: 'text', prefill: 'fullAddress', span: 3 },
       ],
@@ -29,15 +29,15 @@ export const maccabiDelivery: FormDefinition = {
     {
       title: 'פרטי חבר הזכאי למכשיר',
       fields: [
-        { key: 'lastName', label: 'שם המשפחה', type: 'text', prefill: 'lastName', required: true },
-        { key: 'firstName', label: 'השם הפרטי', type: 'text', prefill: 'firstName', required: true },
-        { key: 'idNumber', label: 'מספר תעודת הזהות', type: 'id', prefill: 'idNumber', required: true },
-        { key: 'address', label: 'כתובת', type: 'text', prefill: 'address', required: true },
+        { key: 'lastName', label: 'שם המשפחה', type: 'text', prefill: 'lastName' },
+        { key: 'firstName', label: 'השם הפרטי', type: 'text', prefill: 'firstName' },
+        { key: 'idNumber', label: 'מספר תעודת הזהות', type: 'id', prefill: 'idNumber' },
+        { key: 'address', label: 'כתובת', type: 'text', prefill: 'address' },
         { key: 'houseNumber', label: 'מספר בית', type: 'text', prefill: 'houseNumber' },
-        { key: 'city', label: 'עיר', type: 'text', prefill: 'city', required: true },
+        { key: 'city', label: 'עיר', type: 'text', prefill: 'city' },
         // ⭐ כך מודפס בטופס האספקה של מכבי ("מחזיר" ולא "מחזיק"), והועתק כמו שהוא.
         { key: 'holderName', label: 'שם מחזיר המכשיר', type: 'text', prefill: 'customerName' },
-        { key: 'phone', label: 'מספר טלפון נייד/בית', type: 'tel', prefill: 'phone', required: true },
+        { key: 'phone', label: 'מספר טלפון נייד/בית', type: 'tel', prefill: 'phone' },
         { key: 'phoneAlt', label: 'מספר טלפון נייד נוסף', type: 'tel', prefill: 'phoneAlt' },
       ],
     },
@@ -45,11 +45,11 @@ export const maccabiDelivery: FormDefinition = {
       title: 'פרטי הפריט שסופק לחבר',
       fields: [
         {
-          key: 'deviceSource', label: 'המכשיר', type: 'radio', required: true,
+          key: 'deviceSource', label: 'המכשיר', type: 'radio',
           options: [{ value: 'new', label: 'מכשיר חדש' }, { value: 'stock', label: 'מכשיר מהמלאי' }],
         },
-        { key: 'deviceDesc', label: 'תיאור המכשיר', type: 'text', prefill: 'items', required: true, span: 2 },
-        { key: 'deviceSerial', label: 'מספר סודר (סריאלי) של המכשיר', type: 'text', prefill: 'deviceSerial', required: true },
+        { key: 'deviceDesc', label: 'תיאור המכשיר', type: 'text', prefill: 'items', span: 2 },
+        { key: 'deviceSerial', label: 'מספר סודר (סריאלי) של המכשיר', type: 'text', prefill: 'deviceSerial' },
         { key: 'deviceModel', label: 'הדגם שסופק', type: 'text', prefill: 'deviceModel', span: 2 },
       ],
     },
@@ -57,7 +57,7 @@ export const maccabiDelivery: FormDefinition = {
       title: 'השתתפות עצמית',
       fields: [
         {
-          key: 'copay', label: 'השתתפות עצמית', type: 'radio', required: true, span: 2,
+          key: 'copay', label: 'השתתפות עצמית', type: 'radio', span: 2,
           options: [
             { value: 'exempt', label: 'פטור מהשתתפות עצמית' },
             { value: 'pays', label: 'לחבר יש השתתפות עצמית' },
@@ -85,7 +85,7 @@ export const maccabiReturn: FormDefinition = {
       title: 'פרטי הספק',
       fields: [
         { key: 'supplierName', label: 'שם הספק', type: 'text', prefill: 'supplierName', readOnly: true },
-        { key: 'formDate', label: 'תאריך', type: 'date', prefill: 'today', required: true },
+        { key: 'formDate', label: 'תאריך', type: 'date', prefill: 'today' },
         { key: 'district', label: 'שייך למחוז', type: 'text' },
         { key: 'pickupAddress', label: 'כתובת לאיסוף', type: 'text', prefill: 'fullAddress', span: 3 },
       ],
@@ -93,14 +93,14 @@ export const maccabiReturn: FormDefinition = {
     {
       title: 'פרטי חבר הזכאי למכשיר המוחזר',
       fields: [
-        { key: 'lastName', label: 'שם המשפחה', type: 'text', prefill: 'lastName', required: true },
-        { key: 'firstName', label: 'השם הפרטי', type: 'text', prefill: 'firstName', required: true },
-        { key: 'idNumber', label: 'מספר תעודת הזהות', type: 'id', prefill: 'idNumber', required: true },
+        { key: 'lastName', label: 'שם המשפחה', type: 'text', prefill: 'lastName' },
+        { key: 'firstName', label: 'השם הפרטי', type: 'text', prefill: 'firstName' },
+        { key: 'idNumber', label: 'מספר תעודת הזהות', type: 'id', prefill: 'idNumber' },
         { key: 'address', label: 'כתובת', type: 'text', prefill: 'address' },
         { key: 'houseNumber', label: 'מספר בית', type: 'text', prefill: 'houseNumber' },
         { key: 'city', label: 'עיר', type: 'text', prefill: 'city' },
-        { key: 'returnerName', label: 'שם מחזיר המכשיר', type: 'text', prefill: 'customerName', required: true },
-        { key: 'phone', label: 'מספר טלפון נייד/בית', type: 'tel', prefill: 'phone', required: true },
+        { key: 'returnerName', label: 'שם מחזיר המכשיר', type: 'text', prefill: 'customerName' },
+        { key: 'phone', label: 'מספר טלפון נייד/בית', type: 'tel', prefill: 'phone' },
         { key: 'phoneAlt', label: 'מספר טלפון נייד נוסף', type: 'tel', prefill: 'phoneAlt' },
       ],
     },

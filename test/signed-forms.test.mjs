@@ -67,7 +67,9 @@ test('ההגדרות שלמות: מפתחות ייחודיים, ושדה חוב�
     if (d.photoOnly) {
       assert.ok(d.photos.some((p) => p.required), `${d.key}: טופס צילום בלי צילום חובה`);
     } else {
-      assert.ok(d.sections.some((s) => s.fields.some((f) => f.required)), d.key);
+      // 🔴 הכרעת עידן 28/10/2026: בשטח חובה רק החתימות, אף שדה (ת"ז, סכום) לא חוסם.
+      const req = d.sections.flatMap((s) => s.fields.filter((f) => f.required).map((f) => f.label));
+      assert.deepEqual(req, [], `${d.key}: שדות חובה על הטכנאי: ${req.join(', ')}`);
       assert.ok(d.signatures.some((s) => s.required), `${d.key}: אין חתימת חובה`);
     }
   }
@@ -105,8 +107,9 @@ test('מילוי מוקדם מקריאה: שם, כתובת, מכשיר, תארי
   assert.equal(v.deviceSerial, 'S-1');
   assert.equal(v.fault1, 'גלגל שבור');
   assert.equal(v.supplierName, 'ר.שעל');
-  // ת"ז לא קיימת אצלנו, ולכן היא חובה שעדיין ריקה
-  assert.ok(missingRequired(def, v).includes('מספר הזהות'));
+  // ת"ז לא קיימת אצלנו ונשארת ריקה, ומ-28/10 היא לא חוסמת: שום שדה לא חסר
+  assert.equal(v.idNumber, '');
+  assert.deepEqual(missingRequired(def, v), []);
 });
 
 test('שורות האיסוף ממלאות את טבלת המכשירים בטופס ההחזרה', () => {

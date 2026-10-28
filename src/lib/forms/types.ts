@@ -30,6 +30,11 @@ export interface FormField {
   type: FieldType;
   /** מאיפה מגיע הערך ההתחלתי. השדה נשאר ניתן לעריכה אלא אם readOnly. */
   prefill?: PrefillKey;
+  /**
+   * 🔴 הכרעת עידן 28/10/2026: בשטח חובה רק החתימות (וצילום בטופס צילום). אף שדה, כולל
+   * ת"ז וסכום, אינו חוסם את הטכנאי; המשרד משלים לפני ההעתק לקופה. `required` על שדה
+   * נשאר בטיפוס לתאימות, אבל ההגדרות לא משתמשות בו והבדיקה אוכפת.
+   */
   required?: boolean;
   readOnly?: boolean;
   placeholder?: string;

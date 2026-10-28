@@ -23,12 +23,12 @@ export const leumitDelivery: FormDefinition = {
     {
       title: 'פרטי הלקוח',
       fields: [
-        { key: 'fullName', label: 'שם מלא', type: 'text', prefill: 'customerName', required: true },
-        { key: 'idNumber', label: 'תעודת זהות', type: 'id', prefill: 'idNumber', required: true },
-        { key: 'phone', label: 'מספר טלפון', type: 'tel', prefill: 'phone', required: true },
+        { key: 'fullName', label: 'שם מלא', type: 'text', prefill: 'customerName' },
+        { key: 'idNumber', label: 'תעודת זהות', type: 'id', prefill: 'idNumber' },
+        { key: 'phone', label: 'מספר טלפון', type: 'tel', prefill: 'phone' },
         {
           key: 'fullAddress', label: 'כתובת מגורים (רחוב, מס\' בית, שם היישוב, מיקוד)',
-          type: 'text', prefill: 'fullAddress', required: true, span: 3,
+          type: 'text', prefill: 'fullAddress', span: 3,
         },
       ],
     },
@@ -38,13 +38,13 @@ export const leumitDelivery: FormDefinition = {
       fields: [
         ...[1, 2, 3, 4, 5].flatMap((n): FormField[] => [
           {
-            key: `item${n}State`, label: `${n}. פריט חדש/מחודש`, type: 'radio', required: n === 1,
+            key: `item${n}State`, label: `${n}. פריט חדש/מחודש`, type: 'radio',
             options: [{ value: 'new', label: 'חדש' }, { value: 'refurbished', label: 'מחודש' }],
           },
           { key: `item${n}Treatment`, label: 'קוד טיפול', type: 'text' },
           { key: `item${n}Commitment`, label: 'מספר התחייבות', type: 'text' },
           { key: `item${n}Catalog`, label: 'מספר קטלוגי', type: 'text', fromLine: { index: n - 1, prop: 'catalog' } },
-          { key: `item${n}Model`, label: 'דגם פריט שסופק', type: 'text', required: n === 1, span: 2,
+          { key: `item${n}Model`, label: 'דגם פריט שסופק', type: 'text', span: 2,
             fromLine: { index: n - 1, prop: 'name' } },
         ]),
         { key: 'supplierName', label: 'שם הספק', type: 'text', prefill: 'supplierName', readOnly: true },
@@ -81,18 +81,18 @@ export const leumitReturn: FormDefinition = {
       title: 'פרטי הספק',
       fields: [
         { key: 'supplierName', label: 'שם הספק', type: 'text', prefill: 'supplierName', readOnly: true },
-        { key: 'formDate', label: 'תאריך', type: 'date', prefill: 'today', required: true },
+        { key: 'formDate', label: 'תאריך', type: 'date', prefill: 'today' },
         { key: 'pickupAddress', label: 'כתובת לאיסוף', type: 'text', prefill: 'fullAddress' },
       ],
     },
     {
       title: 'פרטי הלקוח הזכאי למכשיר המוחזר',
       fields: [
-        { key: 'customerName', label: 'שם הלקוח', type: 'text', prefill: 'customerName', required: true },
-        { key: 'idNumber', label: 'מספר תעודת זהות', type: 'id', prefill: 'idNumber', required: true },
-        { key: 'phone', label: 'טלפון', type: 'tel', prefill: 'phone', required: true },
+        { key: 'customerName', label: 'שם הלקוח', type: 'text', prefill: 'customerName' },
+        { key: 'idNumber', label: 'מספר תעודת זהות', type: 'id', prefill: 'idNumber' },
+        { key: 'phone', label: 'טלפון', type: 'tel', prefill: 'phone' },
         { key: 'phoneAlt', label: 'טלפון נוסף', type: 'tel', prefill: 'phoneAlt' },
-        { key: 'returnerName', label: 'שם מחזיר המכשיר', type: 'text', prefill: 'customerName', required: true },
+        { key: 'returnerName', label: 'שם מחזיר המכשיר', type: 'text', prefill: 'customerName' },
         { key: 'returnerPhone', label: 'מספר טלפון', type: 'tel' },
       ],
     },
@@ -117,7 +117,7 @@ export const leumitReturn: FormDefinition = {
       fields: [
         { key: 'notes', label: 'הערה', type: 'textarea', span: 3 },
         {
-          key: 'noteFate', label: 'השטר/אישור ההתחייבות', type: 'radio', required: true, span: 3,
+          key: 'noteFate', label: 'השטר/אישור ההתחייבות', type: 'radio', span: 3,
           options: [
             { value: 'kept', label: 'נשאר/ו בלאומית. לא יעשה בהם כל שימוש אם המכשירים הוחזרו בשלמותם' },
             { value: 'handed', label: 'נמסרו לידי עושה השטר' },
