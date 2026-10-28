@@ -34,3 +34,19 @@ test('תיאור השינוי להערת המערכת', () => {
   const p = buildStopDetailsPatch(cur, { address: 'בית ספר חצב', city: 'חדרה', phone: '' });
   assert.equal(describeStopDetailsChange(cur, p), 'כתובת: הרצל 5 ← בית ספר חצב · טלפון: 0523694547 ← ריק');
 });
+
+test('28/10: סיכום התוצאה של stop_details_change לטוסט ולהודעה', async () => {
+  const { summarizeStopDetailsResult, SCOPE_OPTIONS, scopeLabel } = await import('../src/lib/stop-details.ts');
+  assert.equal(summarizeStopDetailsResult({ changed: false }), 'לא השתנה כלום.');
+  const once = summarizeStopDetailsResult({ changed: true, scope: 'once', description: 'טלפון: א ← ב' });
+  assert.equal(once, 'טלפון: א ← ב · המשרד קיבל מייל');
+  const perm = summarizeStopDetailsResult({
+    changed: true, scope: 'permanent', description: 'כתובת: א ← ב', other_stops_updated: 2, priority_contact_added: true,
+  });
+  assert.ok(perm.includes('עודכנו גם 2 ביקורים'));
+  assert.ok(perm.includes('הנייד נוסף לפריוריטי'));
+  assert.equal(SCOPE_OPTIONS.map((o) => o.value).join(','), 'once,permanent');
+  assert.equal(scopeLabel('permanent'), 'קבוע ללקוח');
+  // 🔴 בלי גרש ארוך בטקסטים שמגיעים למסך
+  for (const o of SCOPE_OPTIONS) assert.ok(!/[—–]/.test(o.label + o.hint));
+});

@@ -30,6 +30,8 @@ as $$
       when te.order_id is not null then trim('הזמנה ' || coalesce(o.priority_order_id, ''))
       when te.service_call_id is not null then trim('קריאה ' || coalesce(sc.priority_call_id, ''))
       when p.id is not null then trim('איסוף ' || coalesce(p.priority_pickup_id, ''))
+      -- 28/10/2026: עדכון קבוע של טלפון/כתובת מהשטח (stop_details_change) נכנס לכרטיס כשורה.
+      when te.metadata->>'action' = 'field_change' then 'עדכון מהשטח'
       when te.customer_number is not null then 'וואטסאפ'
       else 'משימה'
     end as ctx

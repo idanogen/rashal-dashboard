@@ -1,8 +1,10 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { geocodeStopAddress, updateStopDetails } from '@/lib/calendar-stops';
-import { persistTimelineEvent } from '@/lib/timeline';
-import { useChatAuthor } from '@/hooks/useTimeline';
-import { buildStopDetailsPatch, describeStopDetailsChange, type StopDetailsCurrent, type StopDetailsForm } from '@/lib/stop-details';
+import { geocodeStopAddress } from '@/lib/calendar-stops';
+import { supabase } from '@/lib/supabase';
+import {
+  buildStopDetailsPatch, summarizeStopDetailsResult,
+  type StopDetailsChangeResult, type StopDetailsCurrent, type StopDetailsForm, type StopDetailsScope,
+} from '@/lib/stop-details';
 import type { StopSourceType } from '@/types/calendar-stop';
 import { toast } from 'sonner';
 
@@ -13,42 +15,38 @@ export interface StopDetailsRef extends StopDetailsCurrent {
 }
 
 /**
- * עריכת פרטי עצירה אחרי שיבוץ. העצירה היא העותק שלנו: פריוריטי לא נוגעת.
- * השינוי נרשם כהודעת מערכת בצ'אט של ההזמנה או הקריאה, כדי שמי שפותח את
- * הכרטיס יראה למה הכתובת שונה ממה שכתוב בפריוריטי.
+ * עריכת פרטי עצירה אחרי שיבוץ. מ-28/10/2026 הכתיבה היא במסד
+ * (`stop_details_change`): אותה פונקציה משרתת את האפליקציה, והיא כותבת את
+ * העצירה, את הודעת המערכת בצ'אט, את יומן השינויים והמייל למשרד, ובקבוע גם
+ * את ההוספה לפריוריטי. כאן נשאר רק המיקום מחדש על המפה (שירות המיפוי זמין
+ * לדפדפן) והרענון.
  */
 export function useUpdateStopDetails() {
   const queryClient = useQueryClient();
-  const { userId, userName } = useChatAuthor();
 
   return useMutation({
-    mutationFn: async ({ stop, form }: { stop: StopDetailsRef; form: StopDetailsForm }) => {
+    mutationFn: async ({ stop, form, scope }: { stop: StopDetailsRef; form: StopDetailsForm; scope: StopDetailsScope }) => {
       const patch = buildStopDetailsPatch(stop, form);
-      if (patch.empty) return { patch, updated: null };
-      const updated = await updateStopDetails(stop.stopId, patch.fields, patch.relocate);
-      if (patch.relocate) {
-        // מיקום חדש על המפה, ואז רענון כדי שהסיכה תזוז.
-        void geocodeStopAddress({ id: stop.stopId, address: updated.address, city: updated.city })
+      if (patch.empty) return { changed: false } as StopDetailsChangeResult;
+      const { data, error } = await supabase.rpc('stop_details_change', {
+        p_stop_id: stop.stopId, p_address: form.address, p_city: form.city, p_phone: form.phone, p_scope: scope,
+      });
+      if (error) throw new Error(error.message);
+      const result = (data ?? { changed: false }) as StopDetailsChangeResult;
+      if (result.changed && result.relocate) {
+        // מיקום חדש על המפה, ואז רענון כדי שהסיכה תזוז. השרת משלים אם הדפדפן לא הספיק.
+        const address = 'address' in patch.fields ? patch.fields.address : stop.address ?? undefined;
+        const city = 'city' in patch.fields ? patch.fields.city : stop.city ?? undefined;
+        void geocodeStopAddress({ id: stop.stopId, address, city })
           .then(() => queryClient.invalidateQueries({ queryKey: ['calendarStops'] }));
       }
-      if (stop.sourceType === 'service' || stop.sourceType === 'delivery') {
-        await persistTimelineEvent({
-          id: `event-${Date.now()}`,
-          source: { kind: stop.sourceType === 'service' ? 'service' : 'order', id: stop.sourceId },
-          type: 'reschedule',
-          userId,
-          userName,
-          content: `✏️ פרטי העצירה עודכנו ע״י ${userName}: ${describeStopDetailsChange(stop, patch)}. בפריוריטי לא השתנה כלום.`,
-          metadata: { action: 'stop_details', ...patch.fields },
-        }).catch(() => undefined);
-      }
-      return { patch, updated };
+      return result;
     },
-    onSuccess: ({ patch }, vars) => {
-      if (patch.empty) return;
+    onSuccess: (result, vars) => {
+      if (!result.changed) return;
       queryClient.invalidateQueries({ queryKey: ['calendarStops'] });
       if (vars.stop.sourceId) queryClient.invalidateQueries({ queryKey: ['timeline', vars.stop.sourceId] });
-      toast.success('פרטי העצירה עודכנו', { description: describeStopDetailsChange(vars.stop, patch) });
+      toast.success('פרטי העצירה עודכנו', { description: summarizeStopDetailsResult(result) });
     },
     onError: (err) => {
       toast.error('העדכון נכשל', { description: err instanceof Error ? err.message : undefined });
