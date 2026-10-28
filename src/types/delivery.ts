@@ -44,6 +44,10 @@ export interface CalendarStop {
   address?: string;
   city?: string;
   phone?: string;
+  /** 28/10/2026: טלפון נוסף והכתובת המקורית (לא דורסים). */
+  phoneExtra?: string;
+  originalAddress?: string;
+  originalCity?: string;
   /** נקודה מדויקת (geocoded) או מרכז-עיר (fallback) — לציור על המפה ולניווט. */
   coordinates?: { lat: number; lng: number };
   /** 'geocoded' = מדויק, 'city' = לפי עיר, undefined = אין מיקום. */

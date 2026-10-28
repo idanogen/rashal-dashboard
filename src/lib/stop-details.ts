@@ -3,12 +3,15 @@
  * לפעמים הטיפול במסגרת". הלוגיקה הטהורה: מה השתנה ומה זה גורר.
  *
  * ⭐ 28/10/2026 (עידן): גם הנהג והטכנאי עורכים מהאפליקציה, ובמעמד השמירה
- * בוחרים היקף: חד פעמי (רק הביקור הזה) או קבוע (הלקוח). הכתיבה עצמה עברה
- * למסד (`stop_details_change`), מקור אחד לדשבורד ולאפליקציה; כאן נשארת
- * ההכרעה "מה השתנה" לתצוגה (כפתור שמור, אזהרת מיקום, טוסט).
+ * בוחרים היקף: חד פעמי (רק הביקור הזה) או קבוע (הלקוח). הכתיבה עצמה במסד
+ * (`stop_details_change`), מקור אחד לדשבורד ולאפליקציה; כאן נשארת ההכרעה
+ * "מה השתנה" לתצוגה (כפתור שמור, אזהרת מיקום, טוסט).
  *
- * 🔴 בפריוריטי לעולם לא מוחקים: קבוע = נייד חדש כאיש קשר נוסף ושורה בדו-שיח
- * הפנימי של הכרטיס. הכתובת בכרטיס עצמו לא נדרסת, המשרד מעדכן אחרי המייל.
+ * 🔴 28/10 ערב (עידן: "לא דורסים את הקיים"): מוסיפים, לא מחליפים.
+ *   * טלפון: הטלפון מפריוריטי נשאר; מה שמקלידים נכנס כ"טלפון נוסף" (`phoneExtra`).
+ *   * כתובת: החדשה לניווט, המקורית נשמרת ב-`originalAddress/City` ומוצגת "במקור".
+ *     החזרה למקורית = הקלדת הכתובת המקורית (או כפתור), ואז "במקור" נמחק.
+ *   * בפריוריטי: נייד קבוע = איש קשר נוסף, כתובת קבועה = שורה בדו-שיח הפנימי.
  *
  * 🔴 כתובת שהשתנתה מאפסת את המיקום על המפה. בלי זה הסיכה הייתה נשארת על
  * הכתובת הישנה והניווט היה לוקח את הנהג למקום הלא נכון, בלי שום סימן.
@@ -16,20 +19,26 @@
 export interface StopDetailsForm {
   address: string;
   city: string;
-  phone: string;
+  /** טלפון נוסף להוספה. ריק = לא נוגעים בטלפונים. */
+  phoneExtra: string;
 }
 
 export interface StopDetailsCurrent {
   address?: string | null;
   city?: string | null;
   phone?: string | null;
+  phoneExtra?: string | null;
+  originalAddress?: string | null;
+  originalCity?: string | null;
 }
 
 export interface StopDetailsPatch {
-  /** השדות שבאמת השתנו, מוכנים ל-updateStop. */
-  fields: { address?: string; city?: string; phone?: string };
+  /** השדות שבאמת השתנו. */
+  fields: { address?: string; city?: string; phoneExtra?: string };
   /** כתובת או עיר זזו: למחוק מיקום ישן ולמקם מחדש. */
   relocate: boolean;
+  /** הכתובת החדשה היא המקורית מפריוריטי: "במקור" יימחק. */
+  restore: boolean;
   /** כלום לא השתנה: לא כותבים למסד. */
   empty: boolean;
 }
@@ -47,26 +56,32 @@ export function scopeLabel(scope: StopDetailsScope): string {
 }
 
 const clean = (v: string | null | undefined) => (v ?? '').replace(/\s+/g, ' ').trim();
+/** טלפונים מושווים לפי ספרות בלבד: 050-1111111 ו-050 1111111 הם אותו מספר. */
+const digits = (v: string | null | undefined) => (v ?? '').replace(/\D/g, '');
 
 export function buildStopDetailsPatch(current: StopDetailsCurrent, form: StopDetailsForm): StopDetailsPatch {
   const fields: StopDetailsPatch['fields'] = {};
   const address = clean(form.address);
   const city = clean(form.city);
-  const phone = clean(form.phone);
+  const extra = clean(form.phoneExtra);
   if (address !== clean(current.address)) fields.address = address;
   if (city !== clean(current.city)) fields.city = city;
-  if (phone !== clean(current.phone)) fields.phone = phone;
+  if (extra && digits(extra) !== digits(current.phone) && digits(extra) !== digits(current.phoneExtra)) fields.phoneExtra = extra;
   const relocate = 'address' in fields || 'city' in fields;
-  return { fields, relocate, empty: Object.keys(fields).length === 0 };
+  const restore = relocate && !!clean(current.originalAddress)
+    && address === clean(current.originalAddress) && city === clean(current.originalCity);
+  return { fields, relocate, restore, empty: Object.keys(fields).length === 0 };
 }
 
-/** מה נכתב בהערת המערכת ובטוסט: "כתובת: א → ב · טלפון: ג → ד". */
+/** מה נכתב בטוסט ובהודעה: "כתובת לניווט: א ← ב (המקורית נשמרת) · טלפון נוסף: ג". */
 export function describeStopDetailsChange(current: StopDetailsCurrent, patch: StopDetailsPatch): string {
   const parts: string[] = [];
   const show = (v: string | null | undefined) => (clean(v) ? clean(v) : 'ריק');
-  if ('address' in patch.fields) parts.push(`כתובת: ${show(current.address)} ← ${show(patch.fields.address)}`);
+  if ('address' in patch.fields) {
+    parts.push(`כתובת לניווט: ${show(current.address)} ← ${show(patch.fields.address)}${patch.restore ? ' (חזרה למקורית)' : ' (המקורית נשמרת)'}`);
+  }
   if ('city' in patch.fields) parts.push(`עיר: ${show(current.city)} ← ${show(patch.fields.city)}`);
-  if ('phone' in patch.fields) parts.push(`טלפון: ${show(current.phone)} ← ${show(patch.fields.phone)}`);
+  if ('phoneExtra' in patch.fields) parts.push(`טלפון נוסף: ${patch.fields.phoneExtra} (הראשי ${show(current.phone)} נשאר)`);
   return parts.join(' · ');
 }
 

@@ -66,6 +66,10 @@ export interface CalendarStop {
   address?: string;
   city?: string;
   phone?: string;
+  /** 28/10/2026: מוסיפים ולא דורסים. טלפון נוסף מהשטח/מהמשרד, הכתובת המקורית מפריוריטי כשהניווט שונה. */
+  phoneExtra?: string;
+  originalAddress?: string;
+  originalCity?: string;
 
   // Location (3 levels of confidence)
   /** Resolved point: precise geocode if available, else city center. */

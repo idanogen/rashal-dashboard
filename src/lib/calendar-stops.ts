@@ -1,103 +1,15 @@
 import type {
   CalendarStop,
-  CoordinationMethod,
-  CoordinationStatus,
   ScheduleStopInput,
   StopResolutionKind,
-  StopSourceType,
-  StopStatus,
 } from '@/types/calendar-stop';
 import { supabase } from './supabase';
-import { geocodeAddress, getCityCoordinates } from './geocoding';
+import { geocodeAddress } from './geocoding';
 import { timedFetch } from './perf-collect';
+import { rowToStop, type CalendarStopRow } from './calendar-stops-row';
 
-type CalendarStopRow = {
-  id: string;
-  delivery_date: string;
-  driver: CalendarStop['driver'];
-  sequence: number;
-  route_id: string | null;
-  source_type: CalendarStop['sourceType'];
-  order_id: string | null;
-  service_call_id: string | null;
-  pickup_id: string | null;
-  customer_number: string | null;
-  customer_name: string;
-  address: string | null;
-  city: string | null;
-  phone: string | null;
-  status: StopStatus;
-  completed_at: string | null;
-  notes: string | null;
-  resolution_note: string | null;
-  resolution_kind: 'not_done' | 'follow_up' | null;
-  coordination_status: CoordinationStatus | null;
-  coordination_method: CoordinationMethod | null;
-  coordinated_at: string | null;
-  time_window_start: string | null;
-  time_window_end: string | null;
-  coordination_needs_cancel: boolean | null;
-  scheduled_by: string | null;
-  rescheduled_by: string | null;
-  rescheduled_at: string | null;
-  geocoded_lat: number | null;
-  geocoded_lng: number | null;
-  geocoded_at: string | null;
-  geocoded_address: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
-function rowToStop(row: CalendarStopRow): CalendarStop {
-  // 3 levels of confidence: precise geocode → city center → none.
-  const hasGeocode = row.geocoded_lat != null && row.geocoded_lng != null;
-  const cityCenter = getCityCoordinates(row.city);
-  const coordinates = hasGeocode
-    ? { lat: Number(row.geocoded_lat), lng: Number(row.geocoded_lng) }
-    : cityCenter;
-  const coordinatesSource: CalendarStop['coordinatesSource'] = hasGeocode
-    ? 'geocoded'
-    : cityCenter
-      ? 'city'
-      : undefined;
-
-  return {
-    id: row.id,
-    deliveryDate: row.delivery_date,
-    driver: row.driver,
-    sequence: row.sequence,
-    routeId: row.route_id ?? undefined,
-    sourceType: row.source_type,
-    orderId: row.order_id ?? undefined,
-    serviceCallId: row.service_call_id ?? undefined,
-    pickupId: row.pickup_id ?? undefined,
-    customerNumber: row.customer_number ?? undefined,
-    customerName: row.customer_name,
-    address: row.address ?? undefined,
-    city: row.city ?? undefined,
-    phone: row.phone ?? undefined,
-    coordinates,
-    coordinatesSource,
-    geocodedAt: row.geocoded_at ?? undefined,
-    geocodedAddress: row.geocoded_address ?? undefined,
-    status: row.status,
-    completedAt: row.completed_at ?? undefined,
-    notes: row.notes ?? undefined,
-    resolutionNote: row.resolution_note ?? undefined,
-    resolutionKind: row.resolution_kind ?? undefined,
-    coordinationStatus: row.coordination_status ?? undefined,
-    coordinationMethod: row.coordination_method ?? undefined,
-    coordinatedAt: row.coordinated_at ?? undefined,
-    timeWindowStart: row.time_window_start ?? undefined,
-    timeWindowEnd: row.time_window_end ?? undefined,
-    coordinationNeedsCancel: row.coordination_needs_cancel ?? undefined,
-    scheduledBy: row.scheduled_by ?? undefined,
-    rescheduledBy: row.rescheduled_by ?? undefined,
-    rescheduledAt: row.rescheduled_at ?? undefined,
-    created: row.created_at,
-    updated: row.updated_at,
-  };
-}
+// הקוראים הישנים (DispatchPage ועוד) מייבאים את בדיקת הכפילות מכאן; המימוש ב-calendar-stops-dups.
+export { findActiveDuplicateStops } from './calendar-stops-dups';
 
 function stopFieldsToRow(
   fields: Partial<CalendarStop>
@@ -217,67 +129,6 @@ export async function fetchStopsByServiceCallId(
  * Used to warn before scheduling: same customer can't have two active stops.
  * The DB also enforces this via `calendar_stops_no_active_dup` unique index.
  */
-export async function findActiveDuplicateStops(input: {
-  customerName: string;
-  phone?: string;
-  address?: string;
-  city?: string;
-  /**
-   * 🔴🔴 **סוג העצירה, ובלעדיו הבדיקה חוסמת עבודה לגיטימית.**
-   *
-   * עמי, 26/08/2026: "לקוח קיים פתח קריאה לביטול עסקה, לבוא לאסוף משהו
-   * שסיפקתי לו לפני שבוע, והמערכת לא נותנת לי לשבץ. זה לא אחד ולא שתיים."
-   *
-   * השורש: אספקה ואיסוף לאותו לקוח הם **שתי עבודות שונות**, ועד היום
-   * שתיהן נחשבו כאן לאותו דבר. נמדד לפני התיקון: **85 פריטים פתוחים**
-   * (45 איסופים, 27 הזמנות, 13 קריאות) שאי אפשר היה לשבץ.
-   *
-   * ⭐ ההגנה המקורית נשמרת במלואה: שתי אספקות לאותו לקוח עדיין נחסמות.
-   * מה שהשתנה הוא רק שסוגים שונים מפסיקים להתנגש זה בזה.
-   *
-   * 🔴 אופציונלי בכוונה, כדי לא לשבור קורא שטרם עודכן. בלעדיו ההתנהגות
-   * היא הישנה, וזה בדיוק המקרה שצריך להיעלם, ולכן כל הקוראים עודכנו.
-   */
-  sourceType?: StopSourceType;
-}): Promise<CalendarStop[]> {
-  const target = {
-    customerName: norm(input.customerName),
-    phone: norm(input.phone),
-    address: norm(input.address),
-    city: norm(input.city),
-  };
-
-  let query = supabase
-    .from('calendar_stops')
-    .select('*')
-    .in('status', ['planned', 'in_progress'])
-    .ilike('customer_name', input.customerName.trim());
-  // ⭐ מסונן בשרת ולא בדפדפן, כדי שהבדיקה תזהה בדיוק את מה שהמדד
-  // הייחודי שבמסד יחסום, ולא יותר. שתי אמיתות שמתפצלות כאן פירושן
-  // דיאלוג שקופץ על משהו שהיה עובר, או שיבוץ שנכשל בלי אזהרה.
-  if (input.sourceType) query = query.eq('source_type', input.sourceType);
-  // Pull a wide candidate set (by customer name) and filter the rest client-side
-  // so we don't have to construct case-insensitive ilike clauses for every column.
-
-  const { data, error } = await query;
-  if (error) throw new Error(`findActiveDuplicateStops: ${error.message}`);
-  const rows = (data as CalendarStopRow[]) ?? [];
-  return rows
-    .map(rowToStop)
-    .filter(
-      (s) =>
-        norm(s.customerName) === target.customerName &&
-        norm(s.phone) === target.phone &&
-        norm(s.address) === target.address &&
-        norm(s.city) === target.city
-    );
-}
-
-function norm(s: string | undefined | null): string {
-  if (!s) return '';
-  return s.trim().toLowerCase().replace(/\s+/g, ' ');
-}
-
 // ─── Writes ─────────────────────────────────────────────────────
 
 export async function createStop(input: ScheduleStopInput): Promise<CalendarStop> {
@@ -536,36 +387,4 @@ export async function geocodeStopAddress(stop: {
     console.error('[geocodeStopAddress] error:', err);
     return false;
   }
-}
-
-/**
- * עריכת כתובת, עיר או טלפון על עצירה משובצת (עמי, 07/10/2026).
- *
- * 🔴 כתובת או עיר שהשתנו מאפסות את המיקום על המפה באותה כתיבה. אחרת
- * הסיכה נשארת על הכתובת הישנה והניווט לוקח את הנהג למקום הלא נכון.
- * המיקום החדש נקבע אחר כך ב-`geocodeStopAddress` (fire-and-forget).
- */
-export async function updateStopDetails(
-  id: string,
-  fields: { address?: string; city?: string; phone?: string },
-  relocate: boolean,
-): Promise<CalendarStop> {
-  const row: Record<string, unknown> = {};
-  if ('address' in fields) row.address = fields.address || null;
-  if ('city' in fields) row.city = fields.city || null;
-  if ('phone' in fields) row.phone = fields.phone || null;
-  if (relocate) {
-    row.geocoded_lat = null;
-    row.geocoded_lng = null;
-    row.geocoded_at = null;
-    row.geocoded_address = null;
-  }
-  const { data, error } = await supabase
-    .from('calendar_stops')
-    .update(row)
-    .eq('id', id)
-    .select()
-    .single();
-  if (error) throw new Error(`updateStopDetails: ${error.message}`);
-  return rowToStop(data as CalendarStopRow);
 }

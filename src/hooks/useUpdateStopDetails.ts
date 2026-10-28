@@ -9,6 +9,7 @@ import type { StopSourceType } from '@/types/calendar-stop';
 import { toast } from 'sonner';
 
 export interface StopDetailsRef extends StopDetailsCurrent {
+  // 28/10: הטופס מוסיף טלפון (phoneExtra) ולא מחליף; הכתובת המקורית נשמרת במסד.
   stopId: string;
   sourceId: string;
   sourceType: StopSourceType;
@@ -29,7 +30,7 @@ export function useUpdateStopDetails() {
       const patch = buildStopDetailsPatch(stop, form);
       if (patch.empty) return { changed: false } as StopDetailsChangeResult;
       const { data, error } = await supabase.rpc('stop_details_change', {
-        p_stop_id: stop.stopId, p_address: form.address, p_city: form.city, p_phone: form.phone, p_scope: scope,
+        p_stop_id: stop.stopId, p_address: form.address, p_city: form.city, p_phone: form.phoneExtra, p_scope: scope,
       });
       if (error) throw new Error(error.message);
       const result = (data ?? { changed: false }) as StopDetailsChangeResult;

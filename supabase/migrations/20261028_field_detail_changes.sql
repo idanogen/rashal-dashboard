@@ -11,6 +11,10 @@
 --     לא בקוד). המייל נשלח ב-`rashal-field-change-mail`: קריאה מיידית מכאן
 --     (pg_net), וקרון שסורק כל 10 דקות את מה שלא יצא.
 --
+-- 🔴 28/10 ערב (עידן: "לא דורסים את הקיים"): טלפון = הוספה ל-`phone_extra`, הטלפון
+-- הראשי לא משתנה; כתובת = חדשה לניווט והמקורית נשמרת ב-`original_address/city`
+-- (עמודות ב-`20261028_stop_details_add_only.sql`). p_phone הוא הטלפון הנוסף.
+--
 -- מקור אחד: גם הדשבורד וגם האפליקציה קוראים ל-`stop_details_change`. הלוגיקה
 -- הטהורה של "מה השתנה" (`src/lib/stop-details.ts`) נשארת בלקוח לתצוגה בלבד;
 -- ההכרעה מה נכתב נעשית כאן, מול הערכים החיים של העצירה.
@@ -107,6 +111,8 @@ declare
   v_pevent_id text;
   v_desc      text;
   v_parts     text[] := '{}';
+  v_cur_addr  text; v_cur_city text; v_cur_extra text;
+  v_restore   boolean := false;
   v_anon      text := 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt1a3N0Znh0em55bWZraXJkbXR5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNDQ2MjMsImV4cCI6MjA5MTgyMDYyM30.oF-pwjnAki4LiDE8nLa6SIjHHP_tLvsoZwEyxlu2f6E';
 begin
   if p_scope not in ('once', 'permanent') then
@@ -132,14 +138,26 @@ begin
   v_city  := btrim(regexp_replace(coalesce(p_city, ''), '\s+', ' ', 'g'));
   v_phone := btrim(regexp_replace(coalesce(p_phone, ''), '\s+', ' ', 'g'));
 
-  if v_addr is distinct from btrim(regexp_replace(coalesce(v_stop.address, ''), '\s+', ' ', 'g')) then
+  v_cur_addr  := btrim(regexp_replace(coalesce(v_stop.address, ''), '\s+', ' ', 'g'));
+  v_cur_city  := btrim(regexp_replace(coalesce(v_stop.city, ''), '\s+', ' ', 'g'));
+  v_cur_extra := btrim(regexp_replace(coalesce(v_stop.phone_extra, ''), '\s+', ' ', 'g'));
+  if v_addr is distinct from v_cur_addr then
     v_new_addr := v_addr; v_changed := true; v_relocate := true;
   end if;
-  if v_city is distinct from btrim(regexp_replace(coalesce(v_stop.city, ''), '\s+', ' ', 'g')) then
+  if v_city is distinct from v_cur_city then
     v_new_city := v_city; v_changed := true; v_relocate := true;
   end if;
-  if v_phone is distinct from btrim(regexp_replace(coalesce(v_stop.phone, ''), '\s+', ' ', 'g')) then
+  -- טלפון: הוספה בלבד. ריק = לא נגעו; זהה לראשי או לנוסף הקיים = כלום.
+  -- השוואה לפי ספרות בלבד: 050-1111111 ו-050 1111111 הם אותו מספר (כמו `digits` בלקוח).
+  if v_phone <> '' and regexp_replace(v_phone, '\D', '', 'g') is distinct from regexp_replace(coalesce(v_stop.phone, ''), '\D', '', 'g')
+     and regexp_replace(v_phone, '\D', '', 'g') is distinct from regexp_replace(v_cur_extra, '\D', '', 'g') then
     v_new_phone := v_phone; v_changed := true;
+  end if;
+  -- חזרה לכתובת המקורית: הניווט חוזר, ו"במקור" נמחק.
+  if v_relocate and v_stop.original_address is not null
+     and coalesce(v_new_addr, v_cur_addr) = btrim(regexp_replace(v_stop.original_address, '\s+', ' ', 'g'))
+     and coalesce(v_new_city, v_cur_city) = btrim(regexp_replace(coalesce(v_stop.original_city, ''), '\s+', ' ', 'g')) then
+    v_restore := true;
   end if;
   if not v_changed then
     return jsonb_build_object('changed', false);
@@ -148,9 +166,11 @@ begin
   -- העצירה עצמה. כתובת שזזה מאפסת את המיקום, אחרת הסיכה והניווט נשארים
   -- על הכתובת הישנה בלי שום סימן (הלקח מ-08/10).
   update public.calendar_stops set
+    original_address = case when v_restore then null when v_relocate and original_address is null then coalesce(address, '') else original_address end,
+    original_city    = case when v_restore then null when v_relocate and original_address is null then city else original_city end,
     address = case when v_new_addr is not null then nullif(v_new_addr, '') else address end,
     city    = case when v_new_city is not null then nullif(v_new_city, '') else city end,
-    phone   = case when v_new_phone is not null then nullif(v_new_phone, '') else phone end,
+    phone_extra = case when v_new_phone is not null then v_new_phone else phone_extra end,
     geocoded_lat = case when v_relocate then null else geocoded_lat end,
     geocoded_lng = case when v_relocate then null else geocoded_lng end,
     geocoded_at  = case when v_relocate then null else geocoded_at end,
@@ -162,9 +182,11 @@ begin
   if p_scope = 'permanent' and coalesce(v_stop.customer_number, '') <> '' then
     with upd as (
       update public.calendar_stops s set
+        original_address = case when v_relocate and s.original_address is null then coalesce(s.address, '') else s.original_address end,
+        original_city    = case when v_relocate and s.original_address is null then s.city else s.original_city end,
         address = case when v_new_addr is not null then nullif(v_new_addr, '') else s.address end,
         city    = case when v_new_city is not null then nullif(v_new_city, '') else s.city end,
-        phone   = case when v_new_phone is not null then nullif(v_new_phone, '') else s.phone end,
+        phone_extra = case when v_new_phone is not null then v_new_phone else s.phone_extra end,
         geocoded_lat = case when v_relocate then null else s.geocoded_lat end,
         geocoded_lng = case when v_relocate then null else s.geocoded_lng end,
         geocoded_at  = case when v_relocate then null else s.geocoded_at end,
@@ -179,13 +201,15 @@ begin
 
   -- תיאור השינוי, אותו נוסח כמו `describeStopDetailsChange` בלקוח.
   if v_new_addr is not null then
-    v_parts := v_parts || ('כתובת: ' || coalesce(nullif(v_stop.address, ''), 'ריק') || ' ← ' || coalesce(nullif(v_new_addr, ''), 'ריק'));
+    v_parts := v_parts || ('כתובת לניווט: ' || coalesce(nullif(v_stop.address, ''), 'ריק') || ' ← ' || coalesce(nullif(v_new_addr, ''), 'ריק')
+      || case when v_restore then ' (חזרה למקורית)' else ' (המקורית נשמרת)' end);
   end if;
   if v_new_city is not null then
     v_parts := v_parts || ('עיר: ' || coalesce(nullif(v_stop.city, ''), 'ריק') || ' ← ' || coalesce(nullif(v_new_city, ''), 'ריק'));
   end if;
   if v_new_phone is not null then
-    v_parts := v_parts || ('טלפון: ' || coalesce(nullif(v_stop.phone, ''), 'ריק') || ' ← ' || coalesce(nullif(v_new_phone, ''), 'ריק'));
+    v_parts := v_parts || ('טלפון נוסף: ' || v_new_phone || ' (הראשי ' || coalesce(nullif(v_stop.phone, ''), 'ריק') || ' נשאר'
+      || case when v_cur_extra <> '' then ', במקום הנוסף הקודם ' || v_cur_extra else '' end || ')');
   end if;
   v_desc := array_to_string(v_parts, ' · ');
 
@@ -249,7 +273,7 @@ begin
     v_uid, v_author, v_by_role, p_scope,
     case when v_new_addr is not null then coalesce(v_stop.address, '') end, v_new_addr,
     case when v_new_city is not null then coalesce(v_stop.city, '') end, v_new_city,
-    case when v_new_phone is not null then coalesce(v_stop.phone, '') end, v_new_phone,
+    case when v_new_phone is not null then coalesce(v_stop.phone_extra, '') end, v_new_phone,
     v_relocate, v_others, v_contact, v_pevent_id, v_event_id
   );
 

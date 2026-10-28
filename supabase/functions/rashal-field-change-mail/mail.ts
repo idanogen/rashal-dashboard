@@ -64,9 +64,15 @@ function fmtTime(iso: string): string {
 /** השורות שהשתנו, לפי סדר קבוע: כתובת, עיר, טלפון. */
 export function changedRows(row: FieldChangeRow): { label: string; before: string; after: string }[] {
   const out: { label: string; before: string; after: string }[] = [];
-  if (row.new_address != null) out.push({ label: 'כתובת', before: show(row.old_address), after: show(row.new_address) });
+  if (row.new_address != null) {
+    out.push({ label: 'כתובת לניווט', before: show(row.old_address), after: show(row.new_address) });
+  }
   if (row.new_city != null) out.push({ label: 'עיר', before: show(row.old_city), after: show(row.new_city) });
-  if (row.new_phone != null) out.push({ label: 'טלפון', before: show(row.old_phone), after: show(row.new_phone) });
+  // 28/10 ערב: טלפון = הוספה. "היה" הוא הנוסף הקודם (אם היה); הראשי לא נדרס ולכן לא מופיע כמחוק.
+  if (row.new_phone != null) {
+    const hadExtra = (row.old_phone ?? '').trim() !== '';
+    out.push({ label: 'טלפון נוסף', before: hadExtra ? show(row.old_phone) : 'לא היה', after: show(row.new_phone) });
+  }
   return out;
 }
 
@@ -77,7 +83,8 @@ export function priorityLines(row: FieldChangeRow): string[] {
   const lines: string[] = [];
   if (row.priority_contact_added) lines.push('הנייד החדש נוסף לכרטיס הלקוח כאיש קשר (הטלפון הראשי בכרטיס לא השתנה).');
   if (row.priority_event_id) lines.push('השינוי נרשם כשורה בדו-שיח הפנימי של כרטיס הלקוח.');
-  lines.push('הכתובת והטלפון בכרטיס עצמו לא שונו: לפי הכלל, במערכת רק מוסיפים ולא דורסים. אם זה קבוע, נא לעדכן את הכרטיס בפריוריטי.');
+  lines.push('הכתובת והטלפון בכרטיס עצמו לא שונו: לפי הכלל, במערכת רק מוסיפים ולא דורסים. '
+    + 'גם אצלנו: הטלפון הראשי נשאר והכתובת המקורית נשמרת. אם זה קבוע, נא לעדכן את הכרטיס בפריוריטי.');
   return lines;
 }
 

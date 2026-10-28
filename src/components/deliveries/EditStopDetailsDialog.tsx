@@ -13,9 +13,10 @@ import type { CalendarStop } from '@/types/delivery';
  * ⭐ עריכת כתובת, עיר וטלפון של עצירה משובצת (עמי, 07/10/2026: "כתובת
  * חדשה או נוספת, לפעמים הטיפול במסגרת").
  *
- * 28/10/2026 (עידן): בשמירה בוחרים היקף. חד פעמי = רק העצירה. קבוע = גם
- * הביקורים הפתוחים של הלקוח, ובפריוריטי הוספה בלבד (איש קשר ושורה בכרטיס),
- * הכתובת בכרטיס לא נדרסת. על כל שמירה יוצא מייל למשרד.
+ * 28/10/2026 (עידן): בשמירה בוחרים היקף (חד פעמי / קבוע), ו"לא דורסים את
+ * הקיים": הטלפון מפריוריטי נשאר ומה שמקלידים הוא טלפון נוסף; כתובת חדשה
+ * נכנסת לניווט והמקורית נשמרת ומוצגת "במקור", עם כפתור חזרה. בפריוריטי
+ * הוספה בלבד. על כל שמירה יוצא מייל למשרד.
  */
 export function EditStopDetailsDialog({
   stop,
@@ -41,9 +42,9 @@ function EditStopDetailsForm({ stop, onClose }: { stop: CalendarStop; onClose: (
   const update = useUpdateStopDetails();
   const [address, setAddress] = useState(stop.address ?? '');
   const [city, setCity] = useState(stop.city ?? '');
-  const [phone, setPhone] = useState(stop.phone ?? '');
+  const [phoneExtra, setPhoneExtra] = useState('');
   const [scope, setScope] = useState<StopDetailsScope>('once');
-  const patch = buildStopDetailsPatch(stop, { address, city, phone });
+  const patch = buildStopDetailsPatch(stop, { address, city, phoneExtra });
 
   const save = async () => {
     const ref: StopDetailsRef = {
@@ -53,9 +54,17 @@ function EditStopDetailsForm({ stop, onClose }: { stop: CalendarStop; onClose: (
       address: stop.address,
       city: stop.city,
       phone: stop.phone,
+      phoneExtra: stop.phoneExtra,
+      originalAddress: stop.originalAddress,
+      originalCity: stop.originalCity,
     };
-    await update.mutateAsync({ stop: ref, form: { address, city, phone }, scope });
+    await update.mutateAsync({ stop: ref, form: { address, city, phoneExtra }, scope });
     onClose();
+  };
+
+  const restoreOriginal = () => {
+    setAddress(stop.originalAddress ?? '');
+    setCity(stop.originalCity ?? '');
   };
 
   return (
@@ -66,13 +75,13 @@ function EditStopDetailsForm({ stop, onClose }: { stop: CalendarStop; onClose: (
           עריכת פרטי העצירה
         </DialogTitle>
         <DialogDescription className="text-start">
-          {stop.customerName}. מה שכתוב כאן הוא מה שהנהג רואה ונוסע אליו. על כל שינוי יוצא מייל למשרד.
+          {stop.customerName}. שום דבר לא נמחק: הטלפון המקורי נשאר, והכתובת המקורית נשמרת. על כל שינוי יוצא מייל למשרד.
         </DialogDescription>
       </DialogHeader>
 
       <div className="grid gap-3">
         <div className="grid gap-1">
-          <Label htmlFor="stop-address">כתובת</Label>
+          <Label htmlFor="stop-address">כתובת לניווט</Label>
           <Input
             id="stop-address"
             value={address}
@@ -81,21 +90,31 @@ function EditStopDetailsForm({ stop, onClose }: { stop: CalendarStop; onClose: (
             className="h-10 text-[16px] sm:text-sm"
             autoFocus
           />
+          {stop.originalAddress && (
+            <p className="text-[11px] text-muted-foreground flex items-center gap-2">
+              <span>במקור: {stop.originalAddress}{stop.originalCity ? `, ${stop.originalCity}` : ''}</span>
+              <button type="button" onClick={restoreOriginal} className="text-primary underline">להחזיר למקורית</button>
+            </p>
+          )}
         </div>
         <div className="grid gap-1">
           <Label htmlFor="stop-city">עיר</Label>
           <Input id="stop-city" value={city} onChange={(e) => setCity(e.target.value)} className="h-10 text-[16px] sm:text-sm" />
         </div>
         <div className="grid gap-1">
-          <Label htmlFor="stop-phone">טלפון לעצירה</Label>
+          <Label htmlFor="stop-phone">טלפון נוסף</Label>
           <Input
             id="stop-phone"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            value={phoneExtra}
+            onChange={(e) => setPhoneExtra(e.target.value)}
             inputMode="tel"
             dir="ltr"
+            placeholder="05X-XXXXXXX"
             className="h-10 text-[16px] sm:text-sm"
           />
+          <p className="text-[11px] text-muted-foreground">
+            הראשי {stop.phone || 'ריק'} נשאר.{stop.phoneExtra ? ` נוסף קיים: ${stop.phoneExtra}.` : ''}
+          </p>
         </div>
 
         <div className="grid gap-1.5" role="radiogroup" aria-label="היקף השינוי">
@@ -122,7 +141,7 @@ function EditStopDetailsForm({ stop, onClose }: { stop: CalendarStop; onClose: (
 
         {patch.relocate && (
           <p className="rounded-md bg-amber-50 px-2.5 py-1.5 text-[12px] text-amber-800">
-            הכתובת השתנתה: הסיכה על המפה תזוז למקום החדש אחרי השמירה.
+            {patch.restore ? 'חזרה לכתובת המקורית: "במקור" יימחק.' : 'הכתובת לניווט השתנתה: הסיכה על המפה תזוז, והמקורית נשמרת.'}
           </p>
         )}
       </div>

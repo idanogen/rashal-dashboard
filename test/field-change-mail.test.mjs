@@ -11,13 +11,13 @@ const base = {
 
 test('רק השדות שהשתנו נכנסים לטבלה, בסדר קבוע', () => {
   const rows = changedRows({ ...base, new_phone: '0501234567', old_phone: '' });
-  assert.deepEqual(rows.map((r) => r.label), ['כתובת', 'טלפון']);
-  assert.equal(rows[1].before, 'ריק');
+  assert.deepEqual(rows.map((r) => r.label), ['כתובת לניווט', 'טלפון נוסף']);
+  assert.equal(rows[1].before, 'לא היה');
 });
 
 test('חד פעמי: המייל אומר שבפריוריטי לא השתנה כלום', () => {
   const m = buildFieldChangeEmail(base, { dashboardUrl: 'https://x' });
-  assert.match(m.subject, /^חד פעמי · כתובת של קלינלרר משה/);
+  assert.match(m.subject, /^חד פעמי · כתובת לניווט של קלינלרר משה/);
   assert.ok(m.html.includes('בפריוריטי לא השתנה כלום'));
   assert.ok(m.html.includes('line-through'));
   assert.ok(m.html.includes('dir="rtl"'));
