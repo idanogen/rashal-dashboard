@@ -18,12 +18,17 @@ as $$
 $$;
 
 -- עצירה שנהג רשאי לראות כשלו: שלו, ותאריכה הגיע.
+-- ⭐ 28/10/2026 (אפליקציה בלי קליטה, הכרעת עידן "היום ומחר"): מ-16:00 שעון
+-- ישראל גם מחר נחשף, כדי שהמחסן בטלפון יתמלא בערב. המסך מציג עדיין רק את
+-- היום; 68% מהשיבוצים נעשים יום מראש בין 16:00 ל-18:00.
 create or replace function public.driver_stop_visible(p_driver text, p_delivery_date date)
 returns boolean
 language sql stable
 as $$
   select p_driver = (select public.current_user_driver())
-     and p_delivery_date <= (select public.israel_today());
+     and (p_delivery_date <= (select public.israel_today())
+          or (p_delivery_date = (select public.israel_today()) + 1
+              and extract(hour from (now() at time zone 'Asia/Jerusalem')) >= 16));
 $$;
 
 -- ── היומן ─────────────────────────────────────────────────────────────
