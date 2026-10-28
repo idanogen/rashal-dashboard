@@ -57,7 +57,8 @@ export const mohRepair: FormDefinition = {
           prefill: 'deviceSerial', span: 2 },
         { key: 'purchaseDate', label: 'תאריך רכישת המכשיר', type: 'date', prefill: 'installDate' },
         { key: 'requestDate', label: 'תאריך פניית הזכאי לתיקון', type: 'date' },
-        { key: 'underWarranty', label: 'בתקופת אחריות', type: 'radio',
+        // 28/10/2026 (עמי): מהמערכת, לפי תאריך האחריות של הקריאה בפריוריטי. ריק כשאין תאריך.
+        { key: 'underWarranty', label: 'בתקופת אחריות (לפי המערכת)', type: 'radio', prefill: 'underWarranty',
           options: [{ value: 'yes', label: 'כן' }, { value: 'no', label: 'לא' }] },
         { key: 'deviceState', label: 'המכשיר', type: 'radio',
           options: [{ value: 'new', label: 'חדש' }, { value: 'refurbished', label: 'מחודש' }] },
@@ -68,17 +69,14 @@ export const mohRepair: FormDefinition = {
       fields: [1, 2, 3, 4, 5].flatMap((n): FormDefinition['sections'][number]['fields'] => [
         { key: `fault${n}`, label: `${n}. תאור התקלה`, type: 'textarea', span: 3,
           prefill: n === 1 ? 'faultDesc' : undefined },
+        // 28/10/2026 (עמי): מק"ט בריאות ועלות לשורה ירדו מהטכנאי. העמודות נשארות ריקות ב-PDF, המשרד משלים.
         { key: `work${n}`, label: 'חלפים + ביצוע בפועל', type: 'textarea', span: 3 },
-        { key: `catalog${n}`, label: 'מק"ט בריאות', type: 'text' },
-        { key: `cost${n}`, label: 'עלות', type: 'money' },
       ]),
     },
     {
-      title: 'עלות ומקום השירות',
+      title: 'מקום השירות',
+      // 28/10/2026 (עמי): קילומטרים, עלות נסיעה וסה"כ עלות ירדו מהטכנאי (גוזלן הקליד 000 כדי לעבור).
       fields: [
-        { key: 'kilometers', label: 'מספר קילומטרים', type: 'number' },
-        { key: 'travelCost', label: 'עלות הנסיעה (ללא מע"מ)', type: 'money' },
-        { key: 'totalCost', label: 'סה"כ עלות (לפני מע"מ, כולל עלות נסיעה)', type: 'money' },
         { key: 'servicePlace', label: 'מקום מתן השירות', type: 'radio', span: 2,
           options: [
             { value: 'customer', label: 'בית הלקוח' },

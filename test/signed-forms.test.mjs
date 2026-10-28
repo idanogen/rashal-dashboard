@@ -144,3 +144,16 @@ test('כתובת בלי מספר נשארת שלמה', () => {
   assert.deepEqual(splitAddress('מושב בית עוזיאל'), { street: 'מושב בית עוזיאל', houseNumber: '' });
   assert.deepEqual(splitAddress('הרב קוק 5א'), { street: 'הרב קוק', houseNumber: '5א' });
 });
+
+test('28/10: אחריות מהמערכת, לא מהטכנאי', async () => {
+  const { underWarrantyOf } = await import('../src/lib/forms/prefill.ts');
+  const now = new Date('2026-10-28T10:00:00');
+  assert.equal(underWarrantyOf('2027-03-01', now), 'yes');
+  assert.equal(underWarrantyOf('2026-10-28', now), 'yes');
+  assert.equal(underWarrantyOf('2026-10-27', now), 'no');
+  assert.equal(underWarrantyOf(null, now), '');
+  const def = getFormByKey('moh-repair');
+  const keys = def.sections.flatMap((s) => s.fields.map((f) => f.key));
+  for (const gone of ['catalog1', 'cost1', 'kilometers', 'travelCost', 'totalCost']) assert.ok(!keys.includes(gone), gone);
+  assert.equal(def.sections.flatMap((s) => s.fields).find((f) => f.key === 'underWarranty').prefill, 'underWarranty');
+});

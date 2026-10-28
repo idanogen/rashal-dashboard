@@ -135,6 +135,8 @@ export interface FormContext {
   deviceDesc: string;
   installDate: string;
   warrantyUntil: string;
+  /** 'yes' / 'no' לפי warrantyUntil מול היום, ריק כשאין תאריך (עמי 28/10: הטכנאי לא מתעסק באחריות). */
+  underWarranty: string;
   faultDesc: string;
   items: string;
 
@@ -150,7 +152,7 @@ export const EMPTY_CONTEXT: FormContext = {
   customerNumber: '', healthFund: '',
   orderNumber: '', callNumber: '',
   deviceName: '', deviceModel: '', deviceSerial: '', deviceDesc: '',
-  installDate: '', warrantyUntil: '', faultDesc: '', items: '',
+  installDate: '', warrantyUntil: '', underWarranty: '', faultDesc: '', items: '',
   supplierName: 'ר.שעל', driverName: '', today: '', empty: '',
 };
 

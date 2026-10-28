@@ -53,6 +53,17 @@ export function toDateInput(value: string | Date | null | undefined): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+/**
+ * אחריות מהמערכת (עמי, 28/10/2026: "הטכנאי לא אמור להתעסק עם אחריות, המידע צריך להימשך
+ * מהמערכת"). יש תאריך אחריות מפריוריטי (WARRANTYDATE): כן אם הוא היום או אחרי, אחרת לא.
+ * אין תאריך: ריק, הטכנאי יכול לסמן אם יודע. ב-60 יום רק 31% מהקריאות מגיעות עם תאריך.
+ */
+export function underWarrantyOf(warrantyUntil: string | Date | null | undefined, now: Date = new Date()): '' | 'yes' | 'no' {
+  const until = toDateInput(warrantyUntil);
+  if (!until) return '';
+  return until >= toDateInput(now) ? 'yes' : 'no';
+}
+
 export function buildContext(src: FormSource, driverName: string, now: Date = new Date()): FormContext {
   const { firstName, lastName } = splitName(src.customerName ?? '');
   const { street, houseNumber } = splitAddress(src.address ?? '');
@@ -80,6 +91,7 @@ export function buildContext(src: FormSource, driverName: string, now: Date = ne
     deviceSerial: src.deviceSerial ?? lines[0]?.serial ?? '',
     installDate: toDateInput(src.installDate),
     warrantyUntil: toDateInput(src.warrantyUntil),
+    underWarranty: underWarrantyOf(src.warrantyUntil, now),
     faultDesc: src.faultDesc ?? '',
     items,
     driverName,
