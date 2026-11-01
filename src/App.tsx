@@ -1,5 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
+import { trackScreen } from './lib/telemetry';
 import { Toaster } from 'sonner';
 import { AppShell } from '@/components/layout/AppShell';
 import { DriverShell } from '@/components/layout/DriverShell';
@@ -54,10 +56,20 @@ const queryClient = new QueryClient({
 // 🔴 מי מגיע לאיזה מסך יושב ב-`lib/screen-access.ts`, מקור יחיד שגם
 // הנתב וגם מסך ההרשאות קוראים ממנו.
 
+/** מעבר מסך ללוגים (01/11/2026). */
+function ScreenTracker() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    trackScreen(pathname);
+  }, [pathname]);
+  return null;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
+        <ScreenTracker />
         <AuthProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
