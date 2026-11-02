@@ -173,7 +173,10 @@ begin
     select 1 from public.calendar_stops s
      where s.driver = v_drv
        and s.source_type in ('delivery', 'customer')
-       and s.delivery_date between public.israel_today() - 3 and public.israel_today()
+       and s.delivery_date <= public.israel_today()
+       -- 02/11/2026: גם עצירה פתוחה מימים קודמים (שארית), כמו בכרטיס התעודה
+       -- ובטעינה מראש. רודי, ליברמן צבי מ-26/10: התעודה לא נפתחה. סגורה וישנה נשארת חסומה.
+       and (s.delivery_date >= public.israel_today() - 3 or s.status in ('planned', 'in_progress'))
        and (public.stop_delivery_doc(s)).docno = v_docno);
 end;
 $$;
