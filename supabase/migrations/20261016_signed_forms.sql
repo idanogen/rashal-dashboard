@@ -187,6 +187,10 @@ grant execute on function public.stop_form_context(uuid) to authenticated;
 -- ולא ב-`imageUrls`, כי היומן במסכים מציג את `imageUrls` כתמונות, ו-PDF שם
 -- היה תמונה שבורה. `priority_push_candidates` ו-`api/priority-push` קוראים
 -- את שניהם.
+-- 02/11/2026: p_signed_at, שעת החתימה בטלפון. טופס שנשלח מהתור באיחור קיבל עד
+-- היום את שעת ההגעה לשרת, ובפריוריטי נרשם ביום הלא נכון. החתימה הישנה (12
+-- פרמטרים) יורדת כדי שלא יהיו שתי גרסאות; אפליקציה ישנה קוראת בשמות ומקבלת ברירת מחדל.
+drop function if exists public.submit_signed_form(uuid, text, text, text, jsonb, text, text, text, numeric, numeric, text, text);
 create or replace function public.submit_signed_form(
   p_stop_id uuid,
   p_form_key text,
@@ -199,7 +203,8 @@ create or replace function public.submit_signed_form(
   p_lat numeric,
   p_lng numeric,
   p_pdf_path text,
-  p_file_des text
+  p_file_des text,
+  p_signed_at timestamptz default null
 )
 returns uuid
 language plpgsql security definer
@@ -240,7 +245,9 @@ begin
     v_id, v_stop.id, v_stop.order_id, v_stop.service_call_id, v_stop.pickup_id, p_form_key, p_form_kind,
     nullif(trim(p_health_fund), ''), v_cust, coalesce(p_payload, '{}'::jsonb),
     p_customer_signature, p_driver_signature, nullif(trim(p_signer_name), ''),
-    now(), v_by, p_lat, p_lng, p_pdf_path, case when v_cust is not null then v_event end);
+    -- לא בעתיד ולא יותר משבועיים אחורה: שעון טלפון שגוי לא יזיז טופס לשנה אחרת.
+    least(now(), greatest(coalesce(p_signed_at, now()), now() - interval '14 days')),
+    v_by, p_lat, p_lng, p_pdf_path, case when v_cust is not null then v_event end);
 
   -- בלי מספר לקוח אין לאן לצרף בפריוריטי. הטופס נשמר אצלנו בכל מקרה.
   -- ⭐ 17/10/2026: גם מספר לקוח שאין לו כרטיס אצלנו (לקוח בדיקה, מספר שגוי)
@@ -259,8 +266,8 @@ begin
   return v_id;
 end;
 $$;
-revoke all on function public.submit_signed_form(uuid, text, text, text, jsonb, text, text, text, numeric, numeric, text, text) from public, anon;
-grant execute on function public.submit_signed_form(uuid, text, text, text, jsonb, text, text, text, numeric, numeric, text, text) to authenticated;
+revoke all on function public.submit_signed_form(uuid, text, text, text, jsonb, text, text, text, numeric, numeric, text, text, timestamptz) from public, anon;
+grant execute on function public.submit_signed_form(uuid, text, text, text, jsonb, text, text, text, numeric, numeric, text, text, timestamptz) to authenticated;
 
 -- ─── אחסון: נהג מעלה רק לתיקיית עצירה שלו ───────────────────────────────
 --
