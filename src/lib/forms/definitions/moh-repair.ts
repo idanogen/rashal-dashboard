@@ -37,7 +37,7 @@ export const mohRepair: FormDefinition = {
         { key: 'lastName', label: 'שם המשפחה', type: 'text', prefill: 'lastName' },
         { key: 'firstName', label: 'השם הפרטי', type: 'text', prefill: 'firstName' },
         { key: 'idNumber', label: 'מספר הזהות', type: 'id', prefill: 'idNumber',
-          hint: 'לא קיים אצלנו במערכת, יש להקליד מהתעודה' },
+          hint: 'מתמלא ממספר הלקוח כשהוא תעודת זהות. לבדוק מול התעודה' },
         { key: 'phone', label: 'מספר הטלפון', type: 'tel', prefill: 'phone' },
         { key: 'contactName', label: 'שם איש הקשר', type: 'text' },
         { key: 'contactPhone', label: 'מספר הטלפון של איש הקשר', type: 'tel' },

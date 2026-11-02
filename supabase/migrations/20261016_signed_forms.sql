@@ -163,7 +163,10 @@ begin
     'device_serial', v_call.device_serial,
     'install_date', v_call.install_date,
     'warranty_until', v_call.warranty_until,
-    'fault_desc', coalesce(v_call.fault_desc, v_call.symptom_desc),
+    -- 02/11/2026 (עמי: "בטופס לא מופיע מהות התקלה כפי שמופיע בדף האפליקציה"): fault_desc
+    -- (MALFDES) ריק כמעט תמיד (1 מ-486), ו"תאור התקלה" שהטכנאי רואה בכרטיס הוא fault_text.
+    'fault_desc', coalesce(nullif(trim(v_call.fault_desc), ''), nullif(trim(v_call.symptom_desc), ''),
+                           left(nullif(trim(v_call.fault_text), ''), 500)),
     'lines', v_lines,
     'crane', v_crane,
     'crane_signed', (select coalesce(jsonb_agg(jsonb_build_object(

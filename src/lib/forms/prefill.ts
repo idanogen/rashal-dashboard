@@ -83,6 +83,7 @@ export function buildContext(src: FormSource, driverName: string, now: Date = ne
     city: src.city ?? '',
     fullAddress,
     customerNumber: src.customerNumber ?? '',
+    idNumber: idFromCustomerNumber(src.customerNumber),
     healthFund: src.healthFund ?? '',
     orderNumber: src.docNumber ?? '',
     callNumber: src.docNumber ?? '',
@@ -129,6 +130,18 @@ export function missingRequired(def: FormDefinition, values: FormValues): string
     }
   }
   return missing;
+}
+
+/**
+ * ת"ז מתוך מספר הלקוח (02/11/2026, בקשת עמי "שיכנס אוטומטי"). בר.שעל מספר
+ * הלקוח הוא לרוב תעודת הזהות (VATNUM זהה ל-CUSTNAME ב-96%, בית הידע של
+ * רוני `shaal-customers.md`). רק מספר בן 5 עד 9 ספרות שעובר ספרת ביקורת
+ * נחשב ת"ז; כל השאר נשאר ריק לטכנאי, כמו קודם.
+ */
+export function idFromCustomerNumber(customerNumber: string | null | undefined): string {
+  const digits = (customerNumber ?? '').trim();
+  if (!/^\d{5,9}$/.test(digits)) return '';
+  return isValidIsraeliId(digits) ? digits.padStart(9, '0') : '';
 }
 
 /** ת"ז ישראלית: 9 ספרות עם ספרת ביקורת. ריק אינו שגוי (שדה החובה תופס אותו). */
