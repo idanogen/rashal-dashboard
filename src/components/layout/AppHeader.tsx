@@ -61,6 +61,7 @@ const ADMIN_LINKS = [
   { to: '/admin/users', label: '👥 משתמשים' },
   { to: '/admin/team', label: '🚚 צוות השטח' },
   { to: '/admin/permissions', label: '🛡️ הרשאות' },
+  { to: '/admin/app-logs', label: '🩺 מי נתקע היום' },
 ];
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
@@ -96,12 +97,13 @@ export function AppHeader() {
   // "עודכן". זה לא ענה על השאלה שהמשרד שואל: "מתי בפעם האחרונה משכתם
   // מפריוריטי". מהיום השעון הוא ריצת הסנכרון האחרונה שהצליחה, מהשרת.
   const fresh = useFreshness();
-  const [, force] = useState(0);
+  // השעון מתקדם כל 15 שניות ב-state, כי קריאה לשעון בתוך הרינדור אינה טהורה.
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const interval = setInterval(() => force((n) => n + 1), 15_000);
+    const interval = setInterval(() => setNow(Date.now()), 15_000);
     return () => clearInterval(interval);
   }, []);
-  const pullAgoMs = fresh.pullAt ? Date.now() - new Date(fresh.pullAt).getTime() : null;
+  const pullAgoMs = fresh.pullAt ? Math.max(0, now - new Date(fresh.pullAt).getTime()) : null;
   const timeAgo = pullAgoMs === null ? 'טוען' : formatAgo(pullAgoMs);
   // מעל 30 דקות בשעות העבודה, או ערוץ שנפל ולא חזר: מכתימים.
   const isStale =
@@ -161,12 +163,21 @@ export function AppHeader() {
             {PRIMARY_LINKS.filter((l) => canSee(l.to)).map((link) => (
               <NavLink key={link.to} to={link.to} className={navLinkClass}>
                 {link.to === '/chat' && staffChat.unread > 0 && (
-                  <span className="me-1 inline-flex min-w-[1.25rem] justify-center rounded-full bg-blue-600 px-1 text-[10.5px] font-bold text-white" title="הודעות שלא קראתי">
+                  <span
+                    className="me-1 inline-flex min-w-[1.25rem] justify-center rounded-full bg-blue-600 px-1 text-[10.5px] font-bold text-white"
+                    title="הודעות שלא קראתי"
+                  >
                     {staffChat.unread}
                   </span>
                 )}
                 {link.to === '/tasks' && myTasks.open > 0 && (
-                  <span className={`me-1 inline-flex min-w-[1.25rem] justify-center rounded-full px-1 text-[10.5px] font-bold text-white ${myTasks.overdue > 0 ? 'bg-red-600' : 'bg-slate-500'}`} title={myTasks.overdue > 0 ? `${myTasks.overdue} באיחור` : 'משימות פתוחות עליי'}>
+                  <span
+                    className={cn(
+                      'me-1 inline-flex min-w-[1.25rem] justify-center rounded-full px-1 text-[10.5px] font-bold text-white',
+                      myTasks.overdue > 0 ? 'bg-red-600' : 'bg-slate-500',
+                    )}
+                    title={myTasks.overdue > 0 ? `${myTasks.overdue} באיחור` : 'משימות פתוחות עליי'}
+                  >
                     {myTasks.open}
                   </span>
                 )}
@@ -175,7 +186,12 @@ export function AppHeader() {
             ))}
 
             <DropdownMenu>
-              <DropdownMenuTrigger className="flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground data-[state=open]:bg-muted/50">
+              <DropdownMenuTrigger
+                className={cn(
+                  'flex items-center gap-1 rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors',
+                  'hover:bg-muted/50 hover:text-foreground data-[state=open]:bg-muted/50',
+                )}
+              >
                 <Settings className="h-4 w-4" />
                 ניהול
                 <ChevronDown className="h-3.5 w-3.5 opacity-60" />
@@ -226,7 +242,8 @@ export function AppHeader() {
             title={
               fresh.channel === 'down'
                 ? 'הערוץ החי נפל ומנסה להתחבר מחדש. בינתיים המסך בודק שינויים פעם בדקה.'
-                : 'מתי המשיכה האחרונה מפריוריטי הצליחה. המסך בודק שינויים פעם בדקה ובכל חזרה לחלון, ושינויים מגיעים גם בזמן אמת.'
+                : 'מתי המשיכה האחרונה מפריוריטי הצליחה. המסך בודק שינויים פעם בדקה ובכל חזרה לחלון, '
+                  + 'ושינויים מגיעים גם בזמן אמת.'
             }
             data-testid="sync-freshness"
           >

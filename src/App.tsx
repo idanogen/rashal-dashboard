@@ -33,6 +33,7 @@ import { ForgotPasswordPage } from '@/pages/ForgotPasswordPage';
 import { AuthProvider } from '@/lib/auth-context';
 import { screenAllow } from '@/lib/screen-access';
 import { PermissionsPage } from '@/pages/PermissionsPage';
+import { AppLogsPage } from '@/pages/AppLogsPage';
 import { GlobalChatProvider } from '@/context/GlobalChatContext';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { ProtectedAdminRoute } from '@/components/ProtectedAdminRoute';
@@ -176,6 +177,17 @@ function App() {
                             </ProtectedAdminRoute>
                           }
                         />
+                        {['/admin/app-logs', '/admin/app-logs/:date'].map((p) => (
+                          <Route
+                            key={p}
+                            path={p}
+                            element={
+                              <ProtectedAdminRoute allow={screenAllow('/admin/app-logs')}>
+                                <AppLogsPage />
+                              </ProtectedAdminRoute>
+                            }
+                          />
+                        ))}
                         <Route
                           path="/route-navigation"
                           element={<RoleBasedRoute allow={screenAllow('/route-navigation')}><RouteNavigationPage /></RoleBasedRoute>}
