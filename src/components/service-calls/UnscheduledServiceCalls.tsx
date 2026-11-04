@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Wrench } from 'lucide-react';
 
 import { buildServiceCallItems } from '@/components/dispatch/items';
@@ -48,10 +48,13 @@ interface UnscheduledServiceCallsProps {
   /** חיפוש ואזורים משותפים למסך הסדרן. כשמועברים, הפאנל לא מצייר אותם בעצמו. */
   search?: string;
   selectedZones?: string[];
+  /** צ'יפי הקופות (04/11/2026): מצוירים ליד הרמזור, המצב חי בדף כי הסינון חל על כל המסך. */
+  fundFilter?: ReactNode;
 }
 
 export function UnscheduledServiceCalls({
   calls,
+  fundFilter,
   callCountByZone,
   callZoneMap,
   groupSize,
@@ -152,14 +155,19 @@ export function UnscheduledServiceCalls({
         search={search}
         selectedZones={selectedZones}
         intro={
-          counts ? (
-            <ServiceTrafficLight
-              counts={counts}
-              selected={selectedLights}
-              onToggle={toggleLight}
-              showOldRed={showOldRed}
-              onToggleOldRed={() => setShowOldRed((v) => !v)}
-            />
+          counts || fundFilter ? (
+            <div className="space-y-3">
+              {fundFilter}
+              {counts && (
+                <ServiceTrafficLight
+                  counts={counts}
+                  selected={selectedLights}
+                  onToggle={toggleLight}
+                  showOldRed={showOldRed}
+                  onToggleOldRed={() => setShowOldRed((v) => !v)}
+                />
+              )}
+            </div>
           ) : undefined
         }
       />

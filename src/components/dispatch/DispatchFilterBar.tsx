@@ -30,6 +30,11 @@ interface DispatchFilterBarProps {
   breakdown?: Array<{ key: string; label: string; count: number }>;
   /** "שבץ ביקור" מרצועת ההיסטוריה: שיבוץ יזום ללקוח מוכר שאינו ברשימות. */
   onScheduleVisit?: (prefill: VisitPrefill) => void;
+  /**
+   * סינון קופה פעיל (04/11/2026): הצ'יפים ליד הרמזור, והבאדג' כאן כדי שגם
+   * בטאב בלי רמזור יהיה ברור למה הרשימה קצרה.
+   */
+  activeFund?: { label: string; onClear: () => void };
 }
 
 export function DispatchFilterBar({
@@ -43,13 +48,14 @@ export function DispatchFilterBar({
   totalCount,
   breakdown = [],
   onScheduleVisit,
+  activeFund,
 }: DispatchFilterBarProps) {
   // מסנן = סגור כברירת מחדל (החלטת עידן 06/09). v2 כדי שיחול גם על מי שכבר נגע בו.
   const [zoneCollapsed, toggleZoneCollapsed] = usePersistedCollapse(
     'collapse:dispatch-zone-filter:v2', true
   );
 
-  const filtering = search.trim().length > 0 || selectedZones.length > 0;
+  const filtering = search.trim().length > 0 || selectedZones.length > 0 || !!activeFund;
 
   // במסילת הניווט: החץ של המסילה סוגר את סינון האזור, החיפוש נשאר תמיד.
   useRailSection({
@@ -79,6 +85,12 @@ export function DispatchFilterBar({
           )}
         </div>
 
+        {activeFund && (
+          <Button variant="outline" size="sm" className="h-7 gap-1 rounded-full text-xs" onClick={activeFund.onClear} title="בטל את סינון הקופה">
+            קופה: {activeFund.label}
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        )}
         {filtering && (
           <>
             <Badge variant="secondary" className="h-7 px-2 text-xs">
@@ -91,6 +103,7 @@ export function DispatchFilterBar({
               onClick={() => {
                 onSearchChange('');
                 onClearZones();
+                activeFund?.onClear();
               }}
             >
               <X className="h-3.5 w-3.5" />

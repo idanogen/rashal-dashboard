@@ -71,6 +71,9 @@ import { showScheduleToast } from '@/lib/scheduleToast';
 import { buildCalendarDeliveries, toViewStop } from '@/lib/calendar-view';
 import { CalendarSearchBar } from '@/components/dispatch/CalendarSearchBar';
 import { useCalendarSearch } from '@/hooks/useCalendarSearch';
+import { useCustomerTypes } from '@/hooks/useCustomerTypes';
+import { HealthFundFilter } from '@/components/dispatch/HealthFundFilter';
+import { countByFund, healthFundKey, isHealthFundKey, HEALTH_FUND_LABEL, type HealthFundKey } from '@/lib/health-fund';
 import { compareStopsByTime } from '@/lib/stop-order';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -181,6 +184,16 @@ const collisionDetection: CollisionDetection = (args) => {
 
 // ─── צ'יפי סינון היומן ───────────────────────────────────────
 const CALENDAR_FILTER_KEY = 'rashal:calendarTypeFilter';
+// סינון לפי קופה (04/11/2026): קופה אחת או אף אחת, נזכר לכל משתמש כמו סינון הסוגים.
+const FUND_FILTER_KEY = 'rashal:fundFilter';
+function loadFundFilter(): HealthFundKey | null {
+  try {
+    const v = localStorage.getItem(FUND_FILTER_KEY);
+    return isHealthFundKey(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
 const ALL_SOURCE_TYPES: CalendarStopSource[] = ['delivery', 'service', 'pickup', 'task', 'customer'];
 
 const CHIP_META: Record<
@@ -267,7 +280,7 @@ export function DispatchPage() {
 
   // ─── נתוני מקור: שלושת הסוגים נטענים יחד (מעבר טאב מיידי) ───
   const {
-    unscheduledOrders,
+    unscheduledOrders: allUnscheduledOrders,
     scheduledOrders,
     deliveredOrders,
     orderCountByZone,
@@ -279,7 +292,7 @@ export function DispatchPage() {
   } = useZonedOrders();
 
   const {
-    pendingCalls,
+    pendingCalls: allPendingCalls,
     scheduledCalls,
     completedCalls,
     callCountByZone,
@@ -292,13 +305,45 @@ export function DispatchPage() {
 
   const { data: pickups = [], isLoading: pickupsLoading, error: pickupsError } = usePickups();
 
+  // ─── סינון לפי קופה: חל על כל המסך (עידן, 04/11/2026) ───
+  // הזמנות וקריאות נושאות קופה מפריוריטי; איסופים, עצירות ולקוחות חדשים לפי כרטיס הלקוח.
+  const [fundFilter, setFundFilterState] = useState<HealthFundKey | null>(loadFundFilter);
+  const setFundFilter = useCallback((k: HealthFundKey | null) => {
+    setFundFilterState(k);
+    try {
+      if (k) localStorage.setItem(FUND_FILTER_KEY, k);
+      else localStorage.removeItem(FUND_FILTER_KEY);
+    } catch { /* פרטי */ }
+  }, []);
+
   const {
     data: newCustomers = [],
     isLoading: customersLoading,
     error: customersError,
   } = useNewCustomers();
 
-  const { data: calendarStops = [], isLoading: stopsLoading } = useCalendarStops();
+  const { data: allCalendarStops = [], isLoading: stopsLoading } = useCalendarStops();
+  const fundLookupNumbers = useMemo(
+    () => [...pickups.map((p) => p.customerNumber), ...allCalendarStops.map((s) => s.customerNumber), ...newCustomers.map((c) => c.customerNumber)],
+    [pickups, allCalendarStops, newCustomers]
+  );
+  const { data: customerTypes } = useCustomerTypes(fundLookupNumbers);
+  const fundOfNumber = useCallback(
+    (n: string | undefined | null, fallback?: string | null) => healthFundKey(customerTypes?.get((n ?? '').trim()) ?? fallback),
+    [customerTypes]
+  );
+  const unscheduledOrders = useMemo(
+    () => (fundFilter ? allUnscheduledOrders.filter((o) => healthFundKey(o.healthFund) === fundFilter) : allUnscheduledOrders),
+    [allUnscheduledOrders, fundFilter]
+  );
+  const pendingCalls = useMemo(
+    () => (fundFilter ? allPendingCalls.filter((c) => healthFundKey(c.healthFund) === fundFilter) : allPendingCalls),
+    [allPendingCalls, fundFilter]
+  );
+  const calendarStops = useMemo(
+    () => (fundFilter ? allCalendarStops.filter((s) => fundOfNumber(s.customerNumber) === fundFilter) : allCalendarStops),
+    [allCalendarStops, fundFilter, fundOfNumber]
+  );
 
   /**
    * ⭐ **כל השליפות של המסך נגמרו.** זה הרגע שבו יש מה למדוד, ורק אז
@@ -326,7 +371,7 @@ export function DispatchPage() {
   );
 
   // ─── איסופים: נגזרות (כמו ב-PickupsPage) ───
-  const pendingPickups = useMemo(
+  const allPendingPickups = useMemo(
     () =>
       pickups.filter(
         (p) =>
@@ -337,6 +382,10 @@ export function DispatchPage() {
           p.priorityStatus !== 'מבוטלת'
       ),
     [pickups]
+  );
+  const pendingPickups = useMemo(
+    () => (fundFilter ? allPendingPickups.filter((p) => fundOfNumber(p.customerNumber) === fundFilter) : allPendingPickups),
+    [allPendingPickups, fundFilter, fundOfNumber]
   );
   const scheduledPickupsCount = useMemo(
     () =>
@@ -353,9 +402,27 @@ export function DispatchPage() {
   );
 
   // ─── לקוחות חדשים: מי שעדיין לא שובץ כעצירת לקוח ───
-  const pendingCustomers = useMemo(
+  const allPendingCustomers = useMemo(
     () => newCustomers.filter((c) => !c.isScheduled),
     [newCustomers]
+  );
+  const pendingCustomers = useMemo(
+    () => (fundFilter ? allPendingCustomers.filter((c) => fundOfNumber(c.customerNumber, c.healthFund) === fundFilter) : allPendingCustomers),
+    [allPendingCustomers, fundFilter, fundOfNumber]
+  );
+  // ספירה לצ'יפים: כל הממתינים מכל הסוגים, לפני הסינון,
+  // כדי שהמספר יגיד כמה עבודה יש לכל קופה.
+  const fundCounts = useMemo(
+    () => countByFund([
+      ...allUnscheduledOrders.map((o) => healthFundKey(o.healthFund)),
+      ...allPendingCalls.map((c) => healthFundKey(c.healthFund)),
+      ...allPendingPickups.map((p) => fundOfNumber(p.customerNumber)),
+      ...allPendingCustomers.map((c) => fundOfNumber(c.customerNumber, c.healthFund)),
+    ]),
+    [allUnscheduledOrders, allPendingCalls, allPendingPickups, allPendingCustomers, fundOfNumber]
+  );
+  const fundFilterNode = (
+    <HealthFundFilter counts={fundCounts} selected={fundFilter} onSelect={setFundFilter} />
   );
   const bareCustomersCount = useMemo(
     () => pendingCustomers.filter(isBareCustomer).length,
@@ -1360,6 +1427,7 @@ export function DispatchPage() {
           totalCount={visibleItems.length}
           breakdown={searchBreakdown}
           onScheduleVisit={setVisitPrefill}
+          activeFund={fundFilter ? { label: HEALTH_FUND_LABEL[fundFilter], onClear: () => setFundFilter(null) } : undefined}
         />
 
         {/* ─── אזור מתחלף: הממתינים של הסוג הנבחר ─── */}
@@ -1431,6 +1499,7 @@ export function DispatchPage() {
               )}
               <UnscheduledServiceCalls
                 calls={pendingCalls}
+                fundFilter={fundFilterNode}
                 callCountByZone={callCountByZone}
                 callZoneMap={callZoneMap}
                 groupSize={callsGroupSize}
