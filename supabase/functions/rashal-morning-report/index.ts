@@ -33,6 +33,8 @@ interface Settings {
   last_sent_date: string | null;
   /** 04/11/2026: תבנית דוח התזכורות (rashal_reminder_report). ריק = רק המסך. */
   reminder_report_template_id: string | null;
+  /** נמעני דוח התזכורות בלבד (עידן: אבירם מקבל רק אותו, לא את דוח הבוקר). */
+  reminder_report_recipients: { name: string; phone_e164: string }[] | null;
 }
 
 interface Report {
@@ -156,7 +158,7 @@ Deno.serve(async (req: Request) => {
         { name: "report_date", value: `${y}-${m}-${d}` },
       ];
       const sent: Record<string, unknown>[] = [];
-      for (const rcp of cfg.recipients) {
+      for (const rcp of cfg.reminder_report_recipients ?? []) {
         if (dry) { sent.push({ name: rcp.name, dry: true }); continue; }
         try {
           const res = await fetch(SEND_URL, {

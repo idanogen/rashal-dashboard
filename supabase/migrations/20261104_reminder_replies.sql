@@ -16,11 +16,8 @@ alter table public.morning_report_settings
 comment on column public.morning_report_settings.reminder_report_template_id is
   'תבנית heyy לדוח התזכורות (rashal_reminder_report). ריק = הדוח לא נשלח, רק המסך.';
 
--- אבירם נמען רביעי לדוח הבוקר (הכרעת עידן 04/11).
-update public.morning_report_settings
-   set recipients = recipients || '[{"name":"אבירם","phone_e164":"+972585393000"}]'::jsonb
- where id = true
-   and not exists (select 1 from jsonb_array_elements(recipients) r where r->>'phone_e164' = '+972585393000');
+-- (אבירם נוסף כאן לדוח הבוקר ובוטל באותו ערב: הוא מקבל רק את דוח התזכורות,
+--  ראו 20261104_reminder_report_recipients.sql.)
 
 create or replace function public.reminder_replies(p_date date default null)
 returns jsonb
