@@ -36,3 +36,24 @@ test('הפונקציה דוחה חזרה ולא זורקת על עצירה שב�
   }
   assert.ok(sql.includes("exception when others then"), 'טריגר חוסם נרשם כדחייה');
 });
+
+/**
+ * 04/11/2026: "בוצע" מנקה סיבת "לא בוצע" קודמת בשני הכותבים. יאמן סלאח: אתמול
+ * "טכנאי לא עבד", היום בוצע במלואו, והכרטיס עדיין הציג את הסיבה הישנה.
+ */
+const lib = readFileSync(new URL('../src/lib/calendar-stops.ts', import.meta.url), 'utf8');
+
+test('🔴 "בוצע" כותב הערה וסוג סגירה תמיד, גם null, בדשבורד ובמסד', () => {
+  assert.ok(lib.includes("row.resolution_note = notes ?? null;"), 'דשבורד: ההערה נכתבת תמיד');
+  assert.ok(lib.includes("row.resolution_kind = status === 'not_completed' ? (kind ?? 'not_done') : null;"), 'דשבורד: הסוג מתאפס על בוצע');
+  assert.ok(sql.includes("resolution_note = p_note,"), 'מסד: ההערה נכתבת תמיד');
+  assert.ok(sql.includes("resolution_kind = v_kind"), 'מסד: הסוג מ-v_kind (null על בוצע)');
+  assert.ok(sql.includes("v_kind := case when p_status = 'not_completed' then coalesce(p_resolution_kind, 'not_done') end;"));
+});
+
+test('🔴 העברה ליום אחר מנקה את סיבת הסגירה של הסיבוב הקודם', () => {
+  const fn = lib.slice(lib.indexOf('export async function moveStopToNewDay'));
+  const body = fn.slice(0, fn.indexOf('.eq(\'id\', stopId)'));
+  assert.ok(body.includes("resolution_note: null,"), 'ההערה מתנקה');
+  assert.ok(body.includes("resolution_kind: null,"), 'הסוג מתנקה');
+});

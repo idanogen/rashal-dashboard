@@ -263,6 +263,10 @@ export async function moveStopToNewDay(
       sequence,
       status: 'planned',
       completed_at: null,
+      // 🔴 04/11/2026: סיבת הסגירה שייכת לסיבוב הקודם ונשמרת ביומן הפעולות.
+      // בלי הניקוי "טכנאי לא עבד" מאתמול נדבק לביקור של היום (5 עצירות ב-04/11).
+      resolution_note: null,
+      resolution_kind: null,
       rescheduled_by: opts.movedBy ?? null,
       rescheduled_at: new Date().toISOString(),
     })
@@ -326,10 +330,13 @@ export async function resolveStop(
   };
   // 🔴 **לעמודה שלה, לא לתוך `notes`.** עד 23/08/2026 הסיבה נכתבה לתוך
   // `notes` ומחקה את תיאור המשימה שנרשם בהקמה, בלי שאיש ידע.
-  if (notes != null) row.resolution_note = notes;
+  // 🔴 04/11/2026: נכתב תמיד, גם כ-null. "בוצע" בלי הערה השאיר את סיבת
+  // "לא בוצע" מהסיבוב הקודם (יאמן סלאח: "טכנאי לא עבד" על ביקור שבוצע במלואו).
+  row.resolution_note = notes ?? null;
   // ⭐ נכתב רק כשהעצירה לא הושלמה. עצירה שבוצעה במלואה אינה "לא בוצע"
   // ואינה "המשך טיפול", ודגל עליה היה רק מבלבל את מי שקורא אחר כך.
-  if (status === 'not_completed') row.resolution_kind = kind ?? 'not_done';
+  // "בוצע" מנקה דגל שנשאר, מאותה סיבה. אותו כלל ב-`stop_action_apply` במסד.
+  row.resolution_kind = status === 'not_completed' ? (kind ?? 'not_done') : null;
 
   const { data, error } = await supabase
     .from('calendar_stops')

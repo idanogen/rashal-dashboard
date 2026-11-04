@@ -115,7 +115,9 @@ begin
         update public.calendar_stops set
           status = p_status,
           completed_at = v_at,
-          resolution_note = case when p_note is not null then p_note else resolution_note end,
+          -- 04/11/2026: תמיד נכתב, גם null. "בוצע" בלי הערה לא משאיר סיבת "לא בוצע" קודמת
+          -- (אותו כלל כמו resolveStop בדשבורד; הבדיקה stop-action-parity משווה).
+          resolution_note = p_note,
           resolution_kind = v_kind
         where id = v_stop.id;
       end if;
