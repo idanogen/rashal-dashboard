@@ -13,7 +13,8 @@ import type { FormDefinition, FormField } from '../types.ts';
 
 const BRAND = '#E4002B';
 
-function personFields(prefix: string, prefillFromCustomer: boolean, relation: boolean): FormField[] {
+/** מיוצא: טופס כללית (04/11/2026) הוא עמוד 1 של הטופס הזה עם לוגו אחר, אותם שדות בדיוק. */
+export function personFields(prefix: string, prefillFromCustomer: boolean, relation: boolean): FormField[] {
   const p = (k: FormField['prefill']) => (prefillFromCustomer ? k : undefined);
   const fields: FormField[] = [
     { key: `${prefix}LastName`, label: 'שם משפחה', type: 'text', prefill: p('lastName') },

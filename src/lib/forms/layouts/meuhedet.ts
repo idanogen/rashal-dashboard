@@ -12,7 +12,7 @@ import { INK, PEN, box, esc, fixedPage, line, signatureLine, stamp, val, type La
 const td = `border:1px solid ${INK};padding:2px 5px;vertical-align:top;`;
 
 /** תא בטבלאות של מאוחדת: תווית רגילה בפינה, הערך בעט. */
-function c(label: string, value: string, opts: { w?: string; h?: number; colspan?: number } = {}): string {
+export function c(label: string, value: string, opts: { w?: string; h?: number; colspan?: number } = {}): string {
   return `<td ${opts.colspan ? `colspan="${opts.colspan}"` : ''} style="${td}height:${opts.h ?? 34}px;${opts.w ? `width:${opts.w};` : ''}">
     <div style="font-size:12px">${label}</div>
     <div style="font-size:12.5px;color:${PEN};font-weight:600;line-height:1.3">${esc(value) || '&nbsp;'}</div>
@@ -44,17 +44,17 @@ function bottom(n: number, driverSig: string | null | undefined, meta: LayoutInp
   </div>`;
 }
 
-const h3 = (t: string, mt = 14) => `<div style="font-size:13px;font-weight:700;margin:${mt}px 0 3px">${t}</div>`;
-const tbl = (rows: string) => `<table style="width:100%;border-collapse:collapse;table-layout:fixed">${rows}</table>`;
+export const h3 = (t: string, mt = 14) => `<div style="font-size:13px;font-weight:700;margin:${mt}px 0 3px">${t}</div>`;
+export const tbl = (rows: string) => `<table style="width:100%;border-collapse:collapse;table-layout:fixed">${rows}</table>`;
 
-function eligibleTable(v: LayoutInput['values']): string {
+export function eligibleTable(v: LayoutInput['values']): string {
   return tbl(`
     <tr>${c('שם משפחה', val(v, 'eligLastName'))}${c('שם פרטי', val(v, 'eligFirstName'))}${c('מספר זהות', val(v, 'eligIdNumber'), { colspan: 2 })}</tr>
     <tr>${c('מספר טלפון', val(v, 'eligPhone'))}${c('מספר טלפון נייד', val(v, 'eligMobile'))}${c('מספר טלפון נוסף', val(v, 'eligPhoneAlt'), { colspan: 2 })}</tr>
     <tr>${c('שם הרחוב', val(v, 'eligStreet'), { w: '30%' })}${c('מספר הבית', val(v, 'eligHouseNumber'), { w: '14%' })}${c('שם הישוב', val(v, 'eligCity'))}${c('מיקוד', val(v, 'eligZip'), { w: '22%' })}</tr>`);
 }
 
-function personWithRelation(v: LayoutInput['values'], p: string): string {
+export function personWithRelation(v: LayoutInput['values'], p: string): string {
   return tbl(`
     <tr>${c('שם משפחה', val(v, `${p}LastName`))}${c('שם פרטי', val(v, `${p}FirstName`))}${c('מספר זהות', val(v, `${p}IdNumber`))}${c('יחס קרבה לזכאי', val(v, `${p}Relation`))}</tr>
     <tr>${c('מספר טלפון נייד', val(v, `${p}Mobile`), { colspan: 2 })}${c('מספר טלפון נוסף', val(v, `${p}PhoneAlt`), { colspan: 2 })}</tr>

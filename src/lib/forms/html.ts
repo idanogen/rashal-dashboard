@@ -11,6 +11,7 @@ import { mohReturnLayout } from './layouts/moh-return.ts';
 import { maccabiDeliveryLayout, maccabiReturnLayout } from './layouts/maccabi.ts';
 import { leumitDeliveryLayout, leumitReturnLayout } from './layouts/leumit.ts';
 import { meuhedetDeliveryLayout } from './layouts/meuhedet.ts';
+import { clalitDeliveryLayout } from './layouts/clalit.ts';
 
 /**
  * ⭐ תבנית לכל טופס שהועתק מהמקור (עידן, 16/10/2026: "העתק הכי קרוב שאפשר").
@@ -24,6 +25,7 @@ export const LAYOUTS: Record<string, (input: LayoutInput) => string> = {
   'leumit-delivery': leumitDeliveryLayout,
   'leumit-return': leumitReturnLayout,
   'meuhedet-delivery': meuhedetDeliveryLayout,
+  'clalit-delivery': clalitDeliveryLayout,
 };
 
 /**

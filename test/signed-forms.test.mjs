@@ -16,14 +16,14 @@ import {
 
 const key = (fund, kind) => findForm(fund, kind)?.key ?? null;
 
-test('אספקה: כל קופה לטופס שלה, כללית לצילום הפורטל', () => {
+test('אספקה: כל קופה לטופס שלה, כללית על המסך מ-04/11/2026', () => {
   assert.equal(key('כללית הנדסה', 'delivery'), 'clalit-delivery');
   assert.equal(key('כללית', 'delivery'), 'clalit-delivery');
   assert.equal(key('מכבי', 'delivery'), 'maccabi-delivery');
   assert.equal(key('לאומית', 'delivery'), 'leumit-delivery');
   assert.equal(key('קופת חולים לאומית', 'delivery'), 'leumit-delivery');
   assert.equal(key('מאוחדת', 'delivery'), 'meuhedet-delivery');
-  assert.equal(getFormByKey('clalit-delivery').photoOnly, true);
+  assert.equal(!!getFormByKey('clalit-delivery').photoOnly, false);
 });
 
 test('החזרה: כללית ומאוחדת בטופס משרד הבריאות, מכבי ולאומית בשלהן', () => {
@@ -134,10 +134,31 @@ test('ת"ז: ספרת ביקורת, ריק אינו שגוי', () => {
   assert.deepEqual(invalidIds(def, { idNumber: '123456789' }), ['מספר תעודת הזהות']);
 });
 
-test('צילום חובה חסר נתפס', () => {
+test('צילום חובה חסר נתפס, וצילום רשות לא', () => {
   const d = getFormByKey('clalit-delivery');
-  assert.equal(missingPhotos(d, {}).length, 1);
-  assert.equal(missingPhotos(d, { portalForm: 'data:image/jpeg;base64,x' }).length, 0);
+  // 04/11/2026: טופס הפורטל של כללית הוא צילום רשות, הטופס נחתם על המסך.
+  assert.equal(missingPhotos(d, {}).length, 0);
+  const required = { ...d, photos: [{ key: 'p', label: 'x', required: true }] };
+  assert.equal(missingPhotos(required, {}).length, 1);
+  assert.equal(missingPhotos(required, { p: 'data:image/jpeg;base64,x' }).length, 0);
+});
+
+test('04/11: טופס כללית = עמוד 1 של מאוחדת עם לוגו אחר, אותם שדות', async () => {
+  const { meuhedetDelivery } = await import('../src/lib/forms/definitions/meuhedet.ts');
+  const clalit = getFormByKey('clalit-delivery');
+  const keysOf = (d, n) => d.sections.slice(0, n).flatMap((s) => s.fields.map((f) => f.key));
+  assert.deepEqual(keysOf(clalit, 4), keysOf(meuhedetDelivery, 4));
+  assert.equal(clalit.sections.length, 4, 'עמוד אחד: בלי כתב התחייבות, ערב ושטר חוב');
+  assert.deepEqual(clalit.signatures.map((s) => s.key), ['customer', 'driver']);
+  assert.ok(clalit.photos.every((p) => !p.required), 'צילום הפורטל רשות');
+  // התבנית מייבאת PNG ולכן לא נטענת ב-node: נבדקת כטקסט, כמו בדיקות המיגרציות.
+  const { readFileSync } = await import('node:fs');
+  const layout = readFileSync(new URL('../src/lib/forms/layouts/clalit.ts', import.meta.url), 'utf8');
+  const html = readFileSync(new URL('../src/lib/forms/html.ts', import.meta.url), 'utf8');
+  assert.ok(layout.includes("from './meuhedet.ts'"), 'הטבלאות מיובאות ממאוחדת, מקור אחד');
+  assert.ok(layout.includes('clalit-logo.png'));
+  assert.ok(!layout.includes('background:#000') && !layout.includes('רמה אחרת'), 'בלי הפס השחור ובלי הסיסמה');
+  assert.ok(html.includes("'clalit-delivery': clalitDeliveryLayout"), 'רשומה ב-LAYOUTS');
 });
 
 test('כתובת בלי מספר נשארת שלמה', () => {
