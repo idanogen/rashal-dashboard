@@ -66,3 +66,46 @@ export function buildCalendarDeliveries(
   }
   return Array.from(groups.values());
 }
+
+/**
+ * מחרוזת חיפוש אחת לעצירה ביומן, לשורת החיפוש שמעל היומן (עידן, 04/11/2026).
+ * כל השדות שהסדרן עשוי לזכור: שם, מספר לקוח, טלפונים, כתובת (גם המקורית),
+ * עיר, מי משובץ, תיאור המשימה ומה שנרשם בסגירה. ההתאמה עצמה ב-`matchesSearch`.
+ */
+export function stopSearchText(s: DbStop): string {
+  return [
+    s.customerName,
+    s.customerNumber,
+    s.phone,
+    s.phoneExtra,
+    s.address,
+    s.city,
+    s.originalAddress,
+    s.originalCity,
+    s.driver,
+    s.notes,
+    s.resolutionNote,
+  ]
+    .filter((v): v is string => typeof v === 'string' && v.trim() !== '')
+    .join(' ');
+}
+
+/** הימים שיש בהם תוצאות חיפוש (בלי מבוטלות), ממוינים, לקפיצה מהשורה אל העמודה. */
+export function matchDatesByDay(stops: DbStop[]): { date: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const s of stops) {
+    if (s.status === 'cancelled') continue;
+    counts.set(s.deliveryDate, (counts.get(s.deliveryDate) ?? 0) + 1);
+  }
+  return Array.from(counts, ([date, count]) => ({ date, count })).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/**
+ * סדר הצ'יפים של ימי התוצאות: היום והבאים קודם (עולה), ואחריהם העבר (מהקרוב לרחוק).
+ * בלי זה שמונה הצ'יפים הראשונים היו מאפריל, ו"ועוד 44 ימים" החביא את השבוע הזה.
+ */
+export function orderMatchDates<T extends { date: string }>(dates: T[], today: string): T[] {
+  const upcoming = dates.filter((d) => d.date >= today).sort((a, b) => a.date.localeCompare(b.date));
+  const past = dates.filter((d) => d.date < today).sort((a, b) => b.date.localeCompare(a.date));
+  return [...upcoming, ...past];
+}

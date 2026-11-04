@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronLeft, ChevronRight, EyeOff, Map as MapIcon, Plus, Truck } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, EyeOff, Map as MapIcon, Plus, Search, Truck } from 'lucide-react';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { Button } from '@/components/ui/button';
 import type { CalendarDelivery, CalendarStop } from '@/types/delivery';
@@ -22,6 +22,8 @@ export interface CalendarDayColumnProps {
   isPast: boolean;
   collapsed: boolean;
   hiddenCount: number;
+  /** חיפוש ביומן פעיל: יום ריק אומר "אין תוצאות" ולא "אין עצירות". */
+  searching?: boolean;
   togglePastDay: (dateStr: string) => void;
   isGroupCollapsed: (id: string) => boolean;
   toggleGroup: (id: string) => void;
@@ -39,7 +41,7 @@ export interface CalendarDayColumnProps {
 }
 
 export function CalendarDayColumn({
-  day, dayNames, dayStops, dayDeliveries, isTodayFlag, isPast, collapsed, hiddenCount,
+  day, dayNames, dayStops, dayDeliveries, isTodayFlag, isPast, collapsed, hiddenCount, searching = false,
   togglePastDay, isGroupCollapsed, toggleGroup, onAddTask, onViewDayMap, onShowAllTypes,
   onRemoveOrder, onResolveStop, onMoveStop, setCoordinationStop, setInfoStop, setEditStop, docsByCall, docsByStop,
 }: CalendarDayColumnProps) {
@@ -236,6 +238,11 @@ export function CalendarDayColumn({
                 הצג הכל
               </Button>
             )}
+          </div>
+        ) : searching ? (
+          <div className="flex flex-col items-center justify-center h-32 text-muted-foreground/50">
+            <Search className="h-5 w-5 mb-1" />
+            <span className="text-xs">אין תוצאות לחיפוש ביום זה</span>
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center h-32 text-muted-foreground/50">

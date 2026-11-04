@@ -37,6 +37,8 @@ interface DeliveryCalendarProps {
   hiddenByFilter?: Record<string, number>;
   /** מחזיר את סינון הסוגים להצגת הכל */
   onShowAllTypes?: () => void;
+  /** חיפוש ביומן פעיל: קבוצות הנהגים נפתחות כדי שהתוצאות ייראו, ויום ריק אומר "אין תוצאות". */
+  searching?: boolean;
 }
 
 // ─── Stop Card ─────────────────────────────────────────────
@@ -52,6 +54,7 @@ export function DeliveryCalendar({
   onMoveStop,
   hiddenByFilter,
   onShowAllTypes,
+  searching = false,
 }: DeliveryCalendarProps) {
   // סדר תצוגה אחיד של המשובצים, מטבלת הצוות ולא מרשימה בקוד.
   const { order: assigneeOrder } = useAssignees();
@@ -74,8 +77,9 @@ export function DeliveryCalendar({
   // בודד היא חריגה ממנה, ו"כווץ הכל" הבא מנקה את החריגות.
   const [groupsAllCollapsed, toggleGroupsAll] = usePersistedCollapse('collapse:calendar-groups');
   const [groupOverrides, setGroupOverrides] = useState<Set<string>>(new Set());
+  // בזמן חיפוש כל הקבוצות פתוחות: תוצאה מאחורי נהג מכווץ נראית כמו "לא נמצא".
   const isGroupCollapsed = (id: string) =>
-    groupsAllCollapsed ? !groupOverrides.has(id) : groupOverrides.has(id);
+    searching ? false : groupsAllCollapsed ? !groupOverrides.has(id) : groupOverrides.has(id);
   const toggleGroup = (id: string) =>
     setGroupOverrides((prev) => {
       const next = new Set(prev);
@@ -257,6 +261,7 @@ export function DeliveryCalendar({
               isPast={isPastDay(day)}
               collapsed={isCollapsedDay(day)}
               hiddenCount={hiddenByFilter?.[dateStr] ?? 0}
+              searching={searching}
               togglePastDay={togglePastDay}
               isGroupCollapsed={isGroupCollapsed}
               toggleGroup={toggleGroup}

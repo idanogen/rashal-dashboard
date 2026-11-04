@@ -69,6 +69,8 @@ import { NotCompletedReasonDialog } from '@/components/NotCompletedReasonDialog'
 import { ScheduleCoordinationDialog } from '@/components/whatsapp/ScheduleCoordinationDialog';
 import { showScheduleToast } from '@/lib/scheduleToast';
 import { buildCalendarDeliveries, toViewStop } from '@/lib/calendar-view';
+import { CalendarSearchBar } from '@/components/dispatch/CalendarSearchBar';
+import { useCalendarSearch } from '@/hooks/useCalendarSearch';
 import { compareStopsByTime } from '@/lib/stop-order';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -579,23 +581,28 @@ export function DispatchPage() {
     return counts;
   }, [calendarStops]);
 
+  // ─── חיפוש ביומן (עידן, 04/11/2026): שורה משלו מעל היומן, נפרדת מחיפוש הממתינים ───
+  const calSearch = useCalendarSearch(calendarStops);
+  const searchedCalendarStops = calSearch.stops;
+
   // ─── נגזרות יומן ───
   const calendarDeliveries: CalendarDelivery[] = useMemo(
-    () => buildCalendarDeliveries(calendarStops, (s) => visibleTypes.has(s.sourceType)),
-    [calendarStops, visibleTypes]
+    () => buildCalendarDeliveries(searchedCalendarStops, (s) => visibleTypes.has(s.sourceType)),
+    [searchedCalendarStops, visibleTypes]
   );
 
-  // כמה עצירות הסינון מסתיר בכל יום — כדי שהיומן יוכל לומר את זה במקום "אין עצירות".
+  // כמה עצירות סינון הסוגים מסתיר בכל יום — כדי שהיומן יוכל לומר את זה במקום "אין עצירות".
+  // נספר על מה שעבר את החיפוש, אחרת "מוסתרות בסינון" כולל גם מה שהחיפוש לא מצא.
   const hiddenByFilter = useMemo(() => {
     const map: Record<string, number> = {};
     if (visibleTypes.size === ALL_SOURCE_TYPES.length) return map;
-    for (const s of calendarStops) {
+    for (const s of searchedCalendarStops) {
       if (s.status === 'cancelled') continue;
       if (visibleTypes.has(s.sourceType)) continue;
       map[s.deliveryDate] = (map[s.deliveryDate] ?? 0) + 1;
     }
     return map;
-  }, [calendarStops, visibleTypes]
+  }, [searchedCalendarStops, visibleTypes]
   );
 
   const pendingScheduleIds = useMemo(
@@ -1590,9 +1597,18 @@ export function DispatchPage() {
             )}
           </div>
 
+          <CalendarSearchBar
+            search={calSearch.search}
+            onSearchChange={calSearch.setSearch}
+            matchCount={calSearch.matchCount}
+            totalCount={calSearch.totalCount}
+            matchDates={calSearch.matchDates}
+          />
+
           <DeliveryCalendar
             deliveries={calendarDeliveries}
             hiddenByFilter={hiddenByFilter}
+            searching={calSearch.searching}
             onShowAllTypes={() => setVisibleTypes(new Set(ALL_SOURCE_TYPES))}
             onRemoveOrder={handleRemoveFromCalendar}
             onAddTask={(date) => setTaskDialogDate(date)}
