@@ -17,6 +17,7 @@ import { useLayoutEffect, useMemo, useRef } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { CalendarDays, ChevronLeft, ChevronRight, ClipboardList, Sun, TrendingUp, XCircle } from 'lucide-react';
 import { useMorningReport } from '@/hooks/useMorningReport';
+import { ReminderRepliesPanel } from '@/components/management/ReminderRepliesPanel';
 import { countUp, reducedMotion, rise, stagger, stretch } from '@/lib/motion';
 import {
   deliveryRate, driverReported, morningDayLabel, morningMonthLabel, morningShortDay, shiftDate, todayLocal,
@@ -333,6 +334,11 @@ export function MorningReportPage() {
               </div>
             )}
           </Panel>
+        </div>
+
+        {/* ═══ תזכורות אמש (04/11/2026) ═══ */}
+        <div className="lg:col-span-2">
+          <ReminderRepliesPanel date={date} />
         </div>
 
         {/* ═══ לפי חודש ═══ */}

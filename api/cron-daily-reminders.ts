@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabaseAdmin } from './_lib/supabase-admin.js';
 import { heyySendTemplate, isHeyyDemo } from './_lib/heyy-server.js';
 import { getTemplate } from './_lib/templates-store.js';
+import { REMINDER_TEMPLATE_KEY, isReminderHour, reminderPreview, reminderValues } from './_lib/reminder-text.js';
 import { checkSuppressed } from './_lib/suppression.js';
 import { normalizePhone, toE164 } from './_lib/phone.js';
 import { secretEquals } from './_lib/secret-equals.js';
@@ -49,10 +50,9 @@ import { secretEquals } from './_lib/secret-equals.js';
 /** ⭐ ההגנה: בלי המשתנה הזה שום דבר לא יוצא, ומה שהיה נשלח מדווח. */
 const ARMED = process.env.WA_REMINDERS_ENABLED === '1';
 
-const REMINDER_KEY = 'rashal_visit_reminder';
+const REMINDER_KEY = REMINDER_TEMPLATE_KEY;
 const CRANE_GUIDE_KEY = 'crane_safety';
 
-const DAY_NAMES = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 
 /** תאריך מקומי בישראל, `YYYY-MM-DD`, עם היסט של מספר ימים. */
 function israelDate(offsetDays = 0): string {
@@ -61,38 +61,7 @@ function israelDate(offsetDays = 0): string {
   return now.toLocaleDateString('sv-SE', { timeZone: 'Asia/Jerusalem' });
 }
 
-/**
- * "2026-08-28" ⟵ "שישי, 28.8.2026".
- * 🔴 בלי המילה "יום" בהתחלה: הגוף שאושר אומר "ביום {{day}}", וערך
- * שנפתח ב"יום" מייצר "ביום יום שישי" בהודעה שיוצאת ללקוח.
- * הנוסח המלא ב-`src/lib/coordination-message.ts`; כאן עותק כי
- * `api/` אינו יכול לייבא מ-`src/`, ויש על ההתאמה בדיקה.
- */
-function hebrewDay(iso: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso ?? '').trim());
-  if (!m) return String(iso ?? '');
-  const [, y, mo, d] = m;
-  const at = new Date(Date.UTC(Number(y), Number(mo) - 1, Number(d)));
-  if (Number.isNaN(at.getTime())) return iso;
-  return `${DAY_NAMES[at.getUTCDay()]}, ${Number(d)}.${Number(mo)}.${y}`;
-}
-
-function hoursLabel(start: string | null, end: string | null): string {
-  const s = (start ?? '').trim().slice(0, 5);
-  const e = (end ?? '').trim().slice(0, 5);
-  if (!s || !e) return s || e || '';
-  return `${s} עד ${e}`;
-}
-
-/** ⭐ אותה רשימה סגורה שבדיאלוג, כדי שהערך שיוצא למטא יהיה זהה. */
-const PURPOSE_BY_SOURCE: Record<string, string> = {
-  delivery: 'לאספקת הציוד',
-  pickup: 'לאיסוף הציוד',
-  service: 'לביקור טכנאי',
-  task: 'לביקור טכנאי',
-  customer: 'לאספקת הציוד',
-  inspection: 'לביקור טכנאי',
-};
+// הנוסח, היום, השעות וסוג הביקור: api/_lib/reminder-text.ts (טהור, נבדק).
 
 interface StopRow {
   id: string;
@@ -135,8 +104,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const today = israelDate(0);
   const plans: Plan[] = [];
 
+  // 🔴 04/11/2026 (עידן): השליחה ב-19:00 שעון ישראל. הקרון של Vercel מוזמן ב-16:00
+  // וב-17:00 UTC (קיץ וחורף), ורק הריצה שנופלת על 19:00 שולחת. הרצה ידנית
+  // (`?force=1`) לא מחכה לשעה, כדי שאפשר יהיה להריץ יבש ביום.
+  const bodyForce = (req.body as { force?: boolean } | undefined)?.force === true;
+  const forced = req.query?.force === '1' || bodyForce;
+  if (!forced && !isReminderHour(new Date())) {
+    return res.status(200).json({ ok: true, skipped: 'לא שעת השליחה (19:00 שעון ישראל)', tomorrow });
+  }
+
   // ─── א. תזכורת ליום המחר ────────────────────────────────────────────
-  const reminderTpl = await getTemplate(REMINDER_KEY).catch(() => null);
+  const reminderTpl = await getTemplate(REMINDER_KEY).catch((e) => { console.error('[cron] template read failed:', e); return null; });
 
   const { data: stops, error } = await supabaseAdmin
     .from('calendar_stops')
@@ -163,15 +141,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       continue;
     }
 
-    const values = {
-      customer_name: (stop.customer_name ?? '').trim() || 'לקוח יקר',
-      purpose: PURPOSE_BY_SOURCE[stop.source_type] ?? 'לביקור טכנאי',
-      day: hebrewDay(stop.delivery_date ?? tomorrow),
-      hours: hoursLabel(stop.time_window_start, stop.time_window_end),
-    };
-    const preview = `תזכורת: מחר, יום ${values.day}, נגיע אליכם ${values.purpose}${
-      values.hours ? ` בין השעות ${values.hours}` : ''
-    }.`;
+    const values = reminderValues({ ...stop, delivery_date: stop.delivery_date ?? tomorrow });
+    const preview = reminderPreview(values);
 
     const plan: Plan = {
       stopId: stop.id, customer: values.customer_name, phone: local,
@@ -208,9 +179,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       continue;
     }
 
+    // שפת הלקוח כמו בשאר ההודעות (wa_pick_template): תבנית בשפה אם הוגשה, אחרת עברית.
+    const { data: picked } = await supabaseAdmin.rpc('wa_pick_template', {
+      p_key: REMINDER_KEY, p_phone: e164, p_customer: null, p_default: reminderTpl.heyyTemplateId,
+    });
+    type Picked = { lang?: string; template_id?: string } | null;
+    const pickedRow = (Array.isArray(picked) ? picked[0] : picked) as Picked;
+    const templateId = pickedRow?.template_id || reminderTpl.heyyTemplateId;
     const result = await heyySendTemplate(
       e164,
-      reminderTpl.heyyTemplateId,
+      templateId,
       Object.entries(values).map(([name, value]) => ({ name, value }))
     );
     const { data: out } = await supabaseAdmin
@@ -219,7 +197,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         wa_message_id: result.waMessageId ?? null,
         phone_e164: e164,
         message_kind: 'template',
-        template_id: reminderTpl.heyyTemplateId,
+        template_id: templateId,
         template_params: Object.values(values),
         reminder_kind: 'visit_reminder',
         status: result.status,
@@ -253,7 +231,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // 🔴 **ולפי מק״ט השורה ולא לפי המילה "מנוף" בתיאור**: 4,500 שורות
   // ערסל ו-3,000 שורות השתתפות עצמית נושאות את המילה, והתאמה עליה
   // הייתה שולחת מדריך מנוף למי שקיבל ערסל.
-  const guideTpl = await getTemplate(CRANE_GUIDE_KEY).catch(() => null);
+  const guideTpl = await getTemplate(CRANE_GUIDE_KEY).catch((e) => { console.error('[cron] template read failed:', e); return null; });
 
   const { data: doneToday } = await supabaseAdmin
     .from('calendar_stops')

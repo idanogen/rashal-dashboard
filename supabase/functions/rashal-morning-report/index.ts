@@ -31,6 +31,8 @@ interface Settings {
   template_id: string | null;
   recipients: { name: string; phone_e164: string }[];
   last_sent_date: string | null;
+  /** 04/11/2026: תבנית דוח התזכורות (rashal_reminder_report). ריק = רק המסך. */
+  reminder_report_template_id: string | null;
 }
 
 interface Report {
@@ -137,16 +139,71 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  // ── 04/11/2026 (עידן): דוח התזכורות של אמש, הודעה שנייה לאותם נמענים ──
+  // "מי מהם הגיב לי": reminder_replies(date) אוסף את התשובות מהערב עד 07:00.
+  let reminders: Record<string, unknown> | null = null;
+  if (cfg.reminder_report_template_id) {
+    const { data: rr } = await sb.rpc("reminder_replies", { p_date: report.date });
+    const r = rr as { sent: number; replied: number; no_reply: number; rows: { customer_name: string | null; reply_text: string | null }[] } | null;
+    if (r && Number(r.sent) > 0) {
+      const dow = DAY_NAMES[report.dow] ?? "";
+      const vars = [
+        { name: "report_day", value: `יום ${dow} ${d}/${m}` },
+        { name: "sent", value: String(r.sent) },
+        { name: "replied", value: String(r.replied) },
+        { name: "replies", value: repliesSummary(r.rows.filter((x) => x.reply_text)) },
+        { name: "no_reply", value: String(r.no_reply) },
+        { name: "report_date", value: `${y}-${m}-${d}` },
+      ];
+      const sent: Record<string, unknown>[] = [];
+      for (const rcp of cfg.recipients) {
+        if (dry) { sent.push({ name: rcp.name, dry: true }); continue; }
+        try {
+          const res = await fetch(SEND_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-send-secret": SEND_SECRET },
+            body: JSON.stringify({
+              kind: "template", phoneE164: rcp.phone_e164, templateId: cfg.reminder_report_template_id,
+              variables: vars, triggeredBy: `reminder-report:${report.date}`,
+            }),
+          });
+          const body = await res.json().catch(() => ({}));
+          sent.push({ name: rcp.name, ok: res.ok && body?.ok !== false, status: res.status, detail: body?.error ?? null });
+        } catch (e) {
+          sent.push({ name: rcp.name, ok: false, error: String(e).slice(0, 200) });
+        }
+      }
+      reminders = { sent: r.sent, replied: r.replied, no_reply: r.no_reply, results: sent };
+    } else {
+      reminders = { sent: 0 };
+    }
+  }
+
   const sentAny = results.some((r) => r.ok === true);
   await sb.from("morning_report_settings").update({
     last_run_at: new Date().toISOString(),
     ...(sentAny ? { last_sent_date: report.date } : {}),
-    last_result: { trigger, dry, date: report.date, totals: t, results },
+    last_result: { trigger, dry, date: report.date, totals: t, results, reminders },
   }).eq("id", true);
 
-  return json({ ok: true, trigger, dry, date: report.date, totals: t, rate, results });
+  return json({ ok: true, trigger, dry, date: report.date, totals: t, rate, results, reminders });
 });
 
+
+/** זהה ל-`api/_lib/reminder-text.ts` (Deno לא מייבא משם); test/reminder-text.test.mjs משווה. */
+function repliesSummary(rows: { customer_name: string | null; reply_text: string | null }[], max = 600): string {
+  if (!rows.length) return 'אין תשובות';
+  const parts = rows.map((r) => {
+    const text = (r.reply_text ?? '').replace(/\s+/g, ' ').trim().slice(0, 80);
+    return `${(r.customer_name ?? 'לקוח').trim()}: "${text}"`;
+  });
+  let out = '';
+  for (const p of parts) {
+    if ((out + (out ? ', ' : '') + p).length > max) { out += ` ועוד ${parts.length - parts.indexOf(p)}`; break; }
+    out += (out ? ', ' : '') + p;
+  }
+  return out;
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });

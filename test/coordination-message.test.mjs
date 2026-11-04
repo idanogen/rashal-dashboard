@@ -100,9 +100,11 @@ test('המפתח והמטרות סגורים', () => {
 import { readFileSync } from 'node:fs';
 
 const CRON = readFileSync(new URL('../api/cron-daily-reminders.ts', import.meta.url), 'utf8');
+// 04/11/2026: היום, השעות וסוג הביקור של התזכורת עברו ל-api/_lib/reminder-text.ts (טהור).
+const TEXT = readFileSync(new URL('../api/_lib/reminder-text.ts', import.meta.url), 'utf8');
 
 test('🔴 שמות הימים בעבודת התזכורות זהים לאלה שבמודול', () => {
-  const m = /const DAY_NAMES = \[(.*?)\]/s.exec(CRON);
+  const m = /const DAY_NAMES = \[(.*?)\]/s.exec(TEXT);
   assert.ok(m, 'DAY_NAMES לא נמצא בעבודת התזכורות');
   const cronDays = m[1].split(',').map((s) => s.trim().replace(/^'|'$/g, '')).filter(Boolean);
   // הצד של המודול, דרך הפונקציה האמיתית ולא דרך קריאת הקובץ.
@@ -113,15 +115,20 @@ test('🔴 שמות הימים בעבודת התזכורות זהים לאלה �
   assert.deepEqual(cronDays, libDays);
 });
 
-test('🔴 כל מטרה שהתזכורת שולחת היא אחת מהרשימה הסגורה שאושרה', () => {
-  // ⭐ מטא הקפיאה את הגוף, והמשתנה `purpose` נבדק מולו. ערך שאינו
-  // ברשימה הוא ניסוח שלא אושר, והוא ייצא ללקוח בלי שאף אחד יראה.
-  const m = /const PURPOSE_BY_SOURCE[^=]*= \{(.*?)\n\};/s.exec(CRON);
+test('🔴 כל מטרה שהתזכורת שולחת היא אחת מהרשימה הסגורה שהוגשה למטא', () => {
+  // ⭐ מטא הקפיאה את הגוף, והמשתנה `purpose` נבדק מולו. ערך שאינו ברשימה הוא
+  // ניסוח שלא אושר, והוא ייצא ללקוח בלי שאף אחד יראה.
+  // 04/11/2026: לתזכורת תבנית משלה (rashal_visit_reminder, גרסה א של עידן), והמטרות
+  // הן משפטים שלמים שהוגשו עם התבנית, לא ערכי התיאום. שינוי כאן = הגשה חדשה למטא.
+  const m = /const PURPOSE_BY_SOURCE[^=]*= \{(.*?)\n\};/s.exec(TEXT);
   assert.ok(m, 'PURPOSE_BY_SOURCE לא נמצא');
   const used = [...m[1].matchAll(/'([^']+)'/g)].map((x) => x[1]);
   assert.ok(used.length >= 5, `נמצאו רק ${used.length} מטרות`);
-  const allowed = new Set(PURPOSES.map((p) => p.value));
-  for (const v of used) assert.ok(allowed.has(v), `"${v}" אינו ברשימה שאושרה`);
+  const submitted = new Set([
+    'נגיע אליכם עם האספקה', 'נגיע אליכם לאיסוף הציוד',
+    'טכנאי שלנו יגיע אליכם לביקור שירות', 'טכנאי שלנו יגיע אליכם',
+  ]);
+  for (const v of used) assert.ok(submitted.has(v), `"${v}" לא הוגש למטא`);
 });
 
 test('🔴🔴 עבודת התזכורות כבויה כברירת מחדל', () => {
