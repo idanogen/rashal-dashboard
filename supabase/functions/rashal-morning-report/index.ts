@@ -33,8 +33,14 @@ interface Settings {
   last_sent_date: string | null;
   /** 04/11/2026: תבנית דוח התזכורות (rashal_reminder_report). ריק = רק המסך. */
   reminder_report_template_id: string | null;
-  /** נמעני דוח התזכורות בלבד (עידן: אבירם מקבל רק אותו, לא את דוח הבוקר). */
-  reminder_report_recipients: { name: string; phone_e164: string }[] | null;
+  /**
+   * נמעני דוח התזכורות בלבד (עידן: אבירם מקבל רק אותו, לא את דוח הבוקר).
+   * `days`: נמען זמני, רק ל-N הימים הראשונים שבהם הדוח יוצא (עידן, 04/11: "בשלושה הימים
+   * הראשונים לקבל בעצמי, לראות איך הוא יוצא"). נספר לפי הימים שכבר נשלחו, לא לפי תאריך.
+   */
+  reminder_report_recipients: { name: string; phone_e164: string; days?: number }[] | null;
+  /** תאריכי הדוחות שכבר יצאו באמת (לא יבש), לספירת הימים של נמען זמני. */
+  reminder_report_sent_dates: string[] | null;
 }
 
 interface Report {
@@ -158,7 +164,12 @@ Deno.serve(async (req: Request) => {
         { name: "report_date", value: `${y}-${m}-${d}` },
       ];
       const sent: Record<string, unknown>[] = [];
+      const sentDates = (cfg.reminder_report_sent_dates ?? []).filter((x) => x !== report.date);
       for (const rcp of cfg.reminder_report_recipients ?? []) {
+        if (rcp.days != null && sentDates.length >= rcp.days) {
+          sent.push({ name: rcp.name, skipped: `נמען זמני, ${rcp.days} ימים נגמרו` });
+          continue;
+        }
         if (dry) { sent.push({ name: rcp.name, dry: true }); continue; }
         try {
           const res = await fetch(SEND_URL, {
@@ -176,6 +187,10 @@ Deno.serve(async (req: Request) => {
         }
       }
       reminders = { sent: r.sent, replied: r.replied, no_reply: r.no_reply, results: sent };
+      if (!dry && sent.some((x) => x.ok === true)) {
+        await sb.from("morning_report_settings")
+          .update({ reminder_report_sent_dates: [...sentDates, report.date] }).eq("id", true);
+      }
     } else {
       reminders = { sent: 0 };
     }
