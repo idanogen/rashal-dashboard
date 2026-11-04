@@ -20,6 +20,8 @@ export interface Assignee {
   color: AssigneeColor;
   active: boolean;
   sortOrder: number;
+  /** שם המשתמש בפריוריטי (USERS.USERLOGIN), ל"לטיפול" בסיום ביקור שירות. ריק = לא נכתב. */
+  priorityLogin?: string;
 }
 
 export interface AssigneeStyle {

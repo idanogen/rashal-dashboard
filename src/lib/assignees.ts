@@ -10,6 +10,7 @@ interface Row {
   color: AssigneeColor;
   active: boolean;
   sort_order: number;
+  priority_login: string | null;
 }
 
 const toAssignee = (r: Row): Assignee => ({
@@ -19,12 +20,13 @@ const toAssignee = (r: Row): Assignee => ({
   color: r.color,
   active: r.active,
   sortOrder: r.sort_order,
+  priorityLogin: r.priority_login ?? undefined,
 });
 
 export async function fetchAssignees(): Promise<Assignee[]> {
   const { data, error } = await supabase
     .from('assignees')
-    .select('name, kind, phone, color, active, sort_order')
+    .select('name, kind, phone, color, active, sort_order, priority_login')
     .order('sort_order', { ascending: true })
     .order('name', { ascending: true });
   if (error) throw error;
@@ -48,7 +50,7 @@ export async function createAssignee(input: {
       // חדשים בסוף הרשימה, כדי שסדר היומן הקיים לא יזוז מתחת לידיים של הסדרן.
       sort_order: 100,
     })
-    .select('name, kind, phone, color, active, sort_order')
+    .select('name, kind, phone, color, active, sort_order, priority_login')
     .single();
   if (error) throw error;
   return toAssignee(data as Row);
@@ -56,13 +58,15 @@ export async function createAssignee(input: {
 
 export async function updateAssignee(
   name: string,
-  fields: Partial<{ kind: AssigneeKind; phone: string | null; color: AssigneeColor; active: boolean }>,
+  fields: Partial<{ kind: AssigneeKind; phone: string | null; color: AssigneeColor; active: boolean; priorityLogin: string | null }>,
 ): Promise<void> {
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if ('kind' in fields) patch.kind = fields.kind;
   if ('phone' in fields) patch.phone = fields.phone?.trim() || null;
   if ('color' in fields) patch.color = fields.color;
   if ('active' in fields) patch.active = fields.active;
+  // 🔴 נכתב לפריוריטי כמו שהוא: בלי רווחים מסביב, ריק = null (לא נכתב "לטיפול").
+  if ('priorityLogin' in fields) patch.priority_login = fields.priorityLogin?.trim() || null;
 
   const { error } = await supabase.from('assignees').update(patch).eq('name', name);
   if (error) throw error;

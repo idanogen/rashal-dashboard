@@ -135,6 +135,7 @@ function TeamTable({ rows, onPatch, busy }: TableProps) {
             <TableHead>שם</TableHead>
             <TableHead>תפקיד בשטח</TableHead>
             <TableHead>טלפון</TableHead>
+            <TableHead title='שם המשתמש בפריוריטי. נכתב ל"לטיפול" בקריאת השירות כשהטכנאי מסמן בוצע'>משתמש פריוריטי</TableHead>
             <TableHead>צבע ביומן</TableHead>
             <TableHead>האפליקציה</TableHead>
             <TableHead className="text-end">פעיל</TableHead>
@@ -171,6 +172,15 @@ function TeamTable({ rows, onPatch, busy }: TableProps) {
                   <PhoneCell value={a.phone ?? ''} busy={busy} onSave={(phone) => onPatch({ name: a.name, fields: { phone } })} />
                 </TableCell>
                 <TableCell>
+                  <PhoneCell
+                    value={a.priorityLogin ?? ''}
+                    busy={busy}
+                    dir="rtl"
+                    placeholder="כמו בפריוריטי"
+                    onSave={(priorityLogin) => onPatch({ name: a.name, fields: { priorityLogin } })}
+                  />
+                </TableCell>
+                <TableCell>
                   <ColorPicker value={a.color} busy={busy} onChange={(color) => onPatch({ name: a.name, fields: { color } })} />
                 </TableCell>
                 <TableCell>
@@ -196,17 +206,19 @@ function TeamTable({ rows, onPatch, busy }: TableProps) {
 }
 
 /** שמירה ביציאה מהשדה בלבד, כדי שלא תיווצר כתיבה לכל תו. */
-function PhoneCell({ value, busy, onSave }: { value: string; busy: boolean; onSave: (v: string) => void }) {
+function PhoneCell({ value, busy, onSave, dir = 'ltr', placeholder = '050-0000000' }: {
+  value: string; busy: boolean; onSave: (v: string) => void; dir?: 'ltr' | 'rtl'; placeholder?: string;
+}) {
   const [draft, setDraft] = useState(value);
   return (
     <Input
       className="h-8 w-36"
-      dir="ltr"
+      dir={dir}
       value={draft}
       disabled={busy}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={() => draft.trim() !== (value ?? '').trim() && onSave(draft)}
-      placeholder="050-0000000"
+      placeholder={placeholder}
     />
   );
 }

@@ -23,6 +23,7 @@
 //    לא יכולה להיות פתוחה לכל מי שמחזיק אותו.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { VISIT_STATUSES, decideTechnician, usersRefreshDue } from "./technician.ts";
 
 const PRIORITY = "https://p.priority-connect.online/odata/Priority/tabb4ce6.ini/shaal";
 const UA = "OgenSync/1.0";
@@ -59,13 +60,15 @@ const keyUrl = (docno: string, form: "typed" | "plain") =>
   form === "typed" ? `${PRIORITY}/DOCUMENTS_Q(DOCNO='${docno}',TYPE='Q')` : `${PRIORITY}/DOCUMENTS_Q('${docno}')`;
 
 /** סטטוס נוכחי לפי סינון, הצורה המאומתת של הסנכרון. null = הקריאה לא נמצאה. */
+const techLogins = new Map<string, string | null>();
 async function readStatuses(docnos: string[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   const filter = docnos.map((d) => `DOCNO eq '${d}'`).join(" or ");
-  const r = await call(`${PRIORITY}/DOCUMENTS_Q?$filter=${encodeURIComponent(filter)}&$select=DOCNO,CALLSTATUSCODE`);
+  const r = await call(`${PRIORITY}/DOCUMENTS_Q?$filter=${encodeURIComponent(filter)}&$select=DOCNO,CALLSTATUSCODE,TECHNICIANLOGIN`);
   if (r.status !== 200) throw new Error(`read HTTP ${r.status}: ${r.body.slice(0, 200)}`);
-  for (const row of (JSON.parse(r.body).value ?? []) as { DOCNO: string; CALLSTATUSCODE: string }[]) {
+  for (const row of (JSON.parse(r.body).value ?? []) as { DOCNO: string; CALLSTATUSCODE: string; TECHNICIANLOGIN?: string | null }[]) {
     out.set(row.DOCNO, row.CALLSTATUSCODE);
+    techLogins.set(row.DOCNO, row.TECHNICIANLOGIN ?? null);
   }
   return out;
 }
@@ -76,11 +79,42 @@ interface QueueRow {
   expected_from: string | null;
   allowed_from: string[] | null;
   target_status: string;
+  technician: string | null;
+}
+
+// ── "לטיפול" (TECHNICIANLOGIN): מי טיפל, נכתב עם הסטטוס בסיום הביקור (עידן, 04/11/2026) ──
+// רשימת המשתמשים של פריוריטי נמשכת פעם ביום בימי עבודה ל-priority_users. אם המסך
+// USERS חסום ל-API (קרה אצל לקוח אחר, learnings.md) הרשימה null ומאמתים רק בקריאה חוזרת.
+async function refreshUsers(force = false): Promise<{ refreshed: boolean; count?: number; error?: string }> {
+  const { data: last } = await sb.from("priority_users").select("seen_at").order("seen_at", { ascending: false }).limit(1);
+  const lastSeen = last?.[0]?.seen_at ? new Date(last[0].seen_at as string) : null;
+  if (!force && !usersRefreshDue(new Date(), lastSeen)) return { refreshed: false };
+  const r = await call(`${PRIORITY}/USERS?$select=USERLOGIN,USERNAME`);
+  if (r.status !== 200) return { refreshed: false, error: `USERS HTTP ${r.status}: ${r.body.slice(0, 200)}` };
+  const rows = ((JSON.parse(r.body).value ?? []) as { USERLOGIN: string; USERNAME?: string }[])
+    .filter((u) => typeof u.USERLOGIN === "string" && u.USERLOGIN.trim())
+    .map((u) => ({ login: u.USERLOGIN.trim(), full_name: u.USERNAME ?? null, seen_at: new Date().toISOString() }));
+  if (!rows.length) return { refreshed: false, error: "USERS החזיר רשימה ריקה" };
+  const { error } = await sb.from("priority_users").upsert(rows, { onConflict: "login" });
+  if (error) return { refreshed: false, error: `priority_users: ${error.message}` };
+  return { refreshed: true, count: rows.length };
+}
+
+async function loadTechnicianContext(): Promise<{ loginByName: Map<string, string | null>; known: Set<string> | null; usersNote?: string }> {
+  const users = await refreshUsers();
+  const [{ data: a }, { data: u }] = await Promise.all([
+    sb.from("assignees").select("name, priority_login"),
+    sb.from("priority_users").select("login"),
+  ]);
+  const loginByName = new Map<string, string | null>();
+  for (const x of (a ?? []) as { name: string; priority_login: string | null }[]) loginByName.set(x.name, x.priority_login);
+  const logins = ((u ?? []) as { login: string }[]).map((x) => x.login);
+  return { loginByName, known: logins.length ? new Set(logins) : null, usersNote: users.error };
 }
 
 async function pending(source: string, limit: number): Promise<QueueRow[]> {
   let q = sb.from("priority_call_status_writes")
-    .select("id, priority_call_id, expected_from, allowed_from, target_status")
+    .select("id, priority_call_id, expected_from, allowed_from, target_status, technician")
     .eq("source", source).eq("state", "pending");
   if (source === "stop") {
     q = q.lt("created_at", new Date(Date.now() - STOP_GRACE_MS).toISOString()).order("created_at", { ascending: true });
@@ -170,7 +204,9 @@ async function settle(r: QueueRow, patch: Record<string, unknown>) {
 
 async function live(source: string, max: number, form: "typed" | "plain", t0: number) {
   const rows = await pending(source, max);
-  const res = { done: 0, already: 0, skipped: 0, failed: 0, stopped: null as string | null };
+  const res = { done: 0, already: 0, skipped: 0, failed: 0, stopped: null as string | null, users: null as string | null };
+  const tech = await loadTechnicianContext();
+  res.users = tech.usersNote ?? null;
   let streak = 0;
   for (const r of rows) {
     if (Date.now() - t0 > TIME_BUDGET_MS) { res.stopped = "time budget"; break; }
@@ -196,12 +232,31 @@ async function live(source: string, max: number, form: "typed" | "plain", t0: nu
       res.skipped++;
       continue;
     }
-    const p = await call(keyUrl(docno, form), { method: "PATCH", body: JSON.stringify({ CALLSTATUSCODE: r.target_status }) });
+    // "לטיפול" נוסע באותו PATCH. אם פריוריטי דוחה את הצירוף, הסטטוס נכתב לבד
+    // והשם נרשם ככשל: הסטטוס הוא הראשי, השם לא מפיל אותו.
+    const t = VISIT_STATUSES.includes(r.target_status)
+      ? decideTechnician(r.technician, tech.loginByName, tech.known)
+      : { skip: "לא נכתב בסטטוס הזה" };
+    let body: Record<string, string> = { CALLSTATUSCODE: r.target_status };
+    if (t.login) body = { ...body, TECHNICIANLOGIN: t.login };
+    let p = await call(keyUrl(docno, form), { method: "PATCH", body: JSON.stringify(body) });
+    let techError: string | null = t.skip ?? null;
+    let techResult: "done" | "skipped" | "failed" = t.login ? "done" : "skipped";
+    if (t.login && !(p.status === 200 || p.status === 204)) {
+      techResult = "failed";
+      techError = `פריוריטי דחה את השם יחד עם הסטטוס (HTTP ${p.status}): ${p.body.slice(0, 200)}`;
+      p = await call(keyUrl(docno, form), { method: "PATCH", body: JSON.stringify({ CALLSTATUSCODE: r.target_status }) });
+    }
     const after = (await readStatuses([docno])).get(docno) ?? null;
     const ok = (p.status === 200 || p.status === 204) && after === r.target_status;
+    if (t.login && techResult === "done" && techLogins.get(docno) !== t.login) {
+      techResult = "failed";
+      techError = `נכתב "${t.login}" אבל פריוריטי מחזירה "${techLogins.get(docno) ?? ""}"`;
+    }
     await settle(r, {
       state: ok ? "done" : "failed", status_before: before, status_after: after, http_status: p.status,
       error: ok ? null : p.body.slice(0, 300), attempted_at: now,
+      technician_login: t.login ?? null, technician_result: techResult, technician_error: techError,
     });
     // 🔴 העותק שלנו מתעדכן מכאן, מהערך שנקרא בחזרה מפריוריטי. הסנכרון מושך
     // קריאות לפי `STATUSDATE ge <since>`, וסימן-המים שלו בשעון ישראל עם סיומת Z.
@@ -209,7 +264,11 @@ async function live(source: string, max: number, form: "typed" | "plain", t0: nu
     // חותם אותו ב-UTC (08:48Z בכתיבה של 11:48 שעון ישראל), כלומר שלוש שעות
     // "מאחורי" סימן-המים, והמשיכה לא רואה אותו לעולם. בלי השורה הזאת העותק
     // היה נשאר "שובצה" לנצח.
-    if (ok) await sb.from("service_calls").update({ priority_status: after }).eq("priority_call_id", docno);
+    if (ok) {
+      const copy: Record<string, string> = { priority_status: after! };
+      if (techResult === "done" && t.login) copy.closed_by = t.login;
+      await sb.from("service_calls").update(copy).eq("priority_call_id", docno);
+    }
     if (ok) { res.done++; streak = 0; } else { res.failed++; streak++; }
     if (streak >= MAX_CONSECUTIVE_FAILURES) { res.stopped = `${streak} כשלים ברצף`; break; }
   }
@@ -225,7 +284,7 @@ Deno.serve(async (req: Request) => {
   const mode = b.mode ?? "";
   const source = b.source ?? DEFAULT_SOURCE;
   const max = Math.min(Math.max(1, Number(b.max ?? 10) || 10), 60);
-  if (!["probe", "dry", "inspect", "live"].includes(mode)) return json({ error: "mode must be probe | dry | inspect | live" }, 400);
+  if (!["probe", "dry", "inspect", "live", "users"].includes(mode)) return json({ error: "mode must be probe | dry | inspect | live | users" }, 400);
   if (mode === "live" && b.key_form !== "typed" && b.key_form !== "plain") {
     return json({ error: "live requires key_form from a successful probe" }, 400);
   }
@@ -239,6 +298,7 @@ Deno.serve(async (req: Request) => {
     result = mode === "probe" ? await probe(source)
       : mode === "dry" ? await dry(source, max)
       : mode === "inspect" ? await inspect(String(b.docno ?? ""))
+      : mode === "users" ? { ok: true, ...(await refreshUsers(true)) }
       : await live(source, max, b.key_form as "typed" | "plain", t0);
     if (result.ok === false) status = "error";
   } catch (e) {
