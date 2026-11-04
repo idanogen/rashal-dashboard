@@ -10,6 +10,11 @@ export const REMINDER_TEMPLATE_KEY = 'rashal_visit_reminder';
 export const REMINDER_REPORT_TEMPLATE_KEY = 'rashal_reminder_report';
 /** שעת השליחה בשעון ישראל. הקרון של Vercel רץ ב-UTC ולא יודע שעון קיץ, לכן נבדק כאן. */
 export const REMINDER_HOUR_ISRAEL = 19;
+/**
+ * מוצאי שבת (עידן 04/11: "גם במוצאי שבת, כי זה לפני יום ראשון"): 20:30 ולא 19:00,
+ * כי בקיץ שבת יוצאת אחרי 20:00 והודעה ב-19:00 הייתה נכנסת לשבת של הלקוח.
+ */
+export const REMINDER_HOUR_SATURDAY = 20;
 
 const DAY_NAMES = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 
@@ -67,9 +72,18 @@ export function reminderPreview(v: ReturnType<typeof reminderValues>): string {
     'אם המועד לא מתאים לכם, אפשר להשיב כאן ונתאם מחדש. תודה, צוות ר.שעל';
 }
 
-/** האם זו שעת השליחה: הקרון מוזמן ב-16:00 וב-17:00 UTC, ורק הריצה שנופלת על 19:00 בישראל שולחת. */
+/**
+ * האם זו שעת השליחה. ראשון עד חמישי: הקרון מוזמן ב-16:00 וב-17:00 UTC ורק הריצה
+ * שנופלת על 19:00 בישראל שולחת. שבת: מוזמן ב-17:30 וב-18:30 UTC, ורק 20:xx בישראל.
+ * שישי: אף פעם (אין עצירות בשבת).
+ */
 export function isReminderHour(now: Date): boolean {
-  const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jerusalem', hour: '2-digit', hour12: false }).format(now)) % 24;
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Jerusalem', hour: '2-digit', hour12: false, weekday: 'short' })
+    .formatToParts(now);
+  const h = Number(parts.find((p) => p.type === 'hour')?.value ?? '-1') % 24;
+  const wd = parts.find((p) => p.type === 'weekday')?.value ?? '';
+  if (wd === 'Fri') return false;
+  if (wd === 'Sat') return h === REMINDER_HOUR_SATURDAY;
   return h === REMINDER_HOUR_ISRAEL;
 }
 

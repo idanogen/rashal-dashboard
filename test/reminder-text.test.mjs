@@ -40,6 +40,18 @@ test('🔴 שעת השליחה 19:00 ישראל, גם בחורף וגם בקיץ
   assert.equal(isReminderHour(new Date('2026-07-05T17:00:00Z')), false);
 });
 
+test('🔴 מוצאי שבת: 20:30 ישראל (אחרי צאת השבת גם בקיץ), ושישי אף פעם', () => {
+  // 07/11/2026 שבת. חורף: 18:30 UTC = 20:30 ישראל.
+  assert.equal(isReminderHour(new Date('2026-11-07T18:30:00Z')), true);
+  assert.equal(isReminderHour(new Date('2026-11-07T17:30:00Z')), false, '19:30 עוד לא');
+  assert.equal(isReminderHour(new Date('2026-11-07T17:00:00Z')), false, '19:00 בשבת לא שולחים');
+  // 11/07/2026 שבת. קיץ: 17:30 UTC = 20:30 ישראל.
+  assert.equal(isReminderHour(new Date('2026-07-11T17:30:00Z')), true);
+  assert.equal(isReminderHour(new Date('2026-07-11T18:30:00Z')), false);
+  // 06/11/2026 שישי: 19:00 ישראל לא שולח.
+  assert.equal(isReminderHour(new Date('2026-11-06T17:00:00Z')), false);
+});
+
 test('סיכום התשובות לדוח: שם ותשובה, קצוץ, ו"אין תשובות" כשאין', () => {
   assert.equal(repliesSummary([]), 'אין תשובות');
   const two = [{ customer_name: 'כהן דוד', reply_text: 'תגיעו  אחרי\n12' }, { customer_name: 'לוי', reply_text: 'בסדר' }];
