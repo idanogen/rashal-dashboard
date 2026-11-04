@@ -56,6 +56,25 @@ async function call(url: string, init: RequestInit = {}): Promise<Resp> {
 }
 
 const okDocno = (d: string) => /^SC\d+$/.test(d);
+/** פריוריטי מחזירה XML-כ-JSON ארוך; מה שמעניין הוא טקסט ההודעה ("FORM" → "message"/"text"). */
+function priorityMessage(body: string): string {
+  try {
+    const j = JSON.parse(body);
+    const m = j?.error?.message ?? j?.FORM?.InterfaceErrors?.text ?? j?.FORM?.message ?? j?.FORM?.text;
+    if (typeof m === "string" && m.trim()) return m.trim().slice(0, 300);
+  } catch { /* not json */ }
+  return body.replace(/\s+/g, " ").slice(0, 300);
+}
+
+/** בדיקה חד פעמית של "לטיפול" על קריאה אחת: PATCH של השם בלבד, הגוף המלא, וקריאה חוזרת. */
+async function techProbe(docno: string, login: string) {
+  if (!okDocno(docno) || !login) return { ok: false, note: "docno/login לא תקינים" };
+  const before = techLogins.get(docno) ?? ((await readStatuses([docno])), techLogins.get(docno) ?? null);
+  const status = (await readStatuses([docno])).get(docno) ?? null;
+  const p = await call(keyUrl(docno, "typed"), { method: "PATCH", body: JSON.stringify({ TECHNICIANLOGIN: login }) });
+  await readStatuses([docno]);
+  return { ok: p.status === 200 || p.status === 204, status, before, http: p.status, message: priorityMessage(p.body), body: p.body.slice(0, 1500), after: techLogins.get(docno) ?? null };
+}
 const keyUrl = (docno: string, form: "typed" | "plain") =>
   form === "typed" ? `${PRIORITY}/DOCUMENTS_Q(DOCNO='${docno}',TYPE='Q')` : `${PRIORITY}/DOCUMENTS_Q('${docno}')`;
 
@@ -236,21 +255,22 @@ async function live(source: string, max: number, form: "typed" | "plain", t0: nu
       res.skipped++;
       continue;
     }
-    // "לטיפול" נוסע באותו PATCH. אם פריוריטי דוחה את הצירוף, הסטטוס נכתב לבד
-    // והשם נרשם ככשל: הסטטוס הוא הראשי, השם לא מפיל אותו.
+    // "לטיפול" נכתב **לפני** הסטטוס, ב-PATCH משלו. 04/11/2026, SC2603989: שני
+    // השדות באותו PATCH נדחו ב-400, הסטטוס מתקדם קודם והקריאה כבר "בוצעה"
+    // כשהשם מגיע. הסטטוס הוא הראשי: השם לא מפיל אותו, רק נרשם ככשל לפעמון.
     const t = VISIT_STATUSES.includes(r.target_status)
       ? decideTechnician(r.technician, tech.loginByName, tech.known)
       : { skip: "לא נכתב בסטטוס הזה" };
-    let body: Record<string, string> = { CALLSTATUSCODE: r.target_status };
-    if (t.login) body = { ...body, TECHNICIANLOGIN: t.login };
-    let p = await call(keyUrl(docno, form), { method: "PATCH", body: JSON.stringify(body) });
     let techError: string | null = t.skip ?? null;
     let techResult: "done" | "skipped" | "failed" = t.login ? "done" : "skipped";
-    if (t.login && !(p.status === 200 || p.status === 204)) {
-      techResult = "failed";
-      techError = `פריוריטי דחה את השם יחד עם הסטטוס (HTTP ${p.status}): ${p.body.slice(0, 200)}`;
-      p = await call(keyUrl(docno, form), { method: "PATCH", body: JSON.stringify({ CALLSTATUSCODE: r.target_status }) });
+    if (t.login) {
+      const tp = await call(keyUrl(docno, form), { method: "PATCH", body: JSON.stringify({ TECHNICIANLOGIN: t.login }) });
+      if (!(tp.status === 200 || tp.status === 204)) {
+        techResult = "failed";
+        techError = `פריוריטי דחה את "לטיפול" (HTTP ${tp.status}): ${priorityMessage(tp.body)}`;
+      }
     }
+    const p = await call(keyUrl(docno, form), { method: "PATCH", body: JSON.stringify({ CALLSTATUSCODE: r.target_status }) });
     const after = (await readStatuses([docno])).get(docno) ?? null;
     const ok = (p.status === 200 || p.status === 204) && after === r.target_status;
     if (t.login && techResult === "done" && techLogins.get(docno) !== t.login) {
@@ -283,12 +303,12 @@ Deno.serve(async (req: Request) => {
   const secret = Deno.env.get("PRIORITY_SYNC_SECRET") ?? "";
   if (!secret || req.headers.get("x-sync-secret") !== secret) return json({ error: "unauthorized" }, 401);
 
-  let b: { mode?: string; source?: string; max?: number; key_form?: string; docno?: string } = {};
+  let b: { mode?: string; source?: string; max?: number; key_form?: string; docno?: string; login?: string } = {};
   try { b = await req.json(); } catch { /* empty */ }
   const mode = b.mode ?? "";
   const source = b.source ?? DEFAULT_SOURCE;
   const max = Math.min(Math.max(1, Number(b.max ?? 10) || 10), 60);
-  if (!["probe", "dry", "inspect", "live", "users"].includes(mode)) return json({ error: "mode must be probe | dry | inspect | live | users" }, 400);
+  if (!["probe", "dry", "inspect", "live", "users", "tech-probe"].includes(mode)) return json({ error: "mode must be probe | dry | inspect | live | users | tech-probe" }, 400);
   if (mode === "live" && b.key_form !== "typed" && b.key_form !== "plain") {
     return json({ error: "live requires key_form from a successful probe" }, 400);
   }
@@ -303,6 +323,7 @@ Deno.serve(async (req: Request) => {
       : mode === "dry" ? await dry(source, max)
       : mode === "inspect" ? await inspect(String(b.docno ?? ""))
       : mode === "users" ? { ok: true, ...(await refreshUsers(true)) }
+      : mode === "tech-probe" ? await techProbe(String(b.docno ?? ""), String(b.login ?? ""))
       : await live(source, max, b.key_form as "typed" | "plain", t0);
     if (result.ok === false) status = "error";
   } catch (e) {
