@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { decideTechnician, usersRefreshDue, VISIT_STATUSES } from '../supabase/functions/rashal-call-status/technician.ts';
 
 /** "לטיפול" בפריוריטי בסיום הביקור (עידן, 04/11/2026). */
@@ -35,4 +36,9 @@ test('🔴 משיכת המשתמשים: פעם ביום, ראשון עד חמי�
 
 test('הסטטוסים שבהם נכתב מי טיפל: בוצעה ולהמשך טיפול', () => {
   assert.deepEqual(VISIT_STATUSES, ['בוצעה', 'להמשך טיפול']);
+});
+
+test('🔴 USERS חסום ל-API אצל ר.שעל: בלי מטמון אין משיכה יומית, רק ידנית', () => {
+  const src = readFileSync(new URL('../supabase/functions/rashal-call-status/index.ts', import.meta.url), 'utf8');
+  assert.ok(src.includes('if (!force && !lastSeen) return { refreshed: false };'));
 });

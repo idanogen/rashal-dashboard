@@ -88,6 +88,10 @@ interface QueueRow {
 async function refreshUsers(force = false): Promise<{ refreshed: boolean; count?: number; error?: string }> {
   const { data: last } = await sb.from("priority_users").select("seen_at").order("seen_at", { ascending: false }).limit(1);
   const lastSeen = last?.[0]?.seen_at ? new Date(last[0].seen_at as string) : null;
+  // 🔴 04/11/2026: אצל ר.שעל USERS עונה 400 "לא ניתן להפעיל API למסך זה" (כמו אצל מטלפרס).
+  // משיכה אוטומטית רק אחרי שמשיכה ידנית (mode=users) הצליחה פעם אחת, כלומר המסך נפתח.
+  // עד אז אין קריאה יומית שנכשלת, והאימות הוא המיפוי + הקריאה החוזרת אחרי כל כתיבה.
+  if (!force && !lastSeen) return { refreshed: false };
   if (!force && !usersRefreshDue(new Date(), lastSeen)) return { refreshed: false };
   const r = await call(`${PRIORITY}/USERS?$select=USERLOGIN,USERNAME`);
   if (r.status !== 200) return { refreshed: false, error: `USERS HTTP ${r.status}: ${r.body.slice(0, 200)}` };
