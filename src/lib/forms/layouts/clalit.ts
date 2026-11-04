@@ -14,7 +14,9 @@ export function clalitDeliveryLayout({ values: v, signatures, names, meta }: Lay
     <div style="display:flex;justify-content:flex-end">
       <img src="${logo}" style="height:40px;display:block" />
     </div>
-    <div style="text-align:center;font-size:17px;font-weight:800;text-decoration:underline;margin:6px 0 14px">אישור קבלת ציוד שיקום / ניידות</div>
+    <div style="text-align:center;font-size:17px;font-weight:800;text-decoration:underline;margin:6px 0 14px">
+      אישור קבלת ציוד שיקום / ניידות
+    </div>
     <div style="display:flex;justify-content:flex-end;padding-inline-end:40px">
       <table style="border-collapse:collapse;width:210px">
         <tr>${c('תאריך :', val(v, 'formDate'), { h: 50 })}</tr>
@@ -30,7 +32,8 @@ export function clalitDeliveryLayout({ values: v, signatures, names, meta }: Lay
     ${tbl(`
       <tr>${c('תיאור הציוד', val(v, 'equipmentDesc'), { colspan: 2, h: 40 })}${c('הדגם', val(v, 'equipmentModel'), { h: 40 })}</tr>
       <tr>${c('שם הספק', val(v, 'supplierName'), { colspan: 2, h: 40 })}${c('מספר סידורי', val(v, 'equipmentSerial'), { h: 40 })}</tr>
-      <tr>${c('שם המוסר', val(v, 'staffName'), { w: '30%' })}${c('תפקיד', val(v, 'staffRole'), { w: '29%' })}${c('מספר טלפון', val(v, 'staffPhone'))}</tr>`)}
+      <tr>${c('שם המוסר', val(v, 'staffName'), { w: '30%' })}${c('תפקיד', val(v, 'staffRole'), { w: '29%' })}
+        ${c('מספר טלפון', val(v, 'staffPhone'))}</tr>`)}
 
     <div style="font-size:13px;margin-top:30px">אני החתום מטה, מאשר שקיבלתי את הציוד במצב תקין.</div>
     <div style="display:flex;gap:40px;align-items:flex-end;margin-top:22px">
