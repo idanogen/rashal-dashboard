@@ -25,6 +25,7 @@
 | תיאור טכני מפורט (מסכים, רכיבים, hooks, טיפוסים) | `docs/ARCHITECTURE.md` |
 | תוכניות ומסמכים טכניים | `docs/` (SYNC-PULL-PLAN · heyy-limits · heyy-setup · PICKUPS-PLAN · MAKE-MIGRATION-PLAN) |
 | מסמכים ללקוח, דוחות, סיכומי פגישות | `~/Idan-HQ/meetings/rashal/` |
+| אנשי הקשר (רונן, שלומי קורן, עמי גז, אבירם, אילונה, שורה: תפקיד, טלפון, מייל) | דנה, `node ~/Idan-HQ/company/tools/contacts.mjs list "ר.שעל"` · שיחה פרטית: `wa-read-chat.mjs --who <שם> --company "ר.שעל"` |
 | ידע פריוריטי (כרטיס ר.שעל, לקחים, OData) | `~/Idan-HQ/knowledge/priority/{clients,learnings,odata-api}.md` |
 | התוסף לכרום (חלונית וואטסאפ בתוך פריוריטי) | `~/Idan-HQ/company/wa-priority-rashal/` (ריפו ogen-wa-priority) |
 
