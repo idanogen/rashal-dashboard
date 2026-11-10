@@ -309,8 +309,9 @@ async function handleGet(req: VercelRequest, res: VercelResponse) {
     // בדיקה ממוקדת: `test_docno=SO…` עם `test_note` כותב שורת בדיקה אחת להזמנה הזו בלבד.
     const testNote = s(req.query.test_note);
     const orderRows = await orderNoteRows(testDocno, testNote);
+    // 🔴 בלי תקרת EVENT_BATCH המשותפת: ההערות נבחרות אחרונות, ובריצה הראשונה (10/11) 12 כתיבות
+    // של קריאות מילאו את המכסה והשורה לא יצאה. שורת טקסט קצרה, והתקרה היא ה-limit של הבחירה (20).
     for (const o of orderRows) {
-      if (callKeys.length >= EVENT_BATCH) break;
       const docno = s(o.docno);
       const key = s(o.key);
       const line = orderNoteLine({ user_name: s(o.user_name), content: s(o.content), at: String(o.at), resolution_kind: s(o.resolution_kind) });
