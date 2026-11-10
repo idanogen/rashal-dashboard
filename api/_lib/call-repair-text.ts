@@ -60,6 +60,31 @@ export function repairLine(c: RepairCandidate): string | null {
   return `[${head}] ${text}`;
 }
 
+/** החיווי שפותח כל שורה שלנו בהזמנה, כדי שהמשרד יידע שלא אדם הקליד אותה. */
+export const ORDER_NOTE_SOURCE = 'מאפליקציית הנהגים';
+
+/**
+ * שורה אחת להזמנה בפריוריטי (עמי 09/11/2026, עידן 10/11/2026):
+ * "[מאפליקציית הנהגים · מוהנד · 08/11/26 14:20] לא בוצע: הגעתי לא רוצים את המנוף".
+ * היעד (דו שיח פנימי, כי הערות ההזמנה ננעלות עם הסטטוס) נקבע ב-`api/priority-push.ts`.
+ */
+export function orderNoteLine(c: Omit<RepairCandidate, 'kind'>): string | null {
+  const text = String(c.content ?? '')
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .join(' / ');
+  if (!text) return null;
+  const who = String(c.user_name ?? '').trim() || 'נהג';
+  const tag = RESOLUTION_LABEL[String(c.resolution_kind ?? '')] ?? 'סימון ביקור';
+  return `[${ORDER_NOTE_SOURCE} · ${who} · ${israelStamp(c.at)}] ${tag}: ${text}`;
+}
+
+/** ORDERS מתוּבְת במספר ההזמנה בלבד: ORDERS('SO2603742')/INTERNALDIALOGTEXT_SUBFORM. */
+export function orderSubformUrl(base: string, ordname: string, subform: string): string {
+  return `${base}/ORDERS('${encodeURIComponent(ordname)}')/${subform}`;
+}
+
 /** DOCUMENTS_Q מתוּבְת במפתח מורכב: DOCNO + TYPE='Q' (לקח #82). */
 export function callSubformUrl(base: string, docno: string, subform: string): string {
   return `${base}/DOCUMENTS_Q(DOCNO='${encodeURIComponent(docno)}',TYPE='Q')/${subform}`;

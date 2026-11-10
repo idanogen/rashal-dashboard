@@ -2,7 +2,8 @@
 // מושך את ה-outbox מה-Vercel endpoint, דוחף כל כתיבה לפריוריטי (כרטיס לקוח),
 // ומאשר (ack) רק אירועים שכל הכתיבות שלהם הצליחו — אירוע חלקי יחזור בריצה הבאה
 // (claim של 10 דק' בצד ה-outbox מונע משיכה כפולה במקביל).
-// ⚠זהירות: POST לפריוריטי אינו אידמפוטנטי — אסור ששני pollers ירוצו במקביל (Make כובה לפני תזמון הפונקציה הזו).
+// ⚠זהירות: POST לפריוריטי אינו אידמפוטנטי — אסור ששני pollers ירוצו במקביל
+// (Make כובה לפני תזמון הפונקציה הזו).
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { failureLine, isPermanentRejection, parkReason, priorityErrorText } from "./push-failure.ts";
@@ -49,7 +50,8 @@ async function fetchRetry(runId: number, entity: string, url: string, init: Requ
       if (isPermanentRejection(res.status)) return { res: null, body, attempts: i + 1, status: res.status, raw: body };
     } catch (e) {
       lastErr = String(e).slice(0, 300);
-      await logEvent({ run_id: runId, entity, attempt: i + 1, ok: false, duration_ms: Date.now() - t0, url_path: urlPath, ref: ref ?? null, error_snippet: lastErr });
+      const failed = { run_id: runId, entity, attempt: i + 1, ok: false, duration_ms: Date.now() - t0 };
+      await logEvent({ ...failed, url_path: urlPath, ref: ref ?? null, error_snippet: lastErr });
     }
   }
   return { res: null, body: lastErr, attempts: delays.length, status: lastStatus, raw: lastErr };
@@ -65,13 +67,20 @@ Deno.serve(async (req: Request) => {
   // `docno`: בדיקה ממוקדת של קריאת שירות אחת (מלל → תאור התיקון, תמונות → נספחים),
   // בלי כרטיס הלקוח ובלי רצפת הזמן. נוסף 15/09/2026.
   let docno = "";
+  // `note`: יחד עם `docno` של הזמנה (SO…), שורת בדיקה אחת להערות ההזמנה. נוסף 10/11/2026.
+  let note = "";
+  let subform = "";
   try {
     const b = await req.json();
+    if (b?.note) note = String(b.note).slice(0, 200);
+    if (b?.subform && /^[A-Z_]{5,40}$/.test(String(b.subform))) subform = String(b.subform);
     if (b?.trigger) trigger = String(b.trigger);
     if (b?.max != null && Number.isFinite(Number(b.max))) max = Math.max(0, Number(b.max));
     if (b?.docno && /^[A-Za-z0-9_-]{1,30}$/.test(String(b.docno))) docno = String(b.docno);
   } catch { /* default */ }
-  const outboxUrl = docno ? `${OUTBOX}?test_docno=${encodeURIComponent(docno)}` : OUTBOX;
+  const testSub = subform ? `&test_subform=${subform}` : "";
+  const testNote = docno && note ? `&test_note=${encodeURIComponent(note)}${testSub}` : "";
+  const outboxUrl = docno ? `${OUTBOX}?test_docno=${encodeURIComponent(docno)}${testNote}` : OUTBOX;
 
   const t0 = Date.now();
   const { data: runRow, error: runErr } = await sb
@@ -87,10 +96,13 @@ Deno.serve(async (req: Request) => {
   const ob = await fetchRetry(runId, "outbox", outboxUrl, { headers: { "x-sync-secret": syncSecret() } }, "/api/priority-push GET");
   retries += ob.attempts - 1;
   if (!ob.res) {
-    await sb.from("sync_runs").update({ status: "error", finished_at: new Date().toISOString(), duration_ms: Date.now() - t0, retries, error_summary: `outbox: ${ob.body.slice(0, 300)}` }).eq("id", runId);
+    const timing = { finished_at: new Date().toISOString(), duration_ms: Date.now() - t0 };
+    const failedRun = { status: "error", ...timing, retries, error_summary: `outbox: ${ob.body.slice(0, 300)}` };
+    await sb.from("sync_runs").update(failedRun).eq("id", runId);
     return new Response(JSON.stringify({ run_id: runId, ok: false, stage: "outbox" }), { status: 200, headers: { "Content-Type": "application/json" } });
   }
-  const parsed = JSON.parse(ob.body) as { writes?: { event_id: string; url: string; body: string }[]; skipped?: number; pending?: number; blocked?: number };
+  type Outbox = { writes?: { event_id: string; url: string; body: string }[]; skipped?: number; pending?: number; blocked?: number };
+  const parsed = JSON.parse(ob.body) as Outbox;
   const writes = parsed.writes ?? [];
   // 🔴 אפס כתיבות בזמן שיש ממתינים = תקלה, לא שקט. ב-02-03/09/2026 הריצות
   // דיווחו success עם אפס דחיפות 30 שעות, והוואצ'דוג היה ירוק. [[silence_needs_a_positive_control]]
@@ -140,8 +152,9 @@ Deno.serve(async (req: Request) => {
   if (parked.size) {
     for (const [eventId, text] of parked) {
       if (!eventId.startsWith("call:")) {
+        const custLabel = parkedCust.has(eventId) ? `לקוח ${parkedCust.get(eventId)} · ` : "";
         const { error } = await sb.from("timeline_events")
-          .update({ push_failed_at: new Date().toISOString(), push_fail_reason: (parkedCust.has(eventId) ? `לקוח ${parkedCust.get(eventId)} · ` : "") + text.slice(0, 480), push_claimed_at: null })
+          .update({ push_failed_at: new Date().toISOString(), push_fail_reason: custLabel + text.slice(0, 480), push_claimed_at: null })
           .eq("id", eventId);
         if (error) console.error("park failed:", eventId, error.message);
         continue;
@@ -176,7 +189,8 @@ Deno.serve(async (req: Request) => {
     error_summary: errors.length ? errors.join(" | ").slice(0, 900) : null,
   }).eq("id", runId);
 
-  return new Response(JSON.stringify({ run_id: runId, job: "push-chat", status, writes: writes.length, pushed, held, acked, parked: parked.size, blocked: parsed.blocked ?? 0, skipped: parsed.skipped ?? 0 }), {
+  const counts = { writes: writes.length, pushed, held, acked, parked: parked.size, blocked: parsed.blocked ?? 0, skipped: parsed.skipped ?? 0 };
+  return new Response(JSON.stringify({ run_id: runId, job: "push-chat", status, ...counts }), {
     headers: { "Content-Type": "application/json" },
   });
 });

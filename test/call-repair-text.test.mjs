@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { israelStamp, repairLine, callSubformUrl, photoDes } from '../api/_lib/call-repair-text.ts';
+import { israelStamp, repairLine, callSubformUrl, photoDes, orderNoteLine, orderSubformUrl } from '../api/_lib/call-repair-text.ts';
 
 /**
  * מלל ותמונות של הטכנאי לקריאת השירות בפריוריטי (עידן, 15/09/2026).
@@ -23,12 +23,37 @@ test('הערת צ\'אט של טכנאי', () => {
 
 test('סיבה מסימון הביקור מקבלת את שם הסימון, ושורות מתחברות', () => {
   assert.equal(
-    repairLine({ kind: 'note', user_name: 'אולג', content: 'חסר חלק, צריך להזמין', at: '2026-09-14T15:02:00Z', resolution_kind: 'follow_up' }),
+    repairLine({
+      kind: 'note', user_name: 'אולג', content: 'חסר חלק, צריך להזמין',
+      at: '2026-09-14T15:02:00Z', resolution_kind: 'follow_up',
+    }),
     '[אולג · 14/09/26 18:02 · להמשך טיפול] חסר חלק, צריך להזמין',
   );
   assert.equal(
-    repairLine({ kind: 'note', user_name: 'ישראל', content: 'בגלל צום סיימו לומדים מוקדם.\nאין אף אחד\n', at: '2026-09-14T12:00:00Z', resolution_kind: 'not_done' }),
+    repairLine({
+      kind: 'note', user_name: 'ישראל', content: 'בגלל צום סיימו לומדים מוקדם.\nאין אף אחד\n',
+      at: '2026-09-14T12:00:00Z', resolution_kind: 'not_done',
+    }),
     '[ישראל · 14/09/26 15:00 · לא בוצע] בגלל צום סיימו לומדים מוקדם. / אין אף אחד',
+  );
+});
+
+test('אספקה שלא בוצעה: שורה להערות ההזמנה עם חיווי המקור', () => {
+  assert.equal(
+    orderNoteLine({ user_name: 'מוהנד', content: 'הגעתי לא רוצים את המנף', at: '2026-11-08T12:20:00Z', resolution_kind: 'not_done' }),
+    '[מאפליקציית הנהגים · מוהנד · 08/11/26 14:20] לא בוצע: הגעתי לא רוצים את המנף',
+  );
+  assert.equal(
+    orderNoteLine({
+      user_name: 'אבי', content: 'סיימתי מאוחר \nתואם  לשבוע הבא',
+      at: '2026-11-05T15:00:00Z', resolution_kind: 'follow_up',
+    }),
+    '[מאפליקציית הנהגים · אבי · 05/11/26 17:00] להמשך טיפול: סיימתי מאוחר / תואם  לשבוע הבא',
+  );
+  assert.equal(orderNoteLine({ user_name: 'רודי', content: ' \n', at: '2026-11-05T15:00:00Z', resolution_kind: 'not_done' }), null);
+  assert.equal(
+    orderSubformUrl('https://x/odata', 'SO2603742', 'ORDERSTEXT_SUBFORM'),
+    "https://x/odata/ORDERS('SO2603742')/ORDERSTEXT_SUBFORM",
   );
 });
 

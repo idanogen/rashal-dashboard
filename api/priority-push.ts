@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabaseAdmin } from './_lib/supabase-admin.js';
-import { callSubformUrl, israelStamp, photoDes, repairLine } from './_lib/call-repair-text.js';
+import { callSubformUrl, israelStamp, orderNoteLine, orderSubformUrl, photoDes, repairLine } from './_lib/call-repair-text.js';
 import { secretEquals } from './_lib/secret-equals.js';
 
 // Priority PUSH — field-chat + photos → customer card (see docs/CHAT-TO-PRIORITY-PLAN.md)
@@ -82,6 +82,28 @@ async function toDataUri(url: string): Promise<{ dataUri: string; ext: string } 
   } catch {
     return null;
   }
+}
+
+/** הערות נהג על אספקה שלא בוצעה. בבדיקה ממוקדת: שורת בדיקה אחת להזמנה שנקבה, בלי לגעת בתור. */
+async function orderNoteRows(testDocno: string | null, testNote: string | null): Promise<Row[]> {
+  if (testDocno) {
+    if (!testNote || !/^SO\d{1,20}$/.test(testDocno)) return [];
+    const at = new Date().toISOString();
+    return [{ key: `ordnote-test:${testDocno}:${at}`, docno: testDocno, user_name: 'בדיקה', content: testNote, at, resolution_kind: 'not_done' }];
+  }
+  const { data, error } = await supabaseAdmin.rpc('priority_order_note_candidates', { p_limit: 20 });
+  if (error) console.error('[priority-push] order notes', error.message);
+  return (data as Row[] | null) ?? [];
+}
+
+/**
+ * לאן נכתבת ההערה בהזמנה: הדו שיח הפנימי. 🔴 נבדק חי 10/11/2026 על SO2603742 ("בוצעה"):
+ * ORDERSTEXT נדחה ב-400 ("מסך טקסט ORDERSTEXT הינו לקריאה בלבד"), INTERNALDIALOGTEXT עבר ב-201.
+ * 23 מתוך 24 האספקות שסומנו "לא בוצע" יושבות על הזמנה בסטטוס כזה. בבדיקה ממוקדת אפשר לנסות יעד אחר.
+ */
+const ORDER_NOTE_SUBFORMS = ['INTERNALDIALOGTEXT_SUBFORM', 'ORDERSTEXT_SUBFORM'];
+function orderNoteSubform(testSubform: string | null): string {
+  return testSubform && ORDER_NOTE_SUBFORMS.includes(testSubform) ? testSubform : ORDER_NOTE_SUBFORMS[0];
 }
 
 async function handleGet(req: VercelRequest, res: VercelResponse) {
@@ -277,6 +299,26 @@ async function handleGet(req: VercelRequest, res: VercelResponse) {
         event_id: `call:${key}`,
         url: `${PRIORITY}/DOCUMENTS_D(DOCNO='${encodeURIComponent(docno)}',TYPE='D')/EXTFILES_SUBFORM`,
         body,
+      });
+      callKeys.push(key);
+    }
+    // ─── אספקה שלא בוצעה → הערות ההזמנה (עמי 09/11, עידן 10/11/2026) ───
+    // סיבת "לא בוצע" / "המשך טיפול" של הנהג נכתבת כשורה נוספת בדו שיח הפנימי של
+    // ההזמנה (ראו `orderNoteSubform`). אותו יומן ואותו `call:` כמו הקריאות.
+    // המתג הוא רצפת הזמן `priority_order_note_floor()` במסד.
+    // בדיקה ממוקדת: `test_docno=SO…` עם `test_note` כותב שורת בדיקה אחת להזמנה הזו בלבד.
+    const testNote = s(req.query.test_note);
+    const orderRows = await orderNoteRows(testDocno, testNote);
+    for (const o of orderRows) {
+      if (callKeys.length >= EVENT_BATCH) break;
+      const docno = s(o.docno);
+      const key = s(o.key);
+      const line = orderNoteLine({ user_name: s(o.user_name), content: s(o.content), at: String(o.at), resolution_kind: s(o.resolution_kind) });
+      if (!docno || !key || !line) continue;
+      writes.push({
+        event_id: `call:${key}`,
+        url: orderSubformUrl(PRIORITY, docno, orderNoteSubform(testDocno ? s(req.query.test_subform) : null)),
+        body: JSON.stringify({ TEXT: line, APPEND: true }),
       });
       callKeys.push(key);
     }
