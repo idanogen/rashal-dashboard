@@ -12,14 +12,14 @@
 -- יושבות על הזמנה כזו. הדו שיח הפנימי של אותה הזמנה עבר ב-201, ולשם כותבים.
 -- כל עצירות האספקה עם הערה (198 מתוך 198 ב-30 יום) נושאות מספר SO.
 --
--- 🔴 רצפת הזמן היא המתג. `infinity` = כבוי: שום שורה לא נבחרת עד שעידן
--- רואה את כתיבת הבדיקה על SO2603742 ומאשר. ההדלקה = מיגרציה שמחליפה תאריך.
+-- 🔴 רצפת הזמן היא המתג (`infinity` = כבוי). עידן ראה את כתיבת הבדיקה על
+-- SO2603742 ואישר 10/11/2026: נכתב מ-10/11 00:00 שעון ישראל והלאה, בלי לשפוך אחורה.
 -- היומן, התפיסה, האישור והעצירה משותפים עם הקריאות (`priority_call_push_log`).
 -- ════════════════════════════════════════════════════════════════════════
 
 create or replace function public.priority_order_note_floor()
 returns timestamptz language sql immutable set search_path = public as $$
-  select timestamptz 'infinity';
+  select timestamptz '2026-11-09 22:00:00+00';
 $$;
 
 create or replace function public.priority_order_note_candidates(p_limit integer default 20)
