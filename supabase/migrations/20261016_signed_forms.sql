@@ -140,10 +140,9 @@ begin
      limit 1;
   end if;
 
-  if v_fund is null and v_cust is not null then
-    select nullif(trim(customer_type), '') into v_fund
-      from public.priority_customers where custname = v_cust;
-  end if;
+  -- מקור אחד לכלל הקופה (10/11/2026): גם כרטיס הביקור באפליקציה קורא ממנו.
+  -- הפונקציה מוגדרת ב-20261110_stop_health_fund.sql.
+  v_fund := public.stop_health_fund(v_stop);
 
   return jsonb_build_object(
     'stop_id', v_stop.id,
