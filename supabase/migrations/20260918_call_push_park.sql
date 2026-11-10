@@ -70,6 +70,24 @@ forms as (
     left join public.timeline_events te on te.id = sf.priority_event_id
    where sf.pdf_path is not null
 ),
+-- ⭐ 10/11/2026 (שלומי: "הרשימה הזאת תצורף לכל קריאת שירות"): רשימת בדיקה
+-- שנשמרה עם PDF (כיסא ממונע, `crane_forms`) נכנסת לנספחי הקריאה כמו טופס התיקון.
+checklists as (
+  select 'formdoc:' || cf.id::text as key,
+         'file_upload'::text as kind,
+         sc.priority_call_id as docno,
+         sc.priority_status,
+         cf.technician_name as user_name,
+         null::text as content,
+         jsonb_build_object('fileUrls', jsonb_build_array('sb://signed-forms/' || cf.pdf_path),
+                            'fileDes', te.metadata->>'fileDes') as metadata,
+         cf.submitted_at as at,
+         null::text as resolution_kind
+    from public.crane_forms cf
+    join public.service_calls sc on sc.id = cf.service_call_id
+    left join public.timeline_events te on te.id = cf.priority_event_id
+   where cf.pdf_path is not null
+),
 notes as (
   select 'note:' || cs.id::text || ':' || md5(cs.resolution_note) as key,
          'note'::text as kind,
@@ -91,7 +109,7 @@ select c.key, c.kind, c.docno, c.priority_status, c.user_name, c.content, c.meta
        l.claimed_at, l.pushed_at, l.failed_at, l.fail_reason, l.last_error,
        case when coalesce(c.priority_status, '') in ('סופית', 'מבוטלת', 'טופל טכנאי')
             then 'call_locked' end as blocked_reason
-  from (select * from ev union all select * from forms union all select * from notes) c
+  from (select * from ev union all select * from forms union all select * from checklists union all select * from notes) c
   left join public.priority_call_push_log l on l.key = c.key
  where c.docno ~ '^[A-Za-z0-9_-]{1,30}$';
 

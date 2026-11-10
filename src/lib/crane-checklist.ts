@@ -136,14 +136,21 @@ export interface ChecklistProgress {
  * כל פריטי הרשימה מסומנים (עידן, 26/10/2026: "כפתור שמסמן את כל הוי בפעם אחת").
  * בפועל הטכנאי עובר על הכל ברצף. ⭐ שומר סימונים קיימים של מזהים שאינם ברשימה.
  */
-export function checkAll(answers: Record<string, boolean>): Record<string, boolean> {
+export function checkAll(
+  answers: Record<string, boolean>,
+  list: ChecklistSection[] = CRANE_CHECKLIST,
+): Record<string, boolean> {
   const out = { ...answers };
-  for (const s of CRANE_CHECKLIST) for (const i of s.items) out[i.id] = true;
+  for (const s of list) for (const i of s.items) out[i.id] = true;
   return out;
 }
 
-export function progressOf(answers: Record<string, boolean>): ChecklistProgress {
-  const all = CRANE_CHECKLIST.flatMap((s) => s.items);
+/** ⭐ `list`: אותה ספירה משמשת גם רשימות אחרות (כיסא ממונע, `chair-checklist.ts`). */
+export function progressOf(
+  answers: Record<string, boolean>,
+  list: ChecklistSection[] = CRANE_CHECKLIST,
+): ChecklistProgress {
+  const all = list.flatMap((s) => s.items);
   const missing = all.filter((i) => !answers[i.id]);
   return {
     checked: all.length - missing.length,

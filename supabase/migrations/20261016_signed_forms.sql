@@ -168,6 +168,11 @@ begin
                            left(nullif(trim(v_call.fault_text), ''), 500)),
     'lines', v_lines,
     'crane', v_crane,
+    -- 10/11/2026: רשימת בדיקה שאינה של מנוף (כיסא ממונע). שדה נפרד מ-`crane`,
+    -- כי גרסת אפליקציה ישנה מציגה לכל `crane` את רשימת המנוף. הכלל ב-`stop_checklist_kind`
+    -- (20261110_chair_checklist.sql).
+    'checklist', (select jsonb_build_object('kind', k.kind, 'serial', v_call.device_serial, 'model', v_call.device_name)
+                    from (select public.stop_checklist_kind(v_stop) as kind) k where k.kind is not null),
     'crane_signed', (select coalesce(jsonb_agg(jsonb_build_object(
                        'id', c.id, 'form_type', c.form_type, 'submitted_at', c.submitted_at)
                        order by c.submitted_at), '[]'::jsonb)
@@ -341,24 +346,9 @@ $$;
 revoke all on function public.stop_crane_kind(public.calendar_stops) from public, anon;
 grant execute on function public.stop_crane_kind(public.calendar_stops) to authenticated;
 
-create or replace function public.stops_form_status(p_stop_ids uuid[])
-returns table (stop_id uuid, form_signed boolean, crane_kind text, crane_signed boolean)
-language sql stable security definer
-set search_path = public
-as $$
-  -- ⭐ 18/10/2026: תעודת משלוח חתומה (`delivery_note`) היא לא טופס הקופה,
-  -- ולא מכבה את התזכורת "טופס קופה חסר". המצב שלה ב-`stops_delivery_notes`.
-  select s.id,
-         exists (select 1 from public.signed_forms f
-                  where f.stop_id = s.id and f.form_key <> 'delivery_note'),
-         public.stop_crane_kind(s),
-         exists (select 1 from public.crane_forms cf where cf.stop_id = s.id)
-    from public.calendar_stops s
-   where s.id = any(p_stop_ids)
-     and public.stop_form_access(s) is true;
-$$;
-revoke all on function public.stops_form_status(uuid[]) from public, anon;
-grant execute on function public.stops_form_status(uuid[]) to authenticated;
+-- 🔴 10/11/2026: `stops_form_status` עברה ל-20261110_chair_checklist.sql (נוספו
+-- `checklist_kind` / `checklist_signed`, ושינוי טיפוס ההחזרה מחייב drop). ההגדרה
+-- היחידה שם.
 
 -- ─── הטופס גם לתעודת המשלוח (18/10/2026) ────────────────────────────────
 --
