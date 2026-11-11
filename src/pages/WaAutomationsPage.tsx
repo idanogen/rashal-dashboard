@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  MessageSquare, Camera, Star, CalendarClock, Hand, ShieldOff, AlertTriangle, Loader2, Truck, Sun,
+  MessageSquare, Camera, Star, CalendarClock, Hand, ShieldOff, AlertTriangle, Loader2, Truck, Sun, Moon,
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -47,6 +47,9 @@ interface MorningSettings {
   dry_run: boolean;
   send_hour: number;
   template_id: string | null;
+  /** 11/11/2026: 'evening' = דוח היום ב-send_hour (evening_template_id), במקום דוח אתמול בבוקר. */
+  report_slot?: 'morning' | 'evening';
+  evening_template_id?: string | null;
   recipients: { name: string; phone_e164: string }[];
   last_run_at: string | null;
   last_sent_date: string | null;
@@ -197,11 +200,14 @@ export function WaAutomationsPage() {
         {morning.data && (() => {
           const ms = morning.data;
           const failed = (ms.last_result?.results ?? []).filter((r) => r.ok === false).length;
+          const evening = ms.report_slot === 'evening';
+          const templateId = evening ? ms.evening_template_id : ms.template_id;
+          const names = ms.recipients.map((r) => r.name).join(', ') || 'אין';
           return (
             <EngineCard
-              icon={Sun}
-              title="דוח בוקר למנהלים"
-              description={`בשעה ${ms.send_hour}:00 בימי עבודה: כמה שובצו וסופקו אתמול, עם קישור למסך. נמענים: ${ms.recipients.map((r) => r.name).join(', ') || 'אין'}.`}
+              icon={evening ? Moon : Sun}
+              title={evening ? 'דוח אספקות ערב למנהלים' : 'דוח בוקר למנהלים'}
+              description={`בשעה ${ms.send_hour}:00 בימי עבודה: כמה שובצו וסופקו ${evening ? 'היום' : 'אתמול'}, עם קישור למסך. נמענים: ${names}.`}
               state={engineState(ms.enabled, ms.dry_run)}
               lastRun={sinceLabel(ms.last_run_at, now)}
               numbers={[
@@ -211,7 +217,7 @@ export function WaAutomationsPage() {
                 { label: 'נכשלו בריצה האחרונה', value: failed },
               ]}
               attention={[
-                !ms.template_id && 'אין תבנית מאושרת בהגדרות, ההודעה לא תצא',
+                !templateId && 'אין תבנית מאושרת בהגדרות, ההודעה לא תצא',
                 ms.recipients.length === 0 && 'אין נמענים',
                 failed > 0 && `${failed} נמענים לא קיבלו את ההודעה האחרונה`,
               ]}

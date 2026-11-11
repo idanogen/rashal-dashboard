@@ -1,18 +1,22 @@
-// rashal-morning-report — הודעת "דוח בוקר" למנהלים. רץ מ-pg_cron
-// (job `rashal-morning-report`, כל 10 דקות בחלון 07:00-08:59 שעון ישראל,
-// ימים א-ו) ושולח פעם אחת ביום, בשבע בבוקר, לנמענים שבהגדרות.
+// rashal-morning-report — דוח האספקות למנהלים ודוח התזכורות. רץ מ-pg_cron
+// (job `rashal-morning-report`, כל 10 דקות בחלון בוקר ובחלון ערב, ימים א-ו).
 //
 // החלטות עידן (09/09/2026): הודעה בימי עבודה עם קישור למסך, "סופק" = רק
 // עצירות שנסגרו "בוצע", הנמענים עמי, רונן ושלומי.
+// 11/11/2026 (שלומי, עידן "מחליף"): דוח האספקות עובר ל-19:00 על היום עצמו, כדי להגיב
+// כבר בתכנון של מחר. המתג `report_slot`; דוח התזכורות נשאר בבוקר. ההכרעה ב-plan.ts.
 //
-// ⚠ המתג יושב במסד (`morning_report_settings.enabled` / `dry_run`), לא כאן.
-//   הנמענים והתבנית גם שם. כיבוי הוא UPDATE אחד.
+// ⚠ המתג יושב במסד (`morning_report_settings.enabled` / `dry_run` / `report_slot`), לא כאן.
+//   הנמענים והתבניות גם שם. כיבוי או חזרה לבוקר הם UPDATE אחד.
 //
 // ⭐ המספרים באים מאותה פונקציה בדיוק שהמסך קורא (`morning_report`),
 //   ולכן ההודעה והמסך לא יכולים לסתור זה את זה.
+//
+// גוף הבקשה (ריצה ידנית): { dry, force, date: 'YYYY-MM-DD', part: 'delivery' | 'reminders' }.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { requireSecret } from "../_shared/require-secret.ts";
+import { dayLabel, deliveryRate, deliveryVariables, planRun, type Slot, type Totals } from "./plan.ts";
 
 const SEND_URL = "https://rashal-dashboard.vercel.app/api/heyy-send";
 const SEND_SECRET = Deno.env.get("RASHAL_SEND_SECRET") ?? "";
@@ -22,32 +26,34 @@ const sb = createClient(
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
 );
 
-const DAY_NAMES = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
+interface Recipient { name: string; phone_e164: string }
 
 interface Settings {
   enabled: boolean;
   dry_run: boolean;
   send_hour: number;
+  /** תבנית הבוקר (rashal_morning_report). */
   template_id: string | null;
-  recipients: { name: string; phone_e164: string }[];
+  /** 11/11/2026: 'evening' = דוח היום ב-send_hour בתבנית evening_template_id. */
+  report_slot: Slot;
+  evening_template_id: string | null;
+  recipients: Recipient[];
   last_sent_date: string | null;
   /** 04/11/2026: תבנית דוח התזכורות (rashal_reminder_report). ריק = רק המסך. */
   reminder_report_template_id: string | null;
   /**
-   * נמעני דוח התזכורות בלבד (עידן: אבירם מקבל רק אותו, לא את דוח הבוקר).
+   * נמעני דוח התזכורות בלבד (עידן: אבירם מקבל רק אותו, לא את דוח האספקות).
    * `days`: נמען זמני, רק ל-N הימים הראשונים שבהם הדוח יוצא (עידן, 04/11: "בשלושה הימים
    * הראשונים לקבל בעצמי, לראות איך הוא יוצא"). נספר לפי הימים שכבר נשלחו, לא לפי תאריך.
    */
-  reminder_report_recipients: { name: string; phone_e164: string; days?: number }[] | null;
-  /** תאריכי הדוחות שכבר יצאו באמת (לא יבש), לספירת הימים של נמען זמני. */
+  reminder_report_recipients: (Recipient & { days?: number })[] | null;
+  /** תאריכי דוחות התזכורות שכבר יצאו באמת (לא יבש): מונע כפל, וסופר ימים לנמען זמני. */
   reminder_report_sent_dates: string[] | null;
 }
 
-interface Report {
-  date: string;
-  dow: number;
-  totals: { planned: number; delivered: number; not_delivered: number; follow_up?: number; open: number; drivers: number };
-}
+interface Report { date: string; dow: number; totals: Totals & { drivers: number } }
+
+type Part = Record<string, unknown> & { skipped?: string };
 
 function israelNow(): { hour: number; date: string } {
   const parts = new Intl.DateTimeFormat("en-GB", {
@@ -58,6 +64,20 @@ function israelNow(): { hour: number; date: string } {
   return { hour: Number(get("hour")) % 24, date: `${get("year")}-${get("month")}-${get("day")}` };
 }
 
+async function sendTemplate(r: Recipient, templateId: string, variables: { name: string; value: string }[], tag: string) {
+  try {
+    const res = await fetch(SEND_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-send-secret": SEND_SECRET },
+      body: JSON.stringify({ kind: "template", phoneE164: r.phone_e164, templateId, variables, triggeredBy: tag }),
+    });
+    const body = await res.json().catch(() => ({}));
+    return { name: r.name, ok: res.ok && body?.ok !== false, status: res.status, detail: body?.error ?? body?.statusDetail ?? null };
+  } catch (e) {
+    return { name: r.name, ok: false, error: String(e).slice(0, 200) };
+  }
+}
+
 Deno.serve(async (req: Request) => {
   const denied = requireSecret(req);
   if (denied) return denied;
@@ -65,12 +85,14 @@ Deno.serve(async (req: Request) => {
   let forceDry: boolean | null = null;
   let dateArg: string | null = null;
   let force = false;
+  let part: string | null = null;
   try {
     const b = await req.json();
     force = b?.force === true;
     if (b?.trigger) trigger = String(b.trigger);
     if (typeof b?.dry === "boolean") forceDry = b.dry;
     if (typeof b?.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(b.date)) dateArg = b.date;
+    if (typeof b?.part === "string") part = b.part;
   } catch { /* ברירות מחדל */ }
 
   const { data: cfg, error: cfgErr } = await sb
@@ -79,133 +101,94 @@ Deno.serve(async (req: Request) => {
 
   const now = israelNow();
   const dry = forceDry ?? cfg.dry_run;
+  const slot: Slot = cfg.report_slot === "evening" ? "evening" : "morning";
 
   if (!cfg.enabled && trigger === "cron") {
     return json({ ok: true, skipped: "disabled" });
   }
-  // הקרון רץ בחלון רחב (כי UTC מול שעון ישראל זז בין קיץ לחורף), והשעה
-  // נבדקת כאן. ריצה ידנית לא מחכה לשבע.
-  if (trigger === "cron" && now.hour < cfg.send_hour) {
-    return json({ ok: true, skipped: `before ${cfg.send_hour}:00 Israel (now ${now.hour})` });
+  const plan = planRun({ slot, hour: now.hour, trigger, sendHour: cfg.send_hour, part });
+  if (!plan.delivery && !plan.reminders) return json({ ok: true, skipped: plan.reason ?? "nothing to do" });
+
+  const delivery: Part = plan.delivery ? await runDelivery(cfg, slot, dateArg ?? (slot === "evening" ? now.date : null), dry, force)
+    : { skipped: "not in this run" };
+  const reminders: Part = plan.reminders ? await runReminders(cfg, dateArg ?? now.date, dry, force)
+    : { skipped: "not in this run" };
+
+  const results = (delivery.results ?? []) as { ok?: boolean }[];
+  const sentAny = results.some((r) => r.ok === true);
+  if (!delivery.skipped || !reminders.skipped) {
+    await sb.from("morning_report_settings").update({
+      last_run_at: new Date().toISOString(),
+      ...(sentAny ? { last_sent_date: delivery.date } : {}),
+      last_result: { trigger, dry, slot, date: delivery.date ?? null, totals: delivery.totals ?? null, results, delivery, reminders },
+    }).eq("id", true);
   }
+  const failed = delivery.error ?? reminders.error;
+  return json({ ok: !failed, trigger, dry, slot, delivery, reminders }, failed ? 500 : 200);
+});
 
-  const { data: rep, error: repErr } = await sb.rpc("morning_report", { p_date: dateArg });
-  if (repErr || !rep) return json({ ok: false, error: `report failed: ${repErr?.message}` }, 500);
+async function runDelivery(cfg: Settings, slot: Slot, date: string | null, dry: boolean, force: boolean): Promise<Part> {
+  const { data: rep, error: repErr } = await sb.rpc("morning_report", { p_date: date });
+  if (repErr || !rep) return { error: `report failed: ${repErr?.message}` };
   const report = rep as Report;
+  const t = report.totals;
 
+  // ערב בלי עצירות (שישי בלי עבודה, חג): אין על מה לדווח. בבוקר התאריך הוא יום העבודה האחרון.
+  if (slot === "evening" && t.planned === 0 && !force) return { date: report.date, skipped: "no stops on this day" };
   // פעם אחת ליום דוח. ריצה ידנית על אותו תאריך גם היא לא שולחת פעמיים,
   // אלא אם ביקשו בפירוש (`force`).
   if (cfg.last_sent_date === report.date && !dry && !force) {
-    return json({ ok: true, skipped: `already sent for ${report.date}` });
+    return { date: report.date, skipped: `already sent for ${report.date}` };
   }
-  if (!cfg.template_id) return json({ ok: false, error: "no template_id in settings" }, 500);
-  if (!cfg.recipients?.length) return json({ ok: false, error: "no recipients in settings" }, 500);
+  const templateId = slot === "evening" ? cfg.evening_template_id : cfg.template_id;
+  if (!templateId) return { date: report.date, error: `no template for slot ${slot} in settings` };
+  if (!cfg.recipients?.length) return { date: report.date, error: "no recipients in settings" };
 
-  const t = report.totals;
-  const reported = t.delivered + t.not_delivered;
-  const rate = reported > 0 ? `${Math.round((t.delivered / reported) * 100)}%` : "אין דיווח";
-  const [y, m, d] = report.date.split("-");
-  // 🔴 15/09/2026 (עידן): "המשך טיפול" נספר בנפרד ולא כ"לא סופק", הטכנאי היה
-  // אצל הלקוח. התבנית המאושרת אומרת "לא סופקו עם סיבה מהשטח {{not_delivered}}
-  // עצירות", ולכן בלי תבנית חדשה המונה נכנס לאותו משתנה כהמשך של המשפט:
-  // "7 עצירות, להמשך טיפול אחרי ביקור 1" + " עצירות" שבתבנית. בלי המשך טיפול
-  // הערך הוא המספר בלבד, וההודעה זהה למה שיצא עד היום.
-  const followUp = t.follow_up ?? 0;
-  const notDeliveredValue = followUp > 0
-    ? `${t.not_delivered} עצירות, להמשך טיפול אחרי ביקור ${followUp}`
-    : String(t.not_delivered);
-  const variables = [
-    { name: "report_day", value: `יום ${DAY_NAMES[report.dow] ?? ""} ${d}/${m}` },
-    { name: "planned", value: String(t.planned) },
-    { name: "delivered", value: String(t.delivered) },
-    { name: "not_delivered", value: notDeliveredValue },
-    { name: "open_count", value: String(t.open) },
-    { name: "rate", value: rate },
-    // סיומת כפתור ה-URL: /morning/<תאריך>
-    { name: "report_date", value: `${y}-${m}-${d}` },
-  ];
-
+  const variables = deliveryVariables(slot, report.date, report.dow, t);
   const results: Record<string, unknown>[] = [];
   for (const r of cfg.recipients) {
-    if (dry) { results.push({ name: r.name, dry: true }); continue; }
-    try {
-      const res = await fetch(SEND_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-send-secret": SEND_SECRET },
-        body: JSON.stringify({
-          kind: "template",
-          phoneE164: r.phone_e164,
-          templateId: cfg.template_id,
-          variables,
-          triggeredBy: `morning-report:${report.date}`,
-        }),
-      });
-      const body = await res.json().catch(() => ({}));
-      results.push({ name: r.name, ok: res.ok && body?.ok !== false, status: res.status, detail: body?.error ?? body?.statusDetail ?? null });
-    } catch (e) {
-      results.push({ name: r.name, ok: false, error: String(e).slice(0, 200) });
-    }
+    results.push(dry ? { name: r.name, dry: true } : await sendTemplate(r, templateId, variables, `morning-report:${report.date}`));
   }
+  return { date: report.date, totals: t, rate: deliveryRate(t), variables, results };
+}
 
-  // ── 04/11/2026 (עידן): דוח התזכורות של אמש, הודעה שנייה לאותם נמענים ──
-  // "מי מהם הגיב לי": reminder_replies(date) אוסף את התשובות מהערב עד 07:00.
-  let reminders: Record<string, unknown> | null = null;
-  if (cfg.reminder_report_template_id) {
-    const { data: rr } = await sb.rpc("reminder_replies", { p_date: report.date });
-    const r = rr as { sent: number; replied: number; no_reply: number; rows: { customer_name: string | null; reply_text: string | null }[] } | null;
-    if (r && Number(r.sent) > 0) {
-      const dow = DAY_NAMES[report.dow] ?? "";
-      const vars = [
-        { name: "report_day", value: `יום ${dow} ${d}/${m}` },
-        { name: "sent", value: String(r.sent) },
-        { name: "replied", value: String(r.replied) },
-        { name: "replies", value: repliesSummary(r.rows.filter((x) => x.reply_text)) },
-        { name: "no_reply", value: String(r.no_reply) },
-        { name: "report_date", value: `${y}-${m}-${d}` },
-      ];
-      const sent: Record<string, unknown>[] = [];
-      const sentDates = (cfg.reminder_report_sent_dates ?? []).filter((x) => x !== report.date);
-      for (const rcp of cfg.reminder_report_recipients ?? []) {
-        if (rcp.days != null && sentDates.length >= rcp.days) {
-          sent.push({ name: rcp.name, skipped: `נמען זמני, ${rcp.days} ימים נגמרו` });
-          continue;
-        }
-        if (dry) { sent.push({ name: rcp.name, dry: true }); continue; }
-        try {
-          const res = await fetch(SEND_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "x-send-secret": SEND_SECRET },
-            body: JSON.stringify({
-              kind: "template", phoneE164: rcp.phone_e164, templateId: cfg.reminder_report_template_id,
-              variables: vars, triggeredBy: `reminder-report:${report.date}`,
-            }),
-          });
-          const body = await res.json().catch(() => ({}));
-          sent.push({ name: rcp.name, ok: res.ok && body?.ok !== false, status: res.status, detail: body?.error ?? null });
-        } catch (e) {
-          sent.push({ name: rcp.name, ok: false, error: String(e).slice(0, 200) });
-        }
-      }
-      reminders = { sent: r.sent, replied: r.replied, no_reply: r.no_reply, results: sent };
-      if (!dry && sent.some((x) => x.ok === true)) {
-        await sb.from("morning_report_settings")
-          .update({ reminder_report_sent_dates: [...sentDates, report.date] }).eq("id", true);
-      }
-    } else {
-      reminders = { sent: 0 };
-    }
+// ── 04/11/2026 (עידן): דוח התזכורות, "מי מהם הגיב לי" ──
+// `date` הוא יום הביקורים: התזכורות יצאו אמש, reminder_replies(date) אוסף את התשובות עד 07:00.
+async function runReminders(cfg: Settings, date: string, dry: boolean, force: boolean): Promise<Part> {
+  if (!cfg.reminder_report_template_id) return { skipped: "no reminder template" };
+  const sentDates = (cfg.reminder_report_sent_dates ?? []).filter((x) => x !== date);
+  if ((cfg.reminder_report_sent_dates ?? []).includes(date) && !dry && !force) {
+    return { date, skipped: `already sent for ${date}` };
   }
+  const { data: rr, error } = await sb.rpc("reminder_replies", { p_date: date });
+  if (error) return { date, error: `reminder_replies failed: ${error.message}` };
+  const r = rr as { sent: number; replied: number; no_reply: number; rows: { customer_name: string | null; reply_text: string | null }[] } | null;
+  if (!r || Number(r.sent) === 0) return { date, sent: 0, skipped: "no reminders sent" };
 
-  const sentAny = results.some((r) => r.ok === true);
-  await sb.from("morning_report_settings").update({
-    last_run_at: new Date().toISOString(),
-    ...(sentAny ? { last_sent_date: report.date } : {}),
-    last_result: { trigger, dry, date: report.date, totals: t, results, reminders },
-  }).eq("id", true);
-
-  return json({ ok: true, trigger, dry, date: report.date, totals: t, rate, results, reminders });
-});
-
+  const dow = new Date(`${date}T12:00:00Z`).getUTCDay();
+  const vars = [
+    { name: "report_day", value: dayLabel(date, dow) },
+    { name: "sent", value: String(r.sent) },
+    { name: "replied", value: String(r.replied) },
+    { name: "replies", value: repliesSummary(r.rows.filter((x) => x.reply_text)) },
+    { name: "no_reply", value: String(r.no_reply) },
+    { name: "report_date", value: date },
+  ];
+  const results: Record<string, unknown>[] = [];
+  for (const rcp of cfg.reminder_report_recipients ?? []) {
+    if (rcp.days != null && sentDates.length >= rcp.days) {
+      results.push({ name: rcp.name, skipped: `נמען זמני, ${rcp.days} ימים נגמרו` });
+      continue;
+    }
+    results.push(dry ? { name: rcp.name, dry: true }
+      : await sendTemplate(rcp, cfg.reminder_report_template_id, vars, `reminder-report:${date}`));
+  }
+  if (!dry && results.some((x) => x.ok === true)) {
+    await sb.from("morning_report_settings")
+      .update({ reminder_report_sent_dates: [...sentDates, date] }).eq("id", true);
+  }
+  return { date, sent: r.sent, replied: r.replied, no_reply: r.no_reply, results };
+}
 
 /** זהה ל-`api/_lib/reminder-text.ts` (Deno לא מייבא משם); test/reminder-text.test.mjs משווה. */
 function repliesSummary(rows: { customer_name: string | null; reply_text: string | null }[], max = 600): string {
