@@ -12,6 +12,7 @@ import { PARKED_JOB, checkParkedPushes } from "./parked-check.ts";
 import { TECH_JOB, checkTechnicianLogin } from "./technician-check.ts";
 import { SCREEN_JOB, checkScreenLoads } from "./screen-loads-check.ts";
 import { STUCK_JOB, checkStuckActions } from "./stuck-actions-check.ts";
+import { sweepSyncRuns } from "./svc-health.ts";
 import { requireSecret } from "../_shared/require-secret.ts";
 
 const sb = createClient(
@@ -323,6 +324,9 @@ Deno.serve(async (req: Request) => {
     report[STUCK_JOB] = `check crashed: ${e instanceof Error ? e.message : String(e)}`;
     console.error("[watchdog] stuck-actions check crashed", e);
   }
+
+  // חוזה הדופק (11/11/2026): כל זרם מול פריוריטי מדווח למרכז השירות בדנה, לא רק במייל לעידן.
+  report["svc-pulse"] = await sweepSyncRuns(sb, now);
 
   return new Response(JSON.stringify({ checked_at: now.toISOString(), report }), { headers: { "Content-Type": "application/json" } });
 });
