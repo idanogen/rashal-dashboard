@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -24,6 +24,8 @@ import {
 } from '@/lib/coordination-message';
 import { formatPhoneForDisplay } from '@/lib/heyy/phone';
 import { CoordinationStatusBadge } from './CoordinationStatusBadge';
+import { CoordinationNoteField } from './CoordinationNote';
+import { useCoordinationNote } from '@/hooks/useCoordinationNote';
 
 interface ScheduleCoordinationDialogProps {
   stop: CalendarStop | null;
@@ -63,29 +65,33 @@ export function ScheduleCoordinationDialog({
       entityId: stop.stopId,
       sourceType: stop.sourceType,
       customerName: stop.customerName,
-      metadata: { method, timeStart, timeEnd, note: note || undefined },
+      metadata: { method, timeStart, timeEnd, note: noteState.value },
     });
   };
 
   const [timeStart, setTimeStart] = useState('09:00');
   const [timeEnd, setTimeEnd] = useState('13:00');
-  const [note, setNote] = useState('');
+  const noteState = useCoordinationNote(stop);
   /** ⭐ ברירת המחדל נגזרת מסוג העצירה, כי זה מה שהיא בפועל. */
   const [purpose, setPurpose] = useState<string>(PURPOSES[0].value);
 
-  // Sync state when stop changes (dialog re-opens for a different stop)
-  useEffect(() => {
-    if (stop) {
+  // מאתחלים כשנפתח על עצירה (גם עצירה הבאה ברצף), ולא בכל רענון של אותה
+  // עצירה: רענון ברקע לא ימחק מה שהסדרן כבר הקליד. (התאמת state בזמן רינדור)
+  const [initFor, setInitFor] = useState<string | null>(null);
+  const initKey = open && stop ? stop.stopId : null;
+  if (initKey !== initFor) {
+    setInitFor(initKey);
+    if (stop && initKey) {
       setTimeStart(stop.timeWindowStart ?? '09:00');
       setTimeEnd(stop.timeWindowEnd ?? '13:00');
-      setNote('');
+      noteState.setNote(stop.notes ?? '');
       setPurpose(
         stop.sourceType === 'pickup' ? 'לאיסוף הציוד'
           : stop.sourceType === 'service' ? 'לביקור טכנאי'
             : 'לאספקת הציוד',
       );
     }
-  }, [stop?.stopId, stop]);
+  }
 
   /**
    * 🔴 **זמינות התבנית נקראת מהשרת ולא נקבעת כאן.** הכלל "מה מותר לשלוח"
@@ -154,7 +160,7 @@ export function ScheduleCoordinationDialog({
         coordinatedAt: new Date().toISOString(),
         timeWindowStart: timeStart,
         timeWindowEnd: timeEnd,
-        notes: note || undefined,
+        notes: noteState.value,
         coordinationNeedsCancel: false,
       },
     });
@@ -174,12 +180,18 @@ export function ScheduleCoordinationDialog({
         coordinatedAt: new Date().toISOString(),
         timeWindowStart: timeStart || undefined,
         timeWindowEnd: timeEnd || undefined,
-        notes: note || undefined,
+        notes: noteState.value,
         coordinationNeedsCancel: false,
       },
     });
     logCoordination('coordinate_phone', 'phone');
     onOpenChange(false);
+  }
+
+  /** 🔴 סגירה (איקס, Esc, לחיצה בחוץ) שומרת הערה שהשתנתה; בכישלון נשארים פתוחים. */
+  async function handleDialogOpenChange(next: boolean) {
+    if (!next && !(await noteState.save())) return;
+    onOpenChange(next);
   }
 
   async function handleClearCoordination() {
@@ -198,7 +210,7 @@ export function ScheduleCoordinationDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent dir="rtl" className="max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -318,16 +330,7 @@ export function ScheduleCoordinationDialog({
         </div>
 
         {/* 🔴 הערה פנימית בלבד. אין בתבנית חריץ לטקסט חופשי, במכוון. */}
-        <div className="space-y-1.5">
-          <Label htmlFor="note" className="text-xs">הערה לתיעוד (לא נשלחת ללקוח)</Label>
-          <Input
-            id="note"
-            placeholder='לדוגמה: "נא להתקשר בכניסה"'
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            className="h-9"
-          />
-        </div>
+        <CoordinationNoteField {...noteState} />
 
         {/* WhatsApp preview */}
         {hasPhone && (

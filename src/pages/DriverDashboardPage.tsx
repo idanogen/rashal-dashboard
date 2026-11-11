@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { StopNoteAlert } from '@/components/driver/StopNoteAlert';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCalendarStops } from '@/hooks/useCalendarStops';
 import { useResolveStop } from '@/hooks/useResolveStop';
@@ -749,11 +750,7 @@ export function LeftoverStopCard({
             </a>
           )}
         </div>
-        {stop.notes && (
-          <p className="rounded bg-muted/40 p-1.5 text-xs italic text-muted-foreground">
-            📝 {stop.notes}
-          </p>
-        )}
+        <StopNoteAlert stop={stop} plainClassName="rounded bg-muted/40 p-1.5 text-xs italic text-muted-foreground" />
         <div className="grid grid-cols-3 gap-2">
           <Button
             onClick={() => onResolve('completed')}
@@ -1059,11 +1056,7 @@ export function DriverStopCard({ stop, index, onCoordinate, onArrive, onResolve,
         )}
 
         {/* תיאור המשימה, כפי שנרשם בהקמה */}
-        {stop.notes && (
-          <div className="text-xs text-muted-foreground italic bg-muted/40 rounded p-2">
-            📝 {stop.notes}
-          </div>
-        )}
+        <StopNoteAlert stop={stop} plainClassName="text-xs text-muted-foreground italic bg-muted/40 rounded p-2" />
 
         {/* מה שנרשם בסימון. שורה נפרדת, כי היא כבר לא דורסת את התיאור. */}
         {stop.resolutionNote && (

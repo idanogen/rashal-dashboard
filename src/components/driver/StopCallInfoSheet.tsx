@@ -13,6 +13,7 @@ import { CustomerPhoneBook } from '@/components/customer/CustomerPhoneBook';
 import { SignedFormsSection } from '@/components/driver/SignedFormsSection';
 import { Empty, Section } from '@/components/driver/StopInfoSection';
 import { OrderBody, PickupBody } from '@/components/driver/StopInfoBodies';
+import { StopNoteAlert } from '@/components/driver/StopNoteAlert';
 import { MediaTile, MediaViewer } from '@/components/driver/StopMediaViewer';
 // 26/10/2026: גופי האספקה והאיסוף, אבני הבניין והמציג הועברו לקבצים משלהם (תקרת 400 שורות).
 
@@ -106,6 +107,8 @@ export function StopCallInfoSheet({ stop, call: serviceCall, calendarStop, open,
           </SheetHeader>
 
           <div className="flex-1 space-y-4 overflow-y-auto px-4 py-3">
+            {/* 11/11/2026: הערת המשרד מהתיאום, בראש הגיליון ובאדום. */}
+            {(stop ?? calendarStop) && <StopNoteAlert stop={(stop ?? calendarStop)!} />}
             {isLoading ? (
               <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
