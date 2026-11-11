@@ -114,6 +114,7 @@ supabase/       functions/ · migrations/ (85)
 - בטאב "הכל" לכל רשימה מצב טעינה ושגיאה משלה. רשימה שנכשלה לא מציגה "אין הזמנות".
 - טעינת מסך נמדדת (`src/lib/perf.ts` → `screen_load_log`). השליפות מקבילות, לכן הקובע הוא מי נגמרה אחרונה.
 - תאריכים מקומיים דרך `toLocalDateStr`, לא `toISOString().split('T')`.
+- 🔴 הערת המשרד לטכנאי (11/11): `calendar_stops.notes` של שירות/אספקה/איסוף מוצג באדום בכרטיס ובפרטי הקריאה, הכלל ב-`src/lib/stop-note-alert.ts` (מסונכרן לאפליקציה ב-`sync-forms`). `updateStop` כותב null על מפתח עם `undefined`: שדה עריכה נפתח עם הערך הקיים, אחרת השמירה מוחקת אותו.
 - Leaflet נותן לפקדים `z-index:1000`: `isolate` על כרטיס המפה. קו מסלול מ-`getRoadRoute` עם fallback לקו מקווקו. geocoding דרך השירות המרכזי, `CITY_COORDINATES` הוא fallback.
 - RTL: `end-4` ולא `right-4` לכפתור סגירה, `text-start` בטבלאות. נקודות השבירה של Tailwind נמדדות מול החלון ולא מול המיכל.
 - Tailwind v4: `animate-in` דורש `tw-animate-css` ב-`index.css`. קריאת state בתוך סגור של אירוע (SignaturePad) מחזירה ערך ישן: ref.
