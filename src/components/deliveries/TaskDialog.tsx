@@ -114,8 +114,12 @@ export function TaskDialog({
 
   const effectiveDate = dateEditable ? pickedDate : (date ?? '');
 
+  // 🔴 "מה לעשות" חובה (12/11, נוי ממן): משימה בלי תיאור הגיעה לטכנאי ככרטיס
+  // עם שם וכתובת בלבד, בלי קריאה או הזמנה שאפשר לפתוח, ונראתה לו שבורה.
+  const canSubmit = !!customerName.trim() && !!notes.trim() && !!effectiveDate;
+
   const handleSubmit = () => {
-    if (!customerName.trim() || !selected || !effectiveDate) return;
+    if (!canSubmit || !selected) return;
     onSubmit({
       date: effectiveDate,
       driver: selected,
@@ -238,14 +242,18 @@ export function TaskDialog({
 
           <div className="space-y-1.5">
             <Label htmlFor="task-notes" className="text-xs">
-              הערות
+              מה לעשות *
             </Label>
             <SuggestInput
               id="task-notes"
               value={notes}
               onChange={setNotes}
               options={noteOptions}
+              placeholder="לדוגמה: להביא שולחן ולהרכיב"
             />
+            {!notes.trim() && (
+              <p className="text-xs text-muted-foreground">הטכנאי רואה רק את מה שכתוב כאן</p>
+            )}
           </div>
         </div>
 
@@ -253,7 +261,7 @@ export function TaskDialog({
           <Button variant="ghost" onClick={onClose}>
             ביטול
           </Button>
-          <Button onClick={handleSubmit} disabled={!customerName.trim() || !effectiveDate}>
+          <Button onClick={handleSubmit} disabled={!canSubmit}>
             הוסף ליומן
           </Button>
         </DialogFooter>
