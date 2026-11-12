@@ -1,0 +1,5 @@
+{
+  "why": "Customer number changed in Priority 0439439 -> 04739439 (missing 7). Old number no longer exists in Priority (customers_pick dry run 12/11 fetched 1 of 2). Order SO2603719 and stop 98ca4e08 re-pointed to 04739439; old row removed from priority_customers so it doesn't show as a new customer without an order.",
+  "removed_row": {"fax":null,"cdes":"גולן אבי","city":"בת ים","agent":"משרד","phone":"0547852152","address":"הרב לוי 4 דירה  45","custname":"0439439","opened_by":"שורה","synced_at":"2026-10-22T06:10:03.228+00:00","health_fund":"כללית הנדסה רפואית בעמ","customer_type":"כללית הנדסה","priority_udate":"2026-10-22T00:00:00+00:00","customer_type_code":"25"},
+  "also": "25 legacy orders without priority_order_id (created 21/04-05/05, untouched since 13/05) archived with archived_reason='legacy-no-priority-id-20261112'."
+}
