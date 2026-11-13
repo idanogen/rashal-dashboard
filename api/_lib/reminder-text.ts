@@ -106,3 +106,26 @@ export function repliesSummary(rows: ReplyRow[], max = 600): string {
   }
   return out;
 }
+
+/**
+ * הודעה אחת לטלפון ליום (13/11/2026): ביום ראשון 15/11 היו שלושה טלפונים עם שתי עצירות
+ * (שתי אספקות לאותו לקוח, ושני בני משפחה באותו מספר), והלקוח היה מקבל אותה תזכורת פעמיים.
+ * נשארת העצירה עם החלון המוקדם ביותר, כי זו השעה שהלקוח צריך להיות בבית. בלי שעה = אחרונה.
+ * @param phoneOf  מפתח הטלפון המנורמל של עצירה (ריק = לא מאוחד, מטופל כטלפון לא תקין בהמשך)
+ */
+export function firstStopPerPhone<T extends { time_window_start: string | null }>(
+  stops: T[], phoneOf: (s: T) => string,
+): { keep: T[]; dupes: T[] } {
+  const sorted = [...stops].sort((a, b) =>
+    (a.time_window_start ?? '99:99').localeCompare(b.time_window_start ?? '99:99'));
+  const seen = new Set<string>();
+  const keep: T[] = [];
+  const dupes: T[] = [];
+  for (const s of sorted) {
+    const p = phoneOf(s);
+    if (p && seen.has(p)) { dupes.push(s); continue; }
+    if (p) seen.add(p);
+    keep.push(s);
+  }
+  return { keep, dupes };
+}

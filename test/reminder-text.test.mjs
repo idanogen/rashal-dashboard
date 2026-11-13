@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isReminderHour, reminderHours, reminderPreview, reminderValues, repliesSummary } from '../api/_lib/reminder-text.ts';
+import { firstStopPerPhone, isReminderHour, reminderHours, reminderPreview, reminderValues, repliesSummary } from '../api/_lib/reminder-text.ts';
 
 /** תזכורת הערב ללקוחות של מחר, גרסה א (עידן, 04/11/2026): עדכון בלי בקשת אישור. */
 
@@ -68,4 +68,19 @@ test('🔴 repliesSummary זהה בשני הצדדים: api (Vercel) ופונק�
   const api = grab(readFileSync(new URL('../api/_lib/reminder-text.ts', import.meta.url), 'utf8'));
   const edge = grab(readFileSync(new URL('../supabase/functions/rashal-morning-report/index.ts', import.meta.url), 'utf8'));
   assert.equal(edge, api);
+});
+
+test('🔴 הודעה אחת לטלפון: נשארת העצירה עם החלון המוקדם, בלי שעה אחרונה (15/11: שלושה טלפונים כפולים)', () => {
+  const digits = (s) => s.phone.replace(/\D/g, '');
+  const stops = [
+    { id: 'a', phone: '050-8539503', time_window_start: '13:00:00' },
+    { id: 'b', phone: '0508539503', time_window_start: '12:00:00' },
+    { id: 'c', phone: '050-3733803', time_window_start: null },
+    { id: 'd', phone: '050-3733803', time_window_start: null },
+    { id: 'e', phone: '052-0000000', time_window_start: '09:00:00' },
+    { id: 'f', phone: '', time_window_start: null },
+  ];
+  const { keep, dupes } = firstStopPerPhone(stops, digits);
+  assert.deepEqual(keep.map((s) => s.id).sort(), ['b', 'c', 'e', 'f']);
+  assert.deepEqual(dupes.map((s) => s.id).sort(), ['a', 'd']);
 });

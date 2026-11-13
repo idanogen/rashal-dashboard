@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { supabaseAdmin } from './_lib/supabase-admin.js';
 import { heyySendTemplate, isHeyyDemo } from './_lib/heyy-server.js';
 import { getTemplate } from './_lib/templates-store.js';
-import { REMINDER_TEMPLATE_KEY, isReminderHour, reminderPreview, reminderValues } from './_lib/reminder-text.js';
+import { REMINDER_TEMPLATE_KEY, firstStopPerPhone, isReminderHour, reminderPreview, reminderValues } from './_lib/reminder-text.js';
 import { checkSuppressed } from './_lib/suppression.js';
 import { normalizePhone, toE164 } from './_lib/phone.js';
 import { secretEquals } from './_lib/secret-equals.js';
@@ -130,7 +130,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ ok: false, error: error.message });
   }
 
-  for (const stop of (stops as StopRow[] | null) ?? []) {
+  const { keep, dupes } = firstStopPerPhone((stops as StopRow[] | null) ?? [], (s) => normalizePhone(s.phone) ?? '');
+  for (const stop of dupes) {
+    plans.push({
+      stopId: stop.id, customer: stop.customer_name ?? '', phone: normalizePhone(stop.phone) ?? '',
+      kind: 'reminder', preview: '', status: 'skipped', detail: 'לטלפון הזה כבר יוצאת תזכורת על עצירה אחרת מחר',
+    });
+  }
+  for (const stop of keep) {
     const local = normalizePhone(stop.phone);
     const e164 = toE164(stop.phone);
     if (!local || !e164) {
@@ -166,6 +173,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .limit(1);
     if (already && already.length > 0) {
       plans.push({ ...plan, status: 'skipped', detail: 'כבר נשלחה תזכורת לעצירה הזאת' });
+      continue;
+    }
+    // הודעה אחת לטלפון גם בין ריצות (ריצה ידנית אחרי המתוזמנת): תזכורת לאותו מספר ב-20 השעות האחרונות.
+    const { data: samePhone } = await supabaseAdmin
+      .from('whatsapp_reminder_log')
+      .select('id')
+      .eq('phone_e164', e164)
+      .eq('reminder_kind', 'visit_reminder')
+      .gt('sent_at', new Date(Date.now() - 20 * 3_600_000).toISOString())
+      .limit(1);
+    if (samePhone && samePhone.length > 0) {
+      plans.push({ ...plan, status: 'skipped', detail: 'לטלפון הזה כבר נשלחה תזכורת הערב' });
       continue;
     }
 
