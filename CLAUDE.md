@@ -129,7 +129,7 @@ supabase/       functions/ · migrations/ (85)
 - כל שולח עובר את רשימת המושתקים (`api/_lib/suppression.ts`, הבדיקה סורקת את כל הקוראים). שליחה מהדשבורד רק דרך `api/wa-send`.
 - 🔴 מ-15/09: `wa_messages`/`wa_conversations` קריאים למשרד בלבד (`is_office_staff`). נהג רואה מה שהלקוח שלח רק דרך `stop_call_info`/`stops_call_info_counts`, וחותם קבצים מ-`wa-media` רק של לקוח עם עצירה שלו ב-30 הימים האחרונים (`wa_media_object_visible`). התצוגה `wa_messages_classified` היא `security_invoker`: תצוגה חדשה על הטבלאות האלה חייבת אותו דבר, אחרת היא עוקפת את ה-RLS.
 - heyy משבית וובהוק שנכשל ברצף בלי סימן: `rashal-watchdog/heyy-health.ts` בודק. מחזיר `success:true` גם כשחלון 24 השעות סגור.
-- מזהי תבנית `DEMO-*` הם דמו ומעולם לא שלחו. מאושרת: `rashal_visit_coordination` (4 משתנים, כפתורים "מתאים לי"/"לא מתאים"). `WA_REMINDERS_ENABLED` כבוי כברירת מחדל.
+- מזהי תבנית `DEMO-*` הם דמו ומעולם לא שלחו. מאושרת: `rashal_visit_coordination` (4 משתנים, כפתורים "מתאים לי"/"לא מתאים"). `WA_REMINDERS_ENABLED=1` בייצור מ-13/11 (תזכורת ערב ללקוחות של מחר + מדריך בטיחות אחרי אספקת מנוף, אותו מתג), הודעה אחת לטלפון ליום (`firstStopPerPhone`).
 - כפתורי תבנית מגיעים ב-`attachments`: `describeAttachments` בשרת מכריע, המטען הגולמי לא נוסע לדפדפן. "נקרא" (`read_at`) נרשם רק מלחיצת אדם.
 - סקר: ציון 3 ומטה = התרעה פנימית עם ההערה, רשומות בדיקה מסוננות. הודעה ללקוח על ציון נמוך לא נבנתה (ממתין לשלומי).
 ### תשתית
