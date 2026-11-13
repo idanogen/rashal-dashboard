@@ -9,7 +9,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { assessHeyy, type HeyyHealth } from "./heyy-health.ts";
 import { CRANE_JOB, checkCraneTraining } from "./crane-training-check.ts";
 import { PARKED_JOB, checkParkedPushes } from "./parked-check.ts";
-import { TECH_JOB, checkTechnicianLogin } from "./technician-check.ts";
+import { DRIVER_JOB, checkDriverNameWrites } from "./driver-name-check.ts";
 import { SCREEN_JOB, checkScreenLoads } from "./screen-loads-check.ts";
 import { STUCK_JOB, checkStuckActions } from "./stuck-actions-check.ts";
 import { sweepSyncRuns } from "./svc-health.ts";
@@ -298,12 +298,13 @@ Deno.serve(async (req: Request) => {
     report[CALL_STATUS_JOB] = `check crashed: ${e instanceof Error ? e.message : String(e)}`;
     console.error("[watchdog] call-status check crashed", e);
   }
-  // "לטיפול" (04/11/2026): הסטטוס עבר אבל מי טיפל לא נרשם. לא כשל של הכתיבה, פעמון משלו.
+  // "שם נהג / טכנאי" (13/11/2026, במקום פעמון "לטיפול" מ-04/11): השיבוץ נשמר אצלנו,
+  // אבל השם לא נכנס לקריאה בפריוריטי, או שהתור תקוע. פעמון משלו.
   try {
-    report[TECH_JOB] = await checkTechnicianLogin(now, alerts.get(TECH_JOB), { sb, sendEmail, wrap });
+    report[DRIVER_JOB] = await checkDriverNameWrites(now, alerts.get(DRIVER_JOB), { sb, sendEmail, wrap });
   } catch (e) {
-    report[TECH_JOB] = `check crashed: ${e instanceof Error ? e.message : String(e)}`;
-    console.error("[watchdog] technician check crashed", e);
+    report[DRIVER_JOB] = `check crashed: ${e instanceof Error ? e.message : String(e)}`;
+    console.error("[watchdog] driver-name check crashed", e);
   }
 
   // שאלה נוספת: לא "מה נכשל" אלא "מה חסר". טופס הדרכה שלא מולא אינו כשל

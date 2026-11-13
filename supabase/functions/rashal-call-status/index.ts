@@ -13,6 +13,9 @@
 //   dry     → קריאה בלבד: רושם לכל שורה ממתינה מה הסטטוס שלה עכשיו בפריוריטי.
 //   inspect → קריאה בלבד של קריאה אחת לפי docno: סטטוס ו-STATUSDATE.
 //   live    → לכל שורה: קריאה, כתיבה רק אם הסטטוס מותר, קריאה חוזרת.
+//   driver-live  → "שם נהג / טכנאי" (TOPP_DRIVERNAME) ברגע השיבוץ, מהתור
+//                  priority_call_driver_writes (13/11/2026, קרון `rashal-call-driver-name`).
+//   driver-probe → בדיקה של קריאה אחת: { docno, name }, name ריק = קריאה בלבד.
 //
 // ✅ אומת 15/09/2026: המפתח הוא DOCUMENTS_Q(DOCNO='SC…',TYPE='Q'), השדה נבדק מול
 //    טבלת הסטטוסים, והמעבר שובצה → בוצעה עובר (136 קריאות, גל ההשלמה).
@@ -23,7 +26,8 @@
 //    לא יכולה להיות פתוחה לכל מי שמחזיק אותו.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { VISIT_STATUSES, decideTechnician, usersRefreshDue } from "./technician.ts";
+import { usersRefreshDue } from "./technician.ts";
+import { DRIVER_FIELD, classifyDriverWrite, driverFieldValue } from "./driver-name.ts";
 
 const PRIORITY = "https://p.priority-connect.online/odata/Priority/tabb4ce6.ini/shaal";
 const UA = "OgenSync/1.0";
@@ -82,17 +86,24 @@ async function techProbe(docno: string, login: string) {
  */
 async function driverProbe(docno: string, name: string) {
   if (!okDocno(docno)) return { ok: false, note: "docno לא תקין" };
-  const sel = "DOCNO,CALLSTATUSCODE,STATUSDATE,UDATE,TECHNICIANLOGIN,TOPP_DRIVERNAME";
-  const read = async () => {
-    const r = await call(`${PRIORITY}/DOCUMENTS_Q?$filter=${encodeURIComponent(`DOCNO eq '${docno}'`)}&$select=${sel}`);
-    if (r.status !== 200) return { http: r.status, message: priorityMessage(r.body) };
-    return (JSON.parse(r.body).value ?? [])[0] ?? null;
-  };
-  const before = await read();
-  if (!name) return { ok: true, before };
-  const p = await call(keyUrl(docno, "typed"), { method: "PATCH", body: JSON.stringify({ TOPP_DRIVERNAME: name }) });
+  const before = await readDriver(docno);
+  const wanted = driverFieldValue(name);
+  if (!wanted) return { ok: before.found, before };
+  const p = await call(keyUrl(docno, "typed"), { method: "PATCH", body: JSON.stringify({ [DRIVER_FIELD]: wanted }) });
   const ok = p.status === 200 || p.status === 204;
-  return { ok, before, http: p.status, message: ok ? null : priorityMessage(p.body), body: ok ? null : p.body.slice(0, 1500), after: await read() };
+  const after = await readDriver(docno);
+  return { ok, before, http: p.status, message: ok ? null : priorityMessage(p.body), body: ok ? null : p.body.slice(0, 1500), after };
+}
+
+/** השם בשדה "שם נהג / טכנאי" והסטטוס של קריאה אחת. שדה ריק לא חוזר בתשובה בכלל (אין מפתח). */
+async function readDriver(docno: string): Promise<{ found: boolean; name: string | null; status: string | null; http: number; error?: string }> {
+  const r = await call(`${PRIORITY}/DOCUMENTS_Q?$filter=${encodeURIComponent(`DOCNO eq '${docno}'`)}&$select=DOCNO,CALLSTATUSCODE,${DRIVER_FIELD}`);
+  if (r.status !== 200) {
+    return { found: false, name: null, status: null, http: r.status, error: `קריאה נכשלה (HTTP ${r.status}): ${priorityMessage(r.body)}` };
+  }
+  const row = ((JSON.parse(r.body).value ?? []) as Record<string, string | null>[])[0];
+  if (!row) return { found: false, name: null, status: null, http: 200 };
+  return { found: true, name: (row[DRIVER_FIELD] ?? "").trim() || null, status: row.CALLSTATUSCODE ?? null, http: 200 };
 }
 const keyUrl = (docno: string, form: "typed" | "plain") =>
   form === "typed" ? `${PRIORITY}/DOCUMENTS_Q(DOCNO='${docno}',TYPE='Q')` : `${PRIORITY}/DOCUMENTS_Q('${docno}')`;
@@ -140,18 +151,6 @@ async function refreshUsers(force = false): Promise<{ refreshed: boolean; count?
   const { error } = await sb.from("priority_users").upsert(rows, { onConflict: "login" });
   if (error) return { refreshed: false, error: `priority_users: ${error.message}` };
   return { refreshed: true, count: rows.length };
-}
-
-async function loadTechnicianContext(): Promise<{ loginByName: Map<string, string | null>; known: Set<string> | null; usersNote?: string }> {
-  const users = await refreshUsers();
-  const [{ data: a }, { data: u }] = await Promise.all([
-    sb.from("assignees").select("name, priority_login"),
-    sb.from("priority_users").select("login"),
-  ]);
-  const loginByName = new Map<string, string | null>();
-  for (const x of (a ?? []) as { name: string; priority_login: string | null }[]) loginByName.set(x.name, x.priority_login);
-  const logins = ((u ?? []) as { login: string }[]).map((x) => x.login);
-  return { loginByName, known: logins.length ? new Set(logins) : null, usersNote: users.error };
 }
 
 async function pending(source: string, limit: number): Promise<QueueRow[]> {
@@ -246,9 +245,7 @@ async function settle(r: QueueRow, patch: Record<string, unknown>) {
 
 async function live(source: string, max: number, form: "typed" | "plain", t0: number) {
   const rows = await pending(source, max);
-  const res = { done: 0, already: 0, skipped: 0, failed: 0, stopped: null as string | null, users: null as string | null };
-  const tech = await loadTechnicianContext();
-  res.users = tech.usersNote ?? null;
+  const res = { done: 0, already: 0, skipped: 0, failed: 0, stopped: null as string | null };
   let streak = 0;
   for (const r of rows) {
     if (Date.now() - t0 > TIME_BUDGET_MS) { res.stopped = "time budget"; break; }
@@ -274,33 +271,15 @@ async function live(source: string, max: number, form: "typed" | "plain", t0: nu
       res.skipped++;
       continue;
     }
-    // "לטיפול" נכתב ב-PATCH משלו, לפני הסטטוס, כדי שדחייה שלו לא תעצור את הסטטוס.
-    // 🔴 04/11/2026, SC2603989: פריוריטי דחתה "משתמש אבי מוגדר כמשתמש לא פעיל". הטכנאים
-    // הם משתמשים לא פעילים בפריוריטי (לכן חסרים ב"רשימת נותני שרות"), והשדה מקבל רק
-    // משתמש פעיל. עד שיופעלו, השם נרשם ככשל עם ההודעה הזאת ומגיע לפעמון technician-login.
-    const t = VISIT_STATUSES.includes(r.target_status)
-      ? decideTechnician(r.technician, tech.loginByName, tech.known)
-      : { skip: "לא נכתב בסטטוס הזה" };
-    let techError: string | null = t.skip ?? null;
-    let techResult: "done" | "skipped" | "failed" = t.login ? "done" : "skipped";
-    if (t.login) {
-      const tp = await call(keyUrl(docno, form), { method: "PATCH", body: JSON.stringify({ TECHNICIANLOGIN: t.login }) });
-      if (!(tp.status === 200 || tp.status === 204)) {
-        techResult = "failed";
-        techError = `פריוריטי דחה את "לטיפול" (HTTP ${tp.status}): ${priorityMessage(tp.body)}`;
-      }
-    }
+    // 🔴 13/11/2026: "לטיפול" (TECHNICIANLOGIN) כבר לא נכתב מכאן. הוא קיבל רק משתמש
+    // פעיל ודחה את רוב הטכנאים (SC2603989, 04/11). מי שמשובץ נכתב עכשיו ברגע השיבוץ
+    // לשדה "שם נהג / טכנאי" (driverLive למטה), ו"לטיפול" נשאר למשרד.
     const p = await call(keyUrl(docno, form), { method: "PATCH", body: JSON.stringify({ CALLSTATUSCODE: r.target_status }) });
     const after = (await readStatuses([docno])).get(docno) ?? null;
     const ok = (p.status === 200 || p.status === 204) && after === r.target_status;
-    if (t.login && techResult === "done" && techLogins.get(docno) !== t.login) {
-      techResult = "failed";
-      techError = `נכתב "${t.login}" אבל פריוריטי מחזירה "${techLogins.get(docno) ?? ""}"`;
-    }
     await settle(r, {
       state: ok ? "done" : "failed", status_before: before, status_after: after, http_status: p.status,
       error: ok ? null : p.body.slice(0, 300), attempted_at: now,
-      technician_login: t.login ?? null, technician_result: techResult, technician_error: techError,
     });
     // 🔴 העותק שלנו מתעדכן מכאן, מהערך שנקרא בחזרה מפריוריטי. הסנכרון מושך
     // קריאות לפי `STATUSDATE ge <since>`, וסימן-המים שלו בשעון ישראל עם סיומת Z.
@@ -308,15 +287,68 @@ async function live(source: string, max: number, form: "typed" | "plain", t0: nu
     // חותם אותו ב-UTC (08:48Z בכתיבה של 11:48 שעון ישראל), כלומר שלוש שעות
     // "מאחורי" סימן-המים, והמשיכה לא רואה אותו לעולם. בלי השורה הזאת העותק
     // היה נשאר "שובצה" לנצח.
-    if (ok) {
-      const copy: Record<string, string> = { priority_status: after! };
-      if (techResult === "done" && t.login) copy.closed_by = t.login;
-      await sb.from("service_calls").update(copy).eq("priority_call_id", docno);
-    }
+    if (ok) await sb.from("service_calls").update({ priority_status: after! }).eq("priority_call_id", docno);
     if (ok) { res.done++; streak = 0; } else { res.failed++; streak++; }
     if (streak >= MAX_CONSECUTIVE_FAILURES) { res.stopped = `${streak} כשלים ברצף`; break; }
   }
   return { ok: res.failed === 0, ...res };
+}
+
+// ── "שם נהג / טכנאי" (TOPP_DRIVERNAME): מי משובץ, נכתב ברגע השיבוץ (עידן, 13/11/2026) ──
+// התור הוא מצב רצוי, שורה אחת לקריאה (priority_call_driver_writes): הטריגר על
+// calendar_stops מעדכן את השם ומחזיר את השורה ל-pending, כך שהחלפת טכנאי לפני
+// שהכתיבה יצאה כותבת רק את השם האחרון.
+interface DriverRow { priority_call_id: string; driver_name: string; attempts: number }
+const DRIVER_MAX_ATTEMPTS = 5; // תקלה זמנית חוזרת עד חמש ריצות, ואז נעצרת עם הנוסח
+
+async function driverLive(max: number, t0: number) {
+  const { data, error } = await sb.from("priority_call_driver_writes")
+    .select("priority_call_id, driver_name, attempts").eq("state", "pending")
+    .order("requested_at", { ascending: true }).limit(max);
+  if (error) throw new Error(`driver queue read: ${error.message}`);
+  const rows = ((data ?? []) as DriverRow[]).filter((r) => okDocno(r.priority_call_id));
+  const res = { done: 0, already: 0, failed: 0, retry: 0, stopped: null as string | null };
+  let streak = 0;
+  for (const r of rows) {
+    if (Date.now() - t0 > TIME_BUDGET_MS) { res.stopped = "time budget"; break; }
+    const docno = r.priority_call_id;
+    const wanted = driverFieldValue(r.driver_name);
+    // 🔴 הסגירה מותנית בכך שהשם לא הוחלף בזמן הריצה, אחרת נשארת ממתינה לשם החדש.
+    const settleDriver = (patch: Record<string, unknown>) =>
+      sb.from("priority_call_driver_writes").update({ ...patch, attempted_at: new Date().toISOString() })
+        .eq("priority_call_id", docno).eq("state", "pending").eq("driver_name", r.driver_name);
+    const before = await readDriver(docno);
+    if (!before.found) {
+      await settleDriver({ state: "failed", http_status: before.http, error: before.error ?? "הקריאה לא נמצאה בפריוריטי" });
+      res.failed++; streak++;
+    } else if (!wanted || before.name === wanted) {
+      await settleDriver({ state: "done", written_name: before.name, http_status: null, error: null });
+      res.already++; streak = 0;
+    } else {
+      const p = await call(keyUrl(docno, "typed"), { method: "PATCH", body: JSON.stringify({ [DRIVER_FIELD]: wanted }) });
+      const after = await readDriver(docno);
+      const outcome = classifyDriverWrite(p.status, wanted, after.name);
+      if (outcome === "done") {
+        await settleDriver({ state: "done", written_name: after.name, http_status: p.status, error: null });
+        res.done++; streak = 0;
+      } else if (outcome === "retry") {
+        const attempts = (r.attempts ?? 0) + 1;
+        await settleDriver({
+          state: attempts >= DRIVER_MAX_ATTEMPTS ? "failed" : "pending", attempts, http_status: p.status,
+          error: `תקלה זמנית (HTTP ${p.status}), ניסיון ${attempts} מתוך ${DRIVER_MAX_ATTEMPTS}: ${priorityMessage(p.body)}`,
+        });
+        res.retry++; streak++;
+      } else {
+        const why = p.status === 200 || p.status === 204
+          ? `נכתב "${wanted}" אבל פריוריטי מחזירה "${after.name ?? ""}"`
+          : `פריוריטי דחה (HTTP ${p.status}, סטטוס הקריאה "${before.status ?? ""}"): ${priorityMessage(p.body)}`;
+        await settleDriver({ state: "failed", http_status: p.status, error: why });
+        res.failed++; streak++;
+      }
+    }
+    if (streak >= MAX_CONSECUTIVE_FAILURES) { res.stopped = `${streak} כשלים ברצף`; break; }
+  }
+  return { ok: res.failed === 0 && res.retry === 0, ...res };
 }
 
 Deno.serve(async (req: Request) => {
@@ -328,7 +360,7 @@ Deno.serve(async (req: Request) => {
   const mode = b.mode ?? "";
   const source = b.source ?? DEFAULT_SOURCE;
   const max = Math.min(Math.max(1, Number(b.max ?? 10) || 10), 60);
-  const MODES = ["probe", "dry", "inspect", "live", "users", "tech-probe", "driver-probe"];
+  const MODES = ["probe", "dry", "inspect", "live", "users", "tech-probe", "driver-probe", "driver-live"];
   if (!MODES.includes(mode)) return json({ error: `mode must be ${MODES.join(" | ")}` }, 400);
   if (mode === "live" && b.key_form !== "typed" && b.key_form !== "plain") {
     return json({ error: "live requires key_form from a successful probe" }, 400);
@@ -336,7 +368,7 @@ Deno.serve(async (req: Request) => {
 
   const t0 = Date.now();
   const { data: run } = await sb.from("sync_runs")
-    .insert({ job: `call-status-${mode}`, trigger_source: source === "stop" ? "cron" : "manual" }).select("id").single();
+    .insert({ job: `call-status-${mode}`, trigger_source: source === "stop" || mode === "driver-live" ? "cron" : "manual" }).select("id").single();
   let result: Record<string, unknown>;
   let status = "success";
   try {
@@ -346,6 +378,7 @@ Deno.serve(async (req: Request) => {
       : mode === "users" ? { ok: true, ...(await refreshUsers(true)) }
       : mode === "tech-probe" ? await techProbe(String(b.docno ?? ""), String(b.login ?? ""))
       : mode === "driver-probe" ? await driverProbe(String(b.docno ?? ""), String(b.name ?? "").trim())
+      : mode === "driver-live" ? await driverLive(max, t0)
       : await live(source, max, b.key_form as "typed" | "plain", t0);
     if (result.ok === false) status = "error";
   } catch (e) {
