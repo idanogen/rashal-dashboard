@@ -75,6 +75,25 @@ async function techProbe(docno: string, login: string) {
   await readStatuses([docno]);
   return { ok: p.status === 200 || p.status === 204, status, before, http: p.status, message: priorityMessage(p.body), body: p.body.slice(0, 1500), after: techLogins.get(docno) ?? null };
 }
+/**
+ * בדיקה חד פעמית של "שם נהג / טכנאי" (TOPP_DRIVERNAME, שדה טקסט חופשי שהמיישם
+ * הוסיף 13/11/2026 במקום "לטיפול" שדורש משתמש פעיל): קריאה, PATCH של השם בלבד,
+ * וקריאה חוזרת. name ריק = קריאה בלבד.
+ */
+async function driverProbe(docno: string, name: string) {
+  if (!okDocno(docno)) return { ok: false, note: "docno לא תקין" };
+  const sel = "DOCNO,CALLSTATUSCODE,STATUSDATE,UDATE,TECHNICIANLOGIN,TOPP_DRIVERNAME";
+  const read = async () => {
+    const r = await call(`${PRIORITY}/DOCUMENTS_Q?$filter=${encodeURIComponent(`DOCNO eq '${docno}'`)}&$select=${sel}`);
+    if (r.status !== 200) return { http: r.status, message: priorityMessage(r.body) };
+    return (JSON.parse(r.body).value ?? [])[0] ?? null;
+  };
+  const before = await read();
+  if (!name) return { ok: true, before };
+  const p = await call(keyUrl(docno, "typed"), { method: "PATCH", body: JSON.stringify({ TOPP_DRIVERNAME: name }) });
+  const ok = p.status === 200 || p.status === 204;
+  return { ok, before, http: p.status, message: ok ? null : priorityMessage(p.body), body: ok ? null : p.body.slice(0, 1500), after: await read() };
+}
 const keyUrl = (docno: string, form: "typed" | "plain") =>
   form === "typed" ? `${PRIORITY}/DOCUMENTS_Q(DOCNO='${docno}',TYPE='Q')` : `${PRIORITY}/DOCUMENTS_Q('${docno}')`;
 
@@ -304,12 +323,13 @@ Deno.serve(async (req: Request) => {
   const secret = Deno.env.get("PRIORITY_SYNC_SECRET") ?? "";
   if (!secret || req.headers.get("x-sync-secret") !== secret) return json({ error: "unauthorized" }, 401);
 
-  let b: { mode?: string; source?: string; max?: number; key_form?: string; docno?: string; login?: string } = {};
+  let b: { mode?: string; source?: string; max?: number; key_form?: string; docno?: string; login?: string; name?: string } = {};
   try { b = await req.json(); } catch { /* empty */ }
   const mode = b.mode ?? "";
   const source = b.source ?? DEFAULT_SOURCE;
   const max = Math.min(Math.max(1, Number(b.max ?? 10) || 10), 60);
-  if (!["probe", "dry", "inspect", "live", "users", "tech-probe"].includes(mode)) return json({ error: "mode must be probe | dry | inspect | live | users | tech-probe" }, 400);
+  const MODES = ["probe", "dry", "inspect", "live", "users", "tech-probe", "driver-probe"];
+  if (!MODES.includes(mode)) return json({ error: `mode must be ${MODES.join(" | ")}` }, 400);
   if (mode === "live" && b.key_form !== "typed" && b.key_form !== "plain") {
     return json({ error: "live requires key_form from a successful probe" }, 400);
   }
@@ -325,6 +345,7 @@ Deno.serve(async (req: Request) => {
       : mode === "inspect" ? await inspect(String(b.docno ?? ""))
       : mode === "users" ? { ok: true, ...(await refreshUsers(true)) }
       : mode === "tech-probe" ? await techProbe(String(b.docno ?? ""), String(b.login ?? ""))
+      : mode === "driver-probe" ? await driverProbe(String(b.docno ?? ""), String(b.name ?? "").trim())
       : await live(source, max, b.key_form as "typed" | "plain", t0);
     if (result.ok === false) status = "error";
   } catch (e) {
