@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import confetti from 'canvas-confetti';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -62,6 +62,35 @@ export function CalendarStopCard({ stop, delivery, onRemove, onResolve, onCoordi
     }
     prevCoordRef.current = stop.coordinationStatus;
   }, [stop.coordinationStatus]);
+
+  // ⭐ סבב התנועה (14/11/2026, מוקאפ 4): כשהנהג מסמן הגעה או סוגר ביקור, הכרטיס אצל
+  // הסדרן מהבהב פעם אחת בצבע התוצאה ומקבל תגית "עכשיו" לכמה שניות. בלי קונפטי:
+  // חגיגה שמורה לסוף היום. השינוי מגיע ב-realtime; טעינה ראשונה לא מהבהבת.
+  const statusKey = stop.resolutionKind === 'follow_up' ? 'follow_up' : stop.status;
+  const [seenStatus, setSeenStatus] = useState(statusKey);
+  const [justNow, setJustNow] = useState<string | null>(null);
+  if (seenStatus !== statusKey) {
+    setSeenStatus(statusKey);
+    setJustNow(STATUS_FLASH[statusKey]?.label ?? null);
+  }
+  useEffect(() => {
+    const flash = STATUS_FLASH[statusKey];
+    if (!justNow || !flash) return;
+    const el = cardRef.current;
+    const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (el && !still) {
+      el.animate(
+        [
+          { boxShadow: `0 0 0 0 ${flash.ring}`, backgroundColor: flash.bg },
+          { boxShadow: '0 0 0 6px transparent', backgroundColor: flash.bg, offset: 0.4 },
+          {},
+        ],
+        { duration: 1800, easing: 'ease-out' },
+      );
+    }
+    const t = setTimeout(() => setJustNow(null), 8000);
+    return () => clearTimeout(t);
+  }, [justNow, statusKey]);
 
   // Sortable — sortable-drag רק כשעוצמת ה-stop לא resolved
   const isResolved = stop.status === 'completed' || stop.status === 'not_completed';
@@ -150,6 +179,14 @@ export function CalendarStopCard({ stop, delivery, onRemove, onResolve, onCoordi
       `}
       {...(isResolved ? {} : { ...listeners, ...attributes })}
     >
+      {justNow && (
+        <span
+          className="absolute -top-2 end-2 z-10 rounded-full bg-foreground px-2 py-0.5 text-[10px] font-semibold
+            text-background shadow animate-in fade-in slide-in-from-top-1 duration-300"
+        >
+          {justNow} · עכשיו
+        </span>
+      )}
       {/* Needs-cancel ribbon — overrides the confirmed ribbon */}
       {needsCancel ? (
         <div className="absolute top-0 start-0 flex items-center gap-1 rounded-tr-lg rounded-es-lg bg-amber-500
@@ -321,3 +358,11 @@ export function CalendarStopCard({ stop, delivery, onRemove, onResolve, onCoordi
     </div>
   );
 }
+
+/** צבע ההבהוב ותווית "עכשיו" לכל מעבר סטטוס שהנהג עושה בשטח. */
+const STATUS_FLASH: Partial<Record<string, { label: string; ring: string; bg: string }>> = {
+  in_progress: { label: 'הגיע', ring: 'rgba(37,99,235,.45)', bg: 'rgba(219,234,254,.9)' },
+  completed: { label: 'בוצע', ring: 'rgba(5,150,105,.45)', bg: 'rgba(220,252,231,.9)' },
+  not_completed: { label: 'לא בוצע', ring: 'rgba(185,28,28,.35)', bg: 'rgba(253,236,235,.9)' },
+  follow_up: { label: 'להמשך טיפול', ring: 'rgba(180,83,9,.4)', bg: 'rgba(253,243,225,.9)' },
+};
