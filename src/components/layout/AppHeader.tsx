@@ -22,6 +22,8 @@ import { useFreshness, pullNow, formatAgo, isWorkHoursIL } from '@/lib/sync-fres
 import { useOfficeTasks } from '@/hooks/useOfficeTasks';
 import { useStaffMessages } from '@/hooks/useStaffChat';
 import { myOpenCounts } from '@/lib/office-tasks';
+import { openCountForDesks } from '@/lib/call-followups';
+import { useCallFollowups, useMyDesks } from '@/hooks/useCallFollowups';
 import { localDateStr as toLocalDateStr } from '@/lib/visit-history';
 
 /**
@@ -42,6 +44,9 @@ const PRIMARY_LINKS = [
   { to: '/tasks', label: '✅ משימות' },
   // ⭐ צ'אט צוות (09/10/2026). המונה הכחול: הודעות שלא קראתי.
   { to: '/chat', label: '💬 צוות' },
+  // ⭐ רכש לקריאות (15/11/2026): רק למי שרשום על שולחן רכש ולמנהל מערכת.
+  // המונה: בקשות שעוד לא הוזמנו.
+  { to: '/parts', label: '🛒 רכש' },
 ];
 
 const ADMIN_LINKS = [
@@ -89,6 +94,13 @@ export function AppHeader() {
   const tasksQuery = useOfficeTasks(!!role && screenAllow('/tasks').includes(role));
   // צ'אט צוות: הערוץ החי נפתח כאן פעם אחת לכל האפליקציה, והתראת הדפדפן יוצאת ממנו.
   const staffChat = useStaffMessages(!!role && screenAllow('/chat').includes(role));
+  const myDesks = useMyDesks(canSee('/parts'));
+  const showParts = myDesks.length > 0 || role === 'admin';
+  const followups = useCallFollowups(showParts);
+  const partsOpen = useMemo(
+    () => openCountForDesks(followups.data ?? [], myDesks.length > 0 ? myDesks : ['warehouse', 'workshop']),
+    [followups.data, myDesks],
+  );
   const myTasks = useMemo(
     () => myOpenCounts(tasksQuery.data ?? [], user?.id ?? '', toLocalDateStr(new Date())),
     [tasksQuery.data, user?.id],
@@ -160,7 +172,7 @@ export function AppHeader() {
               (דשבורד הנהלה, בדיקות מנופים, וואטסאפ, משתמשים) עבר לתפריט "ניהול",
               אחרי שבדיקה הראתה שהתפריט משרת בפועל סדרן אחד. */}
           <nav className="flex items-center gap-1">
-            {PRIMARY_LINKS.filter((l) => canSee(l.to)).map((link) => (
+            {PRIMARY_LINKS.filter((l) => canSee(l.to) && (l.to !== '/parts' || showParts)).map((link) => (
               <NavLink key={link.to} to={link.to} className={navLinkClass}>
                 {link.to === '/chat' && staffChat.unread > 0 && (
                   <span
@@ -168,6 +180,14 @@ export function AppHeader() {
                     title="הודעות שלא קראתי"
                   >
                     {staffChat.unread}
+                  </span>
+                )}
+                {link.to === '/parts' && partsOpen > 0 && (
+                  <span
+                    className="me-1 inline-flex min-w-[1.25rem] justify-center rounded-full bg-violet-600 px-1 text-[10.5px] font-bold text-white"
+                    title="בקשות שעוד לא הוזמנו"
+                  >
+                    {partsOpen}
                   </span>
                 )}
                 {link.to === '/tasks' && myTasks.open > 0 && (

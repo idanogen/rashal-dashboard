@@ -21,6 +21,12 @@ import {
 } from '@/lib/service-call-light';
 import type { ServiceCall } from '@/types/service-call';
 import type { ReturnedInfo } from '@/lib/returned-from-route';
+import { useCallFollowups } from '@/hooks/useCallFollowups';
+import { activeByCall, dispatchPlace } from '@/lib/call-followups';
+import { toLocalDateStr } from '@/lib/calendar-meta';
+import { FollowupDecisionDialog, type DecisionTarget } from '@/components/service-calls/FollowupDecisionDialog';
+import { ArrivedStrip, BuyingStrip, type FollowupItem } from '@/components/service-calls/FollowupStrips';
+import { withFollowupFooter } from '@/components/service-calls/followup-footer';
 
 interface UnscheduledServiceCallsProps {
   calls: ServiceCall[];
@@ -82,12 +88,28 @@ export function UnscheduledServiceCalls({
   const [mediaCall, setMediaCall] = useState<ServiceCall | null>(null);
   const [selectedLights, setSelectedLights] = useState<Set<ServiceLight>>(new Set());
   const [showOldRed, setShowOldRed] = useState(false);
+  // ⭐ קריאות שחזרו מהקו: הכרעה של עמי ואבירם ורכש אצל אלכס (15/11/2026).
+  const { data: followups } = useCallFollowups();
+  const [decision, setDecision] = useState<DecisionTarget | null>(null);
+  const active = useMemo(() => activeByCall(followups ?? []), [followups]);
+  const today = toLocalDateStr(new Date());
 
-  const items = useMemo(() => {
+  const { items, buying, arrived } = useMemo(() => {
     const docIds = docsByCall ? new Set(Object.keys(docsByCall)) : undefined;
-    const built = buildServiceCallItems(calls, callZoneMap, groupSize, mediaStates, lights, setGreenCall, setMediaCall, docIds);
-    if (!lights) return built;
-    return built
+    const raw = buildServiceCallItems(calls, callZoneMap, groupSize, mediaStates, lights, setGreenCall, setMediaCall, docIds);
+    // רכש פתוח יוצא מהרשימה לרצועה של אלכס, וחלק שהגיע עולה לרצועה הירוקה למעלה.
+    const buying: FollowupItem[] = [];
+    const arrived: FollowupItem[] = [];
+    const built = raw.flatMap((vm) => {
+      const f = active.get(vm.id);
+      const place = dispatchPlace(f);
+      if (f && place === 'buying') { buying.push({ f, vm }); return []; }
+      if (f && place === 'arrived') { arrived.push({ f, vm }); return []; }
+      return [withFollowupFooter(vm, f, returnedInfo?.get(vm.id), setDecision)];
+    });
+    const out = { buying, arrived };
+    if (!lights) return { ...out, items: built };
+    const kept = built
       .filter((vm) => {
         const l = lights.get(vm.id);
         if (!l) return selectedLights.size === 0;
@@ -97,7 +119,8 @@ export function UnscheduledServiceCalls({
         return true;
       })
       .sort((a, b) => compareByLight(lights.get(a.id), lights.get(b.id)));
-  }, [calls, callZoneMap, groupSize, mediaStates, lights, docsByCall, selectedLights, showOldRed]);
+    return { ...out, items: kept };
+  }, [calls, callZoneMap, groupSize, mediaStates, lights, docsByCall, selectedLights, showOldRed, active, returnedInfo]);
 
   const counts = useMemo(() => {
     if (!lights) return null;
@@ -155,8 +178,9 @@ export function UnscheduledServiceCalls({
         search={search}
         selectedZones={selectedZones}
         intro={
-          counts || fundFilter ? (
+          counts || fundFilter || buying.length > 0 || arrived.length > 0 ? (
             <div className="space-y-3">
+              <ArrivedStrip items={arrived} accentBorder="border-s-orange-500" selectedIds={selectedCallIds} onToggleSelect={onToggleSelect} />
               {fundFilter}
               {counts && (
                 <ServiceTrafficLight
@@ -167,11 +191,13 @@ export function UnscheduledServiceCalls({
                   onToggleOldRed={() => setShowOldRed((v) => !v)}
                 />
               )}
+              <BuyingStrip items={buying} today={today} />
             </div>
           ) : undefined
         }
       />
       <ManualGreenDialog call={greenCall} onClose={() => setGreenCall(null)} />
+      <FollowupDecisionDialog target={decision} onClose={() => setDecision(null)} />
       <StopCallInfoSheet
         call={mediaCall ?? undefined}
         open={!!mediaCall}

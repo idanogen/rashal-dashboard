@@ -36,6 +36,8 @@ export const SCREEN_ACCESS: ScreenAccess[] = [
   { path: '/customer',         label: 'כרטיס לקוח',        group: 'daily', allow: STAFF },
   // ⭐ משימות למשרד (08/10/2026): כל צוות המשרד, כולל צפייה בלבד, כי הנציגות הן viewer.
   { path: '/tasks',            label: 'משימות',            group: 'daily', allow: STAFF },
+  // ⭐ רכש לקריאות שחזרו מהקו (15/11/2026): העמוד של אלכס מחסן ובית מלאכה. כל המשרד רואה; הקישור בתפריט רק למי שרשום על שולחן ולמנהל מערכת.
+  { path: '/parts',            label: 'רכש לקריאות',       group: 'daily', allow: STAFF },
   // ⭐ צ'אט צוות (09/10/2026): הודעה ישירה בין עובדים. הנהג מקבל באפליקציה.
   { path: '/chat',             label: 'צ\'אט צוות',         group: 'daily', allow: STAFF },
   // 🔴 **הוסב ב-27/08/2026 מ"מנהל מערכת בלבד" למי שרואה כסף.**
