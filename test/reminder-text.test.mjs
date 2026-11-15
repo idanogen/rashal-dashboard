@@ -52,13 +52,16 @@ test('🔴 מוצאי שבת: 20:30 ישראל (אחרי צאת השבת גם ב
   assert.equal(isReminderHour(new Date('2026-11-06T17:00:00Z')), false);
 });
 
-test('סיכום התשובות לדוח: שם ותשובה, קצוץ, ו"אין תשובות" כשאין', () => {
+test('שורת התשובות לדוח (15/11): שלוש ראשונות בנקודה אמצעית, השאר "ועוד N בדוח המלא", ו"אין תשובות" כשאין', () => {
   assert.equal(repliesSummary([]), 'אין תשובות');
   const two = [{ customer_name: 'כהן דוד', reply_text: 'תגיעו  אחרי\n12' }, { customer_name: 'לוי', reply_text: 'בסדר' }];
-  assert.equal(repliesSummary(two), 'כהן דוד: "תגיעו אחרי 12", לוי: "בסדר"');
-  const long = Array.from({ length: 30 }, (_, i) => ({ customer_name: `לקוח ${i}`, reply_text: 'תשובה ארוכה מאוד '.repeat(5) }));
-  assert.ok(repliesSummary(long).length <= 640);
-  assert.match(repliesSummary(long), /ועוד \d+$/);
+  assert.equal(repliesSummary(two), 'כהן דוד: "תגיעו אחרי 12" · לוי: "בסדר"');
+  const seven = Array.from({ length: 7 }, (_, i) => ({ customer_name: `לקוח ${i}`, reply_text: 'תשובה ארוכה מאוד '.repeat(8) }));
+  const line = repliesSummary(seven);
+  assert.match(line, / · ועוד 4 בדוח המלא$/);
+  assert.equal(line.split(' · ').length, 4);
+  assert.ok(line.length <= 260);
+  assert.ok(!line.includes('\n'));
 });
 
 test('🔴 repliesSummary זהה בשני הצדדים: api (Vercel) ופונקציית הענן של דוח הבוקר', async () => {

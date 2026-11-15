@@ -90,21 +90,18 @@ export function isReminderHour(now: Date): boolean {
 export interface ReplyRow { customer_name: string | null; reply_text: string | null }
 
 /**
- * ערכי תבנית הדוח למנהלים: "כהן דוד: "תגיעו אחרי 12", לוי שרה: "בסדר"",
- * קצוץ כדי לא לחרוג מהתבנית.
+ * שורת התשובות בדוח התזכורות למנהלים (15/11/2026, עידן: הדוח יצא כגוש אחד): שלוש
+ * הראשונות כ-"שם: "תשובה"" מופרדות בנקודה אמצעית, והשאר נספרות "ועוד N בדוח המלא".
+ * משתנה בתבנית של מטא לא יכול להכיל ירידת שורה, לכן המבנה (נשלחו/ענו/לא ענו) בגוף התבנית.
  */
-export function repliesSummary(rows: ReplyRow[], max = 600): string {
+export function repliesSummary(rows: ReplyRow[], max = 3): string {
   if (!rows.length) return 'אין תשובות';
-  const parts = rows.map((r) => {
-    const text = (r.reply_text ?? '').replace(/\s+/g, ' ').trim().slice(0, 80);
+  const shown = rows.slice(0, max).map((r) => {
+    const text = (r.reply_text ?? '').replace(/\s+/g, ' ').trim().slice(0, 60);
     return `${(r.customer_name ?? 'לקוח').trim()}: "${text}"`;
   });
-  let out = '';
-  for (const p of parts) {
-    if ((out + (out ? ', ' : '') + p).length > max) { out += ` ועוד ${parts.length - parts.indexOf(p)}`; break; }
-    out += (out ? ', ' : '') + p;
-  }
-  return out;
+  const rest = rows.length - shown.length;
+  return shown.join(' · ') + (rest > 0 ? ` · ועוד ${rest} בדוח המלא` : '');
 }
 
 /**
