@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { rescheduleStop } from '@/lib/calendar-stops';
 import { persistTimelineEvent } from '@/lib/timeline';
+import { timelineSourceForStop } from '@/lib/timeline-source';
 import { useChatAuthor } from '@/hooks/useTimeline';
 import type { AssigneeName } from '@/types/route';
 import type { CoordinationStatus, StopSourceType } from '@/types/calendar-stop';
@@ -64,12 +65,10 @@ export function useRescheduleStop() {
           `🔄 שובץ מחדש מ-${formatHe(stop.deliveryDate)} (${stop.driver}) ` +
           `ל-${formatHe(newDate)} (${newDriver}) ע״י ${userName}. ` +
           `היה תואם ל-${window} בתאריך ${formatHe(stop.deliveryDate)} — יש לבטל את התיאום מול הלקוח.`;
+        // איסוף/לקוח/בדיקה אינם הזמנה: נרשמים על העצירה (מפתח זר, 16/11/2026).
         await persistTimelineEvent({
           id: `event-${Date.now()}`,
-          source: {
-            kind: stop.sourceType === 'service' ? 'service' : 'order',
-            id: stop.sourceId,
-          },
+          source: timelineSourceForStop(stop),
           type: 'reschedule',
           userId,
           userName,
