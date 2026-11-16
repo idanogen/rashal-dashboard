@@ -39,7 +39,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    // 🔴 יציאה מהמחשב הזה בלבד (16/11/2026): ברירת המחדל של supabase היא global, ו"התנתק"
+    // של משתמש אחד במשרד זרק את עמי מכל המכשירים שלו באמצע עבודה.
+    await supabase.auth.signOut({ scope: 'local' });
   };
 
   return (
