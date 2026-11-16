@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { AlertCircle, ClipboardCheck, Loader2 } from 'lucide-react';
+import { AlertCircle, ClipboardCheck, FileText, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { countSince, isUnmatchedCrane, type FieldInspection } from '@/lib/field-inspections';
 import { VERDICT_LABELS, type CraneVerdict } from '@/lib/crane-checklist';
+import { openFieldInspectionDoc } from '@/lib/crane-inspections';
 
 interface RecentFieldInspectionsProps {
   list: FieldInspection[];
@@ -97,8 +99,30 @@ export function FieldInspectionLine({ f, unmatched, compact }: { f: FieldInspect
       <span className={failed ? 'ms-auto font-semibold text-red-600' : 'ms-auto text-xs text-muted-foreground'}>
         {verdictLabel(f.verdict)}
       </span>
+      <SignedDocButton formId={f.id} />
       {f.notes && <span className="basis-full ps-[7.75rem] text-xs text-muted-foreground">הערות: {f.notes}</span>}
     </li>
+  );
+}
+
+/** המסמך החתום: PDF מהאפליקציה, או נבנה כאן מהנתונים השמורים (מנוף). */
+function SignedDocButton({ formId }: { formId: string }) {
+  const [busy, setBusy] = useState(false);
+  const open = async () => {
+    setBusy(true);
+    try {
+      await openFieldInspectionDoc(formId);
+    } catch (e) {
+      toast.error('הטופס החתום לא נפתח', { description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={open} disabled={busy}>
+      {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+      טופס חתום
+    </Button>
   );
 }
 

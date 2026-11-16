@@ -1,5 +1,6 @@
 import type { CraneInspection, InspectionStatus } from '@/types/crane';
 import { supabase } from './supabase';
+import { fieldInspectionDocInput, type FieldInspectionDocRow } from './field-inspection-doc';
 import { rowToFieldInspection, type FieldInspection, type FieldInspectionRow } from './field-inspections';
 
 type InspectionRow = {
@@ -117,4 +118,53 @@ export async function fetchFieldInspections(): Promise<FieldInspection[]> {
     out.push(...(data as FieldInspectionRow[]).map(rowToFieldInspection));
     if ((data ?? []).length < 1000) return out;
   }
+}
+
+/**
+ * פותח את המסמך החתום של בדיקת טכנאי בלשונית חדשה (16/11/2026). לכיסא יש PDF
+ * מהאפליקציה; למנוף אין, ולכן הוא נבנה כאן מהנתונים השמורים באותה תבנית.
+ * ⭐ הלשונית נפתחת לפני ההמתנה, אחרת חוסם החלונות של הדפדפן עוצר אותה.
+ */
+export async function openFieldInspectionDoc(formId: string): Promise<void> {
+  const win = window.open('', '_blank');
+  try {
+    win?.document.write('<p dir="rtl" style="font-family:sans-serif;padding:24px">טוען את הטופס החתום…</p>');
+    const url = await fieldInspectionDocUrl(formId);
+    if (win) win.location.href = url;
+    else window.open(url, '_blank');
+  } catch (e) {
+    win?.close();
+    throw e;
+  }
+}
+
+async function fieldInspectionDocUrl(formId: string): Promise<string> {
+  const { data: row, error } = await supabase
+    .from('crane_forms')
+    .select('form_type, checklist_version, crane_serial, customer_name, customer_number, answers, verdict, notes, '
+      + 'technician_name, recipient_name, recipient_signature, submitted_at, created_at, pdf_path, service_call_id')
+    .eq('id', formId)
+    .single();
+  if (error) throw new Error(`הטופס לא נטען: ${error.message}`);
+  const r = row as unknown as FieldInspectionDocRow & { pdf_path: string | null; service_call_id: string | null };
+  if (r.pdf_path) {
+    const { data, error: urlErr } = await supabase.storage.from('signed-forms').createSignedUrl(r.pdf_path, 600);
+    if (urlErr || !data?.signedUrl) throw new Error(urlErr?.message ?? 'לא ניתן לפתוח את הקובץ');
+    return data.signedUrl;
+  }
+  const [call, crane] = await Promise.all([
+    r.service_call_id
+      ? supabase.from('service_calls').select('priority_call_id').eq('id', r.service_call_id).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    r.crane_serial
+      ? supabase.from('cranes').select('model').eq('device_number', r.crane_serial).limit(1).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ]);
+  const { checklistLayout } = await import('./forms/layouts/checklist');
+  const { renderHtmlToPdf } = await import('./forms/render');
+  const html = checklistLayout(fieldInspectionDocInput(r, {
+    docNumber: (call.data as { priority_call_id?: string | null } | null)?.priority_call_id ?? null,
+    deviceModel: (crane.data as { model?: string | null } | null)?.model ?? null,
+  }));
+  return URL.createObjectURL(await renderHtmlToPdf(html));
 }
