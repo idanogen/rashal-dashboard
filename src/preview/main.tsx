@@ -38,6 +38,8 @@ import { getFormByKey } from '@/lib/forms/registry';
 import { buildContext, buildInitialValues } from '@/lib/forms/prefill';
 import { buildFormHtml, generateFormPdf } from '@/lib/forms/render';
 import { CraneTrainingDialog } from '@/components/crane/CraneTrainingDialog';
+import { RecentFieldInspections } from '@/components/inspections/RecentFieldInspections';
+import { rowToFieldInspection } from '@/lib/field-inspections';
 import { CollectionsPage, CustomerDebtDialog } from '@/pages/CollectionsPage';
 import { LoadReportPanel } from '@/components/LoadReportLine';
 import { analyzeLoad } from '@/lib/perf';
@@ -667,7 +669,29 @@ function DeadEndPreview({ withMatches }: { withMatches: boolean }) {
   );
 }
 
+const fieldRow = (id: string, at: string, tech: string, cust: string, serial: string | null, type = 'inspection', verdict = 'ok', notes: string | null = null) =>
+  rowToFieldInspection({ id, form_type: type, crane_serial: serial, customer_name: cust, technician_name: tech, verdict, notes,
+    submitted_at: at, created_at: at, stop_id: null });
+const FIELD_FIXTURE = [
+  fieldRow('1', new Date().toISOString(), 'ישראל', 'שבו יהודה', '17516057934'),
+  fieldRow('2', new Date(Date.now() - 3.6e6).toISOString(), 'אבי', 'ברנע אליעזר', '20841275869021'),
+  fieldRow('3', new Date(Date.now() - 7.2e6).toISOString(), 'אבי', 'סולומון ירדנה אסתר', '208250227521', 'inspection', 'out_of_service', 'ערסל קרוע, הוחלף'),
+  fieldRow('4', new Date(Date.now() - 9e6).toISOString(), 'דוד גוזלן', 'כהן מרים', null, 'chair_inspection'),
+  fieldRow('5', new Date(Date.now() - 8.6e7).toISOString(), 'אולג', 'פנסו טל', '17519039988'),
+  fieldRow('6', new Date(Date.now() - 8.7e7).toISOString(), 'דוד גוזלן', 'מור יוסף אביבה', '17516057934'),
+  fieldRow('7', new Date(Date.now() - 3.5e8).toISOString(), 'אבי', 'עומרד מאיר', '17516057934'),
+];
+
 const VIEWS: Record<string, React.ReactElement> = {
+  /** בדיקות הטכנאים מהשטח במסך "בדיקות מנופים" (עמי, 16/11/2026). */
+  'field-inspections': (
+    <div dir="rtl" className="min-h-screen bg-slate-50 p-4">
+      <div className="mx-auto max-w-5xl">
+        <RecentFieldInspections list={FIELD_FIXTURE} knownSerials={new Set(['17516057934', '20841275869021', '17519039988'])}
+          isLoading={false} error={null} asOf={Date.now()} />
+      </div>
+    </div>
+  ),
   /** באנר "עברנו לאפליקציה" בראש עמוד הנהג בווב (20/10/2026). */
   'driver-banner': (
     <div dir="rtl" className="min-h-screen bg-slate-50 p-3">

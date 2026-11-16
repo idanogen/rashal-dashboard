@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { FieldInspectionLine } from './RecentFieldInspections';
+import type { FieldInspection } from '@/lib/field-inspections';
 import {
   Dialog,
   DialogContent,
@@ -19,9 +21,11 @@ interface CraneDetailDialogProps {
   onOpenChange: (open: boolean) => void;
   crane: Crane | null;
   status?: CraneStatus;
+  /** בדיקות הטכנאים מהשטח למנוף הזה, החדשה ראשונה (16/11/2026). */
+  fieldInspections: FieldInspection[];
 }
 
-export function CraneDetailDialog({ open, onOpenChange, crane, status }: CraneDetailDialogProps) {
+export function CraneDetailDialog({ open, onOpenChange, crane, status, fieldInspections }: CraneDetailDialogProps) {
   const { data: inspections = [], isLoading } = useInspectionsByCrane(crane?.id ?? null);
   const deleteInspection = useDeleteInspection();
   const [createOpen, setCreateOpen] = useState(false);
@@ -65,7 +69,12 @@ export function CraneDetailDialog({ open, onOpenChange, crane, status }: CraneDe
               <Detail label="תום אחריות">{fmt(crane.warrantyEnd)}</Detail>
               <Detail label="בדיקה הבאה">
                 {status?.nextDueDate ? (
-                  <span className={status.urgency === 'overdue' ? 'font-semibold text-red-600' : status.urgency === 'due_soon' ? 'font-semibold text-amber-600' : ''}>
+                  <span
+                    className={
+                      status.urgency === 'overdue' ? 'font-semibold text-red-600'
+                        : status.urgency === 'due_soon' ? 'font-semibold text-amber-600' : ''
+                    }
+                  >
                     {fmt(status.nextDueDate)}
                   </span>
                 ) : <span className="text-muted-foreground">—</span>}
@@ -73,10 +82,24 @@ export function CraneDetailDialog({ open, onOpenChange, crane, status }: CraneDe
             </dl>
           </div>
 
+          {/* בדיקות הטכנאים מהשטח (מהאפליקציה) */}
+          <div className="space-y-2">
+            <h4 className="text-sm font-semibold">בדיקות טכנאים מהשטח</h4>
+            {fieldInspections.length === 0 ? (
+              <div className="rounded-md border border-dashed py-4 text-center text-sm text-muted-foreground">
+                לא מולאה בדיקה באפליקציה למנוף הזה
+              </div>
+            ) : (
+              <ul className="divide-y rounded-md border">
+                {fieldInspections.map((f) => <FieldInspectionLine key={f.id} f={f} compact />)}
+              </ul>
+            )}
+          </div>
+
           {/* Inspections section */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <h4 className="text-sm font-semibold">היסטוריית בדיקות</h4>
+              <h4 className="text-sm font-semibold">בדיקות תקופתיות (רישום ידני)</h4>
               <Button size="sm" onClick={() => setCreateOpen(true)}>
                 <Plus className="h-4 w-4" />
                 בדיקה חדשה

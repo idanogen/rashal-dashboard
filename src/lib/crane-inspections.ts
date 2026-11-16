@@ -1,5 +1,6 @@
 import type { CraneInspection, InspectionStatus } from '@/types/crane';
 import { supabase } from './supabase';
+import { rowToFieldInspection, type FieldInspection, type FieldInspectionRow } from './field-inspections';
 
 type InspectionRow = {
   id: string;
@@ -97,4 +98,23 @@ export async function updateInspection(
 export async function deleteInspection(id: string): Promise<void> {
   const { error } = await supabase.from('crane_inspections').delete().eq('id', id);
   if (error) throw new Error(`Supabase deleteInspection: ${error.message}`);
+}
+
+/**
+ * בדיקות הטכנאים מהשטח (`crane_forms`, מנוף וכיסא ממונע). מעומד בדפים של 1,000
+ * כי זו תקרת PostgREST, ומספר שנחתך היה מציג פחות בדיקות ממה שנעשו.
+ */
+export async function fetchFieldInspections(): Promise<FieldInspection[]> {
+  const out: FieldInspection[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase
+      .from('crane_forms')
+      .select('id, form_type, crane_serial, customer_name, technician_name, verdict, notes, submitted_at, created_at, stop_id')
+      .in('form_type', ['inspection', 'chair_inspection'])
+      .order('created_at', { ascending: false })
+      .range(from, from + 999);
+    if (error) throw new Error(`Supabase fetchFieldInspections: ${error.message}`);
+    out.push(...(data as FieldInspectionRow[]).map(rowToFieldInspection));
+    if ((data ?? []).length < 1000) return out;
+  }
 }

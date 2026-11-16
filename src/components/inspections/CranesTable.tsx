@@ -4,17 +4,21 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { Crane, CraneStatus } from '@/types/crane';
+import { serialKey, type FieldInspection } from '@/lib/field-inspections';
+import { toLocalDateStr } from '@/lib/calendar-meta';
 
 interface CranesTableProps {
   rows: Array<{ crane: Crane; status: CraneStatus }>;
   onRowClick: (crane: Crane) => void;
+  /** בדיקות הטכנאים מהשטח לפי מספר מנוף, החדשה ראשונה. */
+  fieldBySerial: Map<string, FieldInspection[]>;
 }
 
 type SortKey = 'urgency' | 'name' | 'install' | 'next_due' | 'device';
 
 const PAGE_SIZE = 50;
 
-export function CranesTable({ rows, onRowClick }: CranesTableProps) {
+export function CranesTable({ rows, onRowClick, fieldBySerial }: CranesTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>('urgency');
   const [sortAsc, setSortAsc] = useState(true);
   const [page, setPage] = useState(0);
@@ -78,12 +82,13 @@ export function CranesTable({ rows, onRowClick }: CranesTableProps) {
                 <Th onClick={() => toggleSort('install')} active={sortKey === 'install'} asc={sortAsc}>ת. התקנה</Th>
                 <Th onClick={() => toggleSort('next_due')} active={sortKey === 'next_due'} asc={sortAsc}>בדיקה הבאה</Th>
                 <Th>בעוד</Th>
+                <Th>בדיקה בשטח</Th>
               </tr>
             </thead>
             <tbody>
               {pageRows.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-muted-foreground">אין מנופים תואמים</td>
+                  <td colSpan={10} className="py-8 text-center text-muted-foreground">אין מנופים תואמים</td>
                 </tr>
               ) : (
                 pageRows.map(({ crane, status }) => (
@@ -115,6 +120,7 @@ export function CranesTable({ rows, onRowClick }: CranesTableProps) {
                         <span>{status.daysUntilDue} ימים</span>
                       )}
                     </td>
+                    <td className="px-3 py-2.5"><LastField list={fieldBySerial.get(serialKey(crane.deviceNumber))} /></td>
                   </tr>
                 ))
               )}
@@ -200,4 +206,15 @@ function cmpDate(a: string | undefined, b: string | undefined): number {
 function shortType(t: string | undefined): string {
   if (!t) return '—';
   return t.replace('כללית הנדסה', 'כללית').replace('משרד הבריאות', 'מ. בריאות');
+}
+
+function LastField({ list }: { list?: FieldInspection[] }) {
+  const last = list?.[0];
+  if (!last) return <span className="text-muted-foreground">—</span>;
+  return (
+    <span className={last.verdict === 'out_of_service' ? 'font-semibold text-red-600' : ''}>
+      {fmt(toLocalDateStr(new Date(last.submittedAt)))}
+      {last.technician && <span className="text-xs text-muted-foreground"> · {last.technician}</span>}
+    </span>
+  );
 }

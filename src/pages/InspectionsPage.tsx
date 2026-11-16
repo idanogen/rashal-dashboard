@@ -4,7 +4,9 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useCranes } from '@/hooks/useCranes';
-import { useCraneInspections } from '@/hooks/useCraneInspections';
+import { useCraneInspections, useFieldInspections } from '@/hooks/useCraneInspections';
+import { craneInspectionsBySerial, serialKey } from '@/lib/field-inspections';
+import { RecentFieldInspections } from '@/components/inspections/RecentFieldInspections';
 import { useLatestSync } from '@/hooks/useCraneSync';
 import { computeCraneStatus } from '@/lib/cranes';
 import { InspectionStatsCards } from '@/components/inspections/InspectionStatsCards';
@@ -28,6 +30,7 @@ export function InspectionsPage() {
   const cranesQ = useCranes();
   const inspectionsQ = useCraneInspections();
   const latestSyncQ = useLatestSync();
+  const fieldQ = useFieldInspections();
 
   const [customerType, setCustomerType] = useState<CustomerTypeKey>('כללית הנדסה');
   const [urgencyFilter, setUrgencyFilter] = useState<UrgencyFilter>('all');
@@ -56,6 +59,13 @@ export function InspectionsPage() {
       status: computeCraneStatus(c, inspectionsByCrane.get(c.id) ?? []),
     }));
   }, [cranesQ.data, inspectionsQ.data]);
+
+  // בדיקות הטכנאים מהשטח, לפי מספר המנוף (16/11/2026).
+  const fieldBySerial = useMemo(() => craneInspectionsBySerial(fieldQ.data ?? []), [fieldQ.data]);
+  const knownSerials = useMemo(
+    () => new Set((cranesQ.data ?? []).map((c) => serialKey(c.deviceNumber))),
+    [cranesQ.data]
+  );
 
   // Apply "include cancelled" toggle
   const visibleCranes = useMemo(
@@ -189,6 +199,14 @@ export function InspectionsPage() {
         </div>
       </div>
 
+      <RecentFieldInspections
+        list={fieldQ.data ?? []}
+        knownSerials={knownSerials}
+        isLoading={fieldQ.isLoading}
+        error={fieldQ.error}
+        asOf={fieldQ.dataUpdatedAt}
+      />
+
       {/* Customer type tabs */}
       <CustomerTypeFilter
         value={customerType}
@@ -249,7 +267,7 @@ export function InspectionsPage() {
       </div>
 
       {/* Table */}
-      <CranesTable rows={filteredRows} onRowClick={handleRowClick} />
+      <CranesTable rows={filteredRows} onRowClick={handleRowClick} fieldBySerial={fieldBySerial} />
 
       {/* Dialogs */}
       <CraneDetailDialog
@@ -257,6 +275,7 @@ export function InspectionsPage() {
         onOpenChange={setDetailOpen}
         crane={selectedCrane}
         status={selectedStatus}
+        fieldInspections={selectedCrane ? fieldBySerial.get(serialKey(selectedCrane.deviceNumber)) ?? [] : []}
       />
       <SyncDialog open={syncOpen} onOpenChange={setSyncOpen} />
     </div>

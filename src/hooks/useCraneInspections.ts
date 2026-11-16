@@ -4,6 +4,7 @@ import {
   createInspection,
   deleteInspection,
   fetchAllInspections,
+  fetchFieldInspections,
   fetchInspectionsByCrane,
   updateInspection,
 } from '@/lib/crane-inspections';
@@ -14,6 +15,20 @@ export function useCraneInspections() {
     queryKey: ['craneInspections'],
     queryFn: fetchAllInspections,
     staleTime: 30 * 1000,
+  });
+}
+
+/**
+ * בדיקות הטכנאים מהשטח. טכנאי ממלא מהטלפון בזמן שהמנהל מסתכל, ולכן המסך
+ * מתרענן לבד: כל דקה כשהלשונית גלויה, ובחזרה אליה.
+ */
+export function useFieldInspections() {
+  return useQuery({
+    queryKey: ['fieldInspections'],
+    queryFn: fetchFieldInspections,
+    staleTime: 30 * 1000,
+    refetchInterval: 60 * 1000,
+    refetchOnWindowFocus: true,
   });
 }
 
