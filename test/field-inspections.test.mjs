@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  rowToFieldInspection, serialKey, craneInspectionsBySerial, isUnmatchedCrane, countSince,
+  rowToFieldInspection, serialKey, countsAsPeriodic, periodicFromField, craneInspectionsBySerial, isUnmatchedCrane, countSince,
 } from '../src/lib/field-inspections.ts';
 
 /** בדיקות הטכנאים מהשטח במסך "בדיקות מנופים" (עמי, 16/11/2026). */
@@ -9,7 +9,7 @@ import {
 const row = (over = {}) => ({
   id: 'f1', form_type: 'inspection', crane_serial: '17516057934', customer_name: 'שבו יהודה',
   technician_name: 'ישראל', verdict: 'ok', notes: null, submitted_at: '2026-11-16T09:41:04Z',
-  created_at: '2026-11-16T09:41:05Z', stop_id: 's1', ...over,
+  created_at: '2026-11-16T09:41:05Z', stop_id: 's1', service_call_id: 'c1', ...over,
 });
 
 test('שורה ממופה, ובלי submitted_at נופלים ל-created_at', () => {
@@ -45,4 +45,14 @@ test('בדיקת מנוף שלא במאגר מסומנת, כיסא ממונע ל
 test('ספירה מאז רגע נתון', () => {
   const list = [row({ submitted_at: '2026-11-10T00:00:00Z' }), row({ submitted_at: '2026-11-16T00:00:00Z' })].map(rowToFieldInspection);
   assert.equal(countSince(list, '2026-11-12T00:00:00Z'), 1);
+});
+
+test('תקופתית: רק בדיקת מנוף בקריאת שירות שנמצאה תקינה (עמי: "לתקלה או יזום, לא אספקה")', () => {
+  const f = (over) => rowToFieldInspection(row(over));
+  assert.equal(countsAsPeriodic(f({})), true);
+  assert.equal(countsAsPeriodic(f({ service_call_id: null })), false, 'אספקה');
+  assert.equal(countsAsPeriodic(f({ verdict: 'out_of_service' })), false, 'לא תקין');
+  assert.equal(countsAsPeriodic(f({ form_type: 'chair_inspection' })), false, 'כיסא');
+  assert.deepEqual(periodicFromField([f({ submitted_at: '2026-11-16T09:41:04Z' })]), [{ inspectionDate: '2026-11-16', status: 'completed' }]);
+  assert.deepEqual(periodicFromField(undefined), []);
 });

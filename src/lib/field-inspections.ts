@@ -22,6 +22,7 @@ export interface FieldInspection {
   notes: string | null;
   submittedAt: string;
   stopId: string | null;
+  serviceCallId: string | null;
 }
 
 export interface FieldInspectionRow {
@@ -35,6 +36,7 @@ export interface FieldInspectionRow {
   submitted_at: string | null;
   created_at: string;
   stop_id: string | null;
+  service_call_id: string | null;
 }
 
 export function rowToFieldInspection(r: FieldInspectionRow): FieldInspection {
@@ -48,6 +50,7 @@ export function rowToFieldInspection(r: FieldInspectionRow): FieldInspection {
     notes: r.notes,
     submittedAt: r.submitted_at ?? r.created_at,
     stopId: r.stop_id,
+    serviceCallId: r.service_call_id,
   };
 }
 
@@ -79,4 +82,26 @@ export function isUnmatchedCrane(f: FieldInspection, knownSerials: Set<string>):
 export function countSince(list: FieldInspection[], sinceIso: string): number {
   const since = new Date(sinceIso).getTime();
   return list.filter((f) => new Date(f.submittedAt).getTime() >= since).length;
+}
+
+/**
+ * האם בדיקת השטח נחשבת כבדיקה התקופתית של 3 השנים.
+ *
+ * 🔴 עמי, 16/11/2026: "כן, אם הגיע לתקלה או יזום. לא אספקה". כלומר רק בדיקת מנוף
+ * שנעשתה בקריאת שירות (`service_call_id`), לא בביקור אספקה. ⭐ ורק כשהמנוף נמצא
+ * תקין: מנוף שהוצא משימוש לא מקבל "בדיקה הבאה בעוד 3 שנים".
+ */
+export function countsAsPeriodic(f: FieldInspection): boolean {
+  return f.formType === 'inspection' && !!f.serviceCallId && f.verdict === 'ok';
+}
+
+/** תאריך מקומי (YYYY-MM-DD) של רגע ISO, לחישוב "בדיקה הבאה". */
+export function localDay(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** בדיקות השטח של מנוף בצורה שחישוב הסטטוס מקבל, רק אלה שנחשבות תקופתיות. */
+export function periodicFromField(list: FieldInspection[] = []): Array<{ inspectionDate: string; status: 'completed' }> {
+  return list.filter(countsAsPeriodic).map((f) => ({ inspectionDate: localDay(f.submittedAt), status: 'completed' as const }));
 }

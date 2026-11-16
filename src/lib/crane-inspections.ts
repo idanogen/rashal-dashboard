@@ -110,7 +110,7 @@ export async function fetchFieldInspections(): Promise<FieldInspection[]> {
   for (let from = 0; ; from += 1000) {
     const { data, error } = await supabase
       .from('crane_forms')
-      .select('id, form_type, crane_serial, customer_name, technician_name, verdict, notes, submitted_at, created_at, stop_id')
+      .select('id, form_type, crane_serial, customer_name, technician_name, verdict, notes, submitted_at, created_at, stop_id, service_call_id')
       .in('form_type', ['inspection', 'chair_inspection'])
       .order('created_at', { ascending: false })
       .range(from, from + 999);

@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useCranes } from '@/hooks/useCranes';
 import { useCraneInspections, useFieldInspections } from '@/hooks/useCraneInspections';
-import { craneInspectionsBySerial, serialKey } from '@/lib/field-inspections';
+import { craneInspectionsBySerial, periodicFromField, serialKey } from '@/lib/field-inspections';
 import { RecentFieldInspections } from '@/components/inspections/RecentFieldInspections';
 import { useLatestSync } from '@/hooks/useCraneSync';
 import { computeCraneStatus } from '@/lib/cranes';
@@ -45,6 +45,9 @@ export function InspectionsPage() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false);
 
+  // בדיקות הטכנאים מהשטח, לפי מספר המנוף (16/11/2026).
+  const fieldBySerial = useMemo(() => craneInspectionsBySerial(fieldQ.data ?? []), [fieldQ.data]);
+
   // Compute status for each crane
   const cranesWithStatus = useMemo(() => {
     const inspections = inspectionsQ.data ?? [];
@@ -54,14 +57,16 @@ export function InspectionsPage() {
       arr.push(ins);
       inspectionsByCrane.set(ins.craneId, arr);
     }
+    // ⭐ בדיקת טכנאי בקריאת שירות נחשבת תקופתית (עמי, 16/11/2026), `countsAsPeriodic`.
     return (cranesQ.data ?? []).map((c) => ({
       crane: c,
-      status: computeCraneStatus(c, inspectionsByCrane.get(c.id) ?? []),
+      status: computeCraneStatus(c, [
+        ...(inspectionsByCrane.get(c.id) ?? []),
+        ...periodicFromField(fieldBySerial.get(serialKey(c.deviceNumber))),
+      ]),
     }));
-  }, [cranesQ.data, inspectionsQ.data]);
+  }, [cranesQ.data, inspectionsQ.data, fieldBySerial]);
 
-  // בדיקות הטכנאים מהשטח, לפי מספר המנוף (16/11/2026).
-  const fieldBySerial = useMemo(() => craneInspectionsBySerial(fieldQ.data ?? []), [fieldQ.data]);
   const knownSerials = useMemo(
     () => new Set((cranesQ.data ?? []).map((c) => serialKey(c.deviceNumber))),
     [cranesQ.data]
