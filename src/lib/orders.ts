@@ -7,6 +7,7 @@ type OrderRow = {
   id: string;
   customer_name: string;
   customer_number: string | null;
+  priority_order_id: string | null;
   phone: string | null;
   customer_status: Order['customerStatus'] | null;
   status: Order['status'] | null;
@@ -33,6 +34,7 @@ function rowToOrder(row: OrderRow): Order {
     id: row.id,
     customerName: row.customer_name,
     customerNumber: row.customer_number ?? undefined,
+    priorityOrderId: row.priority_order_id ?? undefined,
     phone: row.phone ?? undefined,
     customerStatus: row.customer_status ?? undefined,
     status: row.status ?? undefined,

@@ -63,6 +63,8 @@ export interface DispatchItemVM {
   zoneId: string;
   customerName: string;
   customerNumber?: string;
+  /** מספר המסמך בפריוריטי (הזמנה SO…). מוצג ליד מספר הלקוח ונכלל בחיפוש. */
+  docNo?: string;
   phone?: string;
   /** שורת הכתובת בתחתית הכרטיס. */
   addressLine?: string;
@@ -268,9 +270,11 @@ export function DispatchCard({
               )}
             </p>
             {isReturned && <ReturnedNote info={returnedInfo} />}
-            {vm.customerNumber && (
-              <p className="mt-0.5 text-[11px] text-muted-foreground" dir="ltr">
-                מס' לקוח: {vm.customerNumber}
+            {(vm.customerNumber || vm.docNo) && (
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                {vm.docNo && <>הזמנה <bdi className="font-medium text-foreground/80">{vm.docNo}</bdi></>}
+                {vm.docNo && vm.customerNumber && ' · '}
+                {vm.customerNumber && <>מס' לקוח <bdi>{vm.customerNumber}</bdi></>}
               </p>
             )}
             {/* ⭐ היסטוריה אחת: השורה אומרת מראש אם זה לקוח מוכר. "כרטיס" פותח את הציר המלא. */}

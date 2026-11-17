@@ -5,12 +5,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Phone, MapPin, FileText, User, Building2, Calendar, Package } from 'lucide-react';
 import type { Order } from '@/types/order';
-import { OrderStatusBadge } from './OrderStatusBadge';
 import { StatusDropdown } from './StatusDropdown';
-import { getTaskStatusLabel } from '@/lib/constants';
 import { getDaysSinceCreated, getDaysColor } from '@/lib/utils';
 
 interface OrderDetailDialogProps {
@@ -36,6 +33,11 @@ export function OrderDetailDialog({ order, open, onClose }: OrderDetailDialogPro
             <User className="h-5 w-5 text-primary" />
             {order.customerName}
           </DialogTitle>
+          {order.priorityOrderId && (
+            <p className="text-sm text-muted-foreground">
+              הזמנה בפריוריטי <bdi className="font-semibold text-foreground select-all">{order.priorityOrderId}</bdi>
+            </p>
+          )}
         </DialogHeader>
 
         <div className="space-y-5 pt-2">

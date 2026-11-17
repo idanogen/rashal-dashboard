@@ -21,6 +21,8 @@ export interface OrderItem {
 export interface Order {
   id: string;
   customerName: string;
+  /** מספר ההזמנה בפריוריטי (ORDNAME, למשל SO2603923). עידן בפגישה 17/11: "מספר תעודה בפריוריטי זה חשוב". */
+  priorityOrderId?: string;
   /** מספר לקוח מפריוריטי (CUSTNAME). נמשך דרך Make. */
   customerNumber?: string;
   phone?: string;
