@@ -105,3 +105,16 @@ export function localDay(iso: string): string {
 export function periodicFromField(list: FieldInspection[] = []): Array<{ inspectionDate: string; status: 'completed' }> {
   return list.filter(countsAsPeriodic).map((f) => ({ inspectionDate: localDay(f.submittedAt), status: 'completed' as const }));
 }
+
+/**
+ * החיפוש העליון במסך "בדיקות מנופים" (עידן בפגישה, 17/11/2026): אותה מחרוזת מסננת גם
+ * את בדיקות הטכנאים. לקוח, טכנאי והערות לפי מילים בכל סדר (לשם לקוח אין סדר קבוע),
+ * מספר סידורי בלי רווחים ומקפים.
+ */
+export function matchesFieldSearch(f: FieldInspection, query: string): boolean {
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return true;
+  const hay = [f.customerName, f.technician, f.notes, f.craneSerial].join(' ').toLowerCase();
+  const serial = serialKey(f.craneSerial).toLowerCase();
+  return words.every((w) => hay.includes(w) || (serialKey(w) !== '' && serial.includes(serialKey(w))));
+}

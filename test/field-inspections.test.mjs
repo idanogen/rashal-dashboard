@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  rowToFieldInspection, serialKey, countsAsPeriodic, periodicFromField, craneInspectionsBySerial, isUnmatchedCrane, countSince,
+  rowToFieldInspection, serialKey, countsAsPeriodic, periodicFromField, craneInspectionsBySerial, isUnmatchedCrane, countSince, matchesFieldSearch,
 } from '../src/lib/field-inspections.ts';
 
 /** בדיקות הטכנאים מהשטח במסך "בדיקות מנופים" (עמי, 16/11/2026). */
@@ -55,4 +55,13 @@ test('תקופתית: רק בדיקת מנוף בקריאת שירות שנמצ�
   assert.equal(countsAsPeriodic(f({ form_type: 'chair_inspection' })), false, 'כיסא');
   assert.deepEqual(periodicFromField([f({ submitted_at: '2026-11-16T09:41:04Z' })]), [{ inspectionDate: '2026-11-16', status: 'completed' }]);
   assert.deepEqual(periodicFromField(undefined), []);
+});
+
+test('חיפוש בבדיקות הטכנאים: שם בכל סדר, טכנאי, מספר סידורי עם מקפים', () => {
+  const f = rowToFieldInspection(row());
+  assert.equal(matchesFieldSearch(f, ''), true);
+  assert.equal(matchesFieldSearch(f, 'יהודה שבו'), true);
+  assert.equal(matchesFieldSearch(f, 'ישראל'), true);
+  assert.equal(matchesFieldSearch(f, '175-160'), true);
+  assert.equal(matchesFieldSearch(f, 'כהן'), false);
 });

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Loader2, AlertCircle, Search, Upload, Filter } from 'lucide-react';
+import { Loader2, AlertCircle, Search, Upload, Filter, ChevronDown, Truck } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -26,6 +26,30 @@ const MAIN_CUSTOMER_TYPES = new Set([
   'לאומית',
 ]);
 
+/** קיפול שני החלקים נשמר לכל דפדפן (עידן, 17/11/2026). מפתחות `collapse:*` כמו במסך הסדרן. */
+const COLLAPSE_FIELD_KEY = 'collapse:inspections-field';
+const COLLAPSE_CRANES_KEY = 'collapse:inspections-cranes';
+
+function useCollapsed(key: string): [boolean, () => void] {
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(key) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggle = () =>
+    setCollapsed((v) => {
+      try {
+        localStorage.setItem(key, v ? '0' : '1');
+      } catch {
+        /* בלי אחסון הקיפול פשוט לא נזכר */
+      }
+      return !v;
+    });
+  return [collapsed, toggle];
+}
+
 export function InspectionsPage() {
   const cranesQ = useCranes();
   const inspectionsQ = useCraneInspections();
@@ -44,6 +68,8 @@ export function InspectionsPage() {
   const [selectedCrane, setSelectedCrane] = useState<Crane | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [syncOpen, setSyncOpen] = useState(false);
+  const [fieldCollapsed, toggleField] = useCollapsed(COLLAPSE_FIELD_KEY);
+  const [cranesCollapsed, toggleCranes] = useCollapsed(COLLAPSE_CRANES_KEY);
 
   // בדיקות הטכנאים מהשטח, לפי מספר המנוף (16/11/2026).
   const fieldBySerial = useMemo(() => craneInspectionsBySerial(fieldQ.data ?? []), [fieldQ.data]);
@@ -204,13 +230,47 @@ export function InspectionsPage() {
         </div>
       </div>
 
+      {/* חיפוש אחד למעלה: מסנן גם את בדיקות הטכנאים וגם את מאגר המנופים */}
+      <div className="relative max-w-xl">
+        <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          placeholder="חיפוש לקוח / טכנאי / מס' מכשיר / טלפון…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="h-10 ps-9 text-base sm:text-sm"
+        />
+      </div>
+
       <RecentFieldInspections
         list={fieldQ.data ?? []}
         knownSerials={knownSerials}
         isLoading={fieldQ.isLoading}
         error={fieldQ.error}
         asOf={fieldQ.dataUpdatedAt}
+        query={search}
+        collapsed={fieldCollapsed}
+        onToggleCollapsed={toggleField}
       />
+
+      <section className="rounded-lg border bg-card shadow-sm">
+        <div className={`flex flex-wrap items-baseline justify-between gap-2 px-4 py-3 ${cranesCollapsed ? '' : 'border-b'}`}>
+          <button
+            type="button"
+            onClick={toggleCranes}
+            aria-expanded={!cranesCollapsed}
+            className="flex items-center gap-2 text-sm font-semibold hover:text-primary"
+          >
+            <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${cranesCollapsed ? 'rotate-90' : ''}`} />
+            <Truck className="h-4 w-4 text-muted-foreground" />
+            מאגר המנופים והבדיקות התקופתיות
+          </button>
+          <p className="text-xs text-muted-foreground">
+            מוצגים <span className="font-semibold text-foreground tabular-nums">{filteredRows.length}</span>
+            {' · '}פג תוקף <span className="tabular-nums">{stats.overdue}</span>
+          </p>
+        </div>
+        {!cranesCollapsed && (
+        <div className="space-y-4 p-4">
 
       {/* Customer type tabs */}
       <CustomerTypeFilter
@@ -228,16 +288,6 @@ export function InspectionsPage() {
 
       {/* Filter + search row */}
       <div className="flex flex-wrap items-center gap-2 rounded-md border bg-card p-3">
-        <div className="relative min-w-[220px] flex-1 sm:max-w-sm">
-          <Search className="absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="חיפוש שם / מס' מכשיר / טלפון…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="h-9 pr-9 text-sm"
-          />
-        </div>
-
         {/* ⭐ **בורר הדגמים נגזר מהנתונים ואינו רשימה קשיחה.** דגם חדש
             שייכנס במלאי יופיע כאן לבד, ודגם שייעלם לא יישאר ככפתור מת
             שמסנן לאפס. 🔴 והספירה על הכפתור היא מה שהופך אותו לשימושי:
@@ -273,6 +323,9 @@ export function InspectionsPage() {
 
       {/* Table */}
       <CranesTable rows={filteredRows} onRowClick={handleRowClick} fieldBySerial={fieldBySerial} />
+        </div>
+        )}
+      </section>
 
       {/* Dialogs */}
       <CraneDetailDialog

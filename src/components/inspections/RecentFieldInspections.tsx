@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { AlertCircle, ClipboardCheck, FileText, Loader2 } from 'lucide-react';
+import { AlertCircle, ChevronDown, ClipboardCheck, FileText, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { countSince, isUnmatchedCrane, type FieldInspection } from '@/lib/field-inspections';
+import { countSince, isUnmatchedCrane, matchesFieldSearch, type FieldInspection } from '@/lib/field-inspections';
 import { VERDICT_LABELS, type CraneVerdict } from '@/lib/crane-checklist';
 import { openFieldInspectionDoc } from '@/lib/crane-inspections';
 
@@ -14,6 +14,10 @@ interface RecentFieldInspectionsProps {
   error: Error | null;
   /** רגע הטעינה האחרונה (`dataUpdatedAt`): "היום" ו"7 ימים" נספרים ממנו, לא משעון בזמן רינדור. */
   asOf: number;
+  /** החיפוש העליון של המסך. כשיש חיפוש מוצגות כל ההתאמות, בלי קיפול ל-6. */
+  query: string;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
 }
 
 const COLLAPSED = 6;
@@ -22,21 +26,37 @@ const COLLAPSED = 6;
  * הבדיקות שהטכנאים מילאו באפליקציה, החדשה למעלה (עמי, 16/11/2026: "לא רואה
  * שמישהו בכלל מילא בדיקת מנופים"). נקודת הכניסה של המנהל: מי בדק, איפה ומתי.
  */
-export function RecentFieldInspections({ list, knownSerials, isLoading, error, asOf }: RecentFieldInspectionsProps) {
+export function RecentFieldInspections({
+  list, knownSerials, isLoading, error, asOf, query, collapsed, onToggleCollapsed,
+}: RecentFieldInspectionsProps) {
   const [expanded, setExpanded] = useState(false);
-  const shown = expanded ? list : list.slice(0, COLLAPSED);
+  const searching = query.trim() !== '';
+  const matches = searching ? list.filter((f) => matchesFieldSearch(f, query)) : list;
+  const shown = expanded || searching ? matches : matches.slice(0, COLLAPSED);
   const today = countSince(list, new Date(new Date(asOf).setHours(0, 0, 0, 0)).toISOString());
   const week = countSince(list, new Date(asOf - 7 * 86_400_000).toISOString());
 
   return (
     <section className="rounded-lg border bg-card shadow-sm">
-      <div className="flex flex-wrap items-baseline justify-between gap-2 border-b px-4 py-3">
-        <h2 className="flex items-center gap-2 text-sm font-semibold">
+      <div className={`flex flex-wrap items-baseline justify-between gap-2 px-4 py-3 ${collapsed ? '' : 'border-b'}`}>
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          aria-expanded={!collapsed}
+          className="flex items-center gap-2 text-sm font-semibold hover:text-primary"
+        >
+          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${collapsed ? 'rotate-90' : ''}`} />
           <ClipboardCheck className="h-4 w-4 text-muted-foreground" />
           בדיקות טכנאים מהשטח
-        </h2>
+        </button>
         {!isLoading && !error && (
           <p className="text-xs text-muted-foreground">
+            {searching && (
+              <>
+                נמצאו <span className="font-semibold text-foreground tabular-nums">{matches.length}</span>
+                {' · '}
+              </>
+            )}
             היום <span className="font-semibold text-foreground tabular-nums">{today}</span>
             {' · '}7 ימים אחרונים <span className="font-semibold text-foreground tabular-nums">{week}</span>
             {' · '}סה"כ <span className="tabular-nums">{list.length}</span>
@@ -44,7 +64,7 @@ export function RecentFieldInspections({ list, knownSerials, isLoading, error, a
         )}
       </div>
 
-      {isLoading ? (
+      {collapsed ? null : isLoading ? (
         <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
           טוען בדיקות…
@@ -56,6 +76,8 @@ export function RecentFieldInspections({ list, knownSerials, isLoading, error, a
         </div>
       ) : list.length === 0 ? (
         <div className="py-6 text-center text-sm text-muted-foreground">עוד לא מולאה בדיקה באפליקציה</div>
+      ) : matches.length === 0 ? (
+        <div className="py-6 text-center text-sm text-muted-foreground">אין בדיקת טכנאי שמתאימה לחיפוש</div>
       ) : (
         <>
           <ul className="divide-y">
@@ -63,7 +85,7 @@ export function RecentFieldInspections({ list, knownSerials, isLoading, error, a
               <FieldInspectionLine key={f.id} f={f} unmatched={isUnmatchedCrane(f, knownSerials)} />
             ))}
           </ul>
-          {list.length > COLLAPSED && (
+          {!searching && list.length > COLLAPSED && (
             <div className="border-t px-4 py-2">
               <Button variant="ghost" size="sm" onClick={() => setExpanded((v) => !v)}>
                 {expanded ? 'הצג פחות' : `הצג את כל ${list.length} הבדיקות`}
