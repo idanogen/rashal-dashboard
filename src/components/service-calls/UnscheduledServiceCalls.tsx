@@ -27,6 +27,9 @@ import { toLocalDateStr } from '@/lib/calendar-meta';
 import { FollowupDecisionDialog, type DecisionTarget } from '@/components/service-calls/FollowupDecisionDialog';
 import { ArrivedStrip, BuyingStrip, type FollowupItem } from '@/components/service-calls/FollowupStrips';
 import { withFollowupFooter } from '@/components/service-calls/followup-footer';
+import { withNudgeFooter } from '@/components/service-calls/nudge-footer';
+import { useMediaNudges, useStartMediaNudge } from '@/hooks/useMediaNudges';
+import { toast } from 'sonner';
 
 interface UnscheduledServiceCallsProps {
   calls: ServiceCall[];
@@ -93,6 +96,16 @@ export function UnscheduledServiceCalls({
   const [decision, setDecision] = useState<DecisionTarget | null>(null);
   const active = useMemo(() => activeByCall(followups ?? []), [followups]);
   const today = toLocalDateStr(new Date());
+  // ⭐ "שלח תזכורת לתמונה" על כרטיס אדום (עידן, 18/11/2026).
+  const { data: nudges } = useMediaNudges();
+  const startNudge = useStartMediaNudge();
+
+  const onStartNudge = (callId: string) =>
+    startNudge.mutate(callId, {
+      onSuccess: () =>
+        toast.success('התזכורת לתמונה יוצאת ללקוח בדקות הקרובות, ואחריה עוד שתיים אם לא תגיע תמונה'),
+      onError: (e) => toast.error('התזכורת לא נשלחה', { description: e instanceof Error ? e.message : undefined }),
+    });
 
   const { items, buying, arrived } = useMemo(() => {
     const docIds = docsByCall ? new Set(Object.keys(docsByCall)) : undefined;
@@ -105,7 +118,9 @@ export function UnscheduledServiceCalls({
       const place = dispatchPlace(f);
       if (f && place === 'buying') { buying.push({ f, vm }); return []; }
       if (f && place === 'arrived') { arrived.push({ f, vm }); return []; }
-      return [withFollowupFooter(vm, f, returnedInfo?.get(vm.id), setDecision)];
+      const withF = withFollowupFooter(vm, f, returnedInfo?.get(vm.id), setDecision);
+      return [withNudgeFooter(withF, lights?.get(vm.id)?.light === 'red', nudges?.get(vm.id), mediaStates?.get(vm.id)?.state,
+        startNudge.isPending && startNudge.variables === vm.id, onStartNudge)];
     });
     const out = { buying, arrived };
     if (!lights) return { ...out, items: built };
@@ -120,7 +135,11 @@ export function UnscheduledServiceCalls({
       })
       .sort((a, b) => compareByLight(lights.get(a.id), lights.get(b.id)));
     return { ...out, items: kept };
-  }, [calls, callZoneMap, groupSize, mediaStates, lights, docsByCall, selectedLights, showOldRed, active, returnedInfo]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- onStartNudge נשען על startNudge.mutate שיציב
+  }, [
+    calls, callZoneMap, groupSize, mediaStates, lights, docsByCall, selectedLights, showOldRed, active, returnedInfo,
+    nudges, startNudge.isPending, startNudge.variables,
+  ]);
 
   const counts = useMemo(() => {
     if (!lights) return null;

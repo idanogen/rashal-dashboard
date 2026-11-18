@@ -7,6 +7,9 @@
 //               וההודעה יוצאת דרך /api/heyy-send הקיים (מושתקים, 429, לוג).
 //   3. תחזוקה — ביטולים, פגי תוקף ו"אין מענה" נעשים בתוך ה-claim במסד.
 //
+// 4. רצף "שלח תזכורת לתמונה" (18/11/2026): media_nudge_claim() תופס את מה שהמשרד
+//    התחיל מכרטיס אדום. trigger "nudge" (קרון כל 2 דקות) מריץ רק את השלב הזה.
+//
 // ⚠ המתג במסד (media_request_settings.enabled / dry_run), לא כאן ולא ב-env.
 // 🔴 מצב יבש מחשב את אותו דבר בדיוק ולא שולח, מאותן שאילתות.
 // 🔴 בלי מזהי תבניות (עד אישור מטא) שום דבר לא נתפס מהתור: תפיסה בלי
@@ -14,6 +17,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { requireSecret } from "../_shared/require-secret.ts";
+import { isPausedResponse, sendWithExtras, type SendResult } from "../_shared/send-with-extras.ts";
 
 const SEND_URL = "https://rashal-dashboard.vercel.app/api/heyy-send";
 const SEND_SECRET = Deno.env.get("RASHAL_SEND_SECRET") ?? "";
@@ -61,6 +65,12 @@ Deno.serve(async (req: Request) => {
   if (!cfg.enabled) {
     await logRun({ trigger, dry, detail: { skipped: "engine disabled" } });
     return json({ ok: true, enabled: false, note: "engine disabled" });
+  }
+
+  // ── 4. רצף תזכורות מהכפתור: לבד בקרון הקצר, ובסוף כל ריצה רגילה ──
+  if (trigger === "nudge") {
+    const nudges = dry ? { skipped: "dry run" } : await runNudges(cfg, max);
+    return json({ ok: true, trigger, nudges });
   }
 
   // ── 1. תור ─────────────────────────────────────────────────────────────
@@ -115,16 +125,12 @@ Deno.serve(async (req: Request) => {
     due = (data ?? []) as DueRow[];
 
     for (const row of due) {
-      const res = await sendOne(row, cfg);
+      // ⭐ גם אל בני המשפחה שקישרנו ללקוח, וגם כשהלקוח עצמו אינו בוואטסאפ (13/11).
+      const res = await sendWithExtras(row.phone_e164, row.extra_phones, (phone) => sendOne({ ...row, phone_e164: phone }, cfg),
+        (extra, err) => console.error("[media-request] extra recipient failed", extra, err));
       const nowIso = new Date().toISOString();
       if (res.ok) {
         sent++;
-        // ⭐ גם אל בני המשפחה שקישרנו ללקוח. כישלון אצלם לא משנה את מצב
-        // הבקשה: ההודעה ללקוח כבר יצאה, והמצב נרשם עליה.
-        for (const extra of row.extra_phones ?? []) {
-          const r2 = await sendOne({ ...row, phone_e164: extra }, cfg);
-          if (!r2.ok) console.error("[media-request] extra recipient failed", extra, r2.error);
-        }
         if (row.stage === "first") {
           const dueAt = new Date(Date.now() + cfg.reminder_delay_hours * 3_600_000).toISOString();
           await sb.from("media_requests").update({
@@ -165,6 +171,8 @@ Deno.serve(async (req: Request) => {
     if (requeued) detail.requeued_rate_limited = requeued;
   }
 
+  if (!dry) detail.nudges = await runNudges(cfg, max);
+
   const runId = await logRun({
     trigger, dry, enqueued: enqueuedRows.length, due: due.length, sent, failed, detail,
   });
@@ -203,7 +211,7 @@ async function translateValue(value: string, lang: string): Promise<string> {
 async function sendOne(
   row: DueRow,
   cfg: Record<string, unknown>,
-): Promise<{ ok: true } | { ok: false; error: string; retryable: boolean }> {
+): Promise<SendResult> {
   const fallbackId = row.stage === "first"
     ? String(cfg.template_first_id)
     : String(cfg.template_reminder_id);
@@ -241,6 +249,77 @@ async function sendOne(
         ok: false,
         error: `HTTP ${res.status}: ${JSON.stringify(body).slice(0, 300)}`,
         retryable: body?.retryable === true,
+        paused: isPausedResponse(res.status, body),
+      };
+    }
+    return { ok: true };
+  } catch (e) {
+    // 🔴 נפילת רשת אינה ניסיון חוזר: ייתכן שההודעה יצאה ורק התשובה אבדה.
+    return { ok: false, error: String(e).slice(0, 300), retryable: false };
+  }
+}
+
+interface NudgeRow {
+  id: string;
+  step: number;
+  customer_name: string | null;
+  phone_e164: string;
+  extra_phones?: string[] | null;
+  device_name: string | null;
+}
+
+/**
+ * הודעות 1-2 הן תבנית התזכורת הקיימת, הודעה 3 היא "לצערנו לא נוכל לטפל בבקשה עד
+ * לקבלת תמונה" (template_nudge_final_id). העצירה (תמונה, ירוק, שיבוץ) בתוך ה-claim במסד.
+ * 🔴 triggeredBy מתחיל ב-media-request-, ולכן מספר מושהה (לא בוואטסאפ) מדולג ב-heyy-send.
+ */
+async function runNudges(cfg: Record<string, unknown>, max: number): Promise<Record<string, unknown>> {
+  const { data, error } = await sb.rpc("media_nudge_claim", { p_limit: max });
+  if (error) return { claim_error: error.message };
+  const rows = (data ?? []) as NudgeRow[];
+  let sent = 0, failed = 0, requeued = 0;
+  for (const row of rows) {
+    const res = await sendWithExtras(row.phone_e164, row.extra_phones, (phone) => sendNudge({ ...row, phone_e164: phone }, cfg),
+      (extra, err) => console.error("[media-nudge] extra recipient failed", extra, err));
+    if (res.ok) {
+      sent++;
+      await sb.rpc("media_nudge_mark", { p_id: row.id, p_step: row.step, p_result: "sent" });
+    } else if (res.retryable) {
+      requeued++;
+      await sb.rpc("media_nudge_mark", { p_id: row.id, p_step: row.step, p_result: "retry", p_error: res.error });
+    } else {
+      failed++;
+      await sb.rpc("media_nudge_mark", { p_id: row.id, p_step: row.step, p_result: "failed", p_error: res.error });
+    }
+  }
+  return { due: rows.length, sent, failed, requeued };
+}
+
+async function sendNudge(row: NudgeRow, cfg: Record<string, unknown>): Promise<SendResult> {
+  const final = row.step >= 3;
+  const fallbackId = String(final ? cfg.template_nudge_final_id : cfg.template_reminder_id);
+  const pick = await pickTemplate(final ? "media_nudge_final" : "media_reminder", row.phone_e164, fallbackId);
+  const rawProduct = (row.device_name ?? "").trim() || String(cfg.product_fallback ?? "המוצר שברשותך");
+  const product = pick.translated ? await translateValue(rawProduct, pick.lang) : rawProduct;
+  try {
+    const res = await fetch(SEND_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-send-secret": SEND_SECRET },
+      body: JSON.stringify({
+        kind: "template",
+        phoneE164: row.phone_e164,
+        templateId: pick.templateId,
+        variables: [{ name: "product", value: product }],
+        triggeredBy: `media-request-nudge-${row.step}${pick.translated ? `:${pick.lang}` : ""}`,
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok || body?.ok === false) {
+      return {
+        ok: false,
+        error: `HTTP ${res.status}: ${JSON.stringify(body).slice(0, 300)}`,
+        retryable: body?.retryable === true,
+        paused: isPausedResponse(res.status, body),
       };
     }
     return { ok: true };

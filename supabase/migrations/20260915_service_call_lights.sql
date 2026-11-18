@@ -27,82 +27,12 @@ create policy service_call_manual_green_read on public.service_call_manual_green
   for select to authenticated
   using ((select public.is_office_staff()));
 
--- ─── הצבע לכל קריאה פתוחה ─────────────────────────────────────────────────
-create or replace function public.service_call_lights()
-returns table (
-  service_call_id uuid,
-  light text,
-  opened_at timestamptz,
-  images integer,
-  videos integer,
-  manual_by text,
-  manual_at timestamptz,
-  manual_reason text,
-  manual_note text,
-  touch_driver text,
-  touch_date date,
-  touch_status text,
-  touch_kind text,
-  touch_note text
-)
-language sql stable security definer
-set search_path = public
-as $$
-  with oc as (
-    select sc.id, sc.created_at, sc.call_type, sc.customer_number
-      from public.service_calls sc
-     where (select public.is_office_staff()) is true
-       and sc.archived_at is null
-       and sc.duplicate_of is null
-       and sc.service_call_status::text = 'קריאה חדשה'
-  ),
-  media as (
-    select oc.id,
-           count(*) filter (where a->>'type' = 'image')::int as images,
-           count(*) filter (where a->>'type' = 'video')::int as videos
-      from oc
-      join public.wa_conversations c on c.customer_number = oc.customer_number
-      join public.wa_messages m on m.conversation_id = c.id
-                               and m.direction = 'in'
-                               and coalesce(m.sent_at, m.created_at) >= oc.created_at
-      cross join lateral jsonb_array_elements(
-        case when jsonb_typeof(m.attachments) = 'array' then m.attachments else '[]'::jsonb end
-      ) a
-     where nullif(btrim(coalesce(oc.customer_number, '')), '') is not null
-       and a ? 'stored_path'
-       and a->>'type' in ('image', 'video')
-     group by oc.id
-  ),
-  touch as (
-    select distinct on (cs.service_call_id)
-           cs.service_call_id, cs.driver, cs.delivery_date, cs.status, cs.resolution_kind,
-           coalesce(nullif(btrim(cs.resolution_note), ''), nullif(btrim(cs.notes), '')) as note
-      from public.calendar_stops cs
-      join oc on oc.id = cs.service_call_id
-     where cs.status in ('completed', 'not_completed', 'in_progress')
-       and nullif(btrim(coalesce(cs.driver, '')), '') is not null
-     order by cs.service_call_id, cs.delivery_date desc, cs.completed_at desc nulls last
-  )
-  select oc.id,
-         case
-           when oc.call_type = 'פרונטלית' then 'yellow'
-           when t.status = 'not_completed' and t.resolution_kind = 'follow_up' then 'orange'
-           when coalesce(md.images, 0) + coalesce(md.videos, 0) > 0 or g.service_call_id is not null then 'green'
-           else 'red'
-         end,
-         oc.created_at,
-         coalesce(md.images, 0),
-         coalesce(md.videos, 0),
-         g.marked_by_name, g.created_at, g.reason, g.note,
-         t.driver, t.delivery_date, t.status, t.resolution_kind, t.note
-    from oc
-    left join media md on md.id = oc.id
-    left join touch t on t.service_call_id = oc.id
-    left join public.service_call_manual_green g on g.service_call_id = oc.id;
-$$;
+-- ─── הצבע לכל קריאה פתוחה: ההגדרה **אינה כאן** ────────────────────────────
+-- `service_call_lights()` הוגדרה כאן במקור. ההגדרה החיה עברה ב-18/11/2026 ל-
+-- `20261118_media_nudges.sql` (ירוק גם כשמנוע הבקשות קיבל תמונה לפי הטלפון),
+-- יחד עם ההרשאות שלה.
 
-revoke all on function public.service_call_lights() from public, anon;
-grant execute on function public.service_call_lights() to authenticated;
+
 
 -- ─── סימון ירוק ידני: פעולה של עובד, וחתימה ───────────────────────────────
 -- רשאי: מי שמשבץ (is_admin_or_dispatcher: מנהל מערכת, סדרן, מנהל צוות, הנהלה).
