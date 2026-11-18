@@ -52,6 +52,8 @@ async function checkProblems(now: Date, prev: Record<string, unknown> | undefine
     received_at: r.received_at, occurred_at: r.occurred_at, user_name: r.user_name, screen: r.screen,
     app_version: r.app_version, customer_name: r.stop_id ? names.get(r.stop_id) ?? null : null,
     topic: (r.detail as Record<string, string>)?.topic ?? null, text: (r.detail as Record<string, string>)?.text ?? null,
+    photos: ((r.detail as Record<string, unknown>)?.photoUrls as string[] | undefined) ?? [],
+    photoErrors: Number((r.detail as Record<string, unknown>)?.photoErrors ?? 0),
   }));
   const { subject, html } = problemsEmail(rows);
   if (!(await sendEmail(subject, html, "#c2410c"))) return "email failed";

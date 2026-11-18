@@ -37,6 +37,16 @@ test('מייל הדיווח: נושא עם השם והנושא, הלקוח בג�
   assert.match(problemsEmail([row, { ...row, user_name: 'מוהנד' }]).subject, /2 דיווחי/);
 });
 
+test('דיווח "יש בעיה" עם תמונות: התמונה במייל, ותמונה שלא עלתה נספרת (עמי 18/11)', () => {
+  const base = { received_at: '2026-11-18T07:00:00Z', occurred_at: '2026-11-18T07:00:00Z', user_name: 'אולג', screen: '/',
+    app_version: 'ab12', customer_name: null, topic: 'תמונות', text: null };
+  const url = 'https://x.supabase.co/storage/v1/object/public/timeline-files/problem-reports/e1/1.jpg';
+  const m = problemsEmail([{ ...base, photos: [url], photoErrors: 1 }]);
+  assert.ok(m.html.includes(`<img src="${url}"`));
+  assert.match(m.html, /1 תמונות לא עלו מהטלפון/);
+  assert.doesNotMatch(problemsEmail([base]).html, /<img/);
+});
+
 test('מייל הבוקר: רק מי שקרה אצלו משהו, ובלי גרש ארוך', () => {
   const u = (name, over = {}) => ({
     name, app: 'driver', version: 'f52e', problems: 0, crashes: 0, rejected: 0, forms_failed: 0, forms_blocked: 0,

@@ -10,6 +10,10 @@ export interface ProblemRow {
   customer_name: string | null;
   topic: string | null;
   text: string | null;
+  /** תמונות שהטכנאי צירף (עמי, 18/11/2026). */
+  photos?: string[];
+  /** תמונות שלא עלו מהטלפון (הקובץ נעלם). */
+  photoErrors?: number;
 }
 
 export interface SummaryUser {
@@ -53,6 +57,11 @@ export function morningDue(now: Date, lastSentDay: string | null): boolean {
   return dow !== 6 && hour >= 7 && lastSentDay !== day;
 }
 
+function photoLink(url: string): string {
+  const u = esc(url);
+  return `<a href="${u}"><img src="${u}" width="140" style="border-radius:6px;margin:4px 0 0 4px;vertical-align:top" alt="תמונה"></a>`;
+}
+
 export function problemsEmail(rows: ProblemRow[]): { subject: string; html: string } {
   const who = [...new Set(rows.map((r) => r.user_name ?? "לא מזוהה"))].join(", ");
   const subject = rows.length === 1
@@ -63,6 +72,8 @@ export function problemsEmail(rows: ProblemRow[]): { subject: string; html: stri
     `<b style="color:#c2410c">${esc(r.topic ?? "")}</b>` +
     (r.customer_name ? ` · אצל ${esc(r.customer_name)}` : "") +
     (r.text ? `<br>${esc(r.text)}` : "") +
+    (r.photos?.length ? `<br>${r.photos.map(photoLink).join(" ")}` : "") +
+    (r.photoErrors ? `<br><span style="color:#c2410c">${r.photoErrors} תמונות לא עלו מהטלפון</span>` : "") +
     `<br><span style="color:#8a96a8;font-size:12px">מסך <bdi>${esc(r.screen ?? "?")}</bdi> · גרסה <bdi>${esc(r.app_version ?? "?")}</bdi>` +
     (r.received_at !== r.occurred_at && Date.parse(r.received_at) - Date.parse(r.occurred_at) > 5 * 60_000
       ? ` · נשלח מהטלפון ב-${hhmm(r.received_at)} (לא הייתה קליטה)` : "") +
