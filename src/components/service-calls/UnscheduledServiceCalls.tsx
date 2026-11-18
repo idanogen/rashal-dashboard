@@ -28,6 +28,8 @@ import { FollowupDecisionDialog, type DecisionTarget } from '@/components/servic
 import { ArrivedStrip, BuyingStrip, type FollowupItem } from '@/components/service-calls/FollowupStrips';
 import { withFollowupFooter } from '@/components/service-calls/followup-footer';
 import { withNudgeFooter } from '@/components/service-calls/nudge-footer';
+import { withLastMessage } from '@/components/service-calls/last-message-footer';
+import { useCallLastInbound } from '@/hooks/useCallLastInbound';
 import { useMediaNudges, useStartMediaNudge } from '@/hooks/useMediaNudges';
 import { toast } from 'sonner';
 
@@ -99,6 +101,8 @@ export function UnscheduledServiceCalls({
   // ⭐ "שלח תזכורת לתמונה" על כרטיס אדום (עידן, 18/11/2026).
   const { data: nudges } = useMediaNudges();
   const startNudge = useStartMediaNudge();
+  // ⭐ מה הלקוח כתב, על הכרטיס (18/11/2026). מחליף את התג "ענה בלי תמונה".
+  const { data: lastInbound } = useCallLastInbound();
 
   const onStartNudge = (callId: string) =>
     startNudge.mutate(callId, {
@@ -109,7 +113,11 @@ export function UnscheduledServiceCalls({
 
   const { items, buying, arrived } = useMemo(() => {
     const docIds = docsByCall ? new Set(Object.keys(docsByCall)) : undefined;
-    const raw = buildServiceCallItems(calls, callZoneMap, groupSize, mediaStates, lights, setGreenCall, setMediaCall, docIds);
+    // תג "ענה בלי תמונה" יורד כשהכרטיס מציג את מה שהלקוח כתב בפועל.
+    const states = mediaStates && lastInbound
+      ? new Map([...mediaStates].filter(([id, m]) => !(m.state === 'replied_no_media' && lastInbound.has(id))))
+      : mediaStates;
+    const raw = buildServiceCallItems(calls, callZoneMap, groupSize, states, lights, setGreenCall, setMediaCall, docIds);
     // רכש פתוח יוצא מהרשימה לרצועה של אלכס, וחלק שהגיע עולה לרצועה הירוקה למעלה.
     const buying: FollowupItem[] = [];
     const arrived: FollowupItem[] = [];
@@ -118,7 +126,7 @@ export function UnscheduledServiceCalls({
       const place = dispatchPlace(f);
       if (f && place === 'buying') { buying.push({ f, vm }); return []; }
       if (f && place === 'arrived') { arrived.push({ f, vm }); return []; }
-      const withF = withFollowupFooter(vm, f, returnedInfo?.get(vm.id), setDecision);
+      const withF = withFollowupFooter(withLastMessage(vm, lastInbound?.get(vm.id)), f, returnedInfo?.get(vm.id), setDecision);
       return [withNudgeFooter(withF, lights?.get(vm.id)?.light === 'red', nudges?.get(vm.id), mediaStates?.get(vm.id)?.state,
         startNudge.isPending && startNudge.variables === vm.id, onStartNudge)];
     });
@@ -138,7 +146,7 @@ export function UnscheduledServiceCalls({
   // eslint-disable-next-line react-hooks/exhaustive-deps -- onStartNudge נשען על startNudge.mutate שיציב
   }, [
     calls, callZoneMap, groupSize, mediaStates, lights, docsByCall, selectedLights, showOldRed, active, returnedInfo,
-    nudges, startNudge.isPending, startNudge.variables,
+    nudges, startNudge.isPending, startNudge.variables, lastInbound,
   ]);
 
   const counts = useMemo(() => {

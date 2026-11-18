@@ -15,6 +15,7 @@ import { useIdle } from '@/hooks/useIdle';
 import { useCurrentProfile } from '@/hooks/useProfile';
 import { screenAllow } from '@/lib/screen-access';
 import { cn } from '@/lib/utils';
+import { WA_DOCK_OPEN_EVENT } from '@/lib/customer-last-message';
 
 /**
  * כפתור צף שפותח את תיבת השיחות מכל מסך.
@@ -30,6 +31,8 @@ import { cn } from '@/lib/utils';
  */
 export function WaDock() {
   const [open, setOpen] = useState(false);
+  // ⭐ פתיחה ישר על לקוח מכרטיס במסך (18/11/2026): השורה "💬 מה הלקוח כתב" שולחת אירוע.
+  const [jumpPhone, setJumpPhone] = useState<string | null>(null);
   const { data: profile } = useCurrentProfile();
   const allowed = !!profile && !profile.disabled && screenAllow('/inbox').includes(profile.role);
   const qc = useQueryClient();
@@ -62,6 +65,25 @@ export function WaDock() {
     read();
     return cache.subscribe(read);
   }, [qc]);
+
+  useEffect(() => {
+    const onOpen = (e: Event) => {
+      const phone = (e as CustomEvent<{ phone?: string }>).detail?.phone ?? null;
+      setJumpPhone(phone);
+      setOpen(true);
+    };
+    window.addEventListener(WA_DOCK_OPEN_EVENT, onOpen);
+    return () => window.removeEventListener(WA_DOCK_OPEN_EVENT, onOpen);
+  }, []);
+
+  const onOpenChange = (next: boolean) => {
+    setOpen(next);
+    if (!next) {
+      setJumpPhone(null);
+      // מה שנקרא בתיבה מוריד את הנקודה הכחולה מהכרטיסים.
+      void qc.invalidateQueries({ queryKey: ['call-last-inbound'] });
+    }
+  };
 
   if (!allowed) return null;
 
@@ -97,7 +119,7 @@ export function WaDock() {
         )}
       </button>
 
-      <Sheet open={open} onOpenChange={setOpen}>
+      <Sheet open={open} onOpenChange={onOpenChange}>
         {/* נפתח מאותו צד שבו יושב הכפתור, כדי שהתנועה תהיה מהמקום שנלחץ */}
         <SheetContent side="right" className="w-full gap-0 p-0 sm:max-w-3xl" dir="rtl">
           <SheetHeader className="border-b px-4 py-3">
@@ -113,7 +135,7 @@ export function WaDock() {
           </SheetHeader>
           <div className="overflow-hidden p-3">
             {/* נטען רק כשנפתח, כדי שהסקר לא ירוץ ברקע בכל מסך */}
-            {open && <InboxBoard heightClass={HEIGHT_DOCK} surface="dock" />}
+            {open && <InboxBoard heightClass={HEIGHT_DOCK} surface="dock" initialPhone={jumpPhone} />}
           </div>
         </SheetContent>
       </Sheet>
