@@ -1418,13 +1418,13 @@ export function DispatchPage() {
             </TabsTrigger>
           </TabsList>
         </Tabs>
-        {/* ⭐ ארכיון הקריאות (18/11/2026): מה שאינו "לביצוע" או "להמשך טיפול" יושב שם, עם החזרה בלחיצה. */}
+        {/* ⭐ הארכיון (18/11/2026): קריאות שאינן "לביצוע"/"להמשך טיפול" והזמנות ישנות, עם החזרה בלחיצה. */}
         <Link
-          to="/calls-archive"
+          to={tab === 'deliveries' ? '/calls-archive?tab=orders' : '/calls-archive'}
           className="ms-2 inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
         >
           <Archive className="h-4 w-4" />
-          ארכיון קריאות
+          ארכיון
         </Link>
         </div>
 

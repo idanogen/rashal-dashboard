@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Phone, MapPin, FileText, User, Building2, Calendar, Package } from 'lucide-react';
 import type { Order } from '@/types/order';
 import { StatusDropdown } from './StatusDropdown';
+import { OrderArchiveButton } from './OrderArchiveButton';
 import { getDaysSinceCreated, getDaysColor } from '@/lib/utils';
 
 interface OrderDetailDialogProps {
@@ -220,6 +221,8 @@ export function OrderDetailDialog({ order, open, onClose }: OrderDetailDialogPro
               </div>
             </div>
           )}
+
+          <OrderArchiveButton order={order} onDone={onClose} />
         </div>
       </DialogContent>
     </Dialog>
