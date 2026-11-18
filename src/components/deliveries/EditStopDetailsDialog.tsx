@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { useUpdateStopDetails, type StopDetailsRef } from '@/hooks/useUpdateStopDetails';
 import { SCOPE_OPTIONS, buildStopDetailsPatch, type StopDetailsScope } from '@/lib/stop-details';
 import { cn } from '@/lib/utils';
+import { addressHasNumber } from '@/lib/nav-address';
 import type { CalendarStop } from '@/types/delivery';
 
 /**
@@ -139,6 +140,11 @@ function EditStopDetailsForm({ stop, onClose }: { stop: CalendarStop; onClose: (
           </div>
         </div>
 
+        {patch.relocate && address.trim() && !addressHasNumber(address) && (
+          <p className="rounded-md bg-amber-50 px-2.5 py-1.5 text-[12px] text-amber-800">
+            אין מספר בית: וויז ינווט לנקודה כללית ברחוב. אם זה מוסד או יישוב בלי רחובות, אפשר לשמור כך.
+          </p>
+        )}
         {patch.relocate && (
           <p className="rounded-md bg-amber-50 px-2.5 py-1.5 text-[12px] text-amber-800">
             {patch.restore ? 'חזרה לכתובת המקורית: "במקור" יימחק.' : 'הכתובת לניווט השתנתה: הסיכה על המפה תזוז, והמקורית נשמרת.'}
