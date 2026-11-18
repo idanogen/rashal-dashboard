@@ -575,15 +575,16 @@ export function UnscheduledPanel({
     setExpandedZones(allZonesExpanded ? new Set() : new Set(groupedByZone.keys()));
 
   // ── מסילת הניווט: "חזרו מהקו" והרשימה, לפי סוג המסמך (06/09/2026) ──
-  const RAIL: Record<string, { base: number; tone: RailSection['tone']; icon: RailSection['icon']; short: string }> = {
-    orders: { base: 40, tone: 'blue', icon: 'package', short: 'ממתינים לתיאום' },
-    calls: { base: 50, tone: 'teal', icon: 'wrench', short: 'קריאות חדשות' },
-    pickups: { base: 60, tone: 'teal', icon: 'pickup', short: 'איסופים ממתינים' },
-    customers: { base: 70, tone: 'violet', icon: 'user', short: 'לקוחות חדשים' },
+  // `returned`: בלשונית "הכל" יושבות שתי רצועות "חזרו מהקו" זו מעל זו (עידן 18/11: "למה יש פעמיים?"), לכן הכותרת אומרת של מה.
+  const RAIL: Record<string, { base: number; tone: RailSection['tone']; icon: RailSection['icon']; short: string; returned: string }> = {
+    orders: { base: 40, tone: 'blue', icon: 'package', short: 'ממתינים לתיאום', returned: 'אספקות שחזרו מהקו' },
+    calls: { base: 50, tone: 'teal', icon: 'wrench', short: 'קריאות חדשות', returned: 'קריאות שחזרו מהקו' },
+    pickups: { base: 60, tone: 'teal', icon: 'pickup', short: 'איסופים ממתינים', returned: 'איסופים שחזרו מהקו' },
+    customers: { base: 70, tone: 'violet', icon: 'user', short: 'לקוחות חדשים', returned: 'חזרו מהקו' },
   };
-  const rail = RAIL[storageKey] ?? { base: 80, tone: 'slate' as const, icon: 'package' as const, short: title };
+  const rail = RAIL[storageKey] ?? { base: 80, tone: 'slate' as const, icon: 'package' as const, short: title, returned: 'חזרו מהקו' };
   useRailSection(returnedShown.length > 0 ? {
-    id: `${storageKey}-returned`, title: 'חזרו מהקו', order: rail.base, tone: 'red', icon: 'undo',
+    id: `${storageKey}-returned`, title: rail.returned, order: rail.base, tone: 'red', icon: 'undo',
     count: returnedShown.length, collapsed: returnedCollapsed, toggle: toggleReturnedCollapsed,
   } : null);
   useRailSection({
@@ -663,7 +664,7 @@ export function UnscheduledPanel({
           <div className={cn('flex items-center gap-2', !returnedCollapsed && 'mb-2')}>
             <Undo2 className="h-4 w-4 text-red-600" />
             <h3 className="text-sm font-bold text-red-700 dark:text-red-400">
-              חזרו מהקו ({returnedShown.length})
+              {rail.returned} ({returnedShown.length})
             </h3>
             <span className="text-[11px] text-red-600/70">
               סומנו "לא בוצע" — ממתינות לשיבוץ מחדש
