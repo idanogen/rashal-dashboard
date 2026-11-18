@@ -17,9 +17,13 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { requireSecret } from "../_shared/require-secret.ts";
 import { dayLabel, deliveryRate, deliveryVariables, planRun, type Slot, type Totals } from "./plan.ts";
+import { deliveryMail, remindersMail, type Mail } from "./mail.ts";
 
 const SEND_URL = "https://rashal-dashboard.vercel.app/api/heyy-send";
 const SEND_SECRET = Deno.env.get("RASHAL_SEND_SECRET") ?? "";
+const RESEND_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
+// אותה כתובת שולח של מיילי ר.שעל ללקוח (rashal-field-change-mail), שכבר מגיעה לתיבות של mishal.co.il.
+const MAIL_FROM = Deno.env.get("FORM_COPY_FROM") ?? '"ר.שעל ציוד רפואי" <system@ogensolutions.biz>';
 
 const sb = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -49,6 +53,8 @@ interface Settings {
   reminder_report_recipients: (Recipient & { days?: number })[] | null;
   /** תאריכי דוחות התזכורות שכבר יצאו באמת (לא יבש): מונע כפל, וסופר ימים לנמען זמני. */
   reminder_report_sent_dates: string[] | null;
+  /** 18/11/2026 (שלומי): שני הדוחות גם במייל, רק לכתובות האלה. הוואטסאפ לא משתנה. */
+  email_recipients: string[] | null;
 }
 
 interface Report { date: string; dow: number; totals: Totals & { drivers: number } }
@@ -149,7 +155,9 @@ async function runDelivery(cfg: Settings, slot: Slot, date: string | null, dry: 
   for (const r of cfg.recipients) {
     results.push(dry ? { name: r.name, dry: true } : await sendTemplate(r, templateId, variables, `morning-report:${report.date}`));
   }
-  return { date: report.date, totals: t, rate: deliveryRate(t), variables, results };
+  const email = dry ? null
+    : await sendMail(cfg, deliveryMail(slot, dayLabel(report.date, report.dow), report.date, t, deliveryRate(t)));
+  return { date: report.date, totals: t, rate: deliveryRate(t), variables, results, email };
 }
 
 // ── 04/11/2026 (עידן): דוח התזכורות, "מי מהם הגיב לי" ──
@@ -183,11 +191,14 @@ async function runReminders(cfg: Settings, date: string, dry: boolean, force: bo
     results.push(dry ? { name: rcp.name, dry: true }
       : await sendTemplate(rcp, cfg.reminder_report_template_id, vars, `reminder-report:${date}`));
   }
-  if (!dry && results.some((x) => x.ok === true)) {
+  const email = dry ? null
+    : await sendMail(cfg, remindersMail(dayLabel(date, dow), date, Number(r.sent), Number(r.replied), Number(r.no_reply),
+      repliesSummary(r.rows.filter((x) => x.reply_text))));
+  if (!dry && (results.some((x) => x.ok === true) || email?.ok)) {
     await sb.from("morning_report_settings")
       .update({ reminder_report_sent_dates: [...sentDates, date] }).eq("id", true);
   }
-  return { date, sent: r.sent, replied: r.replied, no_reply: r.no_reply, results };
+  return { date, sent: r.sent, replied: r.replied, no_reply: r.no_reply, results, email };
 }
 
 /** זהה ל-`api/_lib/reminder-text.ts` (Deno לא מייבא משם); test/reminder-text.test.mjs משווה. */
@@ -199,6 +210,23 @@ function repliesSummary(rows: { customer_name: string | null; reply_text: string
   });
   const rest = rows.length - shown.length;
   return shown.join(' · ') + (rest > 0 ? ` · ועוד ${rest} בדוח המלא` : '');
+}
+
+/** מייל אחד לכל הכתובות שבהגדרות. בלי כתובות או בלי מפתח: לא נשלח, ונרשם למה. */
+async function sendMail(cfg: Settings, mail: Mail): Promise<{ ok: boolean; to?: string[]; detail?: string } | null> {
+  const to = (cfg.email_recipients ?? []).filter((x) => /@/.test(x));
+  if (!to.length) return null;
+  if (!RESEND_KEY) return { ok: false, detail: "no RESEND_API_KEY" };
+  try {
+    const r = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${RESEND_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from: MAIL_FROM, to, subject: mail.subject, html: mail.html, text: mail.text }),
+    });
+    return r.ok ? { ok: true, to } : { ok: false, to, detail: `HTTP ${r.status}: ${(await r.text()).slice(0, 200)}` };
+  } catch (e) {
+    return { ok: false, to, detail: String(e).slice(0, 200) };
+  }
 }
 
 function json(body: unknown, status = 200): Response {
