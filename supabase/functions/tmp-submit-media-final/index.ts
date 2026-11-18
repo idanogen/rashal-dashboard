@@ -29,7 +29,7 @@ async function heyy(path: string, body: unknown) {
     headers: { Authorization: `Bearer ${KEY}`, "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  return { status: r.status, body: await r.json().catch(() => null) };
+  return { status: r.status, body: await r.json().catch((e) => ({ parse_error: String(e).slice(0, 120) })) };
 }
 
 Deno.serve(async (req: Request) => {
