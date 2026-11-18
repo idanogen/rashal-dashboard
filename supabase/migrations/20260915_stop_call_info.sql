@@ -41,18 +41,16 @@ as $$
   end;
 $$;
 
--- נתיב בדלי wa-media מתחיל במזהה השיחה: <conversation_id>/<...>/<file>
+-- 🔴 18/11/2026 (עידן, "תמונות עבר", כולם רואים הכל): נהג חותם כל קובץ ב-wa-media.
+-- עד אז רק של לקוח שיש לו אצלו עצירה ב-30 הימים האחרונים (driver_customer_visible).
+-- הגלריה: customer_media_history ב-20261118_customer_media_history.sql.
 create or replace function public.wa_media_object_visible(p_name text)
 returns boolean
 language sql stable security definer
 set search_path = public
 as $$
   select public.is_office_staff() is true
-      or exists (
-        select 1 from public.wa_conversations c
-         where c.id::text = split_part(coalesce(p_name, ''), '/', 1)
-           and public.driver_customer_visible(c.customer_number)
-      );
+      or public.current_user_role() = 'driver';
 $$;
 
 revoke all on function public.driver_customer_visible(text) from public, anon;

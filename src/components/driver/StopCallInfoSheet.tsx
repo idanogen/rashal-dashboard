@@ -15,6 +15,7 @@ import { Empty, Section } from '@/components/driver/StopInfoSection';
 import { OrderBody, PickupBody } from '@/components/driver/StopInfoBodies';
 import { StopNoteAlert } from '@/components/driver/StopNoteAlert';
 import { MediaTile, MediaViewer } from '@/components/driver/StopMediaViewer';
+import { PastMediaSection } from '@/components/driver/PastMediaSection';
 // 26/10/2026: גופי האספקה והאיסוף, אבני הבניין והמציג הועברו לקבצים משלהם (תקרת 400 שורות).
 
 interface StopCallInfoSheetProps {
@@ -129,6 +130,10 @@ export function StopCallInfoSheet({ stop, call: serviceCall, calendarStop, open,
             ) : null}
             {/* 26/10/2026 (עידן): הטפסים החתומים גם בווב, כמו באפליקציה. */}
             {!isLoading && !error && stopId && <SignedFormsSection stopId={stopId} />}
+            {/* 18/11/2026 (עידן): תמונות מביקורים קודמים, למשרד ולשטח. נטען רק בלחיצה. */}
+            {!isLoading && !error && (
+              <PastMediaSection target={{ stopId: stopId || null, serviceCallId: serviceCall?.id ?? null, customerNumber }} />
+            )}
             {!isLoading && !error && (
               <Section icon={<Contact className="h-4 w-4 text-blue-600" />} title="טלפונים" meta="גם להודעות האוטומטיות">
                 <CustomerPhoneBook customerNumber={customerNumber} mainPhone={mainPhone} compact />
