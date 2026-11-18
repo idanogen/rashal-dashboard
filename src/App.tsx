@@ -26,6 +26,7 @@ import { WaAutomationsPage } from '@/pages/WaAutomationsPage';
 import { TeamPage } from '@/pages/TeamPage';
 import { TeamPerformancePage } from '@/pages/TeamPerformancePage';
 import { MorningReportPage } from '@/pages/MorningReportPage';
+import { PickupsReportPage } from '@/pages/PickupsReportPage';
 import { WhatsAppTemplatesPage } from '@/pages/WhatsAppTemplatesPage';
 import { DriverDashboardPage } from '@/pages/DriverDashboardPage';
 import { LoginPage } from '@/pages/LoginPage';
@@ -125,6 +126,7 @@ function App() {
                         {/* דוח בוקר למנהלים (09/09/2026). הקישור מהוואטסאפ של שבע בבוקר
                             נוחת על /morning/<תאריך>. */}
                         <Route path="/morning" element={<RoleBasedRoute allow={screenAllow('/morning')}><MorningReportPage /></RoleBasedRoute>} />
+                        <Route path="/pickups-report" element={<RoleBasedRoute allow={screenAllow('/pickups-report')}><PickupsReportPage /></RoleBasedRoute>} />
                         <Route path="/morning/:date" element={<RoleBasedRoute allow={screenAllow('/morning')}><MorningReportPage /></RoleBasedRoute>} />
                         <Route path="/collections" element={<RoleBasedRoute allow={screenAllow('/collections')}><CollectionsPage /></RoleBasedRoute>} />
                         <Route path="/dispatch" element={<RoleBasedRoute allow={screenAllow('/dispatch')}><DispatchPage /></RoleBasedRoute>} />

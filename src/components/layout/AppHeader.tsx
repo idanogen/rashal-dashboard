@@ -59,6 +59,7 @@ const ADMIN_LINKS = [
   { to: '/morning', label: '☀️ דוח בוקר' },
   { to: '/performance', label: '📊 ביצועי הצוות' },
   { to: '/collections', label: '💰 גיול חובות' },
+  { to: '/pickups-report', label: '📦 דוח איסופים לקופה' },
   { to: '/inspections', label: 'בדיקות מנופים' },
   { to: '/whatsapp', label: 'וואטסאפ' },
   { to: '/admin/wa-templates', label: '💬 תבניות וואטסאפ' },

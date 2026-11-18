@@ -65,6 +65,8 @@ export const SCREEN_ACCESS: ScreenAccess[] = [
   // מדדים על אנשים בשמם כמו ביצועי הצוות, ולכן אותה הרשאה בדיוק.
   { path: '/morning',          label: 'דוח בוקר',          group: 'admin', allow: ['admin', 'management', 'team_manager'] },
   { path: '/inspections',      label: 'בדיקות מנופים',     group: 'admin', allow: STAFF },
+  // ⭐ דוח איסופים לקופה (שלומי 17/11, עידן 18/11/2026): הקובץ שעובר לקופה ב-10 לחודש, משני מקורות בתקופת ההרצה. ת"ז של מבוטחים, לכן המשרד בלבד.
+  { path: '/pickups-report',   label: 'דוח איסופים לקופה', group: 'admin', allow: STAFF },
   // הדגמה בלבד, שום דבר לא נשמר (25/10/2026, לפני המסירה לעמי).
   { path: '/forms-demo',       label: 'הדגמת טפסים',       group: 'admin', allow: ['admin', 'management', 'team_manager'] },
   { path: '/whatsapp',         label: 'וואטסאפ (ישן)',     group: 'admin', allow: STAFF },
