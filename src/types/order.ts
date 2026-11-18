@@ -30,6 +30,8 @@ export interface Order {
   status?: 'Todo' | 'In progress' | 'Done';
   orderStatus?: 'ממתין לליקוט' | 'ממתין לתאום' | 'תואמה אספקה' | 'אין במלאי' | 'סופק' | 'בוטל';
   healthFund?: string;
+  /** הלקוח המשלם (MARK_PAYCUSTDES) = הקופה עצמה. healthFund הוא סוג הלקוח (18/11/2026). */
+  payerFund?: string;
   openedBy?: string;
   fax?: string;
   address?: string;

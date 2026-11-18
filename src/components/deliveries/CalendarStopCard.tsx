@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { FundBadge } from '@/components/dispatch/FundBadge';
 import confetti from 'canvas-confetti';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -257,6 +258,7 @@ export function CalendarStopCard({ stop, delivery, onRemove, onResolve, onCoordi
         >
           {stop.customerName}
         </span>
+        <FundBadge customerNumber={stop.customerNumber} />
         {stop.status === 'completed' && (
           <Check className="h-4 w-4 text-emerald-600 flex-shrink-0" aria-label="בוצע" />
         )}

@@ -13,6 +13,7 @@ type OrderRow = {
   status: Order['status'] | null;
   order_status: Order['orderStatus'] | null;
   health_fund: string | null;
+  payer_fund: string | null;
   opened_by: string | null;
   fax: string | null;
   address: string | null;
@@ -40,6 +41,7 @@ function rowToOrder(row: OrderRow): Order {
     status: row.status ?? undefined,
     orderStatus: row.order_status ?? undefined,
     healthFund: row.health_fund ?? undefined,
+    payerFund: row.payer_fund ?? undefined,
     openedBy: row.opened_by ?? undefined,
     fax: row.fax ?? undefined,
     address: row.address ?? undefined,

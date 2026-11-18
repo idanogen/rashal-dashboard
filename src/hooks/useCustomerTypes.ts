@@ -10,16 +10,17 @@ import { supabase } from '@/lib/supabase';
  */
 const CHUNK = 150;
 
+/**
+ * ⭐ 18/11/2026: הקופה של הלקוח מ-`customer_fund_lookup`: המשלם במסמך האחרון שלו (קריאה
+ * או הזמנה), אחרת סוג הלקוח כשהוא קופה. "משרד הבריאות" כסוג לקוח אינו קופה ולא חוזר.
+ */
 async function fetchCustomerTypes(numbers: string[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   for (let i = 0; i < numbers.length; i += CHUNK) {
-    const { data, error } = await supabase
-      .from('priority_customers')
-      .select('custname, customer_type')
-      .in('custname', numbers.slice(i, i + CHUNK));
+    const { data, error } = await supabase.rpc('customer_fund_lookup', { p_numbers: numbers.slice(i, i + CHUNK) });
     if (error) throw error;
-    for (const r of (data ?? []) as { custname: string; customer_type: string | null }[]) {
-      if (r.customer_type) out.set(r.custname, r.customer_type);
+    for (const r of (data ?? []) as { customer_number: string; fund: string | null }[]) {
+      if (r.fund) out.set(r.customer_number, r.fund);
     }
   }
   return out;

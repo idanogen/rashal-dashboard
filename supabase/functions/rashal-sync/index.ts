@@ -10,7 +10,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 const PRIORITY = "https://p.priority-connect.online/odata/Priority/tabb4ce6.ini/shaal";
 /** השדות של קריאת שירות (DOCUMENTS_Q), אותם בכל המשיכות. */
 const CALL_SELECT = [
-  "DOCNO,CUSTNAME,CDES,STARTDATE,STATUSDATE,PHONENUM,SUSERLOGIN,Y_149_0_ESHB,Y_2578_0_ESHB,Y_2632_5_ESH",
+  "DOCNO,CUSTNAME,CDES,STARTDATE,STATUSDATE,PHONENUM,SUSERLOGIN,Y_149_0_ESHB,Y_2578_0_ESHB,Y_2632_5_ESH,TOPP_PAYCUSTDES",
   "MALFDES,SYMDES,CALLTYPECODE,CALLSTATUSCODE,SERVTDES,SERNUM,PARTNAME,PARTDES,WARDATEFINAL,RSHL_INSTDATE,TECHNICIANLOGIN,EDATE",
 ].join(",");
 const INBOX = "https://rashal-dashboard.vercel.app/api/priority-sync";
@@ -71,7 +71,7 @@ const Q = {
     `/CUSTOMERS?$select=CUSTNAME,CUSTDES,ADDRESS,STATE,PHONE,FAX,AGENTNAME,MCUSTDES,OWNERLOGIN,CREATEDDATE,CTYPENAME,CTYPECODE` +
     `&$filter=${encodeURIComponent(`CREATEDDATE ge ${since}`)}&$orderby=CREATEDDATE%20asc&$top=4000`,
   orders: (since: string) =>
-    `/ORDERS?$select=ORDNAME,CUSTNAME,CDES,CURDATE,STATUSDATE,ORDSTATUSDES,AGENTNAME,TYPEDES,DOERNAME,Y_151_0_ESHB` +
+    `/ORDERS?$select=ORDNAME,CUSTNAME,CDES,CURDATE,STATUSDATE,ORDSTATUSDES,AGENTNAME,TYPEDES,DOERNAME,Y_151_0_ESHB,MARK_PAYCUSTDES` +
     `&$expand=${encodeURIComponent("ORDERITEMS_SUBFORM($select=PARTNAME,PDES,TQUANT,SERIALNAME)")}` +
     `&$filter=${encodeURIComponent(`STATUSDATE ge ${since}`)}&$orderby=STATUSDATE%20asc&$top=8000`,
   // CALLSTATUSCODE added 05/08/2026 — the call's status in Priority. Without it
@@ -136,7 +136,7 @@ const Q = {
   // (כ-250 הזמנות וכ-250 קריאות), ותיבת הקליטה מעדכנת את השדות בלי לגעת
   // בסטטוס שלנו. סימן המים מוגן במסד: הוא רק מתקדם.
   orders_recent: (since: string) =>
-    `/ORDERS?$select=ORDNAME,CUSTNAME,CDES,CURDATE,STATUSDATE,ORDSTATUSDES,AGENTNAME,TYPEDES,DOERNAME,Y_151_0_ESHB` +
+    `/ORDERS?$select=ORDNAME,CUSTNAME,CDES,CURDATE,STATUSDATE,ORDSTATUSDES,AGENTNAME,TYPEDES,DOERNAME,Y_151_0_ESHB,MARK_PAYCUSTDES` +
     `&$expand=${encodeURIComponent("ORDERITEMS_SUBFORM($select=PARTNAME,PDES,TQUANT,SERIALNAME)")}` +
     `&$filter=${encodeURIComponent(`CURDATE ge ${since}`)}&$orderby=ORDNAME%20asc&$top=2000`,
   // ⭐ 15/09/2026: דלתא לפי "ת. חתימה" (UDATE), שזז בכל עריכה ולא רק בשינוי
@@ -217,7 +217,7 @@ const BACKFILL_Q: Record<string, { kind: string; url: (f: string, t: string) => 
   orders: {
     kind: "orders",
     url: (f, t) =>
-      `/ORDERS?$select=ORDNAME,CUSTNAME,CDES,CURDATE,STATUSDATE,ORDSTATUSDES,AGENTNAME,TYPEDES,DOERNAME,Y_151_0_ESHB` +
+      `/ORDERS?$select=ORDNAME,CUSTNAME,CDES,CURDATE,STATUSDATE,ORDSTATUSDES,AGENTNAME,TYPEDES,DOERNAME,Y_151_0_ESHB,MARK_PAYCUSTDES` +
       `&$expand=${encodeURIComponent("ORDERITEMS_SUBFORM($select=PARTNAME,PDES,TQUANT,SERIALNAME)")}` +
       `&$filter=${encodeURIComponent(`CURDATE ge ${f} and CURDATE lt ${t}`)}` +
       `&$orderby=CURDATE%20asc&$top=4000`,

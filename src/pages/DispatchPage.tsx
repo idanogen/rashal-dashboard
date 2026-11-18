@@ -73,7 +73,8 @@ import { CalendarSearchBar } from '@/components/dispatch/CalendarSearchBar';
 import { useCalendarSearch } from '@/hooks/useCalendarSearch';
 import { useCustomerTypes } from '@/hooks/useCustomerTypes';
 import { HealthFundFilter } from '@/components/dispatch/HealthFundFilter';
-import { countByFund, healthFundKey, isHealthFundKey, HEALTH_FUND_LABEL, type HealthFundKey } from '@/lib/health-fund';
+import { countByFund, healthFundKey, isHealthFundKey, recordFund, HEALTH_FUND_LABEL, type HealthFundKey } from '@/lib/health-fund';
+import { FundLookupContext } from '@/components/dispatch/fund-lookup-context';
 import { compareStopsByTime } from '@/lib/stop-order';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -325,8 +326,13 @@ export function DispatchPage() {
 
   const { data: allCalendarStops = [], isLoading: stopsLoading } = useCalendarStops();
   const fundLookupNumbers = useMemo(
-    () => [...pickups.map((p) => p.customerNumber), ...allCalendarStops.map((s) => s.customerNumber), ...newCustomers.map((c) => c.customerNumber)],
-    [pickups, allCalendarStops, newCustomers]
+    () => [
+      ...pickups.map((p) => p.customerNumber), ...allCalendarStops.map((s) => s.customerNumber), ...newCustomers.map((c) => c.customerNumber),
+      // הזמנה או קריאה בלי קופה על המסמך: לפי המסמכים האחרים של אותו לקוח (18/11/2026).
+      ...allUnscheduledOrders.filter((o) => recordFund(o.payerFund, o.healthFund) === 'none').map((o) => o.customerNumber),
+      ...allPendingCalls.filter((c) => recordFund(c.payerFund, c.healthFund) === 'none').map((c) => c.customerNumber),
+    ],
+    [pickups, allCalendarStops, newCustomers, allUnscheduledOrders, allPendingCalls]
   );
   const { data: customerTypes } = useCustomerTypes(fundLookupNumbers);
   const fundOfNumber = useCallback(
@@ -334,11 +340,11 @@ export function DispatchPage() {
     [customerTypes]
   );
   const unscheduledOrders = useMemo(
-    () => (fundFilter ? allUnscheduledOrders.filter((o) => healthFundKey(o.healthFund) === fundFilter) : allUnscheduledOrders),
+    () => (fundFilter ? allUnscheduledOrders.filter((o) => recordFund(o.payerFund, o.healthFund) === fundFilter) : allUnscheduledOrders),
     [allUnscheduledOrders, fundFilter]
   );
   const pendingCalls = useMemo(
-    () => (fundFilter ? allPendingCalls.filter((c) => healthFundKey(c.healthFund) === fundFilter) : allPendingCalls),
+    () => (fundFilter ? allPendingCalls.filter((c) => recordFund(c.payerFund, c.healthFund) === fundFilter) : allPendingCalls),
     [allPendingCalls, fundFilter]
   );
   const calendarStops = useMemo(
@@ -415,8 +421,8 @@ export function DispatchPage() {
   // כדי שהמספר יגיד כמה עבודה יש לכל קופה.
   const fundCounts = useMemo(
     () => countByFund([
-      ...allUnscheduledOrders.map((o) => healthFundKey(o.healthFund)),
-      ...allPendingCalls.map((c) => healthFundKey(c.healthFund)),
+      ...allUnscheduledOrders.map((o) => recordFund(o.payerFund, o.healthFund)),
+      ...allPendingCalls.map((c) => recordFund(c.payerFund, c.healthFund)),
       ...allPendingPickups.map((p) => fundOfNumber(p.customerNumber)),
       ...allPendingCustomers.map((c) => fundOfNumber(c.customerNumber, c.healthFund)),
     ]),
@@ -1347,6 +1353,7 @@ export function DispatchPage() {
   const tabState = renderTabState();
 
   return (
+    <FundLookupContext.Provider value={fundOfNumber}>
     <DndContext
       sensors={sensors}
       collisionDetection={collisionDetection}
@@ -1995,5 +2002,6 @@ export function DispatchPage() {
         }}
       />
     </DndContext>
+    </FundLookupContext.Provider>
   );
 }

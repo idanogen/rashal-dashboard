@@ -10,6 +10,7 @@ type ServiceCallRow = {
   phone: string | null;
   customer_status: ServiceCall['customerStatus'] | null;
   health_fund: string | null;
+  payer_fund: string | null;
   opened_by: string | null;
   address: string | null;
   city: string | null;
@@ -36,6 +37,7 @@ function rowToServiceCall(row: ServiceCallRow): ServiceCall {
     phone: row.phone ?? undefined,
     customerStatus: row.customer_status ?? undefined,
     healthFund: row.health_fund ?? undefined,
+    payerFund: row.payer_fund ?? undefined,
     openedBy: row.opened_by ?? undefined,
     address: row.address ?? undefined,
     city: row.city ?? undefined,

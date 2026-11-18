@@ -8,6 +8,8 @@ export interface ServiceCall {
   phone?: string;
   customerStatus?: 'לקוח חדש' | 'לקוח קיים';
   healthFund?: string;
+  /** הלקוח המשלם (TOPP_PAYCUSTDES) = הקופה עצמה. healthFund הוא סוג הלקוח (18/11/2026). */
+  payerFund?: string;
   openedBy?: string;
   address?: string;
   city?: string;

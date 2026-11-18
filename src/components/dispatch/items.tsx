@@ -1,4 +1,5 @@
 import { OrderDetailDialog } from '@/components/orders/OrderDetailDialog';
+import { recordFund } from '@/lib/health-fund';
 import { ServiceCallDetailDialog } from '@/components/service-calls/ServiceCallDetailDialog';
 import { Badge } from '@/components/ui/badge';
 import type { DispatchItemVM } from '@/components/dispatch/UnscheduledPanel';
@@ -71,6 +72,7 @@ export function buildOrderItems(
     customerName: order.customerName,
     customerNumber: order.customerNumber,
     docNo: order.priorityOrderId,
+    fund: recordFund(order.payerFund, order.healthFund),
     phone: order.phone,
     addressLine: joinAddress(order.address, order.city),
     created: order.created,
@@ -84,6 +86,7 @@ export function buildOrderItems(
       order.address,
       order.city,
       order.healthFund,
+      order.payerFund,
       order.openedBy,
       order.agent,
       order.orderStatus,
@@ -129,6 +132,7 @@ export function buildServiceCallItems(
     zoneId: zoneMap.get(call.id) || 'unassigned',
     customerName: call.customerName,
     customerNumber: call.customerNumber,
+    fund: recordFund(call.payerFund, call.healthFund),
     phone: call.phone,
     addressLine: joinAddress(call.address, call.city),
     created: call.created,
@@ -140,6 +144,7 @@ export function buildServiceCallItems(
       call.address,
       call.city,
       call.healthFund,
+      call.payerFund,
       call.openedBy,
       call.serviceCallStatus,
       call.priorityStatus,

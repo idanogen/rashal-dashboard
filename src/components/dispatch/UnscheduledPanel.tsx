@@ -1,4 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
+import { FundBadge } from '@/components/dispatch/FundBadge';
+import type { HealthFundKey } from '@/lib/health-fund';
 import { useDraggable } from '@dnd-kit/core';
 import type { LucideIcon } from 'lucide-react';
 import {
@@ -65,6 +67,8 @@ export interface DispatchItemVM {
   customerNumber?: string;
   /** מספר המסמך בפריוריטי (הזמנה SO…). מוצג ליד מספר הלקוח ונכלל בחיפוש. */
   docNo?: string;
+  /** הקופה של הרשומה (הזמנה/קריאה). בלעדיה התג מחפש לפי מספר הלקוח (FundBadge). */
+  fund?: HealthFundKey;
   phone?: string;
   /** שורת הכתובת בתחתית הכרטיס. */
   addressLine?: string;
@@ -270,6 +274,7 @@ export function DispatchCard({
               )}
             </p>
             {isReturned && <ReturnedNote info={returnedInfo} />}
+            <p className="mt-0.5"><FundBadge fund={vm.fund} customerNumber={vm.customerNumber} /></p>
             {(vm.customerNumber || vm.docNo) && (
               <p className="mt-0.5 text-[11px] text-muted-foreground">
                 {vm.docNo && <>הזמנה <bdi className="font-medium text-foreground/80">{vm.docNo}</bdi></>}

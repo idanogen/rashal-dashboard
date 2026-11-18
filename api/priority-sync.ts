@@ -607,6 +607,8 @@ async function upsertOrders(rows: Row[], backfill = false) {
         customer_name: s(r.CDES),
         agent: s(r.AGENTNAME) ?? s(c.agent),
         phone: s(r.Y_151_0_ESHB) ?? s(c.phone),
+        // ⭐ הקופה האמיתית = הלקוח המשלם על ההזמנה (18/11/2026).
+        payer_fund: s(r.MARK_PAYCUSTDES),
         address: s(c.address),
         city: s(c.city),
         fax: s(c.fax),
@@ -654,6 +656,7 @@ async function upsertOrders(rows: Row[], backfill = false) {
       const city = s(c.city); if (city) u.city = city;
       // סוג ההזמנה בעמודה שלו. הקופה נגזרת במסד, ראה למעלה.
       const ot = s(r.TYPEDES); if (ot) u.order_type = ot;
+      const pf = s(r.MARK_PAYCUSTDES); if (pf) u.payer_fund = pf;
       const items = mapItems(r); if (items) u.items = items;
       return u;
     },
@@ -705,6 +708,8 @@ async function upsertServiceCalls(rows: Row[], backfill = false) {
       address: s(r.Y_149_0_ESHB),
       city: s(r.Y_2578_0_ESHB),
       health_fund: s(r.Y_2632_5_ESH),
+      // ⭐ הקופה האמיתית = הלקוח המשלם (18/11/2026). Y_2632_5_ESH הוא סוג הלקוח ("משרד הבריאות").
+      payer_fund: s(r.TOPP_PAYCUSTDES),
       opened_by: s(r.SUSERLOGIN),
       customer_status: 'לקוח קיים',
       // 🔴 שעון ישראל מסומן Z אצל פריוריטי; בלי ההמרה השעה במסך מאוחרת ב-3.
@@ -752,6 +757,7 @@ async function upsertServiceCalls(rows: Row[], backfill = false) {
       const address = s(r.Y_149_0_ESHB); if (address) u.address = address;
       const city = s(r.Y_2578_0_ESHB); if (city) u.city = city;
       const hf = s(r.Y_2632_5_ESH); if (hf) u.health_fund = hf;
+      const pf = s(r.TOPP_PAYCUSTDES); if (pf) u.payer_fund = pf;
       // פרטי מכשיר (עמי #4) — בבעלות פריוריטי, מתרעננים תמיד כשיש ערך
       const ser = s(r.SERNUM); if (ser) u.device_serial = ser;
       const dn = s(r.PARTNAME); if (dn) u.device_name = dn;

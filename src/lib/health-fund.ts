@@ -41,3 +41,13 @@ export function countByFund(keys: Iterable<HealthFundKey>): Array<{ key: HealthF
   for (const k of keys) m.set(k, (m.get(k) ?? 0) + 1);
   return HEALTH_FUND_ORDER.filter((k) => m.has(k)).map((k) => ({ key: k, count: m.get(k)! }));
 }
+
+/**
+ * הקופה של רשומה אחת (18/11/2026): קודם הלקוח המשלם על המסמך (`payer_fund`, הקופה עצמה),
+ * ורק כשאין, סוג הלקוח (`health_fund`, CTYPENAME). כמחצית מסוגי הלקוח הם "משרד הבריאות",
+ * שזה מימון ולא קופה, ולכן המשלם קודם תמיד.
+ */
+export function recordFund(payerFund: string | null | undefined, customerType: string | null | undefined): HealthFundKey {
+  const payer = healthFundKey(payerFund);
+  return payer !== 'none' ? payer : healthFundKey(customerType);
+}
