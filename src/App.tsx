@@ -19,6 +19,7 @@ import { InboxPage } from '@/pages/InboxPage';
 import { CustomerPage } from '@/pages/CustomerPage';
 import { TasksPage } from '@/pages/TasksPage';
 import { PartsPage } from '@/pages/PartsPage';
+import { CallsArchivePage } from '@/pages/CallsArchivePage';
 import { StaffChatPage } from '@/pages/StaffChatPage';
 import { AdminUsersPage } from '@/pages/AdminUsersPage';
 import { WaAutomationsPage } from '@/pages/WaAutomationsPage';
@@ -138,6 +139,7 @@ function App() {
                         <Route path="/customer" element={<RoleBasedRoute allow={screenAllow('/customer')}><CustomerPage /></RoleBasedRoute>} />
                         <Route path="/tasks" element={<RoleBasedRoute allow={screenAllow('/tasks')}><TasksPage /></RoleBasedRoute>} />
                         <Route path="/parts" element={<RoleBasedRoute allow={screenAllow('/parts')}><PartsPage /></RoleBasedRoute>} />
+                        <Route path="/calls-archive" element={<RoleBasedRoute allow={screenAllow('/calls-archive')}><CallsArchivePage /></RoleBasedRoute>} />
                         <Route path="/chat" element={<RoleBasedRoute allow={screenAllow('/chat')}><StaffChatPage /></RoleBasedRoute>} />
                         <Route
                           path="/admin/wa-templates"

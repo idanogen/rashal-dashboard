@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   DndContext,
   type DragEndEvent,
@@ -90,6 +90,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ListChecks,
+  Archive,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { usePersistedCollapse } from '@/hooks/usePersistedCollapse';
@@ -1365,7 +1366,7 @@ export function DispatchPage() {
             דביקים מתחת לכותרת האתר, לפי הגובה שהיא מודדת. בין המתגים לרשימה יושבים
             שלושה אזורים מתקפלים, ובלי הדביקות הסדרן גולל ומאבד את הידיעה על
             איזה סוג פעילות הוא עומד. */}
-        <div className="sticky top-[var(--app-header-h,61px)] z-30 -mx-4 border-b bg-background/95 px-4 py-2 backdrop-blur-sm sm:-mx-6 sm:px-6">
+        <div className="sticky top-[var(--app-header-h,61px)] z-30 -mx-4 border-b bg-background/95 px-4 py-2 flex flex-wrap items-center backdrop-blur-sm sm:-mx-6 sm:px-6">
         <Tabs value={tab} onValueChange={setTab} dir="rtl">
           <TabsList className="h-11">
             <TabsTrigger value="all" className="gap-1.5 px-4">
@@ -1410,6 +1411,14 @@ export function DispatchPage() {
             </TabsTrigger>
           </TabsList>
         </Tabs>
+        {/* ⭐ ארכיון הקריאות (18/11/2026): מה שאינו "לביצוע" או "להמשך טיפול" יושב שם, עם החזרה בלחיצה. */}
+        <Link
+          to="/calls-archive"
+          className="ms-2 inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+        >
+          <Archive className="h-4 w-4" />
+          ארכיון קריאות
+        </Link>
         </div>
 
         {/* עצירות עבר שנשארו פתוחות — משותף לכל הטאבים */}
