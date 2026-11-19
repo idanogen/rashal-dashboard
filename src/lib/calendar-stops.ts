@@ -365,6 +365,8 @@ export async function geocodeStopAddress(stop: {
   if (!stop.address || !stop.address.trim()) return false;
   try {
     const result = await geocodeAddress(stop.address, { city: stop.city });
+    // כשל זמני של השירות אינו "לא נמצא": לא נוגעים בעצירה, והטעינה הבאה תנסה שוב.
+    if (result === 'transient') return false;
     if (!result) {
       // 🔴 **כישלון נרשם.** בלי החותמת הזאת אותה כתובת נוסתה שוב בכל טעינת
       // מסך, לנצח, כי "לא נמצא" לא הותיר שום עקבה. רק `geocoded_at` נכתב:

@@ -338,12 +338,14 @@ async function fetchGeocode(
 /**
  * geocoding מלא לכתובת דרך שירות המפות המרכזי.
  * תמיד מעביר את העיר לשירות (geocodeAddress(address, { city })).
- * @returns נקודה מדויקת או null (לא נמצא / משוער / כשל זמני).
+ * @returns נקודה מדויקת, null (תשובה ודאית: לא נמצא / משוער), או 'transient'.
+ * 🔴 19/11/2026: עד היום כשל זמני חזר כ-null, והקורא רשם אותו ככישלון עם צינון
+ * של 30 יום. 18 מתוך 28 כתובות "שנכשלו" נמצאו כשנוסו שוב בלי לשנות אות.
  */
 export async function geocodeAddress(
   address: string,
   opts: GeocodeOptions = {}
-): Promise<GeocodeResult | null> {
+): Promise<GeocodeResult | null | 'transient'> {
   const trimmed = address.trim();
   if (!trimmed) return null;
   const { city } = opts;
@@ -362,7 +364,7 @@ export async function geocodeAddress(
   return enqueue(async () => {
     if (sessionCache.has(cacheKey)) return sessionCache.get(cacheKey)!;
     const result = await fetchGeocode(trimmed, city);
-    if (result === 'transient') return null; // כשל זמני — לא שומרים, ננסה שוב
+    if (result === 'transient') return 'transient'; // לא שומרים במטמון, והקורא לא רושם כישלון
     sessionCache.set(cacheKey, result); // result מדויק או null (משוער) — שניהם נשמרים
     return result;
   });
