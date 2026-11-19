@@ -145,6 +145,9 @@ async function fetchGeocode(
     const data = await res.json();
     const r = data?.result;
     if (!r || (r.precision !== 'address' && r.precision !== 'street')) return null;
+    // נקודה בלי יישוב מוכרע לא נשמרת: בלי עיר המרכז עלול למקם רחוב בעיר אחרת
+    // ("פורת 206" נחת בבאר שבע, סעדה 19/11).
+    if (!r.city) return null;
     const lat = Number(r.lat);
     const lng = Number(r.lng);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
