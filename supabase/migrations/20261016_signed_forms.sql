@@ -85,7 +85,7 @@ declare
 begin
   select * into v_stop from public.calendar_stops where id = p_stop_id;
   if not found then return null; end if;
-  if public.stop_form_access(v_stop) is not true then
+  if public.stop_read_access(v_stop) is not true then
     raise exception 'not authorized';
   end if;
 

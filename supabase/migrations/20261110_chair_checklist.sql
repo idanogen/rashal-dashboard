@@ -68,7 +68,7 @@ as $$
     from public.calendar_stops s
     cross join lateral (select public.stop_checklist_kind(s) as kind) k
    where s.id = any(p_stop_ids)
-     and public.stop_form_access(s) is true;
+     and public.stop_read_access(s) is true;
 $$;
 revoke all on function public.stops_form_status(uuid[]) from public, anon;
 grant execute on function public.stops_form_status(uuid[]) to authenticated;

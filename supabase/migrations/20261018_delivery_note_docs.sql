@@ -107,7 +107,7 @@ as $$
    where s.id = any(p_stop_ids)
      and s.source_type in ('delivery', 'customer')
      and d.docno is not null
-     and public.stop_form_access(s) is true;
+     and public.stop_read_access(s) is true;
 $$;
 revoke all on function public.stops_delivery_notes(uuid[]) from public, anon;
 grant execute on function public.stops_delivery_notes(uuid[]) to authenticated;
@@ -124,7 +124,7 @@ declare
 begin
   select * into v_stop from public.calendar_stops where id = p_stop_id;
   if not found then return null; end if;
-  if public.stop_form_access(v_stop) is not true then
+  if public.stop_read_access(v_stop) is not true then
     raise exception 'not authorized';
   end if;
   v_doc := public.stop_delivery_doc(v_stop);
@@ -173,7 +173,7 @@ begin
     select 1 from public.calendar_stops s
      where s.driver = v_drv
        and s.source_type in ('delivery', 'customer')
-       and s.delivery_date <= public.israel_today()
+       and public.driver_stop_visible(s.driver, s.delivery_date) -- גם מחר מ-16:00 (#903, 19/11)
        -- 02/11/2026: גם עצירה פתוחה מימים קודמים (שארית), כמו בכרטיס התעודה
        -- ובטעינה מראש. רודי, ליברמן צבי מ-26/10: התעודה לא נפתחה. סגורה וישנה נשארת חסומה.
        and (s.delivery_date >= public.israel_today() - 3 or s.status in ('planned', 'in_progress'))

@@ -116,12 +116,8 @@ begin
     return null;
   end if;
 
-  if not (
-    public.is_office_staff() is true
-    or (public.current_user_role() = 'driver'
-        and v_stop.driver = public.current_user_driver()
-        and v_stop.delivery_date <= public.israel_today())
-  ) then
+  -- גם מחר מ-16:00, להורדה מראש לטלפון (stop_read_access, #903, 19/11/2026).
+  if public.stop_read_access(v_stop) is not true then
     raise exception 'not authorized';
   end if;
 

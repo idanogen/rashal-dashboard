@@ -7,6 +7,10 @@
 -- את אותה פונקציה, ולכן לא יכולים לסתור זה את זה.
 -- security invoker: מהדפדפן ה-RLS של app_events (אדמין בלבד) חל גם כאן.
 -- ─────────────────────────────────────────────────────────────────────────
+-- 19/11/2026: שורה למשתמש לכל אפליקציה.
+-- הבאג: group by לפי שם בלבד עם max(app) הכניס מי שעבד גם באפליקציה וגם
+-- בדשבורד ('driver' > 'dashboard') רק לרשימת "בשטח". עמי ואבירם נעלמו מ"במשרד"
+-- בסיכום של 18/11. עכשיו (שם, אפליקציה) הוא המפתח, והמסך כבר ממפתח כך.
 create or replace function public.app_day_summary(p_day date default (now() at time zone 'Asia/Jerusalem')::date)
 returns jsonb
 language sql
@@ -23,7 +27,7 @@ as $$
     select
       coalesce(user_name, 'לא מזוהה') as name,
       max(user_role) as role,
-      max(app) as app,
+      app,
       (array_agg(app_version order by occurred_at desc))[1] as version,
       (array_agg(device order by occurred_at desc))[1] as device,
       min(occurred_at) as first_seen,
@@ -42,13 +46,13 @@ as $$
       count(*) filter (where kind = 'form' and name = 'sent') as forms_sent,
       count(*) filter (where kind = 'stuck' and name = 'problem_report') as problems
     from ev
-    group by coalesce(user_name, 'לא מזוהה')
+    group by coalesce(user_name, 'לא מזוהה'), app
   ),
   -- שגיאות לפי שם לכל משתמש: המסך מנכה שגיאות צפויות (KNOWN_ERRORS) לפני הצביעה.
   user_errors as (
-    select coalesce(user_name, 'לא מזוהה') as name, jsonb_object_agg(err, n) as error_names
-      from (select user_name, name as err, count(*) as n from ev where kind = 'error' group by 1, 2) x
-     group by 1
+    select coalesce(user_name, 'לא מזוהה') as name, app, jsonb_object_agg(err, n) as error_names
+      from (select user_name, app, name as err, count(*) as n from ev where kind = 'error' group by 1, 2, 3) x
+     group by 1, 2
   ),
   top_errors as (
     select name, count(*) as n, count(distinct user_name) as users,
@@ -83,13 +87,16 @@ as $$
     'events', (select count(*) from ev),
     'users', coalesce((select jsonb_agg(to_jsonb(u) || jsonb_build_object('error_names', coalesce(ue.error_names, '{}'::jsonb))
                                         order by u.problems desc, u.errors desc, u.last_seen desc)
-                         from per_user u left join user_errors ue on ue.name = u.name), '[]'::jsonb),
+                         from per_user u left join user_errors ue on ue.name = u.name and ue.app = u.app), '[]'::jsonb),
     'top_errors', coalesce((select jsonb_agg(to_jsonb(t)) from top_errors t), '[]'::jsonb),
     'form_blocks', coalesce((select jsonb_agg(to_jsonb(b)) from blocks b), '[]'::jsonb),
     'problems', coalesce((select jsonb_agg(to_jsonb(p)) from problems p), '[]'::jsonb),
     'silent', coalesce((select jsonb_agg(to_jsonb(s)) from silent s), '[]'::jsonb)
   );
 $$;
+
+revoke all on function public.app_day_summary(date) from public, anon;
+grant execute on function public.app_day_summary(date) to authenticated;
 
 revoke all on function public.app_day_summary(date) from public, anon;
 grant execute on function public.app_day_summary(date) to authenticated;
