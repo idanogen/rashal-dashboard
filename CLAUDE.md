@@ -131,6 +131,7 @@ supabase/       functions/ · migrations/ (85)
 - heyy משבית וובהוק שנכשל ברצף בלי סימן: `rashal-watchdog/heyy-health.ts` בודק. מחזיר `success:true` גם כשחלון 24 השעות סגור.
 - מזהי תבנית `DEMO-*` הם דמו ומעולם לא שלחו. מאושרת: `rashal_visit_coordination` (4 משתנים, כפתורים "מתאים לי"/"לא מתאים"). `WA_REMINDERS_ENABLED=1` בייצור מ-13/11 (תזכורת ערב ללקוחות של מחר + מדריך בטיחות אחרי אספקת מנוף, אותו מתג), הודעה אחת לטלפון ליום (`firstStopPerPhone`).
 - כפתורי תבנית מגיעים ב-`attachments`: `describeAttachments` בשרת מכריע, המטען הגולמי לא נוסע לדפדפן. "נקרא" (`read_at`) נרשם רק מלחיצת אדם.
+- 🔴 מספר שאינו בוואטסאפ (13/11): מטא מחזירה "unable to deliver" באיחור דרך ה-webhook, אחרי ש-heyy כבר קיבל. `wa_phone_paused` (30 יום מהכשלון האמיתי האחרון) עוצר את המנועים האוטומטיים בלבד (`isAutomaticTrigger` ב-`api/_lib/unreachable.ts`, ותזכורות הערב); המשרד שולח תמיד. דילוג נרשם כ-`failed` עם `paused:` שלא מאריך את ההפסקה. בני משפחה מקבלים גם כשהלקוח מושהה (`_shared/send-with-extras.ts`, מקור אחד לשלושת המנועים). בקשת תמונה שלא הגיעה עוברת ל-`failed` בטריגר על `whatsapp_outbound` (תג "📵 אין וואטסאפ"). דוח שבועי למשרד: `rashal-wa-failure-report`, ראשון 08:00, נמענים ב-`wa_failure_report_settings`.
 - סקר: ציון 3 ומטה = התרעה פנימית עם ההערה, רשומות בדיקה מסוננות. הודעה ללקוח על ציון נמוך לא נבנתה (ממתין לשלומי).
 ### תשתית
 - Vercel: תקרת הפונקציות ב-`api/` מלאה. לוגיקה חדשה כ-RPC ב-Supabase או רכיבה על נתיב קיים. `vercel metrics`: ממדים ב-camelCase (`requestPath`, `clientIp`).
@@ -140,3 +141,6 @@ supabase/       functions/ · migrations/ (85)
 
 ## 🧱 חוקי הקוד של הבית (24/10/2026)
 לפני כל מסירה: `node ~/Idan-HQ/company/code-guard/check.mjs` חייב לעבור. החוקים המלאים בבלוק "חוקי כתיבת קוד" ב-CLAUDE.md הגלובלי.
+
+## 🗺️ מרכז המיקום
+כתובות, ערים ומסלולים בפרויקט הזה עוברים דרך מרכז המיקום של עוגן (`https://ogen-geo-service.vercel.app`, v2: locate · cities · cities/match · route). החוזה: `~/Idan-HQ/knowledge/geo/README.md`. לא בונים כאן ניקוי כתובות, טבלת ערים או סידור עצירות; מה שחסר מוסיפים במרכז.
