@@ -30,7 +30,7 @@ export const ZONES: Zone[] = [
 ];
 
 /**
- * מיפוי ערים לאזורים - כל הערים מ-CITY_COORDINATES בגיאוקודינג
+ * מיפוי ערים לאזורים (רשימה ידנית; מרכזי היישובים עצמם ממרכז המיקום, city-centers.ts)
  */
 export const CITY_TO_ZONE: Record<string, string> = {
   // גוש דן

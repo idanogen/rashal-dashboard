@@ -8,6 +8,7 @@ import type { ServiceCall } from '@/types/service-call';
 import type { Pickup } from '@/types/pickup';
 import type { CalendarStop } from '@/types/calendar-stop';
 import { getCityCoordinates } from '@/lib/geocoding';
+import { useCityCenters } from '@/hooks/useCityCenters';
 
 type Pt = [number, number, number];
 type Bucket = Map<string, { lat: number; lng: number; count: number }>;
@@ -49,6 +50,11 @@ export function ActivityHeatMap({
   const toggle = (c: Cat) => setActive((a) => ({ ...a, [c]: !a[c] }));
 
   // דלי נפרד לכל סוג — כדי שהבורר יסנן. מיקום מדויק מהיומן, אחרת מרכז-עיר.
+  const citiesReady = useCityCenters([
+    ...orders.map((o) => o.city),
+    ...serviceCalls.map((c) => c.city),
+    ...pickups.map((p) => p.city),
+  ]);
   const buckets = useMemo(() => {
     const b: Record<Cat, Bucket> = { deliveries: new Map(), service: new Map(), pickups: new Map() };
     const seen = new Set<string>();
@@ -69,7 +75,7 @@ export function ActivityHeatMap({
     for (const c of serviceCalls) if (!c.duplicateOf) byCity('service', c.city, `c:${c.id}`);
     for (const p of pickups) if (!p.duplicateOf) byCity('pickups', p.city, `p:${p.id}`);
     return b;
-  }, [orders, serviceCalls, pickups, stops]);
+  }, [orders, serviceCalls, pickups, stops, citiesReady]);
 
   // מיזוג הסוגים הפעילים + נרמול sqrt
   const { points, total } = useMemo(() => {

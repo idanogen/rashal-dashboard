@@ -7,6 +7,7 @@ import { supabase } from './supabase';
 import { geocodeAddress } from './geocoding';
 import { timedFetch } from './perf-collect';
 import { rowToStop, type CalendarStopRow } from './calendar-stops-row';
+import { primeCityCenters } from './city-centers';
 
 // הקוראים הישנים (DispatchPage ועוד) מייבאים את בדיקת הכפילות מכאן; המימוש ב-calendar-stops-dups.
 export { findActiveDuplicateStops } from './calendar-stops-dups';
@@ -58,7 +59,7 @@ function stopFieldsToRow(
 export async function fetchAllStops(): Promise<CalendarStop[]> {
   return timedFetch('calendar_stops', async (countPage) => {
     const PAGE = 1000;
-    const all: CalendarStop[] = [];
+    const all: CalendarStopRow[] = [];
     let from = 0;
     while (true) {
       countPage();
@@ -75,11 +76,13 @@ export async function fetchAllStops(): Promise<CalendarStop[]> {
 
       if (error) throw new Error(`fetchAllStops: ${error.message}`);
       const rows = (data as CalendarStopRow[]) ?? [];
-      all.push(...rows.map(rowToStop));
+      all.push(...rows);
       if (rows.length < PAGE) break;
       from += PAGE;
     }
-    return all;
+    // מרכזי היישובים מהמרכז לפני המיפוי, כי rowToStop סינכרוני (city-centers.ts).
+    await primeCityCenters(all.map((r) => r.city));
+    return all.map(rowToStop);
   }, (rows) => rows.length);
 }
 
@@ -97,6 +100,7 @@ export async function fetchStopsForDateRange(
     .order('sequence', { ascending: true });
 
   if (error) throw new Error(`fetchStopsForDateRange: ${error.message}`);
+  await primeCityCenters((data as CalendarStopRow[]).map((r) => r.city));
   return (data as CalendarStopRow[]).map(rowToStop);
 }
 
