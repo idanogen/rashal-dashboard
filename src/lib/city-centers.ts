@@ -17,7 +17,7 @@ export interface CityCenter {
 }
 
 const BASE = (import.meta.env.VITE_GEO_SERVICE_URL as string | undefined)?.replace(/\/$/, '') || '';
-const STORAGE_KEY = 'geo:cityCenters:v1';
+const STORAGE_KEY = 'geo:cityCenters:v2';
 const PRIME_TIMEOUT_MS = 4000;
 
 /** null = המרכז ענה בוודאות שאין יישוב כזה. חסר = עוד לא נשאל. */
@@ -32,7 +32,10 @@ try {
 
 function persist() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(Object.fromEntries(cache)));
+    // רק התאמות נשמרות בדפדפן. "אין יישוב כזה" נשאר בזיכרון בלבד, כדי ששיפור
+    // במרכז (שכונה → עיר, כתיב חדש) יגיע גם למי שכבר שאל פעם.
+    const found = [...cache].filter(([, v]) => v !== null);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(Object.fromEntries(found)));
   } catch {
     // אחסון מלא או חסום: המטמון בזיכרון עדיין עובד בסשן הזה.
   }
