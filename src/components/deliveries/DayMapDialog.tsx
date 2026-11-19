@@ -29,7 +29,9 @@ import {
 import { buildWazeUrl, buildTelUrl } from '@/lib/navigation';
 import { getCityCoordinates } from '@/lib/geocoding';
 import { compareStopsByTime } from '@/lib/stop-order';
-import { optimizeStops } from '@/lib/stopOptimizer';
+import { optimizeRouteOrder } from '@/lib/directions';
+import { WAREHOUSE_LOCATION } from '@/lib/maps';
+import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RouteCelebration } from './RouteCelebration';
 import {
@@ -136,26 +138,27 @@ export function DayMapDialog({ open, onClose, date, stops, onOptimize }: DayMapD
     });
   }, [nextStop]);
 
-  const handleOptimize = () => {
+  const handleOptimize = async () => {
     if (!onOptimize || activeStops.length < 2 || isOptimizing) return;
 
     setIsOptimizing(true);
-    const result = optimizeStops(activeStops);
-
-    // 1. Beetle hits the road IMMEDIATELY on click
-    setCelebration({
-      show: true,
-      distance: result.totalDistance,
-      unresolvableCount: result.unresolvableCount,
-    });
-
-    // 2. Trigger DB update in parallel — stops reorder in the background
-    //    while the Beetle drives its 4-second run. By the time the reveal
-    //    appears, the list on the left has already settled.
-    onOptimize(effectiveDriver, result.orderedIds);
-
-    // 3. Release the button shortly — celebration manages its own lifecycle
-    setTimeout(() => setIsOptimizing(false), 400);
+    try {
+      // סידור לפי כבישים במרכז המיקום, מהמחסן ובחזרה (src/lib/route-order.ts).
+      const result = await optimizeRouteOrder(
+        activeStops.map((s) => ({ id: s.stopId, coordinates: s.coordinates })),
+        WAREHOUSE_LOCATION,
+      );
+      setCelebration({
+        show: true,
+        distance: result.distanceKm,
+        unresolvableCount: result.unresolvableCount,
+      });
+      onOptimize(effectiveDriver, result.orderedIds);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'הסידור נכשל, הסדר לא שונה');
+    } finally {
+      setIsOptimizing(false);
+    }
   };
 
   return (

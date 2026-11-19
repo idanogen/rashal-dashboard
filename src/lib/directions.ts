@@ -8,6 +8,8 @@
 //   → 200 {result:null}   לא זמין → הקורא יצייר קו ישר (לא לשבור את המפה)
 // ─────────────────────────────────────────────────────────────────
 
+import { buildRouteRequest, mergeRouteOrder, type RouteStopInput } from './route-order';
+
 const BASE = (import.meta.env.VITE_GEO_SERVICE_URL as string | undefined)?.replace(/\/$/, '') || '';
 
 export interface RoadRoute {
@@ -63,4 +65,40 @@ export async function getRoadRoute(
   } catch {
     return null; // כשל רשת — לא לשמור, ננסה שוב בפעם הבאה
   }
+}
+
+export interface OptimizedOrder {
+  /** הסדר הסופי: מה שהמרכז סידר, ואחריו עצירות בלי נקודה. */
+  orderedIds: string[];
+  distanceKm: number;
+  durationMin: number;
+  unresolvableCount: number;
+}
+
+/**
+ * סידור עצירות לפי כבישים דרך מרכז המיקום (`POST /api/v2/route`).
+ * 🔴 אין נפילה שקטה לאלגוריתם מקומי: כשל מוחזר כשגיאה והמסך אומר את זה.
+ */
+export async function optimizeRouteOrder(
+  stops: RouteStopInput[],
+  warehouse: { lat: number; lng: number },
+): Promise<OptimizedOrder> {
+  if (!BASE) throw new Error('שירות המפות לא מוגדר');
+  const { body, withoutCoords } = buildRouteRequest(stops, warehouse);
+  if (body.stops.length < 2) throw new Error('אין מספיק עצירות עם מיקום כדי לסדר');
+  const res = await fetch(`${BASE}/api/v2/route`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-geo-client': 'rashal' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`שירות המפות לא זמין כרגע (${res.status}), נסו שוב בעוד רגע`);
+  const r = (await res.json())?.result;
+  const orderedIds = mergeRouteOrder(body.stops.map((s) => s.id), r?.order, withoutCoords);
+  if (!orderedIds) throw new Error('שירות המפות החזיר סדר חלקי, הסדר לא שונה');
+  return {
+    orderedIds,
+    distanceKm: Math.round(Number(r.distanceKm) || 0),
+    durationMin: Math.round(Number(r.durationMin) || 0),
+    unresolvableCount: withoutCoords.length,
+  };
 }
