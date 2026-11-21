@@ -13,6 +13,7 @@ import { DRIVER_JOB, checkDriverNameWrites } from "./driver-name-check.ts";
 import { SCREEN_JOB, checkScreenLoads } from "./screen-loads-check.ts";
 import { STUCK_JOB, checkStuckActions } from "./stuck-actions-check.ts";
 import { sweepSyncRuns } from "./svc-health.ts";
+import { shouldMarkOk } from "./alert-state.ts";
 import { requireSecret } from "../_shared/require-secret.ts";
 
 const sb = createClient(
@@ -324,6 +325,12 @@ Deno.serve(async (req: Request) => {
   } catch (e) {
     report[STUCK_JOB] = `check crashed: ${e instanceof Error ? e.message : String(e)}`;
     console.error("[watchdog] stuck-actions check crashed", e);
+  }
+
+  // פעמון לכל פריט חוזר ל-ok כשהבדיקה נקייה, אחרת מרכז השירות רואה התראה תקועה (21/11).
+  for (const job of [PARKED_JOB, DRIVER_JOB, STUCK_JOB]) {
+    if (!shouldMarkOk(report[job], alerts.get(job))) continue;
+    await sb.from("sync_alerts").upsert({ job, state: "ok", last_recovered_at: now.toISOString(), updated_at: now.toISOString() });
   }
 
   // חוזה הדופק (11/11/2026): כל זרם מול פריוריטי מדווח למרכז השירות בדנה, לא רק במייל לעידן.
