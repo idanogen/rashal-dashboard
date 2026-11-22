@@ -201,7 +201,8 @@ export async function loadThread(by: { phone?: string | null; customer?: string 
       }
       if (best && bestGap <= 15 * 60_000) {
         if (best.state === 'media_received') return { state: 'answered', result: 'תמונה התקבלה' };
-        if (['cancelled', 'no_response', 'skipped', 'replied_no_media'].includes(best.state)) return { state: 'expired', result: null };
+        // failed: מ-13/11 גם "המספר אינו בוואטסאפ" (trg_media_request_undeliverable), לא בקשה שממתינה.
+        if (['cancelled', 'no_response', 'skipped', 'replied_no_media', 'failed'].includes(best.state)) return { state: 'expired', result: null };
         return { state: 'pending', result: null };
       }
       return { state: age > 3 * DAY ? 'expired' : 'pending', result: null };

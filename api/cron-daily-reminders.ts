@@ -4,6 +4,7 @@ import { heyySendTemplate, isHeyyDemo } from './_lib/heyy-server.js';
 import { getTemplate } from './_lib/templates-store.js';
 import { REMINDER_TEMPLATE_KEY, firstStopPerPhone, isReminderHour, reminderPreview, reminderValues } from './_lib/reminder-text.js';
 import { checkSuppressed } from './_lib/suppression.js';
+import { isPhonePaused, logPausedSend } from './_lib/unreachable.js';
 import { normalizePhone, toE164 } from './_lib/phone.js';
 import { secretEquals } from './_lib/secret-equals.js';
 
@@ -198,6 +199,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       continue;
     }
 
+    // מספר שאינו בוואטסאפ: 30 יום בלי הודעות אוטומטיות (13/11). נרשם, כדי שהדוח השבועי יראה אותו.
+    if (await isPhonePaused(e164)) {
+      await logPausedSend({ phoneE164: e164, templateId: reminderTpl.heyyTemplateId, reminderKind: 'visit_reminder',
+        variables: Object.entries(values).map(([name, value]) => ({ name, value })), triggeredBy: 'cron' });
+      plans.push({ ...plan, status: 'skipped', detail: 'המספר אינו בוואטסאפ (הפסקה של 30 יום)' });
+      continue;
+    }
+
     // שפת הלקוח כמו בשאר ההודעות (wa_pick_template): תבנית בשפה אם הוגשה, אחרת עברית.
     const { data: picked } = await supabaseAdmin.rpc('wa_pick_template', {
       p_key: REMINDER_KEY, p_phone: e164, p_customer: null, p_default: reminderTpl.heyyTemplateId,
@@ -217,7 +226,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         phone_e164: e164,
         message_kind: 'template',
         template_id: templateId,
-        template_params: Object.values(values),
+        // בשמות ולא לפי מיקום, כמו ב-heyy-send: תשובת שפה והדוח השבועי קוראים מכאן את שם הלקוח.
+        template_params: Object.entries(values).map(([name, value]) => ({ name, value })),
         reminder_kind: 'visit_reminder',
         status: result.status,
         status_detail: result.statusDetail,
@@ -307,6 +317,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     if (!guideTpl) {
       plans.push({ ...plan, status: 'failed', detail: `התבנית ${CRANE_GUIDE_KEY} אינה פעילה` });
+      continue;
+    }
+    if (await isPhonePaused(e164)) {
+      await logPausedSend({ phoneE164: e164, templateId: guideTpl.heyyTemplateId, reminderKind: 'crane_guide',
+        variables: [], orderId: stop.order_id, triggeredBy: 'cron' });
+      plans.push({ ...plan, status: 'skipped', detail: 'המספר אינו בוואטסאפ (הפסקה של 30 יום)' });
       continue;
     }
 

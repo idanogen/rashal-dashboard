@@ -15,6 +15,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildAlertMail, shouldAlert, type SurveyAnswer } from "./low-rating.ts";
 import { requireSecret } from "../_shared/require-secret.ts";
+import { isPausedResponse, sendWithExtras, type SendResult } from "../_shared/send-with-extras.ts";
 
 const SEND_URL = "https://rashal-dashboard.vercel.app/api/heyy-send";
 
@@ -136,15 +137,12 @@ Deno.serve(async (req: Request) => {
     due = (data ?? []) as DueRow[];
 
     for (const row of due) {
-      const res = await sendOne(row, cfg.template_id);
+      // ⭐ גם אל בני המשפחה שקישרנו ללקוח, וגם כשהלקוח עצמו אינו בוואטסאפ (13/11).
+      // אותו טוקן, כלומר אותו סקר: מי שעונה ראשון עונה בשם הלקוח.
+      const res = await sendWithExtras(row.phone_e164, row.extra_phones, (phone) => sendOne({ ...row, phone_e164: phone }, cfg.template_id),
+        (extra, err) => console.error("[surveys] extra recipient failed", extra, err));
       if (res.ok) {
         sent++;
-        // ⭐ גם אל בני המשפחה שקישרנו ללקוח. אותו טוקן, כלומר אותו סקר:
-        // מי שעונה ראשון עונה בשם הלקוח.
-        for (const extra of row.extra_phones ?? []) {
-          const r2 = await sendOne({ ...row, phone_e164: extra }, cfg.template_id);
-          if (!r2.ok) console.error("[surveys] extra recipient failed", extra, r2.error);
-        }
         await sb.from("customer_surveys").update({
           status: "sent",
           sent_at: new Date().toISOString(),
@@ -304,17 +302,11 @@ async function pickTemplate(key: string, phone: string, fallback: string): Promi
     return { lang: "he", templateId: fallback, translated: false };
   }
 }
-async function translateValue(value: string, lang: string): Promise<string> {
-  try {
-    const { data } = await sb.rpc("wa_translate_value", { p_value: value, p_lang: lang });
-    return typeof data === "string" && data ? data : value;
-  } catch { return value; }
-}
 
 async function sendOne(
   row: DueRow,
   templateId: string,
-): Promise<{ ok: true } | { ok: false; error: string; retryable: boolean }> {
+): Promise<SendResult> {
   const pick = await pickTemplate("survey_invite", row.phone_e164, templateId);
   try {
     const res = await fetch(SEND_URL, {
@@ -344,6 +336,7 @@ async function sendOne(
         // ⭐ הדגל מהשרת, לא ניחוש מקוד הסטטוס: `/api/heyy-send` מחזיר 429
         // גם על צינון פנימי שלנו, וזה מצב אחר לגמרי מחריגה ממכסת heyy.
         retryable: body?.retryable === true,
+        paused: isPausedResponse(res.status, body),
       };
     }
     return { ok: true };

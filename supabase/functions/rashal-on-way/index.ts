@@ -10,6 +10,7 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { displayPhone } from "./phone-display.ts";
 import { requireSecret } from "../_shared/require-secret.ts";
+import { isPausedResponse, sendWithExtras, type SendResult } from "../_shared/send-with-extras.ts";
 
 const SEND_URL = "https://rashal-dashboard.vercel.app/api/heyy-send";
 const SEND_SECRET = Deno.env.get("RASHAL_SEND_SECRET") ?? "";
@@ -78,14 +79,12 @@ Deno.serve(async (req: Request) => {
     }));
   } else {
     for (const c of candidates) {
-      const res = await sendOne(c, String(cfg.template_id ?? ""), String(cfg.template_v2_id ?? ""));
+      // ⭐ גם אל בני המשפחה שקישרנו ללקוח, וגם כשהלקוח עצמו אינו בוואטסאפ (13/11). הרישום נשאר על העצירה.
+      const res = await sendWithExtras(c.phone_e164, c.extra_phones,
+        (phone) => sendOne({ ...c, phone_e164: phone }, String(cfg.template_id ?? ""), String(cfg.template_v2_id ?? "")),
+        (extra, err) => console.error("[on-way] extra recipient failed", extra, err));
       if (res.ok) {
         sent++;
-        // ⭐ גם אל בני המשפחה שקישרנו ללקוח. הרישום נשאר על העצירה.
-        for (const extra of c.extra_phones ?? []) {
-          const r2 = await sendOne({ ...c, phone_e164: extra }, String(cfg.template_id ?? ""), String(cfg.template_v2_id ?? ""));
-          if (!r2.ok) console.error("[on-way] extra recipient failed", extra, r2.error);
-        }
         await sb.rpc("on_way_mark_sent", {
           p_event: c.event_id,
           p_stop: c.next_stop_id,
@@ -142,7 +141,7 @@ async function sendOne(
   c: Candidate,
   templateId: string,
   templateV2Id: string,
-): Promise<{ ok: true } | { ok: false; error: string; retryable: boolean }> {
+): Promise<SendResult> {
   // התבנית עם שם וטלפון של העובד, רק כשהיא מחווטת (=אושרה במטא) ויש
   // לעובד טלפון בטבלת הצוות. אחרת נסיגה שקטה לנוסח הישן, בלי הודעת חור.
   const useV2 = Boolean(templateV2Id && c.worker_phone && c.worker_name);
@@ -178,6 +177,7 @@ async function sendOne(
         ok: false,
         error: `HTTP ${res.status}: ${JSON.stringify(body).slice(0, 300)}`,
         retryable: body?.retryable === true,
+        paused: isPausedResponse(res.status, body),
       };
     }
     return { ok: true };

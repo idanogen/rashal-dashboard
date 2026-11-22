@@ -3,6 +3,7 @@ import { supabaseAdmin } from './_lib/supabase-admin.js';
 import { heyySendTemplate, heyySendText, isHeyyDemo } from './_lib/heyy-server.js';
 import { normalizePhone, toE164 } from './_lib/phone.js';
 import { checkSuppressed } from './_lib/suppression.js';
+import { isAutomaticTrigger, isPhonePaused, logPausedSend, PAUSED_DETAIL, PAUSED_ERROR } from './_lib/unreachable.js';
 import { requireCaller, warnIfSecretMissing } from './_lib/require-caller.js';
 import { signedFormAttachment } from './_lib/signed-form-doc.js';
 
@@ -90,6 +91,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         });
       }
     }
+  }
+
+  // ── מספר שאינו בוואטסאפ: הפסקה של 30 יום, לשליחה אוטומטית בלבד (13/11/2026) ──
+  // רק המנועים שפונים ללקוח מעצמם (isAutomaticTrigger). משתמש מחובר, העתק טופס
+  // שהמשרד ביקש ודוח הבוקר לצוות שולחים תמיד. המנוע מקבל 409 עם `unreachable_paused`
+  // ושולח לבני המשפחה (`_shared/send-with-extras.ts`).
+  if (caller.kind === 'service' && isAutomaticTrigger(body.triggeredBy) && (await isPhonePaused(e164))) {
+    await logPausedSend({
+      phoneE164: e164, templateId: body.kind === 'template' ? body.templateId : null,
+      variables: body.kind === 'template' ? normalizeVariables(body) : null, reminderKind: body.reminderKind,
+      orderId: body.orderId, triggeredBy: body.triggeredBy ? `${body.triggeredBy} (${caller.label})` : caller.label,
+    });
+    return res.status(409).json({ ok: false, error: PAUSED_ERROR, statusDetail: PAUSED_DETAIL, isDemo: isHeyyDemo });
   }
 
   // Cooldown check (only for reminders attached to an order)

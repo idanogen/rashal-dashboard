@@ -35,7 +35,8 @@ export function mediaBadge(state: string): MediaBadge | null {
     case 'no_response':
       return { label: 'אין מענה', long: 'אין מענה לבקשת התמונה גם אחרי התזכורת, כדאי להתקשר', tone: 'red' };
     case 'failed':
-      return { label: 'שליחה נכשלה', long: 'שליחת בקשת התמונה נכשלה, כנראה אין וואטסאפ על המספר', tone: 'red' };
+      // מ-13/11 גם הכשלון שמטא מחזירה באיחור ("המספר אינו בוואטסאפ", trg_media_request_undeliverable).
+      return { label: '📵 אין וואטסאפ', long:'בקשת התמונה לא הגיעה ללקוח, כנראה אין וואטסאפ על המספר. להתקשר אליו', tone: 'red' };
     case 'no_phone':
       return { label: 'אין נייד', long: 'אין מספר נייד לשליחת בקשת תמונה', tone: 'gray' };
     default:
