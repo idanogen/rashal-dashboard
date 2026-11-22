@@ -68,6 +68,11 @@ function quote(q: string): string {
   return `"${t.length > MAX_QUERY ? t.slice(0, MAX_QUERY) + '…' : t}"`;
 }
 
+/** צ'יפ האזורים המקופלים, או null. */
+export function collapsedFilter(labels: string[]): ActiveFilter | null {
+  return labels.length > 0 ? { key: 'collapsed', label: `מקופל: ${labels.join(', ')}` } : null;
+}
+
 /** הסינונים הפעילים, בסדר קבוע: קודם אלה שנזכרים בדפדפן. */
 export function activeFilters(s: FilterState): ActiveFilter[] {
   const out: ActiveFilter[] = [];
@@ -80,7 +85,8 @@ export function activeFilters(s: FilterState): ActiveFilter[] {
     const more = s.zoneLabels.length - 2;
     out.push({ key: 'zones', label: `אזור: ${shown}${more > 0 ? ` ועוד ${more}` : ''}` });
   }
-  if (s.collapsedLabels.length > 0) out.push({ key: 'collapsed', label: `מקופל: ${s.collapsedLabels.join(', ')}` });
+  const c = collapsedFilter(s.collapsedLabels);
+  if (c) out.push(c);
   if (s.lightLabels.length > 0) out.push({ key: 'lights', label: `רמזור: ${s.lightLabels.join(', ')}` });
   if (s.search.trim()) out.push({ key: 'search', label: `חיפוש: ${quote(s.search)}` });
   if (s.calendarSearch.trim()) out.push({ key: 'calendarSearch', label: `חיפוש ביומן: ${quote(s.calendarSearch)}` });

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import type { CalendarDelivery, CalendarStop } from '@/types/delivery';
 import { useAssignees } from '@/hooks/useAssignees';
 import { RAIL_DAY_EVENT, railSetDays } from '@/lib/dispatch-rail-store';
@@ -87,7 +87,8 @@ export function DeliveryCalendar({
       else next.add(id);
       return next;
     });
-  const toggleAllGroups = () => { setGroupOverrides(new Set()); toggleGroupsAll(); };
+  // יציב: המסילה משווה את המתג, ומתג חדש בכל רינדור משדר שינוי בכל רינדור.
+  const toggleAllGroups = useCallback(() => { setGroupOverrides(new Set()); toggleGroupsAll(); }, [toggleGroupsAll]);
   // במסילת הניווט: החץ של "היומן" מכווץ ופותח את כל הנהגים.
   useRailSection({
     id: 'calendar', title: 'היומן', order: 90, tone: 'emerald', icon: 'calendar', count: null,
@@ -204,7 +205,6 @@ export function DeliveryCalendar({
     };
     window.addEventListener(RAIL_DAY_EVENT, onJump);
     return () => window.removeEventListener(RAIL_DAY_EVENT, onJump);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visibleDays]);
 
   const isCollapsedDay = (day: Date) =>

@@ -1,6 +1,9 @@
+import { useMemo } from 'react';
 import { EyeOff, Filter, X } from 'lucide-react';
 
-import type { ActiveFilter, DefaultHiding, DefaultKey, FilterKey } from '@/lib/active-filters';
+import { useRail } from '@/lib/dispatch-rail-store';
+
+import { collapsedFilter, type ActiveFilter, type DefaultHiding, type DefaultKey, type FilterKey } from '@/lib/active-filters';
 
 /**
  * פס "המסך מסונן" (22/11/2026), בתוך הרצועה הדביקה של מסך הסדרן, כך שהוא
@@ -27,7 +30,20 @@ interface ActiveFiltersBannerProps {
   onShowDefault: (key: DefaultKey) => void;
 }
 
-export function ActiveFiltersBanner({ filters, summary, defaults, onClear, onClearAll, onShowDefault }: ActiveFiltersBannerProps) {
+export function ActiveFiltersBanner({ filters: picked, summary, defaults, onClear: clearPicked, onClearAll: clearAllPicked, onShowDefault }: ActiveFiltersBannerProps) {
+  // 🔴 אזורים מקופלים נקראים מהמסילה כאן, ברכיב עלה, ולא במסך הסדרן. האזורים
+  // נרשמים למסילה בכל רינדור, ומנוי במסך עצמו רינדר אותם שוב ושוב עד קריסה
+  // (React #185, 22/11/2026, בנייה 24e7ab5). הפס אינו הורה של אף אזור.
+  const { sections } = useRail();
+  const collapsed = useMemo(
+    () => sections.filter((x) => x.collapsed && x.toggle && (x.id.endsWith('-list') || x.id === 'calendar')),
+    [sections]
+  );
+  const collapsedChip = collapsedFilter(collapsed.map((x) => (x.id === 'calendar' ? 'נהגים ביומן' : x.title)));
+  const filters = collapsedChip ? [...picked, collapsedChip] : picked;
+  const openCollapsed = () => { for (const x of collapsed) x.toggle?.(); };
+  const onClear = (key: FilterKey) => (key === 'collapsed' ? openCollapsed() : clearPicked(key));
+  const onClearAll = () => { clearAllPicked(); openCollapsed(); };
   if (filters.length === 0 && defaults.length === 0) return null;
   const filtered = filters.length > 0;
   return (
