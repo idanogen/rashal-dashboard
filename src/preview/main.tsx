@@ -17,6 +17,7 @@ import { HeaderScene } from './HeaderScene';
 import { HistoryScene } from './HistoryScene';
 import { CardScene } from './CardScene';
 import { TrafficScene } from './TrafficScene';
+import { FiltersScene } from './FiltersScene';
 import '@/index.css';
 import type { CalendarStop as DupPreviewStop } from '@/types/calendar-stop';
 import { CustomerCardBody } from '@/components/customer/CustomerCard';
@@ -691,6 +692,8 @@ const VIEWS: Record<string, React.ReactElement> = {
   card: <CardScene />,
   /** רמזור קריאות השירות (15/09/2026). */
   lights: <TrafficScene />,
+  /** פס "המסך מסונן" במסך הסדרן (22/11/2026). */
+  filters: <FiltersScene />,
   /** מסך פתיחה לסדרן (עידן, 02/09/2026). כל המספרים אמיתיים, נמדדו במסד. */
   'dispatcher-home': (
     <div className="min-h-screen bg-slate-50 py-4">

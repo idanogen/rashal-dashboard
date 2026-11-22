@@ -71,6 +71,13 @@ import { showScheduleToast } from '@/lib/scheduleToast';
 import { buildCalendarDeliveries, toViewStop } from '@/lib/calendar-view';
 import { CalendarSearchBar } from '@/components/dispatch/CalendarSearchBar';
 import { useCalendarSearch } from '@/hooks/useCalendarSearch';
+import { ALL_SOURCE_TYPES, useCalendarTypeFilter } from '@/hooks/useCalendarTypeFilter';
+import { CalendarTypeChips } from '@/components/dispatch/CalendarTypeChips';
+import { ActiveFiltersBanner } from '@/components/dispatch/ActiveFiltersBanner';
+import { useActiveFilters } from '@/hooks/useActiveFilters';
+import { countFromToday, type FilterKey } from '@/lib/active-filters';
+import { getZoneById } from '@/types/zone';
+import { toLocalDateStr } from '@/lib/calendar-meta';
 import { useCustomerTypes } from '@/hooks/useCustomerTypes';
 import { HealthFundFilter } from '@/components/dispatch/HealthFundFilter';
 import { countByFund, healthFundKey, isHealthFundKey, recordFund, HEALTH_FUND_LABEL, type HealthFundKey } from '@/lib/health-fund';
@@ -86,7 +93,6 @@ import {
   Package,
   Wrench,
   Undo2,
-  ClipboardList,
   UserPlus,
   ChevronDown,
   ChevronLeft,
@@ -106,7 +112,6 @@ import { isBareCustomer } from '@/types/customer';
 import { type AssigneeName } from '@/types/route';
 import type {
   CalendarDelivery,
-  CalendarStopSource,
   CalendarStop as CalendarStopView,
 } from '@/types/delivery';
 import { toast } from 'sonner';
@@ -185,7 +190,6 @@ const collisionDetection: CollisionDetection = (args) => {
 };
 
 // ─── צ'יפי סינון היומן ───────────────────────────────────────
-const CALENDAR_FILTER_KEY = 'rashal:calendarTypeFilter';
 // סינון לפי קופה (04/11/2026): קופה אחת או אף אחת, נזכר לכל משתמש כמו סינון הסוגים.
 const FUND_FILTER_KEY = 'rashal:fundFilter';
 function loadFundFilter(): HealthFundKey | null {
@@ -194,57 +198,6 @@ function loadFundFilter(): HealthFundKey | null {
     return isHealthFundKey(v) ? v : null;
   } catch {
     return null;
-  }
-}
-const ALL_SOURCE_TYPES: CalendarStopSource[] = ['delivery', 'service', 'pickup', 'task', 'customer'];
-
-const CHIP_META: Record<
-  CalendarStopSource,
-  { label: string; Icon: typeof Package; on: string; off: string }
-> = {
-  delivery: {
-    label: 'משלוחים',
-    Icon: Package,
-    on: 'bg-blue-50 text-blue-700 border-blue-200',
-    off: 'bg-muted text-muted-foreground/60 border-transparent',
-  },
-  service: {
-    label: 'שירות',
-    Icon: Wrench,
-    on: 'bg-orange-50 text-orange-700 border-orange-200',
-    off: 'bg-muted text-muted-foreground/60 border-transparent',
-  },
-  pickup: {
-    label: 'איסופים',
-    Icon: Undo2,
-    on: 'bg-teal-50 text-teal-700 border-teal-200',
-    off: 'bg-muted text-muted-foreground/60 border-transparent',
-  },
-  task: {
-    label: 'משימות',
-    Icon: ClipboardList,
-    on: 'bg-amber-50 text-amber-700 border-amber-200',
-    off: 'bg-muted text-muted-foreground/60 border-transparent',
-  },
-  customer: {
-    label: 'לקוחות חדשים',
-    Icon: UserPlus,
-    on: 'bg-violet-50 text-violet-700 border-violet-200',
-    off: 'bg-muted text-muted-foreground/60 border-transparent',
-  },
-};
-
-function loadCalendarFilter(): Set<CalendarStopSource> {
-  try {
-    const raw = localStorage.getItem(CALENDAR_FILTER_KEY);
-    if (!raw) return new Set(ALL_SOURCE_TYPES);
-    const parsed = JSON.parse(raw) as string[];
-    const valid = parsed.filter((t): t is CalendarStopSource =>
-      (ALL_SOURCE_TYPES as string[]).includes(t)
-    );
-    return valid.length > 0 ? new Set(valid) : new Set(ALL_SOURCE_TYPES);
-  } catch {
-    return new Set(ALL_SOURCE_TYPES);
   }
 }
 
@@ -631,19 +584,7 @@ export function DispatchPage() {
   } : null);
 
   // ─── סינון היומן לפי סוג פעילות (נשמר ב-localStorage) ───
-  const [visibleTypes, setVisibleTypes] = useState<Set<CalendarStopSource>>(loadCalendarFilter);
-  useEffect(() => {
-    localStorage.setItem(CALENDAR_FILTER_KEY, JSON.stringify([...visibleTypes]));
-  }, [visibleTypes]);
-  const toggleType = (t: CalendarStopSource) => {
-    setVisibleTypes((prev) => {
-      const next = new Set(prev);
-      if (next.has(t)) next.delete(t);
-      else next.add(t);
-      // לא מאפשרים להסתיר את הכל — תמיד נשאר לפחות סוג אחד
-      return next.size === 0 ? new Set(ALL_SOURCE_TYPES) : next;
-    });
-  };
+  const { visibleTypes, toggleType, showAllTypes, hiddenTypeLabels } = useCalendarTypeFilter();
 
   // ספירת עצירות פעילות פר סוג (לצ'יפים)
   const typeCounts = useMemo(() => {
@@ -664,6 +605,53 @@ export function DispatchPage() {
     () => buildCalendarDeliveries(searchedCalendarStops, (s) => visibleTypes.has(s.sourceType)),
     [searchedCalendarStops, visibleTypes]
   );
+
+  // ─── פס "המסך מסונן" (22/11/2026): כל הסינונים הפעילים במקום אחד, ונקה הכל ───
+  const pendingTotal = useMemo(() => {
+    const customers = customersOnlyBare ? allPendingCustomers.filter(isBareCustomer) : allPendingCustomers;
+    const n = {
+      deliveries: allUnscheduledOrders.length,
+      service: allPendingCalls.length,
+      pickups: allPendingPickups.length,
+      customers: customers.length,
+    };
+    return tab === 'all' ? n.deliveries + n.service + n.pickups + n.customers : n[tab];
+  }, [tab, customersOnlyBare, allPendingCustomers, allUnscheduledOrders, allPendingCalls, allPendingPickups]);
+  const calendarHidden = useMemo(() => {
+    const today = toLocalDateStr(new Date());
+    const shown = countFromToday(searchedCalendarStops, today, (s) => visibleTypes.has(s.sourceType));
+    return countFromToday(allCalendarStops, today) - shown;
+  }, [allCalendarStops, searchedCalendarStops, visibleTypes]);
+  const calendarSearchText = calSearch.search;
+  const filterState = useMemo(
+    () => ({
+      search: filterSearch,
+      zoneLabels: filterZones.map((z) => getZoneById(z)?.name ?? 'חסרה כתובת'),
+      fundLabel: fundFilter ? HEALTH_FUND_LABEL[fundFilter] : null,
+      hiddenTypeLabels,
+      calendarSearch: calendarSearchText,
+    }),
+    [filterSearch, filterZones, fundFilter, hiddenTypeLabels, calendarSearchText]
+  );
+  const filterCounts = useMemo(
+    () => ({ pendingShown: filterMatchCount, pendingTotal, calendarHidden }),
+    [filterMatchCount, pendingTotal, calendarHidden]
+  );
+  const { filters: activeFilterList, summary: filterSummaryText } = useActiveFilters(filterState, filterCounts);
+  const setCalendarSearch = calSearch.setSearch;
+  const clearFilter = useCallback(
+    (key: FilterKey) => {
+      if (key === 'fund') setFundFilter(null);
+      else if (key === 'zones') setFilterZones([]);
+      else if (key === 'types') showAllTypes();
+      else if (key === 'search') setFilterSearch('');
+      else setCalendarSearch('');
+    },
+    [setFundFilter, showAllTypes, setCalendarSearch]
+  );
+  const clearAllFilters = useCallback(() => {
+    for (const key of ['fund', 'zones', 'types', 'search', 'calendarSearch'] as const) clearFilter(key);
+  }, [clearFilter]);
 
   // כמה עצירות סינון הסוגים מסתיר בכל יום — כדי שהיומן יוכל לומר את זה במקום "אין עצירות".
   // נספר על מה שעבר את החיפוש, אחרת "מוסתרות בסינון" כולל גם מה שהחיפוש לא מצא.
@@ -1426,6 +1414,7 @@ export function DispatchPage() {
           <Archive className="h-4 w-4" />
           ארכיון
         </Link>
+        <ActiveFiltersBanner filters={activeFilterList} summary={filterSummaryText} onClear={clearFilter} onClearAll={clearAllFilters} />
         </div>
 
         {/* עצירות עבר שנשארו פתוחות — משותף לכל הטאבים */}
@@ -1443,7 +1432,6 @@ export function DispatchPage() {
           totalCount={visibleItems.length}
           breakdown={searchBreakdown}
           onScheduleVisit={setVisitPrefill}
-          activeFund={fundFilter ? { label: HEALTH_FUND_LABEL[fundFilter], onClear: () => setFundFilter(null) } : undefined}
         />
 
         {/* ─── אזור מתחלף: הממתינים של הסוג הנבחר ─── */}
@@ -1638,49 +1626,7 @@ export function DispatchPage() {
 
         {/* ─── יומן קבוע: נשאר mounted בכל החלפת טאב ─── */}
         <div id={railAnchorId('calendar')} className="scroll-mt-32 space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs font-medium text-muted-foreground">
-              מציג ביומן
-              {visibleTypes.size < ALL_SOURCE_TYPES.length && (
-                <span className="text-amber-700">
-                  {' '}
-                  ({visibleTypes.size} מתוך {ALL_SOURCE_TYPES.length} סוגים)
-                </span>
-              )}
-              :
-            </span>
-            {ALL_SOURCE_TYPES.map((t) => {
-              const meta = CHIP_META[t];
-              const on = visibleTypes.has(t);
-              const count = typeCounts[t] ?? 0;
-              return (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => toggleType(t)}
-                  className={cn(
-                    'flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
-                    on ? meta.on : meta.off
-                  )}
-                  title={on ? `הסתר ${meta.label} מהיומן` : `הצג ${meta.label} ביומן`}
-                >
-                  <meta.Icon className="h-3.5 w-3.5" />
-                  {meta.label}
-                  {count > 0 && <span className="opacity-70">({count})</span>}
-                </button>
-              );
-            })}
-            {visibleTypes.size < ALL_SOURCE_TYPES.length && (
-              <button
-                type="button"
-                onClick={() => setVisibleTypes(new Set(ALL_SOURCE_TYPES))}
-                className="rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-100"
-                title="החזר את היומן להצגת כל הסוגים"
-              >
-                הצג הכל
-              </button>
-            )}
-          </div>
+          <CalendarTypeChips visibleTypes={visibleTypes} counts={typeCounts} onToggle={toggleType} onShowAll={showAllTypes} />
 
           <CalendarSearchBar
             search={calSearch.search}
@@ -1694,7 +1640,7 @@ export function DispatchPage() {
             deliveries={calendarDeliveries}
             hiddenByFilter={hiddenByFilter}
             searching={calSearch.searching}
-            onShowAllTypes={() => setVisibleTypes(new Set(ALL_SOURCE_TYPES))}
+            onShowAllTypes={showAllTypes}
             onRemoveOrder={handleRemoveFromCalendar}
             onAddTask={(date) => setTaskDialogDate(date)}
             onResolveStop={handleResolveStop}
