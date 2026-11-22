@@ -5,6 +5,7 @@ import { useDedupEnabled } from '@/hooks/useDedupEnabled';
 import { countFromToday, defaultHidings, type DefaultKey, type FilterKey } from '@/lib/active-filters';
 import { toLocalDateStr } from '@/lib/calendar-meta';
 import { isOldRed, LIGHT_LABEL, type ServiceCallLight, type ServiceLight } from '@/lib/service-call-light';
+import { useRail } from '@/lib/dispatch-rail-store';
 import { getZoneById } from '@/types/zone';
 import { isBareCustomer, type NewCustomer } from '@/types/customer';
 import type { CalendarStop } from '@/types/calendar-stop';
@@ -85,6 +86,17 @@ export function useDispatchFilterBanner(i: DispatchFilterInputs) {
     return countFromToday(i.allCalendarStops, today) - shown;
   }, [i.allCalendarStops, i.searchedCalendarStops, i.isTypeVisible]);
 
+  // אזורים מקופלים מהמסילה (מקור האמת של הקיפול): רשימת ממתינים שלמה, או כל הנהגים ביומן.
+  const { sections } = useRail();
+  const collapsed = useMemo(
+    () => sections.filter((x) => x.collapsed && x.toggle && (x.id.endsWith('-list') || x.id === 'calendar')),
+    [sections]
+  );
+  const collapsedLabels = useMemo(
+    () => collapsed.map((x) => (x.id === 'calendar' ? 'נהגים ביומן' : x.title)),
+    [collapsed]
+  );
+
   const state = useMemo(
     () => ({
       search: i.search,
@@ -93,9 +105,10 @@ export function useDispatchFilterBanner(i: DispatchFilterInputs) {
       hiddenTypeLabels: i.hiddenTypeLabels,
       calendarSearch: i.calendarSearch,
       lightLabels: [...i.lights].map((l) => LIGHT_LABEL[l]),
+      collapsedLabels,
       defaultsOn: defaults.map((d) => d.key),
     }),
-    [i.search, i.zones, i.fundLabel, i.hiddenTypeLabels, i.calendarSearch, i.lights, defaults]
+    [i.search, i.zones, i.fundLabel, i.hiddenTypeLabels, i.calendarSearch, i.lights, collapsedLabels, defaults]
   );
   const counts = useMemo(
     () => ({ pendingShown: i.pendingShown, pendingTotal, calendarHidden }),
@@ -110,13 +123,14 @@ export function useDispatchFilterBanner(i: DispatchFilterInputs) {
       else if (key === 'zones') setZones([]);
       else if (key === 'lights') setLights(new Set());
       else if (key === 'types') showAllTypes();
+      else if (key === 'collapsed') for (const x of collapsed) x.toggle?.();
       else if (key === 'search') setSearch('');
       else setCalendarSearch('');
     },
-    [clearFund, setZones, setLights, showAllTypes, setSearch, setCalendarSearch]
+    [clearFund, setZones, setLights, showAllTypes, collapsed, setSearch, setCalendarSearch]
   );
   const clearAll = useCallback(() => {
-    for (const key of ['fund', 'zones', 'lights', 'types', 'search', 'calendarSearch'] as const) clearFilter(key);
+    for (const key of ['fund', 'zones', 'lights', 'types', 'collapsed', 'search', 'calendarSearch'] as const) clearFilter(key);
   }, [clearFilter]);
 
   const { setOnlyBare, setShowOldRed } = i;

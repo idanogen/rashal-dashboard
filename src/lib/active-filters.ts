@@ -13,7 +13,7 @@
  * קובץ טהור, בלי ייבוא, כדי שייבדק ב-node --test.
  */
 
-export type FilterKey = 'fund' | 'zones' | 'lights' | 'types' | 'search' | 'calendarSearch';
+export type FilterKey = 'fund' | 'zones' | 'lights' | 'types' | 'collapsed' | 'search' | 'calendarSearch';
 
 export interface FilterState {
   /** חיפוש בממתינים */
@@ -28,6 +28,8 @@ export interface FilterState {
   calendarSearch: string;
   /** צבעי הרמזור שנבחרו בקריאות השירות */
   lightLabels: string[];
+  /** אזורים מקופלים שמסתירים רשומות (רשימת ממתינים, נהגים ביומן). נזכר בדפדפן. */
+  collapsedLabels: string[];
   /** הסתרות ברירת המחדל שעדיין מסתירות (לרישום בלוגים בלבד) */
   defaultsOn: DefaultKey[];
 }
@@ -78,6 +80,7 @@ export function activeFilters(s: FilterState): ActiveFilter[] {
     const more = s.zoneLabels.length - 2;
     out.push({ key: 'zones', label: `אזור: ${shown}${more > 0 ? ` ועוד ${more}` : ''}` });
   }
+  if (s.collapsedLabels.length > 0) out.push({ key: 'collapsed', label: `מקופל: ${s.collapsedLabels.join(', ')}` });
   if (s.lightLabels.length > 0) out.push({ key: 'lights', label: `רמזור: ${s.lightLabels.join(', ')}` });
   if (s.search.trim()) out.push({ key: 'search', label: `חיפוש: ${quote(s.search)}` });
   if (s.calendarSearch.trim()) out.push({ key: 'calendarSearch', label: `חיפוש ביומן: ${quote(s.calendarSearch)}` });
@@ -122,6 +125,7 @@ export function filterTelemetry(s: FilterState): Record<string, unknown> {
     search: s.search.trim().length > 0,
     calendarSearch: s.calendarSearch.trim().length > 0,
     lights: s.lightLabels,
+    collapsed: s.collapsedLabels,
     defaultsOn: s.defaultsOn,
   };
 }

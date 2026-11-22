@@ -85,6 +85,7 @@ const PLACEHOLDER = 'h-16 rounded-lg border border-dashed text-center text-xs le
 const CLEARED: Record<FilterKey, Partial<FilterState>> = {
   fund: { fundLabel: null },
   lights: { lightLabels: [] },
+  collapsed: { collapsedLabels: [] },
   types: { hiddenTypeLabels: [] },
   zones: { zoneLabels: [] },
   search: { search: '' },
@@ -96,10 +97,10 @@ const AFTER_TITLE = 'אחרי: כל מה שמסנן (צהוב) וכל מה שמ�
 // המצב מהצילום של עמי 22/11: כללית, קריות, וירוק ברמזור. המספרים להמחשה.
 const FILTERED: FilterState = {
   search: '', zoneLabels: ['קריות'], fundLabel: 'כללית', hiddenTypeLabels: [], calendarSearch: '',
-  lightLabels: ['מוכנות לשיבוץ'], defaultsOn: [],
+  lightLabels: ['מוכנות לשיבוץ'], collapsedLabels: ['נהגים ביומן'], defaultsOn: [],
 };
 const CLEAN: FilterState = {
-  search: '', zoneLabels: [], fundLabel: null, hiddenTypeLabels: [], calendarSearch: '', lightLabels: [], defaultsOn: [],
+  search: '', zoneLabels: [], fundLabel: null, hiddenTypeLabels: [], calendarSearch: '', lightLabels: [], collapsedLabels: [], defaultsOn: [],
 };
 const DEFAULT_COUNTS = { withOrder: 58, oldRed: 16, duplicates: 12 };
 
@@ -114,7 +115,7 @@ export function FiltersScene() {
     Object.fromEntries(Object.entries(DEFAULT_COUNTS).filter(([k]) => !shownDefaults.includes(k as DefaultKey)))
   );
   const clear = (key: FilterKey) => setState((s) => ({ ...s, ...CLEARED[key] }));
-  const liveFilters = activeFilters({ ...FILTERED, lightLabels: [] });
+  const liveFilters = activeFilters({ ...FILTERED, lightLabels: [], collapsedLabels: [] });
   return (
     <div dir="rtl" className="min-h-screen bg-slate-100 p-6">
       <div className="mx-auto max-w-6xl space-y-6">

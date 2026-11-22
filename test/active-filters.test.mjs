@@ -4,7 +4,7 @@ import { activeFilters, countFromToday, defaultHidings, filterSignature, filterS
 import { passesLightFilter } from '../src/lib/service-call-light.ts';
 
 /** פס "המסך מסונן" במסך הסדרן (22/11/2026): עמי לא זיהה איזה סינון פעיל אצלו. */
-const none = { search: '', zoneLabels: [], fundLabel: null, hiddenTypeLabels: [], calendarSearch: '', lightLabels: [], defaultsOn: [] };
+const none = { search: '', zoneLabels: [], fundLabel: null, hiddenTypeLabels: [], calendarSearch: '', lightLabels: [], collapsedLabels: [], defaultsOn: [] };
 
 test('בלי סינון אין פס', () => {
   assert.deepEqual(activeFilters(none), []);
@@ -14,13 +14,14 @@ test('בלי סינון אין פס', () => {
 test('כל סינון מקבל צ׳יפ, והנזכרים בדפדפן ראשונים', () => {
   const list = activeFilters({
     search: 'כהן', zoneLabels: ['חיפה'], fundLabel: 'מכבי', hiddenTypeLabels: ['איסופים', 'משימות'], calendarSearch: 'לוי',
-    lightLabels: ['מוכנות לשיבוץ'], defaultsOn: [],
+    lightLabels: ['מוכנות לשיבוץ'], collapsedLabels: ['קריאות שירות'], defaultsOn: [],
   });
-  assert.deepEqual(list.map((f) => f.key), ['fund', 'types', 'zones', 'lights', 'search', 'calendarSearch']);
-  assert.equal(list[3].label, 'רמזור: מוכנות לשיבוץ');
+  assert.deepEqual(list.map((f) => f.key), ['fund', 'types', 'zones', 'collapsed', 'lights', 'search', 'calendarSearch']);
+  assert.equal(list[3].label, 'מקופל: קריאות שירות');
+  assert.equal(list[4].label, 'רמזור: מוכנות לשיבוץ');
   assert.equal(list[0].label, 'קופה: מכבי');
   assert.equal(list[1].label, 'מוסתרים ביומן: איסופים, משימות');
-  assert.equal(list[4].label, 'חיפוש: "כהן"');
+  assert.equal(list[5].label, 'חיפוש: "כהן"');
 });
 
 test('הרבה אזורים מתקצרים, וחיפוש ארוך נחתך', () => {
@@ -42,7 +43,7 @@ test('שורת המספרים מציגה רק את מה שהסינון הפעי�
 
 test('ללוגים נרשם איזה סינון פעיל, בלי טקסט החיפוש', () => {
   const t = filterTelemetry({ ...none, fundLabel: 'מכבי', search: 'כהן דוד 0521234567', calendarSearch: 'לוי' });
-  assert.deepEqual(t, { fund: 'מכבי', hiddenTypes: [], zones: [], search: true, calendarSearch: true, lights: [], defaultsOn: [] });
+  assert.deepEqual(t, { fund: 'מכבי', hiddenTypes: [], zones: [], search: true, calendarSearch: true, lights: [], collapsed: [], defaultsOn: [] });
   assert.equal(JSON.stringify(t).includes('כהן'), false);
 });
 
