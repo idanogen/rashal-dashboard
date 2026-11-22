@@ -104,6 +104,24 @@ export function isOldRed(l: ServiceCallLight, now = new Date()): boolean {
   return l.light === 'red' && d !== null && d > OLD_RED_DAYS;
 }
 
+/**
+ * האם הקריאה מוצגת ברשימת הממתינים לפי בחירת הרמזור והקיפול של האדומות
+ * הוותיקות. מקור אחד לרשימה עצמה (UnscheduledServiceCalls) ולספירות של פס
+ * "המסך מסונן" במסך הסדרן (22/11/2026).
+ */
+export function passesLightFilter(
+  l: ServiceCallLight | undefined,
+  selected: ReadonlySet<ServiceLight>,
+  showOldRed: boolean,
+  now = new Date()
+): boolean {
+  if (!l) return selected.size === 0;
+  if (selected.size > 0 && !selected.has(l.light)) return false;
+  // ותיקות משבועיים מקופלות בתוך האדום עד שמבקשים (החלטת עידן).
+  if (!showOldRed && isOldRed(l, now)) return false;
+  return true;
+}
+
 /** "דד/חח" מתאריך YYYY-MM-DD. */
 function ddmm(date: string): string {
   const [, m, d] = date.split('-');

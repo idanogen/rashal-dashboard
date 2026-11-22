@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { SOURCE_TYPE_LABEL } from '@/hooks/useCalendarTypeFilter';
-import { activeFilters, filterSummary, type FilterKey, type FilterState } from '@/lib/active-filters';
+import { activeFilters, defaultHidings, filterSummary, type DefaultKey, type FilterKey, type FilterState } from '@/lib/active-filters';
 import type { CalendarStopSource } from '@/types/delivery';
 
 /**
@@ -84,40 +84,70 @@ const TYPES: CalendarStopSource[] = ['delivery', 'service', 'pickup', 'task', 'c
 const PLACEHOLDER = 'h-16 rounded-lg border border-dashed text-center text-xs leading-[4rem] text-muted-foreground';
 const CLEARED: Record<FilterKey, Partial<FilterState>> = {
   fund: { fundLabel: null },
+  lights: { lightLabels: [] },
   types: { hiddenTypeLabels: [] },
   zones: { zoneLabels: [] },
   search: { search: '' },
   calendarSearch: { calendarSearch: '' },
 };
-const AFTER_TITLE = 'אחרי: פס אחד בראש המסך, נשאר גלוי בגלילה, ונעלם כשהכל נקי';
-const FILTERED: FilterState = { search: '', zoneLabels: [], fundLabel: 'מכבי', hiddenTypeLabels: ['איסופים', 'משימות'], calendarSearch: '' };
-const CLEAN: FilterState = { search: '', zoneLabels: [], fundLabel: null, hiddenTypeLabels: [], calendarSearch: '' };
+const BEFORE_TITLE = 'באוויר מהבוקר: רק קופה, אזור, סוגים וחיפוש; הרמזור וברירות המחדל לא מופיעים';
+const CLEAN_TITLE = 'בלי סינון של המשתמש: נשארת שורה אפורה דקה עם מה שמוסתר כברירת מחדל';
+const AFTER_TITLE = 'אחרי: כל מה שמסנן (צהוב) וכל מה שמוסתר כברירת מחדל (אפור), בפס אחד';
+// המצב מהצילום של עמי 22/11: כללית, קריות, וירוק ברמזור. המספרים להמחשה.
+const FILTERED: FilterState = {
+  search: '', zoneLabels: ['קריות'], fundLabel: 'כללית', hiddenTypeLabels: [], calendarSearch: '',
+  lightLabels: ['מוכנות לשיבוץ'], defaultsOn: [],
+};
+const CLEAN: FilterState = {
+  search: '', zoneLabels: [], fundLabel: null, hiddenTypeLabels: [], calendarSearch: '', lightLabels: [], defaultsOn: [],
+};
+const DEFAULT_COUNTS = { withOrder: 58, oldRed: 16, duplicates: 12 };
 
 export function FiltersScene() {
   const params = new URLSearchParams(location.search);
   const [state, setState] = useState<FilterState>(params.get('state') === 'clean' ? CLEAN : FILTERED);
   const visible = new Set<CalendarStopSource>(TYPES.filter((t) => !state.hiddenTypeLabels.includes(SOURCE_TYPE_LABEL[t])));
   const filters = activeFilters(state);
-  const summary = filterSummary(filters, { pendingShown: 212, pendingTotal: 1540, calendarHidden: 31 });
+  const summary = filterSummary(filters, { pendingShown: 25, pendingTotal: 2086, calendarHidden: 35 });
+  const [shownDefaults, setShownDefaults] = useState<DefaultKey[]>([]);
+  const defaults = defaultHidings(
+    Object.fromEntries(Object.entries(DEFAULT_COUNTS).filter(([k]) => !shownDefaults.includes(k as DefaultKey)))
+  );
   const clear = (key: FilterKey) => setState((s) => ({ ...s, ...CLEARED[key] }));
-  const oldVisible = new Set<CalendarStopSource>(['delivery', 'service', 'customer']);
+  const liveFilters = activeFilters({ ...FILTERED, lightLabels: [] });
   return (
     <div dir="rtl" className="min-h-screen bg-slate-100 p-6">
       <div className="mx-auto max-w-6xl space-y-6">
         {params.get('only') !== 'after' && (
-          <Frame title="לפני: הסינון מסומן בשלושה מקומות קטנים, ורענון לא מבטל אותו">
-            <div className="flex flex-wrap items-center border-b px-4 py-2"><TabsRow /></div>
+          <Frame title={BEFORE_TITLE}>
+            <div className="flex flex-wrap items-center border-b px-4 py-2">
+              <TabsRow />
+              <ActiveFiltersBanner
+                filters={liveFilters}
+                summary={filterSummary(liveFilters, { pendingShown: 25, pendingTotal: 2086, calendarHidden: 35 })}
+                defaults={[]}
+                onClear={() => undefined}
+                onClearAll={() => undefined}
+                onShowDefault={() => undefined}
+              />
+            </div>
             <div className="space-y-4 p-4">
-              <SearchRow old />
-              <div className={PLACEHOLDER}>רשימות הממתינים</div>
-              <CalendarTypeChips visibleTypes={oldVisible} counts={COUNTS} onToggle={() => undefined} onShowAll={() => undefined} />
+              <SearchRow old={false} />
+              <div className={PLACEHOLDER}>רשימות הממתינים (הרמזור מסנן ירוק, ולא רואים את זה בפס)</div>
             </div>
           </Frame>
         )}
-        <Frame title={filters.length ? AFTER_TITLE : 'אחרי, בלי סינון: אין פס, רואים הכל'}>
+        <Frame title={filters.length ? AFTER_TITLE : CLEAN_TITLE}>
           <div className="flex flex-wrap items-center border-b px-4 py-2">
             <TabsRow />
-            <ActiveFiltersBanner filters={filters} summary={summary} onClear={clear} onClearAll={() => setState(CLEAN)} />
+            <ActiveFiltersBanner
+              filters={filters}
+              summary={summary}
+              defaults={defaults}
+              onClear={clear}
+              onClearAll={() => setState(CLEAN)}
+              onShowDefault={(k) => setShownDefaults((p) => [...p, k])}
+            />
           </div>
           <div className="space-y-4 p-4">
             <SearchRow old={false} />

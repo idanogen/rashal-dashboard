@@ -16,7 +16,7 @@ import { useCallsWithDoc } from '@/hooks/useStopCallInfo';
 import {
   compareByLight,
   countLights,
-  isOldRed,
+  passesLightFilter,
   type ServiceLight,
 } from '@/lib/service-call-light';
 import type { ServiceCall } from '@/types/service-call';
@@ -61,11 +61,20 @@ interface UnscheduledServiceCallsProps {
   selectedZones?: string[];
   /** צ'יפי הקופות (04/11/2026): מצוירים ליד הרמזור, המצב חי בדף כי הסינון חל על כל המסך. */
   fundFilter?: ReactNode;
+  /** בחירת הרמזור וקיפול האדומות הוותיקות, כשהמצב חי במסך הסדרן (22/11/2026). */
+  selectedLights?: Set<ServiceLight>;
+  onLightsChange?: (next: Set<ServiceLight>) => void;
+  showOldRed?: boolean;
+  onShowOldRedChange?: (next: boolean) => void;
 }
 
 export function UnscheduledServiceCalls({
   calls,
   fundFilter,
+  selectedLights: lightsProp,
+  onLightsChange,
+  showOldRed: showOldRedProp,
+  onShowOldRedChange,
   callCountByZone,
   callZoneMap,
   groupSize,
@@ -91,8 +100,13 @@ export function UnscheduledServiceCalls({
   const [greenCall, setGreenCall] = useState<ServiceCall | null>(null);
   // מה שהלקוח שלח: אותו גיליון של עמוד הנהג, לפי קריאה (15/09/2026).
   const [mediaCall, setMediaCall] = useState<ServiceCall | null>(null);
-  const [selectedLights, setSelectedLights] = useState<Set<ServiceLight>>(new Set());
-  const [showOldRed, setShowOldRed] = useState(false);
+  // הרמזור והקיפול חיים במסך הסדרן כשהוא מעביר אותם, כדי שפס "המסך מסונן" יראה וינקה אותם.
+  const [localLights, setLocalLights] = useState<Set<ServiceLight>>(new Set());
+  const [localOldRed, setLocalOldRed] = useState(false);
+  const selectedLights = lightsProp ?? localLights;
+  const setSelectedLights = onLightsChange ?? setLocalLights;
+  const showOldRed = showOldRedProp ?? localOldRed;
+  const setShowOldRed = onShowOldRedChange ?? setLocalOldRed;
   // ⭐ קריאות שחזרו מהקו: הכרעה של עמי ואבירם ורכש אצל אלכס (15/11/2026).
   const { data: followups } = useCallFollowups();
   const [decision, setDecision] = useState<DecisionTarget | null>(null);
@@ -133,14 +147,7 @@ export function UnscheduledServiceCalls({
     const out = { buying, arrived };
     if (!lights) return { ...out, items: built };
     const kept = built
-      .filter((vm) => {
-        const l = lights.get(vm.id);
-        if (!l) return selectedLights.size === 0;
-        if (selectedLights.size > 0 && !selectedLights.has(l.light)) return false;
-        // ותיקות משבועיים מקופלות בתוך האדום עד שמבקשים (החלטת עידן).
-        if (!showOldRed && isOldRed(l)) return false;
-        return true;
-      })
+      .filter((vm) => passesLightFilter(lights.get(vm.id), selectedLights, showOldRed))
       .sort((a, b) => compareByLight(lights.get(a.id), lights.get(b.id)));
     return { ...out, items: kept };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- onStartNudge נשען על startNudge.mutate שיציב
@@ -170,13 +177,12 @@ export function UnscheduledServiceCalls({
     [handledCalls, handledStopLines]
   );
 
-  const toggleLight = (light: ServiceLight) =>
-    setSelectedLights((prev) => {
-      const next = new Set(prev);
-      if (next.has(light)) next.delete(light);
-      else next.add(light);
-      return next;
-    });
+  const toggleLight = (light: ServiceLight) => {
+    const next = new Set(selectedLights);
+    if (next.has(light)) next.delete(light);
+    else next.add(light);
+    setSelectedLights(next);
+  };
 
   return (
     <>
@@ -215,7 +221,7 @@ export function UnscheduledServiceCalls({
                   selected={selectedLights}
                   onToggle={toggleLight}
                   showOldRed={showOldRed}
-                  onToggleOldRed={() => setShowOldRed((v) => !v)}
+                  onToggleOldRed={() => setShowOldRed(!showOldRed)}
                 />
               )}
               <BuyingStrip items={buying} today={today} />

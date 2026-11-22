@@ -6,10 +6,14 @@
  * שלהם היו מפוזרים בשלושה מקומות במסך. מכאן נגזר פס אחד שמופיע רק כשמשהו
  * מסונן, ומה שנרשם ללוגים כדי שנוכל לראות את זה מרחוק.
  *
+ * 22/11 (עידן, אחרי הפריסה): "חייבים שכל הסינונים יופיעו שם". נוספו רמזור
+ * הקריאות, ושלוש הסתרות של ברירת מחדל שאף אחד לא בחר אבל הן מסתירות רשומות:
+ * לקוחות חדשים שיש להם הזמנה, אדומות מעל שבועיים, וכפילויות מפריוריטי.
+ *
  * קובץ טהור, בלי ייבוא, כדי שייבדק ב-node --test.
  */
 
-export type FilterKey = 'fund' | 'zones' | 'types' | 'search' | 'calendarSearch';
+export type FilterKey = 'fund' | 'zones' | 'lights' | 'types' | 'search' | 'calendarSearch';
 
 export interface FilterState {
   /** חיפוש בממתינים */
@@ -22,6 +26,32 @@ export interface FilterState {
   hiddenTypeLabels: string[];
   /** חיפוש ביומן */
   calendarSearch: string;
+  /** צבעי הרמזור שנבחרו בקריאות השירות */
+  lightLabels: string[];
+  /** הסתרות ברירת המחדל שעדיין מסתירות (לרישום בלוגים בלבד) */
+  defaultsOn: DefaultKey[];
+}
+
+/** הסתרות שאף אחד לא בחר: ברירת המחדל של המסך. מוצגות בפס כדי שיהיה ברור מה לא מוצג. */
+export type DefaultKey = 'withOrder' | 'oldRed' | 'duplicates';
+
+export interface DefaultHiding {
+  key: DefaultKey;
+  label: string;
+  count: number;
+}
+
+const DEFAULT_LABEL: Record<DefaultKey, string> = {
+  withOrder: 'לקוחות חדשים שכבר יש להם הזמנה או קריאה',
+  oldRed: 'קריאות אדומות מעל שבועיים',
+  duplicates: 'כפילויות מפריוריטי',
+};
+
+/** רק הסתרות שבאמת מסתירות משהו עכשיו (ספירה מעל אפס), בסדר קבוע. */
+export function defaultHidings(counts: Partial<Record<DefaultKey, number>>): DefaultHiding[] {
+  return (['withOrder', 'oldRed', 'duplicates'] as const)
+    .filter((k) => (counts[k] ?? 0) > 0)
+    .map((k) => ({ key: k, label: DEFAULT_LABEL[k], count: counts[k] ?? 0 }));
 }
 
 export interface ActiveFilter {
@@ -48,6 +78,7 @@ export function activeFilters(s: FilterState): ActiveFilter[] {
     const more = s.zoneLabels.length - 2;
     out.push({ key: 'zones', label: `אזור: ${shown}${more > 0 ? ` ועוד ${more}` : ''}` });
   }
+  if (s.lightLabels.length > 0) out.push({ key: 'lights', label: `רמזור: ${s.lightLabels.join(', ')}` });
   if (s.search.trim()) out.push({ key: 'search', label: `חיפוש: ${quote(s.search)}` });
   if (s.calendarSearch.trim()) out.push({ key: 'calendarSearch', label: `חיפוש ביומן: ${quote(s.calendarSearch)}` });
   return out;
@@ -66,7 +97,7 @@ export interface FilterCounts {
 export function filterSummary(active: ActiveFilter[], c: FilterCounts): string {
   const keys = new Set(active.map((a) => a.key));
   const parts: string[] = [];
-  if (keys.has('fund') || keys.has('zones') || keys.has('search')) {
+  if (keys.has('fund') || keys.has('zones') || keys.has('lights') || keys.has('search')) {
     parts.push(`ממתינים: ${c.pendingShown.toLocaleString('he-IL')} מתוך ${c.pendingTotal.toLocaleString('he-IL')}`);
   }
   if ((keys.has('fund') || keys.has('types') || keys.has('calendarSearch')) && c.calendarHidden > 0) {
@@ -90,7 +121,14 @@ export function filterTelemetry(s: FilterState): Record<string, unknown> {
     zones: s.zoneLabels,
     search: s.search.trim().length > 0,
     calendarSearch: s.calendarSearch.trim().length > 0,
+    lights: s.lightLabels,
+    defaultsOn: s.defaultsOn,
   };
+}
+
+/** מה שהמשתמש בחר בעצמו, בלי הסתרות ברירת המחדל: רק זה מפעיל רישום בכניסה למסך. */
+export function hasUserFilters(s: FilterState): boolean {
+  return activeFilters(s).length > 0;
 }
 
 /** מפתח יציב להשוואה: האם מצב הסינון השתנה מאז הרישום האחרון. */

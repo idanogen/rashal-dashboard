@@ -29,7 +29,7 @@ import { matchesSearch } from '@/lib/search-match';
 import { useGeocodeBackfill } from '@/hooks/useGeocodeBackfill';
 import { useMediaRequests } from '@/hooks/useMediaRequests';
 import { useServiceCallLights } from '@/hooks/useServiceCallLights';
-import { blockReason, isSchedulable } from '@/lib/service-call-light';
+import { blockReason, isSchedulable, passesLightFilter, type ServiceLight } from '@/lib/service-call-light';
 import { useScheduleStop } from '@/hooks/useScheduleStop';
 import { useDeleteStop } from '@/hooks/useDeleteStop';
 import { useResolveStop } from '@/hooks/useResolveStop';
@@ -74,10 +74,7 @@ import { useCalendarSearch } from '@/hooks/useCalendarSearch';
 import { ALL_SOURCE_TYPES, useCalendarTypeFilter } from '@/hooks/useCalendarTypeFilter';
 import { CalendarTypeChips } from '@/components/dispatch/CalendarTypeChips';
 import { ActiveFiltersBanner } from '@/components/dispatch/ActiveFiltersBanner';
-import { useActiveFilters } from '@/hooks/useActiveFilters';
-import { countFromToday, type FilterKey } from '@/lib/active-filters';
-import { getZoneById } from '@/types/zone';
-import { toLocalDateStr } from '@/lib/calendar-meta';
+import { useDispatchFilterBanner } from '@/hooks/useDispatchFilterBanner';
 import { useCustomerTypes } from '@/hooks/useCustomerTypes';
 import { HealthFundFilter } from '@/components/dispatch/HealthFundFilter';
 import { countByFund, healthFundKey, isHealthFundKey, recordFund, HEALTH_FUND_LABEL, type HealthFundKey } from '@/lib/health-fund';
@@ -113,6 +110,7 @@ import { type AssigneeName } from '@/types/route';
 import type {
   CalendarDelivery,
   CalendarStop as CalendarStopView,
+  CalendarStopSource,
 } from '@/types/delivery';
 import { toast } from 'sonner';
 import { buildReturnedMap, returnedIdSet } from '@/lib/returned-from-route';
@@ -454,6 +452,9 @@ export function DispatchPage() {
   const [filterSearch, setFilterSearch] = useState('');
   const [filterZones, setFilterZones] = useState<string[]>([]);
   const [customersOnlyBare, setCustomersOnlyBare] = useState(true);
+  // רמזור הקריאות וקיפול האדומות הוותיקות חיים כאן, כדי שפס "המסך מסונן" יראה וינקה אותם.
+  const [selectedLights, setSelectedLights] = useState<Set<ServiceLight>>(new Set());
+  const [showOldRed, setShowOldRed] = useState(false);
 
   const toggleFilterZone = useCallback((zoneId: string) => {
     setFilterZones((prev) =>
@@ -485,10 +486,15 @@ export function DispatchPage() {
     },
     [callLights]
   );
+  // הספירות (כמה מתוך כמה, אזורים, תוצאות חיפוש) לפי מה שהרמזור באמת מציג.
+  const lightCalls = useMemo(
+    () => (callLights ? pendingCalls.filter((c) => passesLightFilter(callLights.get(c.id), selectedLights, showOldRed)) : pendingCalls),
+    [pendingCalls, callLights, selectedLights, showOldRed]
+  );
   const itemsByTab = useMemo(
     () => ({
       deliveries: buildOrderItems(unscheduledOrders, orderZoneMap, ordersGroupSize),
-      service: buildServiceCallItems(pendingCalls, callZoneMap, callsGroupSize, mediaStates),
+      service: buildServiceCallItems(lightCalls, callZoneMap, callsGroupSize, mediaStates),
       pickups: buildPickupItems(pendingPickups, setDetailPickup),
       customers: buildCustomerItems(scopedCustomers),
     }),
@@ -496,7 +502,7 @@ export function DispatchPage() {
       unscheduledOrders,
       orderZoneMap,
       ordersGroupSize,
-      pendingCalls,
+      lightCalls,
       callZoneMap,
       callsGroupSize,
       pendingPickups,
@@ -606,52 +612,29 @@ export function DispatchPage() {
     [searchedCalendarStops, visibleTypes]
   );
 
-  // ─── פס "המסך מסונן" (22/11/2026): כל הסינונים הפעילים במקום אחד, ונקה הכל ───
-  const pendingTotal = useMemo(() => {
-    const customers = customersOnlyBare ? allPendingCustomers.filter(isBareCustomer) : allPendingCustomers;
-    const n = {
+  // ─── פס "המסך מסונן" (22/11/2026): כל מה שמסנן או מסתיר, במקום אחד ───
+  const isTypeVisible = useCallback((s: { sourceType: CalendarStopSource }) => visibleTypes.has(s.sourceType), [visibleTypes]);
+  const pendingCallIds = useMemo(() => pendingCalls.map((c) => c.id), [pendingCalls]);
+  const filterTotals = useMemo(
+    () => ({
       deliveries: allUnscheduledOrders.length,
       service: allPendingCalls.length,
       pickups: allPendingPickups.length,
-      customers: customers.length,
-    };
-    return tab === 'all' ? n.deliveries + n.service + n.pickups + n.customers : n[tab];
-  }, [tab, customersOnlyBare, allPendingCustomers, allUnscheduledOrders, allPendingCalls, allPendingPickups]);
-  const calendarHidden = useMemo(() => {
-    const today = toLocalDateStr(new Date());
-    const shown = countFromToday(searchedCalendarStops, today, (s) => visibleTypes.has(s.sourceType));
-    return countFromToday(allCalendarStops, today) - shown;
-  }, [allCalendarStops, searchedCalendarStops, visibleTypes]);
-  const calendarSearchText = calSearch.search;
-  const filterState = useMemo(
-    () => ({
-      search: filterSearch,
-      zoneLabels: filterZones.map((z) => getZoneById(z)?.name ?? 'חסרה כתובת'),
-      fundLabel: fundFilter ? HEALTH_FUND_LABEL[fundFilter] : null,
-      hiddenTypeLabels,
-      calendarSearch: calendarSearchText,
+      customers: allPendingCustomers,
     }),
-    [filterSearch, filterZones, fundFilter, hiddenTypeLabels, calendarSearchText]
+    [allUnscheduledOrders, allPendingCalls, allPendingPickups, allPendingCustomers]
   );
-  const filterCounts = useMemo(
-    () => ({ pendingShown: filterMatchCount, pendingTotal, calendarHidden }),
-    [filterMatchCount, pendingTotal, calendarHidden]
-  );
-  const { filters: activeFilterList, summary: filterSummaryText } = useActiveFilters(filterState, filterCounts);
-  const setCalendarSearch = calSearch.setSearch;
-  const clearFilter = useCallback(
-    (key: FilterKey) => {
-      if (key === 'fund') setFundFilter(null);
-      else if (key === 'zones') setFilterZones([]);
-      else if (key === 'types') showAllTypes();
-      else if (key === 'search') setFilterSearch('');
-      else setCalendarSearch('');
-    },
-    [setFundFilter, showAllTypes, setCalendarSearch]
-  );
-  const clearAllFilters = useCallback(() => {
-    for (const key of ['fund', 'zones', 'types', 'search', 'calendarSearch'] as const) clearFilter(key);
-  }, [clearFilter]);
+  const banner = useDispatchFilterBanner({
+    tab, search: filterSearch, setSearch: setFilterSearch, zones: filterZones, setZones: setFilterZones,
+    fundLabel: fundFilter ? HEALTH_FUND_LABEL[fundFilter] : null, clearFund: () => setFundFilter(null),
+    lights: selectedLights, setLights: setSelectedLights, showOldRed, setShowOldRed,
+    onlyBare: customersOnlyBare, setOnlyBare: setCustomersOnlyBare,
+    hiddenTypeLabels, showAllTypes, isTypeVisible,
+    calendarSearch: calSearch.search, setCalendarSearch: calSearch.setSearch,
+    allCalendarStops, searchedCalendarStops, totals: filterTotals,
+    pendingCallIds, pendingCustomers, callLights, pendingShown: filterMatchCount,
+    ordersHiddenCount, callsHiddenCount,
+  });
 
   // כמה עצירות סינון הסוגים מסתיר בכל יום — כדי שהיומן יוכל לומר את זה במקום "אין עצירות".
   // נספר על מה שעבר את החיפוש, אחרת "מוסתרות בסינון" כולל גם מה שהחיפוש לא מצא.
@@ -1414,7 +1397,14 @@ export function DispatchPage() {
           <Archive className="h-4 w-4" />
           ארכיון
         </Link>
-        <ActiveFiltersBanner filters={activeFilterList} summary={filterSummaryText} onClear={clearFilter} onClearAll={clearAllFilters} />
+        <ActiveFiltersBanner
+          filters={banner.filters}
+          summary={banner.summary}
+          defaults={banner.defaults}
+          onClear={banner.clearFilter}
+          onClearAll={banner.clearAll}
+          onShowDefault={banner.showDefault}
+        />
         </div>
 
         {/* עצירות עבר שנשארו פתוחות — משותף לכל הטאבים */}
@@ -1504,6 +1494,10 @@ export function DispatchPage() {
               <UnscheduledServiceCalls
                 calls={pendingCalls}
                 fundFilter={fundFilterNode}
+                selectedLights={selectedLights}
+                onLightsChange={setSelectedLights}
+                showOldRed={showOldRed}
+                onShowOldRedChange={setShowOldRed}
                 callCountByZone={callCountByZone}
                 callZoneMap={callZoneMap}
                 groupSize={callsGroupSize}
