@@ -41,6 +41,10 @@ function persist() {
   }
 }
 
+let version = 0;
+/** עולה בכל פעם שנוספו נקודות למטמון (לבניית מטמונים נגזרים, כמו ערי העוגן של האזורים). */
+export const cityCentersVersion = () => version;
+
 const keyOf = (city: string) => city.trim().replace(/\s+/g, ' ');
 
 /** מרכז היישוב מהמטמון, או undefined אם לא ידוע. */
@@ -78,6 +82,7 @@ export async function primeCityCenters(cities: (string | null | undefined)[]): P
       const lng = Number(m?.lng);
       cache.set(name, m && Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null);
     }
+    version++;
     persist();
     return true;
   } catch {

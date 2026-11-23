@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useZoneCenters } from '@/hooks/useZoneCenters';
 import { Sparkles, UserPlus } from 'lucide-react';
 
 import { buildCustomerItems } from '@/components/dispatch/items';
@@ -55,7 +56,9 @@ export function UnscheduledCustomers({
 
   const bareCount = useMemo(() => customers.filter(isBareCustomer).length, [customers]);
 
-  const items = useMemo(() => buildCustomerItems(scoped), [scoped]);
+  const centers = useZoneCenters(scoped.map((c) => c.city));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- centers: אזור ליישוב שלא ברשימה
+  const items = useMemo(() => buildCustomerItems(scoped), [scoped, centers]);
 
   return (
     <UnscheduledPanel

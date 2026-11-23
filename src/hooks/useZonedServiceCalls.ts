@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useZoneCenters } from './useZoneCenters';
 import { useDedupedServiceCalls } from './useDedupedServiceCalls';
 import { getZoneForCity, ZONES } from '@/types/zone';
 import type { ServiceCall } from '@/types/service-call';
@@ -20,6 +21,8 @@ export interface ZonedServiceCallsResult {
 
 export function useZonedServiceCalls(): ZonedServiceCallsResult {
   const { calls, groupSize, hiddenCount, isLoading, error } = useDedupedServiceCalls();
+
+  const centers = useZoneCenters(calls.map((r) => r.city));
 
   const result = useMemo(() => {
     const allCalls = calls;
@@ -69,7 +72,8 @@ export function useZonedServiceCalls(): ZonedServiceCallsResult {
       callZoneMap,
       getCallZone,
     };
-  }, [calls]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- centers: מטמון הנקודות התמלא
+  }, [calls, centers]);
 
   return {
     ...result,

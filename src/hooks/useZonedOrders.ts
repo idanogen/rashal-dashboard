@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useZoneCenters } from './useZoneCenters';
 import { useDedupedOrders } from './useDedupedOrders';
 import { getZoneForCity, NO_ADDRESS_ZONE, ZONES } from '@/types/zone';
 import type { Order } from '@/types/order';
@@ -28,6 +29,8 @@ export interface ZonedOrdersResult {
 
 export function useZonedOrders(): ZonedOrdersResult {
   const { orders, groupSize, hiddenCount, isLoading, error } = useDedupedOrders();
+
+  const centers = useZoneCenters(orders.map((r) => r.city));
 
   const result = useMemo(() => {
     const allOrders = orders;
@@ -91,7 +94,8 @@ export function useZonedOrders(): ZonedOrdersResult {
       orderZoneMap,
       getOrderZone,
     };
-  }, [orders]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- centers: מטמון הנקודות התמלא
+  }, [orders, centers]);
 
   return {
     ...result,

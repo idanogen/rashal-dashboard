@@ -1,3 +1,6 @@
+import { cityCentersVersion, getCityCenter } from '@/lib/city-centers';
+import { nearestZone } from '@/lib/zone-nearest';
+
 export type RegionType = 'north' | 'center' | 'south';
 
 export interface Zone {
@@ -188,7 +191,23 @@ export function getZoneForCity(city: string | undefined): string | undefined {
   );
   if (found) return CITY_TO_ZONE[found];
 
-  return undefined;
+  // יישוב שלא ברשימה (דיר חנא, עראבה, פ"ת): אזור העיר הקרובה ממרכז המיקום.
+  // המטמון מתמלא ב-useZoneCenters; עד אז היישוב בלי אזור, כמו קודם.
+  return nearestZone(getCityCenter(trimmed), zoneAnchors());
+}
+
+/** הערים מהרשימה שהמרכז כבר נתן להן נקודה. מטמון שמתרענן כשנוספות נקודות. */
+let anchorsCache: { point: { lat: number; lng: number }; zoneId: string }[] = [];
+let anchorsVersion = -1;
+function zoneAnchors() {
+  if (anchorsVersion !== cityCentersVersion()) {
+    anchorsVersion = cityCentersVersion();
+    anchorsCache = Object.entries(CITY_TO_ZONE).flatMap(([name, zoneId]) => {
+      const point = getCityCenter(name);
+      return point ? [{ point, zoneId }] : [];
+    });
+  }
+  return anchorsCache;
 }
 
 // Helper functions

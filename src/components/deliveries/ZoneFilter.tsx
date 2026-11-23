@@ -76,19 +76,35 @@ export function ZoneFilter({
           const regionHasSelection = regionZones.some((z) =>
             selectedZones.includes(z.id)
           );
+          // לחיצה על שם האזור (שלומי 22/11/2026: "בלחיצה על צפון יסנן את כל הצפון"):
+          // בוחרת את כל תתי האזורים שיש בהם רשומות, ולחיצה שנייה מנקה אותם.
+          const clickable = regionZones.filter((z) => (orderCountByZone.get(z.id) || 0) > 0);
+          const regionAllSelected =
+            clickable.length > 0 && clickable.every((z) => selectedZones.includes(z.id));
+          const toggleRegion = () => {
+            for (const z of clickable) {
+              const on = selectedZones.includes(z.id);
+              if (regionAllSelected ? on : !on) onZoneToggle(z.id);
+            }
+          };
 
           return (
             <div key={region} className="space-y-2">
               {/* Region label */}
               <div className="flex items-center gap-2">
-                <span
+                <button
+                  type="button"
+                  onClick={toggleRegion}
+                  disabled={clickable.length === 0}
+                  title={regionAllSelected ? `נקה את כל ה${REGION_LABELS[region]}` : `סמן את כל ה${REGION_LABELS[region]}`}
                   className={cn(
-                    'text-sm font-medium',
-                    regionHasSelection && 'text-primary'
+                    'rounded px-1 text-sm font-medium hover:bg-muted hover:underline disabled:pointer-events-none',
+                    regionHasSelection && 'text-primary',
+                    regionAllSelected && 'font-bold'
                   )}
                 >
                   {REGION_LABELS[region]}
-                </span>
+                </button>
                 <div className="h-px flex-1 bg-border" />
               </div>
 

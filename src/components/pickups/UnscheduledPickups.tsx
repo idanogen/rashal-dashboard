@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useZoneCenters } from '@/hooks/useZoneCenters';
 import { Undo2 } from 'lucide-react';
 
 import { buildPickupItems } from '@/components/dispatch/items';
@@ -38,9 +39,11 @@ export function UnscheduledPickups({
   search,
   selectedZones,
 }: UnscheduledPickupsProps) {
+  const centers = useZoneCenters(pickups.map((p) => p.city));
   const items = useMemo(
     () => buildPickupItems(pickups, onShowDetails),
-    [pickups, onShowDetails]
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- centers: אזור ליישוב שלא ברשימה
+    [pickups, onShowDetails, centers]
   );
 
   return (

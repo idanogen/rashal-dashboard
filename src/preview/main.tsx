@@ -323,9 +323,9 @@ previewQc.setQueryData(['consolidatedInvoices'], []);
 previewQc.setQueryData(
   ['serviceCalls'],
   [
-    { id: 'a', customerName: 'כהן דוד', serviceCallStatus: 'קריאה חדשה', created: ago(20), deviceSerial: 'S1', callType: 'פרונטלית' },
-    { id: 'b', customerName: 'כהן דוד', serviceCallStatus: 'קריאה חדשה', created: ago(9), deviceSerial: 'S1', callType: 'פרונטלית' },
-    { id: 'c', customerName: 'לוי שרה', serviceCallStatus: 'קריאה חדשה', created: ago(12), deviceSerial: 'S2', callType: 'טלפונית' },
+    { id: 'a', customerName: 'כהן דוד', city: 'דיר חנא', serviceCallStatus: 'קריאה חדשה', created: ago(20), deviceSerial: 'S1', callType: 'פרונטלית' },
+    { id: 'b', customerName: 'כהן דוד', city: 'חיפה', serviceCallStatus: 'קריאה חדשה', created: ago(9), deviceSerial: 'S1', callType: 'פרונטלית' },
+    { id: 'c', customerName: 'לוי שרה', city: 'עראבה', serviceCallStatus: 'קריאה חדשה', created: ago(12), deviceSerial: 'S2', callType: 'טלפונית' },
   ],
 );
 
