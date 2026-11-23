@@ -16,6 +16,7 @@ import { OrderBody, PickupBody } from '@/components/driver/StopInfoBodies';
 import { StopNoteAlert } from '@/components/driver/StopNoteAlert';
 import { MediaTile, MediaViewer } from '@/components/driver/StopMediaViewer';
 import { PastMediaSection } from '@/components/driver/PastMediaSection';
+import { DeviceHistorySection } from '@/components/driver/DeviceHistorySection';
 // 26/10/2026: גופי האספקה והאיסוף, אבני הבניין והמציג הועברו לקבצים משלהם (תקרת 400 שורות).
 
 interface StopCallInfoSheetProps {
@@ -131,6 +132,10 @@ export function StopCallInfoSheet({ stop, call: serviceCall, calendarStop, open,
             {/* 26/10/2026 (עידן): הטפסים החתומים גם בווב, כמו באפליקציה. */}
             {!isLoading && !error && stopId && <SignedFormsSection stopId={stopId} />}
             {/* 18/11/2026 (עידן): תמונות מביקורים קודמים, למשרד ולשטח. נטען רק בלחיצה. */}
+            {/* 23/11/2026 (עידן): היסטוריית המכשיר לפי מספר סידורי, גם אצל לקוחות קודמים. */}
+            {!isLoading && !error && kind === 'service' && call?.deviceSerial && (
+              <DeviceHistorySection target={{ stopId: stopId || null, serviceCallId: serviceCall?.id ?? null }} />
+            )}
             {!isLoading && !error && (
               <PastMediaSection target={{ stopId: stopId || null, serviceCallId: serviceCall?.id ?? null, customerNumber }} />
             )}
