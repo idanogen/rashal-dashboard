@@ -281,5 +281,7 @@ export function manufacturerFromDesc(desc: string | null | undefined): string {
 export function chairDeliveryFileDes(customerName: string, signedAt: Date): string {
   const two = (n: number) => String(n).padStart(2, '0');
   const date = `${two(signedAt.getDate())}.${two(signedAt.getMonth() + 1)}.${String(signedAt.getFullYear()).slice(2)}`;
-  return `הוראות ובטיחות ממונע ${customerName}`.slice(0, 48).trim() + ` ${date}`;
+  // אותו ניקוי כמו בשם הקובץ של אישור ההדרכה למנוף: שם לקוח יכול להכיל מרכאות.
+  const name = customerName.replace(/[/\\?%*:|"<>]/g, '');
+  return `הוראות ובטיחות ממונע ${name}`.slice(0, 48).trim() + ` ${date}`;
 }
