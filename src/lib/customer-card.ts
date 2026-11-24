@@ -53,6 +53,10 @@ export interface TimelineEvent {
   by?: string | null;
   messages?: TimelineMessage[];
   photos?: string[];
+  /** 24/11/2026: העצירה של שורת ביקור, לטפסים החתומים שלה. */
+  stopId?: string | null;
+  /** 24/11/2026: מספרי המסמכים של השורה (הזמנה/קריאה/איסוף של ביקור, SH של תעודה). */
+  refs?: string[] | null;
 }
 
 export interface CustomerCardData {

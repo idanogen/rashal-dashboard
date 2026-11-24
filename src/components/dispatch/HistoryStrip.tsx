@@ -4,6 +4,7 @@ import { CalendarDays, ChevronDown, History } from 'lucide-react';
 import { CustomerCardButton } from '@/components/customer/CustomerCardSheet';
 import { usePersistedCollapse } from '@/hooks/usePersistedCollapse';
 import { historySearch } from '@/lib/history';
+import { focusDocRef } from '@/lib/card-focus';
 import { historyHitLine, type HistoryHit, type Tone } from '@/lib/history-line';
 import { cn } from '@/lib/utils';
 import type { VisitPrefill } from '@/components/dispatch/UnscheduledPanel';
@@ -62,6 +63,7 @@ export function HistoryStrip({
       loading={isFetching && !data}
       error={isError}
       onScheduleVisit={onScheduleVisit}
+      focus={q}
     />
   );
 }
@@ -72,12 +74,16 @@ export function HistoryStripView({
   loading = false,
   error = false,
   onScheduleVisit,
+  focus,
 }: {
   hits: HistoryHit[];
   loading?: boolean;
   error?: boolean;
   onScheduleVisit?: (prefill: VisitPrefill) => void;
+  /** טקסט החיפוש. מספר מסמך פותח את הכרטיס עם השורות שלו מודגשות (24/11/2026). */
+  focus?: string;
 }) {
+  const docRef = focusDocRef(focus);
   const [collapsed, toggleCollapsed] = usePersistedCollapse('collapse:dispatch-history-strip', false);
 
   return (
@@ -108,7 +114,10 @@ export function HistoryStripView({
           {hits.map((h) => {
             const line = historyHitLine(h);
             return (
-              <li key={`${h.customerNumber ?? ''}|${h.customerName ?? ''}|${h.phone ?? ''}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5">
+              <li
+                key={`${h.customerNumber ?? ''}|${h.customerName ?? ''}|${h.phone ?? ''}`}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5"
+              >
                 <span className="min-w-0 font-semibold text-slate-800">
                   {h.customerName}
                   {h.customerNumber && <bdi className="ms-1.5 text-xs font-normal text-slate-500">{h.customerNumber}</bdi>}
@@ -120,7 +129,9 @@ export function HistoryStripView({
                     customerNumber={h.customerNumber ?? undefined}
                     phone={h.phone ?? undefined}
                     name={h.customerName ?? undefined}
-                    className="h-6 text-[11px]"
+                    className={`h-6 text-[11px] ${docRef ? 'border-amber-300 bg-amber-50 text-amber-900' : ''}`}
+                    focus={focus}
+                    label={docRef ? `מה היה ב-${docRef}` : undefined}
                   />
                   {onScheduleVisit && (
                     <button
@@ -133,7 +144,8 @@ export function HistoryStripView({
                           city: h.city ?? undefined,
                         })
                       }
-                      className="inline-flex h-6 items-center gap-1 rounded-md border border-slate-300 bg-white px-2 text-[11px] font-medium text-slate-700 hover:bg-slate-100"
+                      className={`inline-flex h-6 items-center gap-1 rounded-md border border-slate-300 bg-white px-2 ${
+                        'text-[11px] font-medium text-slate-700 hover:bg-slate-100'}`}
                       title="שיבוץ ביקור חדש ללקוח הזה, ישירות ליומן"
                     >
                       <CalendarDays className="h-3 w-3" />

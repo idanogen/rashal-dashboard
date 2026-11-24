@@ -536,6 +536,15 @@ begin
            -- מה הנהג כתב וצילם באותו ביקור, בתוך שורת הביקור עצמה.
            jsonb_build_object(
              'by', s.driver,
+             -- 24/11/2026, עידן: "כאשר מחפשים משהו ספציפי יהיה אפשר לראות אותו".
+             -- המזהה פותח את הטפסים החתומים של הביקור (useStopDocs), ומספרי המסמכים
+             -- מאפשרים לכרטיס להדגיש את הביקור של ההזמנה או הקריאה שחיפשו.
+             'stopId', s.id,
+             'refs', to_jsonb(array_remove(array[
+               (select o2.priority_order_id from public.orders o2 where o2.id = s.order_id),
+               (select c2.priority_call_id from public.service_calls c2 where c2.id = s.service_call_id),
+               (select p2.priority_doc::text from public.pickups p2 where p2.id = s.pickup_id)
+             ], null)),
              'messages', coalesce((
                select jsonb_agg(jsonb_build_object('by', t.user_name, 'text', left(t.content, 240), 'at', t.created_at)
                                 order by t.created_at)
@@ -565,7 +574,10 @@ begin
            nullif(concat_ws(' · ', n.status, case when n.invoiced = 'Y' then 'חויבה' end,
              case when n.distributed_on is not null and n.distributed_on <> n.doc_date
                   then 'תעודה מ-' || to_char(n.doc_date, 'DD/MM/YY') end), ''),
-           'number', n.id, null::jsonb
+           'number', n.id,
+           -- 24/11/2026: ה-ref של התעודה הוא המספר הפנימי, והמשרד מחפש SH.
+           case when n.priority_doc_id is not null
+                then jsonb_build_object('refs', jsonb_build_array(n.priority_doc_id)) end
       from notes n
     union all
     select s.answered_at, 'survey', 'סקר שביעות רצון',

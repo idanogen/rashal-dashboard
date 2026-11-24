@@ -13,13 +13,15 @@ import { CustomerCard } from '@/components/customer/CustomerCard';
  * היה מריץ אותה על כל שורה בכל רשימה. [[render_must_not_start_work]]
  */
 export function CustomerCardSheet({
-  open, onOpenChange, customerNumber, phone, title,
+  open, onOpenChange, customerNumber, phone, title, focus,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   customerNumber: string | null;
   phone: string | null;
   title?: string | null;
+  /** טקסט החיפוש שהוביל לכרטיס; מספר מסמך מודגש בציר (24/11/2026). */
+  focus?: string | null;
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -28,7 +30,7 @@ export function CustomerCardSheet({
           <SheetTitle className="text-start">{title || 'כרטיס לקוח'}</SheetTitle>
         </SheetHeader>
         <div className="mt-3">
-          {open && <CustomerCard customerNumber={customerNumber} phone={phone} layout="drawer" />}
+          {open && <CustomerCard customerNumber={customerNumber} phone={phone} layout="drawer" focus={focus} />}
         </div>
       </SheetContent>
     </Sheet>
@@ -45,13 +47,16 @@ export function CustomerCardSheet({
  * ⭐ `compact` לשורות צפופות (מסך הסדרן), שם "כרטיס" מספיק.
  */
 export function CustomerCardButton({
-  customerNumber, phone, name, className, compact = false,
+  customerNumber, phone, name, className, compact = false, focus, label,
 }: {
   customerNumber?: string | null;
   phone?: string | null;
   name?: string | null;
   className?: string;
   compact?: boolean;
+  focus?: string | null;
+  /** כיתוב במקום "כרטיס לקוח", למשל "מה היה ב-SO2604018". */
+  label?: string;
 }) {
   const [open, setOpen] = useState(false);
   if (!customerNumber && !phone) return null;
@@ -61,12 +66,13 @@ export function CustomerCardButton({
       <button
         onClick={(e) => { e.stopPropagation(); setOpen(true); }}
         title="כל ההיסטוריה של הלקוח: מה יש אצלו, מה פתוח, ומה היה"
-        className={`inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 ${
+        className={`inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white font-semibold text-slate-600 transition ${
+          'hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900'} ${
           compact ? 'px-1.5 py-0.5 text-[10.5px]' : 'px-2 py-1 text-[11.5px]'
         } ${className ?? ''}`}
       >
         <IdCard className={compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
-        {compact ? 'כרטיס' : 'כרטיס לקוח'}
+        {label ?? (compact ? 'כרטיס' : 'כרטיס לקוח')}
       </button>
       <CustomerCardSheet
         open={open}
@@ -74,6 +80,7 @@ export function CustomerCardButton({
         customerNumber={customerNumber ?? null}
         phone={phone ?? null}
         title={name ?? null}
+        focus={focus}
       />
     </>
   );
