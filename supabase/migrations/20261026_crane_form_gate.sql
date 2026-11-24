@@ -34,7 +34,9 @@ begin
   if v_kind is null then
     return new;
   end if;
-  if exists (select 1 from public.crane_forms cf where cf.stop_id = new.id) then
+  -- 24/11/2026: רק טופס מנוף. טופס כיסא ממונע באותה עצירה (`chair_delivery`) לא פותח את השער.
+  if exists (select 1 from public.crane_forms cf
+              where cf.stop_id = new.id and cf.form_type in ('inspection', 'training')) then
     return new;
   end if;
   raise exception using

@@ -48,6 +48,7 @@ test('🔴 בלי חתימה, בלי שם או בלי סיכום אין טופס
 
 test('סוג הטופס מוכר למסד: המיגרציה מתירה אותו ב-crane_forms ומחזירה אותו לעצירה', () => {
   const sql = readFileSync(new URL('../supabase/migrations/20261110_chair_checklist.sql', import.meta.url), 'utf8');
-  assert.match(sql, new RegExp(`form_type in \\('inspection', 'training', '${CHAIR_FORM_TYPE}'\\)`));
+  // 24/11/2026: + 'chair_delivery' (טופס האספקה, `chair-delivery.ts`).
+  assert.match(sql, new RegExp(`form_type in \\('inspection', 'training', '${CHAIR_FORM_TYPE}', 'chair_delivery'\\)`));
   assert.match(sql, new RegExp(`then '${CHAIR_FORM_TYPE}'`));
 });

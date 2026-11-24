@@ -37,6 +37,7 @@ export function signedFormLabel(formKey: string): string {
   if (formKey === 'crane-training') return 'אישור הדרכה למנוף';
   if (formKey === 'crane-inspection') return 'רשימת בדיקה למנוף';
   if (formKey === 'crane-chair_inspection') return 'רשימת בדיקה לכיסא ממונע';
+  if (formKey === 'crane-chair_delivery') return 'הוראות ובטיחות, אספקת כיסא ממונע';
   const def = getFormByKey(formKey);
   if (def) return `טופס ${def.fundLabel} ${FORM_KIND_LABEL[def.kind]}`;
   return formKey;

@@ -173,6 +173,9 @@ begin
     -- (20261110_chair_checklist.sql).
     'checklist', (select jsonb_build_object('kind', k.kind, 'serial', v_call.device_serial, 'model', v_call.device_name)
                     from (select public.stop_checklist_kind(v_stop) as kind) k where k.kind is not null),
+    -- 24/11/2026: אספקת כיסא ממונע = טופס הוראות ובטיחות (עמי, מיכאל). שדה משלו, כי גרסה
+    -- ישנה מתייחסת לכל `checklist` כטופס חוסם. הכלל ב-`stop_chair_delivery` (20261110_chair_checklist.sql).
+    'chair_delivery', public.stop_chair_delivery(v_stop),
     'crane_signed', (select coalesce(jsonb_agg(jsonb_build_object(
                        'id', c.id, 'form_type', c.form_type, 'submitted_at', c.submitted_at)
                        order by c.submitted_at), '[]'::jsonb)
