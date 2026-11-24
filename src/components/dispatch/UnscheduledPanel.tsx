@@ -27,6 +27,7 @@ import { fetchLastTouch } from '@/lib/history';
 import { lastTouchLine, type LastTouch, type Tone } from '@/lib/history-line';
 import { ReturnedNote } from '@/components/ReturnedNote';
 import type { ReturnedInfo } from '@/lib/returned-from-route';
+import { inSelectedZones } from '@/lib/returned-zone';
 import { ZoneFilter } from '@/components/deliveries/ZoneFilter';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -497,14 +498,15 @@ export function UnscheduledPanel({
   // כרטיסים אדומים של לקוחות אחרים מעל התוצאה היחידה. עידן: "אם יש בחיפוש
   // הזה באמת 1 שנמצא הוא צריך להיות יותר בולט".
   const returnedShown = useMemo(() => {
+    const zoned = inSelectedZones(returnedItems, selectedZones);
     const q = search.trim();
-    if (!q) return returnedItems;
-    return returnedItems
+    if (!q) return zoned;
+    return zoned
       .map((i, idx) => ({ i, idx, r: searchRank(i.searchText, q) }))
       .filter((x) => x.r >= 0)
       .sort((a, b) => a.r - b.r || a.idx - b.idx)
       .map((x) => x.i);
-  }, [returnedItems, search]);
+  }, [returnedItems, search, selectedZones]);
   const searching = search.trim().length >= 2;
 
   const zoneCounts = useMemo(() => {
@@ -514,13 +516,7 @@ export function UnscheduledPanel({
     return m;
   }, [countByZone, searched]);
 
-  const filteredItems = useMemo(
-    () =>
-      selectedZones.length > 0
-        ? searched.filter((i) => selectedZones.includes(i.zoneId))
-        : searched,
-    [searched, selectedZones]
-  );
+  const filteredItems = useMemo(() => inSelectedZones(searched, selectedZones), [searched, selectedZones]);
 
   // כשהחיפוש לא מחזיר ממתינים — מציגים את מי שכבר טופל, כדי שלא ייראה כאילו נעלם
   const handledMatches = useMemo(() => {
@@ -711,7 +707,7 @@ export function UnscheduledPanel({
               <h3 className="font-bold">{title}</h3>
               <Badge variant="secondary">{filteredItems.length}</Badge>
               {/* בלי זה המספר כאן נמוך מזה שעל המתג למעלה, וזה נראה כמו תקלה */}
-              {returnedItems.length > 0 && (
+              {returnedShown.length > 0 && (
                 <span className="text-xs text-muted-foreground">
                   ועוד {returnedShown.length} חזרו מהקו
                 </span>
