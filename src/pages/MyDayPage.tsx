@@ -10,6 +10,7 @@ import { isPendingPickup } from '@/lib/pending-pickup';
 import { buildReturnedMap, returnedIdSet } from '@/lib/returned-from-route';
 import { waitingSummary, driversForDay, neededPerDay } from '@/lib/my-day';
 import { toLocalDateStr } from '@/lib/calendar-meta';
+import { isBareCustomer } from '@/types/customer';
 import { MyDayView } from '@/components/my-day/MyDayView';
 
 /**
@@ -27,11 +28,11 @@ function nextWorkDay(d: Date): Date {
 
 export function MyDayPage() {
   const { data: profile } = useCurrentProfile();
-  const { unscheduledOrders, isLoading: ordersLoading } = useZonedOrders();
-  const { data: pickups = [], isLoading: pickupsLoading } = usePickups();
-  const { data: newCustomers = [], isLoading: customersLoading } = useNewCustomers();
-  const { data: stops = [], isLoading: stopsLoading } = useCalendarStops();
-  const { data: notes = [], isLoading: notesLoading } = useDeliveryNotes();
+  const { unscheduledOrders, isLoading: ordersLoading, error: ordersError } = useZonedOrders();
+  const { data: pickups = [], isLoading: pickupsLoading, error: pickupsError } = usePickups();
+  const { data: newCustomers = [], isLoading: customersLoading, error: customersError } = useNewCustomers();
+  const { data: stops = [], isLoading: stopsLoading, error: stopsError } = useCalendarStops();
+  const { data: notes = [], isLoading: notesLoading, error: notesError } = useDeliveryNotes();
 
   // השעון ב-state ומתקדם כל דקה: קריאה לשעון בתוך הרינדור אינה טהורה, והמסך פתוח כל היום.
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -56,7 +57,8 @@ export function MyDayPage() {
       deliveries: waitingSummary(unscheduledOrders, retOrders, nowMs),
       pickups: waitingSummary(pickups.filter(isPendingPickup), retPickups, nowMs),
       customers: waitingSummary(
-        newCustomers.filter((c) => !c.isScheduled).map((c) => ({ id: c.customerNumber, created: c.openedAt })),
+        // כמו הטאב בסדרן בכניסה: רק לקוחות בלי הזמנה (המתג 'עם הזמנה' כבוי כברירת מחדל).
+        newCustomers.filter((c) => !c.isScheduled && isBareCustomer(c)).map((c) => ({ id: c.customerNumber, created: c.openedAt })),
         new Set(), nowMs),
     };
   }, [unscheduledOrders, pickups, newCustomers, stops, nowMs]);
@@ -72,6 +74,9 @@ export function MyDayPage() {
       daysLeft={daysLeft}
       perDay={perDay}
       notesLoading={notesLoading}
+      notesError={!!notesError}
+      waitingError={{ deliveries: !!ordersError || !!stopsError, pickups: !!pickupsError || !!stopsError, customers: !!customersError }}
+      stopsError={!!stopsError}
       waiting={waiting}
       waitingLoading={ordersLoading || pickupsLoading || customersLoading || stopsLoading}
       todayRows={todayRows}

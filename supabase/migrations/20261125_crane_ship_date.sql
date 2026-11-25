@@ -42,9 +42,10 @@ begin
 end $$;
 revoke all on function public.crane_apply_ship_dates(jsonb) from public, anon, authenticated;
 
--- לילי 03:20 שעון ישראל (00:20/01:20 UTC לפי עונה; פעמיים לא מזיק, העדכון אידמפוטנטי).
+-- לילי 01:20 UTC = 03:20 בחורף, 04:20 בקיץ. העדכון אידמפוטנטי.
+-- 🔴 25/11: הקרון לא הוחל עם שאר הקובץ ונוסף בנפרד; לבדוק cron.job אחרי כל החלה ידנית.
 select cron.unschedule(jobid) from cron.job where jobname = 'rashal-crane-dates';
-select cron.schedule('rashal-crane-dates', '20 0 * * *', $cron$
+select cron.schedule('rashal-crane-dates', '20 1 * * *', $cron$
   select net.http_post(
     url := 'https://kukstfxtznymfkirdmty.supabase.co/functions/v1/rashal-crane-dates',
     headers := jsonb_build_object('Content-Type', 'application/json',

@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { useCurrentProfile } from '@/hooks/useProfile';
 import type { UserRole } from '@/types/profile';
+import { SCREEN_ACCESS } from '@/lib/screen-access';
 
 interface RoleBasedRouteProps {
   children: ReactNode;
@@ -57,7 +58,9 @@ export function HomeByRole({ children }: { children: ReactNode }) {
     );
   }
   // מסך בית אישי גובר על ברירת המחדל של התפקיד (אילונה, הבוקר שלי, 25/11/2026).
-  if (profile?.homeScreen) return <Navigate to={profile.homeScreen} replace />;
+  // 🔴 רק מסך אמיתי ולא '/': ערך שגוי היה מוביל ללולאה או לדף ריק.
+  const home = profile?.homeScreen;
+  if (home && home !== '/' && SCREEN_ACCESS.some((s) => s.path === home)) return <Navigate to={home} replace />;
   if (profile?.role === 'dispatcher') {
     return <Navigate to="/dispatch" replace />;
   }

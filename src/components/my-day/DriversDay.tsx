@@ -4,8 +4,8 @@ import { type DriverDay, type DayCount, sum } from '@/lib/my-day';
  * האספקות והאיסופים של יום אחד לפי נהג. היום: מה בוצע ומה חזר. מחר: כמה כבר משובץ,
  * כדי לראות מי עמוס ומי פנוי לפני שמשבצים עוד.
  */
-export function DriversDay({ title, rows, mode, loading }: {
-  title: string; rows: DriverDay[]; mode: 'today' | 'tomorrow'; loading: boolean;
+export function DriversDay({ title, rows, mode, loading, error }: {
+  title: string; rows: DriverDay[]; mode: 'today' | 'tomorrow'; loading: boolean; error: boolean;
 }) {
   const totalDel = rows.reduce((n, r) => n + sum(r.deliveries), 0);
   const totalPick = rows.reduce((n, r) => n + sum(r.pickups), 0);
@@ -15,7 +15,9 @@ export function DriversDay({ title, rows, mode, loading }: {
         <h3 className="text-[15px] font-bold text-slate-800">{title}</h3>
         <span className="text-xs text-slate-500">{totalDel} אספקות · {totalPick} איסופים</span>
       </div>
-      {loading ? (
+      {error ? (
+        <p className="py-6 text-center text-sm text-red-600">היומן לא נטען, לרענן את הדף</p>
+      ) : loading ? (
         <p className="py-6 text-center text-sm text-slate-400">טוען…</p>
       ) : rows.length === 0 ? (
         <p className="py-6 text-center text-sm text-slate-400">עוד לא שובצו אספקות או איסופים</p>

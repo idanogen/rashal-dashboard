@@ -20,6 +20,10 @@ export interface MyDayViewProps {
   daysLeft: number;
   perDay: number | null;
   notesLoading: boolean;
+  /** 🔴 שליפה שנכשלה מוצגת ככשל, לא כאפס (חוקי הקוד, סעיף 7). */
+  notesError: boolean;
+  waitingError: { deliveries: boolean; pickups: boolean; customers: boolean };
+  stopsError: boolean;
   waiting: { deliveries: WaitingSummary; pickups: WaitingSummary; customers: WaitingSummary };
   waitingLoading: boolean;
   todayRows: DriverDay[];
@@ -53,19 +57,25 @@ export function MyDayView(p: MyDayViewProps) {
               : weekly.actual >= weekly.target ? 'היעד הושג השבוע 🎉' : 'השבוע הסתיים'}
           </p>
         </div>
-        <div className="grid grid-cols-2">
-          <WeeklyTargetStrip s={weekly} history={p.target.history} />
-        </div>
+        {p.notesError ? (
+          <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">התעודות לא נטענו, היעד לא מוצג. לרענן את הדף.</p>
+        ) : p.notesLoading ? (
+          <p className="mt-3 py-6 text-center text-sm text-slate-400">טוען את התעודות…</p>
+        ) : (
+          <div className="grid grid-cols-2">
+            <WeeklyTargetStrip s={weekly} history={p.target.history} />
+          </div>
+        )}
       </section>
 
       <section>
         <h3 className="mb-2 text-[15px] font-bold text-slate-800">מחכה לשיבוץ</h3>
-        <WaitingTiles {...p.waiting} loading={p.waitingLoading} />
+        <WaitingTiles {...p.waiting} loading={p.waitingLoading} errors={p.waitingError} />
       </section>
 
       <section className="grid gap-3 lg:grid-cols-2">
-        <DriversDay title="היום" rows={p.todayRows} mode="today" loading={p.stopsLoading} />
-        <DriversDay title={`יום ${WEEKDAYS[p.tomorrowDate.getDay()]}`} rows={p.tomorrowRows} mode="tomorrow" loading={p.stopsLoading} />
+        <DriversDay title="היום" rows={p.todayRows} mode="today" loading={p.stopsLoading} error={p.stopsError} />
+        <DriversDay title={`יום ${WEEKDAYS[p.tomorrowDate.getDay()]}`} rows={p.tomorrowRows} mode="tomorrow" loading={p.stopsLoading} error={p.stopsError} />
       </section>
     </div>
   );
