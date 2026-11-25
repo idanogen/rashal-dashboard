@@ -14,7 +14,7 @@ interface CranesTableProps {
   fieldBySerial: Map<string, FieldInspection[]>;
 }
 
-type SortKey = 'urgency' | 'name' | 'install' | 'next_due' | 'device';
+type SortKey = 'urgency' | 'name' | 'install' | 'next_due' | 'device' | 'model' | 'phone' | 'fund' | 'days' | 'field';
 
 const PAGE_SIZE = 50;
 
@@ -31,6 +31,13 @@ export function CranesTable({ rows, onRowClick, fieldBySerial }: CranesTableProp
       unknown: 3,
     };
     const dir = sortAsc ? 1 : -1;
+    // ערך ריק תמיד בסוף, בשני הכיוונים (עידן 25/11: מיון בכל העמודות).
+    const last = (av: unknown, bv: unknown) => (av == null || av === '' ? 1 : 0) - (bv == null || bv === '' ? 1 : 0);
+    const text = (av: string | undefined, bv: string | undefined, numeric = false) =>
+      last(av, bv) || (av ?? '').localeCompare(bv ?? '', 'he', { numeric }) * dir;
+    const num = (av: number | null | undefined, bv: number | null | undefined) =>
+      last(av, bv) || ((av ?? 0) - (bv ?? 0)) * dir;
+    const fieldAt = (c: Crane) => fieldBySerial.get(serialKey(c.deviceNumber))?.[0]?.submittedAt;
     return [...rows].sort((a, b) => {
       switch (sortKey) {
         case 'urgency': {
@@ -42,16 +49,26 @@ export function CranesTable({ rows, onRowClick, fieldBySerial }: CranesTableProp
           return (da - db) * dir;
         }
         case 'name':
-          return (a.crane.customerName ?? '').localeCompare(b.crane.customerName ?? '', 'he') * dir;
+          return text(a.crane.customerName, b.crane.customerName);
         case 'install':
-          return cmpDate(a.crane.installDate, b.crane.installDate) * dir;
+          return text(a.crane.installDate, b.crane.installDate);
         case 'next_due':
-          return cmpDate(a.status.nextDueDate, b.status.nextDueDate) * dir;
+          return text(a.status.nextDueDate, b.status.nextDueDate);
         case 'device':
-          return a.crane.deviceNumber.localeCompare(b.crane.deviceNumber, 'he', { numeric: true }) * dir;
+          return text(a.crane.deviceNumber, b.crane.deviceNumber, true);
+        case 'model':
+          return text(a.crane.model, b.crane.model, true);
+        case 'phone':
+          return text(a.crane.phone, b.crane.phone, true);
+        case 'fund':
+          return text(shortTypeOrEmpty(a.crane.customerType), shortTypeOrEmpty(b.crane.customerType));
+        case 'days':
+          return num(a.status.daysUntilDue, b.status.daysUntilDue);
+        case 'field':
+          return text(fieldAt(a.crane), fieldAt(b.crane));
       }
     });
-  }, [rows, sortKey, sortAsc]);
+  }, [rows, sortKey, sortAsc, fieldBySerial]);
 
   const pageCount = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount - 1);
@@ -76,13 +93,13 @@ export function CranesTable({ rows, onRowClick, fieldBySerial }: CranesTableProp
                 <Th onClick={() => toggleSort('urgency')} active={sortKey === 'urgency'} asc={sortAsc}>סטטוס</Th>
                 <Th onClick={() => toggleSort('name')} active={sortKey === 'name'} asc={sortAsc}>שם לקוח</Th>
                 <Th onClick={() => toggleSort('device')} active={sortKey === 'device'} asc={sortAsc}>מס' מכשיר</Th>
-                <Th>דגם</Th>
-                <Th>טלפון</Th>
-                <Th>קופה</Th>
+                <Th onClick={() => toggleSort('model')} active={sortKey === 'model'} asc={sortAsc}>דגם</Th>
+                <Th onClick={() => toggleSort('phone')} active={sortKey === 'phone'} asc={sortAsc}>טלפון</Th>
+                <Th onClick={() => toggleSort('fund')} active={sortKey === 'fund'} asc={sortAsc}>קופה</Th>
                 <Th onClick={() => toggleSort('install')} active={sortKey === 'install'} asc={sortAsc}>ת. התקנה</Th>
                 <Th onClick={() => toggleSort('next_due')} active={sortKey === 'next_due'} asc={sortAsc}>בדיקה הבאה</Th>
-                <Th>בעוד</Th>
-                <Th>בדיקה בשטח</Th>
+                <Th onClick={() => toggleSort('days')} active={sortKey === 'days'} asc={sortAsc}>בעוד</Th>
+                <Th onClick={() => toggleSort('field')} active={sortKey === 'field'} asc={sortAsc}>בדיקה בשטח</Th>
               </tr>
             </thead>
             <tbody>
@@ -196,11 +213,8 @@ function fmt(iso: string | undefined): string {
   return `${d}/${m}/${y}`;
 }
 
-function cmpDate(a: string | undefined, b: string | undefined): number {
-  if (!a && !b) return 0;
-  if (!a) return 1;
-  if (!b) return -1;
-  return a.localeCompare(b);
+function shortTypeOrEmpty(t: string | undefined): string | undefined {
+  return t ? shortType(t) : undefined;
 }
 
 function shortType(t: string | undefined): string {
