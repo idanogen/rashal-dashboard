@@ -17,6 +17,11 @@ const COLORS = {
   behind: { main: '#e0a800', soft: '#fef3c7', label: 'מתחת לקצב' },
 } as const;
 
+function ddmm(iso: string): string {
+  const [, m, d] = iso.slice(0, 10).split('-');
+  return `${d}/${m}`;
+}
+
 export function WeeklyTargetStrip({
   s, history,
 }: {
@@ -78,18 +83,24 @@ export function WeeklyTargetStrip({
       {/* שמונה השבועות שקדמו, עם קו היעד.
           🔴 **בלי קו היעד הרצועה חסרת משמעות**: היא מראה שהשבועות דומים
           זה לזה ולא כמה רחוקים כולם מ-147, וזו כל השאלה. */}
+      {/* 25/11/2026 (שלומי): המספר של כל שבוע מעל העמודה. עמודה אפורה בלי מספר
+          אמרה רק "פחות מהיעד" ולא כמה. */}
       <div className="relative mt-2.5" style={{ height: 56 }}>
-        <div className="flex h-full items-end gap-[5px]" aria-hidden>
+        <div className="flex h-full items-end gap-[5px]">
           {history.map((h) => (
             <div
               key={h.weekStart}
-              className="flex-1 rounded-t-[3px]"
+              className="relative flex-1 rounded-t-[3px]"
               style={{
                 height: `${Math.max(6, Math.round((h.count / peak) * 100))}%`,
                 background: h.count >= s.target ? '#16a34a' : '#94a3b8',
               }}
-              title={`שבוע ${h.weekStart}: ${h.count} תעודות`}
-            />
+              title={`שבוע שמתחיל ${ddmm(h.weekStart)}: ${h.count} תעודות`}
+            >
+              <span className="absolute inset-x-0 top-1 text-center text-[10px] font-bold leading-none text-white">
+                {h.count}
+              </span>
+            </div>
           ))}
         </div>
         <div
