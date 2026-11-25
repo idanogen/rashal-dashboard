@@ -11,11 +11,13 @@ export interface Zone {
 }
 
 export const ZONES: Zone[] = [
-  // צפון (4 אזורים)
+  // צפון (5 אזורים)
   { id: 'haifa', name: 'חיפה', region: 'north', color: 'bg-blue-500' },
   { id: 'krayot', name: 'קריות', region: 'north', color: 'bg-blue-600' },
   { id: 'akko-nahariya', name: 'עכו-נהריה', region: 'north', color: 'bg-cyan-500' },
   { id: 'galil-valleys', name: 'גליל-עמקים', region: 'north', color: 'bg-cyan-600' },
+  // רמת הגולן: מיכאל יאצקו (מנהל סניף צפון) דרך עמי, 24/11/2026.
+  { id: 'golan', name: 'רמת הגולן', region: 'north', color: 'bg-teal-600' },
 
   // מרכז (7 אזורים)
   { id: 'gush-dan', name: 'גוש דן', region: 'center', color: 'bg-purple-500' },
@@ -137,6 +139,14 @@ export const CITY_TO_ZONE: Record<string, string> = {
   'יקנעם': 'galil-valleys',
   'יקנעם עילית': 'galil-valleys',
   'בית שאן': 'galil-valleys',
+
+  // רמת הגולן. יישוב שלא ברשימה מקבל את האזור של העוגן הקרוב (nearestZone).
+  'קצרין': 'golan',
+  'מג\'דל שמס': 'golan',
+  'מסעדה': 'golan',
+  'בוקעאתא': 'golan',
+  'עין קנייא': 'golan',
+  'חיספין': 'golan',
 
   // אשדוד-אשקלון
   'אשדוד': 'ashdod-ashkelon',
