@@ -1,5 +1,6 @@
 import type { Crane, CraneStatus } from '@/types/crane';
 import { supabase } from './supabase';
+import { craneDue } from './crane-due';
 
 type CraneRow = {
   id: string;
@@ -12,6 +13,9 @@ type CraneRow = {
   phone: string | null;
   sticker_number: string | null;
   install_date: string | null;
+  ship_date?: string | null;
+  ship_doc?: string | null;
+  returned_at?: string | null;
   opened_date: string | null;
   warranty_start: string | null;
   warranty_end: string | null;
@@ -33,6 +37,9 @@ export function rowToCrane(row: CraneRow): Crane {
     phone: row.phone ?? undefined,
     stickerNumber: row.sticker_number ?? undefined,
     installDate: row.install_date ?? undefined,
+    shipDate: row.ship_date ?? undefined,
+    shipDoc: row.ship_doc ?? undefined,
+    returnedAt: row.returned_at ?? undefined,
     openedDate: row.opened_date ?? undefined,
     warrantyStart: row.warranty_start ?? undefined,
     warrantyEnd: row.warranty_end ?? undefined,
@@ -92,10 +99,9 @@ export async function updateCrane(
 /**
  * Compute next-inspection-due + urgency for a crane given its inspections.
  * Logic:
- *   - If the crane has any 'completed' inspection → next_due = max(completed.inspection_date) + 3 years
- *     (or the inspection's explicit next_due_date if set).
- *   - Else if install_date present → next_due = install_date + 3 years.
- *   - Else → unknown.
+ *   - The later of: last 'completed' inspection, or the last shipment to a customer (ship_date,
+ *     from Priority's device movement log) → + 3 years. install_date only when there is no shipment.
+ *   - Else → unknown. Rule lives in crane-due.ts.
  */
 const TWO_MONTHS_DAYS = 60;
 
@@ -108,15 +114,9 @@ export function computeCraneStatus(
     .sort((a, b) => b.inspectionDate.localeCompare(a.inspectionDate));
 
   const last = completed[0];
-  let nextDue: string | undefined;
-  let lastInspection: string | undefined;
-
-  if (last) {
-    lastInspection = last.inspectionDate;
-    nextDue = last.nextDueDate ?? addYears(last.inspectionDate, 3);
-  } else if (crane.installDate) {
-    nextDue = addYears(crane.installDate, 3);
-  }
+  const lastInspection: string | undefined = last?.inspectionDate;
+  // 25/11/2026: הבסיס הוא המאוחר מבין הבדיקה האחרונה והמשלוח ללקוח האחרון (crane-due.ts).
+  const { nextDue } = craneDue({ installDate: crane.installDate, shipDate: crane.shipDate, lastInspection: last });
 
   if (!nextDue) {
     return {
@@ -151,14 +151,6 @@ function todayStr(): string {
   return `${y}-${m}-${day}`;
 }
 
-function addYears(isoDate: string, years: number): string {
-  const d = new Date(isoDate + 'T00:00:00');
-  d.setFullYear(d.getFullYear() + years);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
 
 function diffInDays(targetIso: string, fromIso: string): number {
   const a = new Date(targetIso + 'T00:00:00').getTime();

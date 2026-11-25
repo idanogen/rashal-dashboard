@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import type { Crane, CraneStatus } from '@/types/crane';
 import { serialKey, type FieldInspection } from '@/lib/field-inspections';
 import { toLocalDateStr } from '@/lib/calendar-meta';
+import { craneStartDate } from '@/lib/crane-due';
 
 interface CranesTableProps {
   rows: Array<{ crane: Crane; status: CraneStatus }>;
@@ -51,7 +52,7 @@ export function CranesTable({ rows, onRowClick, fieldBySerial }: CranesTableProp
         case 'name':
           return text(a.crane.customerName, b.crane.customerName);
         case 'install':
-          return text(a.crane.installDate, b.crane.installDate);
+          return text(craneStartDate(a.crane), craneStartDate(b.crane));
         case 'next_due':
           return text(a.status.nextDueDate, b.status.nextDueDate);
         case 'device':
@@ -124,7 +125,7 @@ export function CranesTable({ rows, onRowClick, fieldBySerial }: CranesTableProp
                     <td className="px-3 py-2.5">{crane.model}</td>
                     <td className="px-3 py-2.5 text-muted-foreground">{crane.phone || '—'}</td>
                     <td className="px-3 py-2.5 text-muted-foreground">{shortType(crane.customerType)}</td>
-                    <td className="px-3 py-2.5 text-muted-foreground">{fmt(crane.installDate)}</td>
+                    <td className="px-3 py-2.5 text-muted-foreground" title={startTitle(crane)}>{fmt(craneStartDate(crane))}</td>
                     <td className="px-3 py-2.5">{fmt(status.nextDueDate)}</td>
                     <td className="px-3 py-2.5">
                       {status.daysUntilDue == null ? (
@@ -211,6 +212,12 @@ function fmt(iso: string | undefined): string {
   if (!iso) return '—';
   const [y, m, d] = iso.split('-');
   return `${d}/${m}/${y}`;
+}
+
+/** מאיפה התאריך: משלוח מהלוג בפריוריטי, או ת. התקנה מהאקסל כשאין משלוח. */
+function startTitle(c: Crane): string {
+  if (c.shipDate) return `משלוח ללקוח האחרון${c.shipDoc ? ` (${c.shipDoc})` : ''}`;
+  return c.installDate ? 'ת. התקנה מהאקסל, אין משלוח בלוג של פריוריטי' : '';
 }
 
 function shortTypeOrEmpty(t: string | undefined): string | undefined {

@@ -60,7 +60,13 @@ export function CraneDetailDialog({ open, onOpenChange, crane, status, fieldInsp
               </Detail>
               <Detail label="ת.ז. לקוח">{crane.customerIdNumber ?? '—'}</Detail>
               <Detail label="מספר מדבקה">{crane.stickerNumber ?? '—'}</Detail>
-              <Detail label="ת. התקנה">{fmt(crane.installDate)}</Detail>
+              <Detail label="משלוח ללקוח האחרון">
+                {crane.shipDate ? <>{fmt(crane.shipDate)}{crane.shipDoc && <span className="text-xs text-muted-foreground"> · {crane.shipDoc}</span>}</> : '—'}
+              </Detail>
+              {crane.returnedAt && (!crane.shipDate || crane.returnedAt > crane.shipDate) && (
+                <Detail label="חזר מלקוח"><span className="text-amber-700">{fmt(crane.returnedAt)}, לא נשלח שוב</span></Detail>
+              )}
+              <Detail label="ת. התקנה (אקסל)">{fmt(crane.installDate)}</Detail>
               <Detail label="ת. פתיחה">{fmt(crane.openedDate)}</Detail>
               <Detail label="ת. ביטול">
                 {crane.cancelledAt ? <span className="text-red-600">{fmt(crane.cancelledAt)}</span> : '—'}

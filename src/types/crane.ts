@@ -21,6 +21,11 @@ export interface Crane {
   phone?: string;
   stickerNumber?: string;
   installDate?: string;
+  /** המשלוח ללקוח האחרון מלוג התנועות בפריוריטי (25/11/2026). ממנו סופרים שלוש שנים. */
+  shipDate?: string;
+  shipDoc?: string;
+  /** ההחזרה מלקוח האחרונה. מאוחרת מ-shipDate = המנוף חזר ולא נשלח שוב. */
+  returnedAt?: string;
   openedDate?: string;
   warrantyStart?: string;
   warrantyEnd?: string;
