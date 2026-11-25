@@ -57,6 +57,8 @@ export interface Profile {
   /** 🔴 היעד היחיד של קישור איפוס הסיסמה. נשמר רק דרך `api/admin-users.ts`,
    *  וטריגר במסד חוסם שינוי שלו מהדפדפן. */
   phoneE164?: string;
+  /** מסך הבית של המשתמש (25/11/2026): '/my-day' לאילונה. ריק = לפי התפקיד. נקבע במסד בלבד. */
+  homeScreen?: string;
   createdAt: string;
   updatedAt?: string;
 }

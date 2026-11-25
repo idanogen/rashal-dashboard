@@ -11,6 +11,7 @@ type ProfileRow = {
   disabled: boolean;
   linked_driver: AssigneeName | null;
   phone_e164: string | null;
+  home_screen?: string | null;
   created_at: string;
   updated_at: string | null;
 };
@@ -25,6 +26,7 @@ function rowToProfile(row: ProfileRow): Profile {
     disabled: row.disabled,
     linkedDriver: row.linked_driver ?? undefined,
     phoneE164: row.phone_e164 ?? undefined,
+    homeScreen: row.home_screen ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at ?? undefined,
   };

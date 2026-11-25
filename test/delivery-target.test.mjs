@@ -108,3 +108,26 @@ test('היעד והעקומה נעולים: שינוי בהם הוא החלטה 
     assert.ok(WEEK_CURVE[i] >= WEEK_CURVE[i - 1], 'העקומה חייבת לעלות בלבד');
   }
 });
+
+import { weeklyTargetFromNotes, workDaysLeft } from '../src/lib/delivery-target.ts';
+
+test('weeklyTargetFromNotes: השבוע מראשון, מבוטלות לא נספרות, שבוע ריק הוא אפס', () => {
+  const now = new Date(2026, 10, 25, 12, 0); // רביעי 25/11/2026
+  const notes = [
+    { status: 'טיוטא', docDate: '2026-11-22T00:00:00' }, // ראשון השבוע
+    { status: 'סופק', docDate: '2026-11-25T00:00:00' },
+    { status: 'מבוטלת', docDate: '2026-11-24T00:00:00' },
+    { status: 'סופית', docDate: '2026-11-21T00:00:00' }, // שבת = השבוע הקודם
+  ];
+  const { weekly, history } = weeklyTargetFromNotes(notes, now);
+  assert.equal(weekly.actual, 2);
+  assert.equal(history.length, 8);
+  assert.deepEqual(history.at(-1), { weekStart: '2026-11-15', count: 1 });
+  assert.equal(history[0].count, 0);
+});
+
+test('workDaysLeft: רביעי = 2 (רביעי וחמישי), שישי = 0', () => {
+  assert.equal(workDaysLeft(new Date(2026, 10, 25)), 2);
+  assert.equal(workDaysLeft(new Date(2026, 10, 27)), 0);
+  assert.equal(workDaysLeft(new Date(2026, 10, 22)), 5);
+});

@@ -119,3 +119,37 @@ export function deliveryTargetStatus(
 export function countsTowardTarget(status?: string | null, docDate?: string | null): boolean {
   return Boolean(docDate) && status !== 'מבוטלת';
 }
+
+/**
+ * השבוע הנוכחי ושמונת השבועות שלפניו, מרשימת תעודות. ⭐ מקור אחד לדשבורד ההנהלה
+ * ולמסך "הבוקר שלי" (25/11/2026), כדי ששני המסכים יראו תמיד אותו מספר.
+ * שבוע בלי תעודות הוא אפס ולא חור, אחרת הרצועה מראה רצף שלא היה.
+ */
+export function weeklyTargetFromNotes(
+  notes: { status?: string | null; docDate?: string | null }[],
+  now: Date,
+): { weekly: TargetStatus; history: { weekStart: string; count: number }[] } {
+  const cur = weekStart(now).getTime();
+  const counts = new Map<number, number>();
+  for (const n of notes) {
+    if (!countsTowardTarget(n.status, n.docDate)) continue;
+    const d = new Date(n.docDate as string);
+    if (Number.isNaN(d.getTime())) continue;
+    const w = weekStart(d).getTime();
+    counts.set(w, (counts.get(w) ?? 0) + 1);
+  }
+  const history: { weekStart: string; count: number }[] = [];
+  for (let i = 8; i >= 1; i--) {
+    const w = new Date(cur);
+    w.setDate(w.getDate() - i * 7);
+    const iso = `${w.getFullYear()}-${String(w.getMonth() + 1).padStart(2, '0')}-${String(w.getDate()).padStart(2, '0')}`;
+    history.push({ weekStart: iso, count: counts.get(w.getTime()) ?? 0 });
+  }
+  return { weekly: deliveryTargetStatus(counts.get(cur) ?? 0, now), history };
+}
+
+/** ימי עבודה שנשארו בשבוע כולל היום (ראשון עד חמישי; שישי ושבת אפס). */
+export function workDaysLeft(now: Date): number {
+  const dow = now.getDay();
+  return dow >= 5 ? 0 : 5 - dow;
+}

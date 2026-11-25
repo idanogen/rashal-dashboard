@@ -56,6 +56,8 @@ export function HomeByRole({ children }: { children: ReactNode }) {
       </div>
     );
   }
+  // מסך בית אישי גובר על ברירת המחדל של התפקיד (אילונה, הבוקר שלי, 25/11/2026).
+  if (profile?.homeScreen) return <Navigate to={profile.homeScreen} replace />;
   if (profile?.role === 'dispatcher') {
     return <Navigate to="/dispatch" replace />;
   }

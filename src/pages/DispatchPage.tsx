@@ -114,6 +114,7 @@ import type {
 } from '@/types/delivery';
 import { toast } from 'sonner';
 import { buildReturnedMap, returnedIdSet } from '@/lib/returned-from-route';
+import { isPendingPickup } from '@/lib/pending-pickup';
 
 // ─── סוגי פעילות ─────────────────────────────────────────────
 type ActivityKind = 'delivery' | 'service' | 'pickup' | 'customer';
@@ -331,14 +332,7 @@ export function DispatchPage() {
   // ─── איסופים: נגזרות (כמו ב-PickupsPage) ───
   const allPendingPickups = useMemo(
     () =>
-      pickups.filter(
-        (p) =>
-          !p.duplicateOf &&
-          (p.pickupStatus ?? 'ממתין לתאום') === 'ממתין לתאום' &&
-          // רשת ביטחון: איסוף שכבר נאסף/בוטל בפריוריטי לא מופיע בממתינים
-          p.priorityStatus !== 'סופית' &&
-          p.priorityStatus !== 'מבוטלת'
-      ),
+      pickups.filter(isPendingPickup),
     [pickups]
   );
   const pendingPickups = useMemo(

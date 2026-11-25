@@ -10,6 +10,7 @@ import { ManagementDashboard } from '@/pages/ManagementDashboard';
 import { SurveysPage } from '@/pages/SurveysPage';
 import { CollectionsPage } from '@/pages/CollectionsPage';
 import { DispatchPage } from '@/pages/DispatchPage';
+import { MyDayPage } from '@/pages/MyDayPage';
 import { InspectionsPage } from '@/pages/InspectionsPage';
 import { FormsDemoPage } from '@/pages/FormsDemoPage';
 import { SignStopPage } from '@/pages/SignStopPage';
@@ -129,6 +130,7 @@ function App() {
                         <Route path="/pickups-report" element={<RoleBasedRoute allow={screenAllow('/pickups-report')}><PickupsReportPage /></RoleBasedRoute>} />
                         <Route path="/morning/:date" element={<RoleBasedRoute allow={screenAllow('/morning')}><MorningReportPage /></RoleBasedRoute>} />
                         <Route path="/collections" element={<RoleBasedRoute allow={screenAllow('/collections')}><CollectionsPage /></RoleBasedRoute>} />
+                        <Route path="/my-day" element={<RoleBasedRoute allow={screenAllow('/my-day')}><MyDayPage /></RoleBasedRoute>} />
                         <Route path="/dispatch" element={<RoleBasedRoute allow={screenAllow('/dispatch')}><DispatchPage /></RoleBasedRoute>} />
                         {/* הראוטים הישנים מפנים למסך הסדרן המאוחד עם הטאב המתאים */}
                         <Route path="/routes" element={<Navigate to="/dispatch?tab=deliveries" replace />} />

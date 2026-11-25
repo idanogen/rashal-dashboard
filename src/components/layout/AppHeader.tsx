@@ -35,6 +35,8 @@ import { localDateStr as toLocalDateStr } from '@/lib/visit-history';
  * הוגבל למנהל מערכת הוא היה מוביל את השאר למסך "אין הרשאת גישה".
  */
 const PRIMARY_LINKS = [
+  // ⭐ הבוקר שלי (25/11/2026): ראשון מימין, רק למי שזה מסך הבית שלו (אילונה) ולמנהל מערכת.
+  { to: '/my-day', label: '☀️ הבוקר שלי' },
   { to: '/dispatch', label: 'מסך סדרן' },
   { to: '/orders', label: 'דשבורד' },
   { to: '/inbox', label: '💬 שיחות' },
@@ -97,6 +99,7 @@ export function AppHeader() {
   const staffChat = useStaffMessages(!!role && screenAllow('/chat').includes(role));
   const myDesks = useMyDesks(canSee('/parts'));
   const showParts = myDesks.length > 0 || role === 'admin';
+  const showMyDay = profile?.homeScreen === '/my-day' || role === 'admin';
   const followups = useCallFollowups(showParts);
   const partsOpen = useMemo(
     () => openCountForDesks(followups.data ?? [], myDesks.length > 0 ? myDesks : ['warehouse', 'workshop']),
@@ -173,7 +176,7 @@ export function AppHeader() {
               (דשבורד הנהלה, בדיקות מנופים, וואטסאפ, משתמשים) עבר לתפריט "ניהול",
               אחרי שבדיקה הראתה שהתפריט משרת בפועל סדרן אחד. */}
           <nav className="flex items-center gap-1">
-            {PRIMARY_LINKS.filter((l) => canSee(l.to) && (l.to !== '/parts' || showParts)).map((link) => (
+            {PRIMARY_LINKS.filter((l) => canSee(l.to) && (l.to !== '/parts' || showParts) && (l.to !== '/my-day' || showMyDay)).map((link) => (
               <NavLink key={link.to} to={link.to} className={navLinkClass}>
                 {link.to === '/chat' && staffChat.unread > 0 && (
                   <span

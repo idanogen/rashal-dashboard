@@ -27,6 +27,8 @@ const MONEY: UserRole[] = ['admin', 'management'];
 
 export const SCREEN_ACCESS: ScreenAccess[] = [
   { path: '/',                 label: 'בית',              group: 'daily', allow: STAFF },
+  // ⭐ הבוקר שלי (25/11/2026): המסך של אילונה, היעד השבועי ומה מחכה לשיבוץ. בתפריט רק למי שזה מסך הבית שלו ולמנהל מערכת.
+  { path: '/my-day',           label: 'הבוקר שלי',         group: 'daily', allow: STAFF },
   { path: '/orders',           label: 'דשבורד הזמנות',     group: 'daily', allow: STAFF },
   { path: '/dispatch',         label: 'מסך סדרן',          group: 'daily', allow: STAFF },
   { path: '/inbox',            label: 'שיחות וואטסאפ',     group: 'daily', allow: STAFF },

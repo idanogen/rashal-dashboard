@@ -10,7 +10,7 @@ import type { CalendarStop } from '@/types/calendar-stop';
 import { getZoneForCity, getZoneById, REGION_LABELS } from '@/types/zone';
 import { countOpenOverDays, countRepeatCalls } from './repeat-calls';
 import {
-  deliveryTargetStatus, weekStart, countsTowardTarget, type TargetStatus,
+  weeklyTargetFromNotes, type TargetStatus,
 } from './delivery-target';
 import { ordersVsNotesByMonth, type OpenedByMonthRow } from './month-series';
 
@@ -271,25 +271,7 @@ export function computeManagementMetrics(
   // ⭐ נספר מתעודות המשלוח, שהן המדד לאספקות שסוכם ב-26/08. הכלל עצמו
   // (מי נספרת, מתי מתחיל השבוע, ומה הקצב הצפוי) יושב ב-delivery-target.ts
   // בלי ייבוא, ולכן הוא נבדק ביחידה.
-  const nowDate = new Date(now);
-  const curWeekStart = weekStart(nowDate).getTime();
-  const weekCounts = new Map<number, number>();
-  for (const n of notes) {
-    if (!countsTowardTarget(n.status, n.docDate)) continue;
-    const d = new Date(n.docDate as string);
-    if (Number.isNaN(d.getTime())) continue;
-    const w = weekStart(d).getTime();
-    weekCounts.set(w, (weekCounts.get(w) ?? 0) + 1);
-  }
-  const weekly = deliveryTargetStatus(weekCounts.get(curWeekStart) ?? 0, nowDate);
-  // שמונת השבועות שקדמו לנוכחי, מהישן לחדש. שבוע בלי תעודות הוא אפס
-  // ולא חור, אחרת הרצועה משקרת ומראה רצף שלא היה.
-  const weeklyHistory: { weekStart: string; count: number }[] = [];
-  for (let i = 8; i >= 1; i--) {
-    const w = new Date(curWeekStart);
-    w.setDate(w.getDate() - i * 7);
-    weeklyHistory.push({ weekStart: localDate(w), count: weekCounts.get(w.getTime()) ?? 0 });
-  }
+  const { weekly, history: weeklyHistory } = weeklyTargetFromNotes(notes, new Date(now));
 
   return {
     kpi: {
