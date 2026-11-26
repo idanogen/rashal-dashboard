@@ -47,7 +47,7 @@ export function ArrivedStrip({
     <div className="rounded-lg border border-emerald-300 bg-emerald-50/60 p-3 shadow-sm">
       <div className="mb-2 flex items-center gap-2">
         <PackageCheck className="h-4 w-4 text-emerald-700" />
-        <h3 className="text-sm font-bold text-emerald-800">החלק הגיע, לשיבוץ ({items.length})</h3>
+        <h3 className="text-sm font-bold text-emerald-800">החלק הגיע או תוקן, לשיבוץ ({items.length})</h3>
         <span className="text-[11px] text-emerald-700/80">גוררים ליומן כרגיל, והשיבוץ סוגר את בקשת הרכש</span>
       </div>
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">

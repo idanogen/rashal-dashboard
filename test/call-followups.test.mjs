@@ -101,3 +101,13 @@ test('שמירה: חייבים לבחור, ורכש חייב מה להזמין',
   assert.equal(validateDecision('buy_workshop', 'חישוק'), null);
   assert.equal(validateDecision('not_home', ''), null);
 });
+
+test('בית מלאכה שתיקן בלי להזמין: "תוקן", ומיד חוזר לשיבוץ (עמי 26/11)', () => {
+  const fixed = f({ kind: 'buy_workshop', status: 'arrived', arrivedAt: '2026-11-26T09:40:00Z' });
+  assert.equal(buyStatusLabel(fixed, TODAY).text, 'תוקן 26/11');
+  assert.equal(dispatchPlace(fixed), 'arrived');
+  assert.equal(followupTimeline(fixed)[0].text.startsWith('תוקן'), true);
+  const ordered = f({ kind: 'buy_workshop', status: 'arrived', orderedAt: '2026-11-20T09:00:00Z', arrivedAt: '2026-11-26T09:40:00Z' });
+  assert.equal(buyStatusLabel(ordered, TODAY).text, 'הגיע 26/11');
+  assert.equal(buyStatusLabel(f({ kind: 'buy_warehouse', status: 'arrived', arrivedAt: '2026-11-26T09:40:00Z' }), TODAY).text, 'הגיע 26/11');
+});

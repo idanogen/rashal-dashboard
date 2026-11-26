@@ -5,6 +5,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Pill } from '@/components/service-calls/FollowupPill';
 import {
   buyStatusLabel,
+  deskOf,
   followupTimeline,
   shortDate,
   shortDateTime,
@@ -65,6 +66,12 @@ export function PartRequestCard({ f, today, busy, onAction, onShowCall }: Props)
         {f.status === 'open' && mode !== 'unavailable' && (
           <>
             <p className="text-xs text-muted-foreground">נשלח ע"י {f.decidedByName ?? 'המשרד'} · <bdi>{shortDateTime(f.decidedAt)}</bdi></p>
+            {/* בית מלאכה מתקן ולא מזמין: כפתור אחד שמחזיר לשיבוץ (עמי 25/11) */}
+            {deskOf(f.kind) === 'workshop' && (
+              <Button size="sm" disabled={busy} className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={() => run({ type: 'arrived' })}>
+                תוקן, חוזר לשיבוץ
+              </Button>
+            )}
             <label className="text-xs font-semibold text-muted-foreground">צפי הגעה
               <Input type="date" value={eta} min={today} onChange={(e) => setEta(e.target.value)} className="mt-1 text-base sm:text-sm" />
             </label>

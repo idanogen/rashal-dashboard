@@ -217,10 +217,15 @@ export function shortDateTime(iso: string | null | undefined): string {
   return `${get('day')}/${get('month')} ${get('hour')}:${get('minute')}`;
 }
 
+/** בית מלאכה שתיקן בלי להזמין (כפתור "תוקן, חוזר לשיבוץ", 26/11) = "תוקן"; אחרת "הגיע". */
+export function arrivedWord(f: Pick<CallFollowup, 'kind' | 'orderedAt'>): string {
+  return deskOf(f.kind) === 'workshop' && !f.orderedAt ? 'תוקן' : 'הגיע';
+}
+
 /** תג המצב של בקשת רכש: מה עמי ואלכס רואים בשורה. */
 export function buyStatusLabel(f: CallFollowup, today: string): { text: string; tone: 'amber' | 'violet' | 'red' | 'green' | 'slate' } {
   if (f.status === 'open') return { text: 'לא הוזמן עדיין', tone: 'amber' };
-  if (f.status === 'arrived') return { text: `הגיע ${shortDate(f.arrivedAt)}`, tone: 'green' };
+  if (f.status === 'arrived') return { text: `${arrivedWord(f)} ${shortDate(f.arrivedAt)}`, tone: 'green' };
   if (f.status === 'unavailable') return { text: 'לא ניתן להשיג', tone: 'red' };
   if (f.status === 'closed') return { text: 'נסגר', tone: 'slate' };
   const st = etaState(f, today);
@@ -244,7 +249,7 @@ export function followupTimeline(f: CallFollowup): TimelineEntry[] {
   const out: TimelineEntry[] = [];
   const desk = deskOf(f.kind);
   if (f.closedAt && f.closedReason === 'scheduled') out.push({ at: f.closedAt, text: 'שובץ מחדש, נסגר' });
-  if (f.arrivedAt) out.push({ at: f.arrivedAt, text: `הגיע${f.arrivedByName ? ` · ${f.arrivedByName}` : ''}` });
+  if (f.arrivedAt) out.push({ at: f.arrivedAt, text: `${arrivedWord(f)}${f.arrivedByName ? ` · ${f.arrivedByName}` : ''}` });
   if (f.unavailableAt) out.push({ at: f.unavailableAt, text: `לא ניתן להשיג${f.unavailableNote ? `: ${f.unavailableNote}` : ''}` });
   if (f.orderedAt) {
     const eta = f.eta ? `, צפי ${shortDate(f.eta)}` : '';
